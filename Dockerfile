@@ -30,10 +30,14 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
 
 # Install dependencies for Npgsql (Kerberos) and Globalization
-RUN apk add --no-cache krb5-libs icu-libs
+RUN apk add --no-cache krb5-libs icu-libs curl
 
 # Disable invariant globalization to use icu-libs
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
 
 # .NET 8+ images use port 8080 by default
 EXPOSE 8080
