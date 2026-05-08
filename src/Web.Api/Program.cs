@@ -37,7 +37,8 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
                 "http://localhost:5173",
                 "http://localhost:3000",
-                "https://ridelance.ro")
+                "https://ridelance.ro",
+                "https://www.ridelance.ro")
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -46,10 +47,13 @@ builder.Services.AddCors(options =>
 
 WebApplication app = builder.Build();
 
-// CORS must be before Auth
+// Standard middleware pipeline order
+app.UseExceptionHandler();
+
+// CORS must be before Auth and Endpoints
 app.UseCors("Frontend");
 
-// Serve static files from the 'uploads' directory
+// Serve static files
 string uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
 if (!Directory.Exists(uploadsPath))
 {
@@ -62,7 +66,11 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/uploads"
 });
 
-app.MapEndpoints();
+app.UseRequestContextLogging();
+app.UseSerilogRequestLogging();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
@@ -76,15 +84,8 @@ app.MapHealthChecks("health", new HealthCheckOptions
     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
 });
 
-app.UseRequestContextLogging();
-
-app.UseSerilogRequestLogging();
-
-app.UseExceptionHandler();
-
-app.UseAuthentication();
-
-app.UseAuthorization();
+// Map endpoints after Auth and CORS
+app.MapEndpoints();
 
 // REMARK: If you want to use Controllers, you'll need this.
 app.MapControllers();
