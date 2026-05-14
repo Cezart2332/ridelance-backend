@@ -40,10 +40,19 @@ public sealed class LicensePlateDetectionService : ILicensePlateDetectionService
 
         _logger.LogInformation("Initializing LicensePlateDetectionService with model: {ModelPath}", modelPath);
         
-        using var options = new SessionOptions();
-        options.AppendExecutionProvider_CPU();
-        
-        _session = new InferenceSession(modelPath, options);
+        try
+        {
+            using var options = new SessionOptions();
+            options.AppendExecutionProvider_CPU();
+            
+            _session = new InferenceSession(modelPath, options);
+            _logger.LogInformation("ONNX InferenceSession initialized successfully.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCritical(ex, "CRITICAL: Failed to initialize ONNX InferenceSession. This usually indicates missing native dependencies (glibc/libgomp) on Linux/Alpine. Error: {Msg}", ex.Message);
+            throw;
+        }
     }
 
     public async Task<byte[]> ProcessImageAsync(Stream imageStream, CancellationToken cancellationToken = default)
