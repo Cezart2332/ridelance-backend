@@ -29,8 +29,8 @@ RUN dotnet publish "src/Web.Api/Web.Api.csproj" \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
 
-# Install dependencies for Npgsql (Kerberos) and Globalization
-RUN apk add --no-cache krb5-libs icu-libs curl
+# Install dependencies for Npgsql (Kerberos), Globalization, and AI Runtimes (ONNX/OpenCV)
+RUN apk add --no-cache krb5-libs icu-libs curl libstdc++ libgcc libgdiplus gcompat libgomp
 
 # Disable invariant globalization to use icu-libs
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
