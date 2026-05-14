@@ -50,8 +50,9 @@ public sealed class LicensePlateDetectionService : ILicensePlateDetectionService
         }
         catch (Exception ex)
         {
-            _logger.LogCritical(ex, "CRITICAL: Failed to initialize ONNX InferenceSession. This usually indicates missing native dependencies (glibc/libgomp) on Linux/Alpine. Error: {Msg}", ex.Message);
-            throw;
+            throw new InvalidOperationException(
+                "CRITICAL: Failed to initialize ONNX InferenceSession. This usually indicates missing native dependencies (glibc/libgomp) on Linux/Alpine.", 
+                ex);
         }
     }
 
