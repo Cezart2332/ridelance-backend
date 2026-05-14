@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Services;
 using Domain.Cars;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -8,7 +9,9 @@ namespace Application.Cars.Commands.UploadCarImage;
 
 public sealed record UploadCarImageCommand(Guid CarId, string FileName, Stream FileStream, string ContentType) : ICommand<Guid>;
 
-internal sealed class UploadCarImageCommandHandler(IApplicationDbContext context)
+internal sealed class UploadCarImageCommandHandler(
+    IApplicationDbContext context,
+    ILicensePlateDetectionService licensePlateDetectionService)
     : ICommandHandler<UploadCarImageCommand, Guid>
 {
     private static readonly string[] AllowedTypes = ["IMAGE/JPEG", "IMAGE/JPG", "IMAGE/PNG", "IMAGE/WEBP"];
@@ -45,9 +48,11 @@ internal sealed class UploadCarImageCommandHandler(IApplicationDbContext context
         string safeFileName = $"{Guid.NewGuid()}{extension}";
         string filePath = Path.Combine(uploadsDir, safeFileName);
 
-        await using FileStream fileStream = File.Create(filePath);
+        // Automatically detect and blur license plates
         command.FileStream.Seek(0, SeekOrigin.Begin);
-        await command.FileStream.CopyToAsync(fileStream, cancellationToken);
+        byte[] processedImage = await licensePlateDetectionService.ProcessImageAsync(command.FileStream, cancellationToken);
+
+        await File.WriteAllBytesAsync(filePath, processedImage, cancellationToken);
 
         int nextOrder = car.Images.Count > 0 ? car.Images.Max(i => i.DisplayOrder) + 1 : 0;
 

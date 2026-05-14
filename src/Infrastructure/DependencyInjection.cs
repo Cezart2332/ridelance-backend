@@ -58,6 +58,7 @@ public static class DependencyInjection
         }
         services.AddTransient<IEmailService, ResendEmailService>();
         services.AddSingleton<IMjmlRenderer, MjmlRendererAdapter>();
+        services.AddSingleton<ILicensePlateDetectionService, LicensePlateDetectionService>();
 
         return services;
     }
