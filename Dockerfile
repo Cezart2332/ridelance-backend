@@ -1,5 +1,5 @@
 # ─── Build Stage ──────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:10.0-bookworm-slim AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 WORKDIR /src
 
 # Copy property files for Central Package Management (CPM)
@@ -26,14 +26,14 @@ RUN dotnet publish "src/Web.Api/Web.Api.csproj" \
     --no-restore
 
 # ─── Runtime Stage ────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-bookworm-slim AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 WORKDIR /app
 
 # Install dependencies for Npgsql (Kerberos), Globalization, and AI Runtimes (ONNX/OpenCV)
 # We use Debian (glibc) instead of Alpine (musl) for ONNX/OpenCV native compatibility
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libkrb5-3 \
-    libicu72 \
+    libicu74 \
     curl \
     libgdiplus \
     libgomp1 \
