@@ -39,6 +39,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libfontconfig1 \
     libfreetype6 \
+    libtesseract5 \
+    tesseract-ocr \
+    libjpeg-turbo8 \
+    libpng16-16t64 \
+    libtiff6 \
+    libwebp7 \
+    libx11-6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Disable invariant globalization to use icu-libs
