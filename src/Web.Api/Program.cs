@@ -5,7 +5,6 @@ using HealthChecks.UI.Client;
 using Infrastructure;
 using Infrastructure.Chat;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Serilog;
 using Web.Api;
 using Web.Api.Extensions;
 
@@ -14,8 +13,6 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // Load .env variables
 DotNetEnv.Env.TraversePath().Load();
 builder.Configuration.AddEnvironmentVariables();
-
-builder.Host.UseSerilog((context, loggerConfig) => loggerConfig.ReadFrom.Configuration(context.Configuration));
 
 builder.Services.AddSwaggerGenWithAuth();
 
@@ -67,7 +64,6 @@ app.UseStaticFiles(new StaticFileOptions
 });
 
 app.UseRequestContextLogging();
-app.UseSerilogRequestLogging();
 
 app.UseAuthentication();
 app.UseAuthorization();
