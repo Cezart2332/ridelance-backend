@@ -1,5 +1,5 @@
 # ─── Build Stage ──────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-bookworm-slim AS build
 WORKDIR /src
 
 # Copy property files for Central Package Management (CPM)
@@ -26,11 +26,20 @@ RUN dotnet publish "src/Web.Api/Web.Api.csproj" \
     --no-restore
 
 # ─── Runtime Stage ────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-bookworm-slim AS runtime
 WORKDIR /app
 
 # Install dependencies for Npgsql (Kerberos), Globalization, and AI Runtimes (ONNX/OpenCV)
-RUN apk add --no-cache krb5-libs icu-libs curl libstdc++ libgcc libgdiplus gcompat libgomp
+# We use Debian (glibc) instead of Alpine (musl) for ONNX/OpenCV native compatibility
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libkrb5-3 \
+    libicu72 \
+    curl \
+    libgdiplus \
+    libgomp1 \
+    libfontconfig1 \
+    libfreetype6 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Disable invariant globalization to use icu-libs
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
