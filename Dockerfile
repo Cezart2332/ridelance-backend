@@ -21,9 +21,9 @@ COPY . .
 
 # Build and publish the application
 RUN dotnet publish "src/Web.Api/Web.Api.csproj" \
-    -c Release \
-    -o /app/publish \
-    --no-restore
+  -c Release \
+  -o /app/publish \
+  --no-restore
 
 # ─── Runtime Stage ────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
@@ -32,21 +32,26 @@ WORKDIR /app
 # Install dependencies for Npgsql (Kerberos), Globalization, and AI Runtimes (ONNX/OpenCV)
 # We use Debian (glibc) instead of Alpine (musl) for ONNX/OpenCV native compatibility
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libkrb5-3 \
-    libicu74 \
-    curl \
-    libgdiplus \
-    libgomp1 \
-    libfontconfig1 \
-    libfreetype6 \
-    libtesseract5 \
-    tesseract-ocr \
-    libjpeg-turbo8 \
-    libpng16-16t64 \
-    libtiff6 \
-    libwebp7 \
-    libx11-6 \
-    && rm -rf /var/lib/apt/lists/*
+  libkrb5-3 \
+  libicu74 \
+  curl \
+  libgdiplus \
+  libgomp1 \
+  libfontconfig1 \
+  libfreetype6 \
+  libtesseract5 \
+  tesseract-ocr \
+  libjpeg-turbo8 \
+  libpng16-16t64 \
+  libtiff6 \          
+  libwebp7 \
+  libx11-6 \
+  libgl1 \
+  && rm -rf /var/lib/apt/lists/*
+
+
+RUN ln -s /usr/lib/x86_64-linux-gnu/libtiff.so.6 \
+  /usr/lib/x86_64-linux-gnu/libtiff.so.5
 
 # Disable invariant globalization to use icu-libs
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
