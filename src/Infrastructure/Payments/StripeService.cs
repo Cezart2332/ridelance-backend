@@ -118,8 +118,9 @@ internal sealed class StripeService : IStripeService
         {
             return EventUtility.ConstructEvent(payload, stripeSignatureHeader, _webhookSecret);
         }
-        catch (StripeException)
+        catch (StripeException ex)
         {
+            Console.WriteLine($"Stripe Webhook Error: {ex.Message}");
             return null;
         }
     }
