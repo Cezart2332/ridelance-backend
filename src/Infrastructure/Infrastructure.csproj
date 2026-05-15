@@ -9,6 +9,7 @@
     <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Resend" />
+    <PackageReference Include="Stripe.net" />
     <PackageReference Include="WebPush" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" />
     <PackageReference Include="OpenCvSharp4" />

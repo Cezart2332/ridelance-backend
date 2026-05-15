@@ -2,6 +2,7 @@ using Domain.Cars;
 using Domain.Chat;
 using Domain.Documents;
 using Domain.Notifications;
+using Domain.Payments;
 using Domain.PfaRegistrations;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,8 @@ public interface IApplicationDbContext
     DbSet<Car> Cars { get; }
     DbSet<CarImage> CarImages { get; }
     DbSet<CarLead> CarLeads { get; }
+    DbSet<UserSubscription> UserSubscriptions { get; }
+    DbSet<PaymentRecord> PaymentRecords { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

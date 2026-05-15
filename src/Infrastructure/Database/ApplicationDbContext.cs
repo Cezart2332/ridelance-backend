@@ -3,6 +3,7 @@ using Domain.Cars;
 using Domain.Chat;
 using Domain.Documents;
 using Domain.Notifications;
+using Domain.Payments;
 using Domain.PfaRegistrations;
 using Domain.Users;
 using Infrastructure.DomainEvents;
@@ -26,6 +27,8 @@ public sealed class ApplicationDbContext(
     public DbSet<Car> Cars { get; set; }
     public DbSet<CarImage> CarImages { get; set; }
     public DbSet<CarLead> CarLeads { get; set; }
+    public DbSet<UserSubscription> UserSubscriptions { get; set; }
+    public DbSet<PaymentRecord> PaymentRecords { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
