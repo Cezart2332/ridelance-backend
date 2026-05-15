@@ -23,6 +23,12 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             return Result.Success<SubscriptionResponse?>(null);
         }
 
+        Domain.PfaRegistrations.PfaRegistration? pfa = await context.PfaRegistrations
+            .AsNoTracking()
+            .Where(p => p.UserId == query.UserId)
+            .OrderByDescending(p => p.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
         return Result.Success<SubscriptionResponse?>(new SubscriptionResponse(
             sub.Id,
             sub.Plan.ToString(),
@@ -31,6 +37,8 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             sub.FirstBillingDateUtc,
             sub.NextBillingDateUtc,
             sub.CreatedAtUtc,
-            sub.DashboardAccessGranted));
+            sub.DashboardAccessGranted,
+            pfa?.Status.ToString(),
+            pfa?.RegistrationType.ToString()));
     }
 }

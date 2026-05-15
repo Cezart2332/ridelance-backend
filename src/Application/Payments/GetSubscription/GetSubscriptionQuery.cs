@@ -13,4 +13,6 @@ public sealed record SubscriptionResponse(
     DateTime FirstBillingDateUtc,
     DateTime? NextBillingDateUtc,
     DateTime CreatedAtUtc,
-    bool DashboardAccessGranted);
+    bool DashboardAccessGranted,
+    string? PfaStatus = null,
+    string? PfaRegistrationType = null);
