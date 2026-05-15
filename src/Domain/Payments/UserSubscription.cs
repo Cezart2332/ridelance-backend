@@ -32,6 +32,17 @@ public sealed class UserSubscription : Entity
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? CancelledAtUtc { get; set; }
 
+    /// <summary>
+    /// True once the Monday 15:00 background job has granted access to the dashboard.
+    /// Set to true immediately if user pays on/after Monday 15:00.
+    /// </summary>
+    public bool DashboardAccessGranted { get; set; }
+
+    /// <summary>
+    /// UTC timestamp of when dashboard access was granted.
+    /// </summary>
+    public DateTime? DashboardAccessGrantedUtc { get; set; }
+
     // Navigation
     public User User { get; set; } = null!;
 }

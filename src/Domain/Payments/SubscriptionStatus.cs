@@ -26,5 +26,10 @@ public enum SubscriptionStatus
     /// <summary>
     /// Subscription has expired.
     /// </summary>
-    Expired
+    Expired,
+
+    /// <summary>
+    /// User has paid but dashboard access is pending the next Monday 15:00 grant job.
+    /// </summary>
+    PaidPendingAccess
 }

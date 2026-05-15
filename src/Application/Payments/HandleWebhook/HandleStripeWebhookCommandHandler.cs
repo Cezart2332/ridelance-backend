@@ -69,7 +69,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
         if (mode == "payment")
         {
             // One-time payment completed (e.g. Înființare PFA)
-            var record = new PaymentRecord
+            var record = new Domain.Payments.PaymentRecord
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
@@ -91,6 +91,11 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
             DateTime firstBilling = GetNextMondayBillingDateUtc();
 
+            // Grant dashboard access immediately only if it's currently Monday at or after 15:00 Romania time.
+            // Otherwise the Monday 15:00 background job will flip the flag.
+            bool grantAccessNow = IsOnOrAfterMondayFifteenOClockRomania();
+            DateTime? accessGrantedUtc = grantAccessNow ? DateTime.UtcNow : null;
+
             // Check if subscription already exists for this user (e.g. upgrade)
             UserSubscription? existing = await context.UserSubscriptions
                 .FirstOrDefaultAsync(s => s.UserId == userId, ct);
@@ -104,6 +109,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 existing.FirstBillingDateUtc = firstBilling;
                 existing.NextBillingDateUtc = firstBilling;
                 existing.CancelledAtUtc = null;
+                existing.DashboardAccessGranted = grantAccessNow;
+                existing.DashboardAccessGrantedUtc = accessGrantedUtc;
             }
             else
             {
@@ -118,12 +125,14 @@ internal sealed class HandleStripeWebhookCommandHandler(
                     FirstBillingDateUtc = firstBilling,
                     NextBillingDateUtc = firstBilling,
                     CreatedAtUtc = DateTime.UtcNow,
+                    DashboardAccessGranted = grantAccessNow,
+                    DashboardAccessGrantedUtc = accessGrantedUtc,
                 };
                 context.UserSubscriptions.Add(sub);
             }
 
             // Record subscription payment
-            var record = new PaymentRecord
+            var record = new Domain.Payments.PaymentRecord
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
@@ -146,7 +155,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
     // ─────────────────────────────────────────────────────────────────────────
     private async Task HandleInvoicePaymentSucceeded(Stripe.Event e, CancellationToken ct)
     {
-        if (e.Data.Object is not Invoice invoice)
+        if (e.Data.Object is not Stripe.Invoice invoice)
         {
             return;
         }
@@ -156,7 +165,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return; // Already handled by checkout.session.completed
         }
 
-        string? stripeSubId = invoice.SubscriptionId;
+        string? stripeSubId = invoice.Lines?.FirstOrDefault()?.SubscriptionId;
         if (string.IsNullOrEmpty(stripeSubId))
         {
             return;
@@ -170,12 +179,15 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return;
         }
 
-        // Update to Active and set next billing date
+        // Update to Active, set next billing date, and grant dashboard access
+        // (recurring invoice means Monday job already ran or this is the first cycle)
         sub.Status = SubscriptionStatus.Active;
         sub.NextBillingDateUtc = GetNextMondayBillingDateUtc();
+        sub.DashboardAccessGranted = true;
+        sub.DashboardAccessGrantedUtc ??= DateTime.UtcNow;
 
         // Record the payment
-        var record = new PaymentRecord
+        var record = new Domain.Payments.PaymentRecord
         {
             Id = Guid.NewGuid(),
             UserId = sub.UserId,
@@ -183,7 +195,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
             Status = PaymentStatus.Succeeded,
             AmountBani = invoice.AmountPaid,
             Description = $"RIDElance {sub.Plan} — abonament săptămânal",
-            StripePaymentId = invoice.PaymentIntentId,
+            StripePaymentId = invoice.Payments?.FirstOrDefault()?.Payment?.PaymentIntentId,
             CreatedAtUtc = DateTime.UtcNow,
         };
         context.PaymentRecords.Add(record);
@@ -196,12 +208,12 @@ internal sealed class HandleStripeWebhookCommandHandler(
     // ─────────────────────────────────────────────────────────────────────────
     private async Task HandleInvoicePaymentFailed(Stripe.Event e, CancellationToken ct)
     {
-        if (e.Data.Object is not Invoice invoice)
+        if (e.Data.Object is not Stripe.Invoice invoice)
         {
             return;
         }
 
-        string? stripeSubId = invoice.SubscriptionId;
+        string? stripeSubId = invoice.Lines?.FirstOrDefault()?.SubscriptionId;
         if (string.IsNullOrEmpty(stripeSubId))
         {
             return;
@@ -217,7 +229,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
         sub.Status = SubscriptionStatus.PastDue;
 
-        var record = new PaymentRecord
+        var record = new Domain.Payments.PaymentRecord
         {
             Id = Guid.NewGuid(),
             UserId = sub.UserId,
@@ -225,7 +237,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
             Status = PaymentStatus.Failed,
             AmountBani = invoice.AmountDue,
             Description = $"RIDElance {sub.Plan} — plată eșuată",
-            StripePaymentId = invoice.PaymentIntentId,
+            StripePaymentId = invoice.Payments?.FirstOrDefault()?.Payment?.PaymentIntentId,
             CreatedAtUtc = DateTime.UtcNow,
         };
         context.PaymentRecords.Add(record);
@@ -284,6 +296,18 @@ internal sealed class HandleStripeWebhookCommandHandler(
             .AddHours(15);
 
         return TimeZoneInfo.ConvertTimeToUtc(nextMondayRomania, romaniaZone);
+    }
+
+    /// <summary>
+    /// Returns true if it is currently Monday at or after 15:00 Romania time.
+    /// Used to immediately grant dashboard access if a user pays at the right moment.
+    /// </summary>
+    private static bool IsOnOrAfterMondayFifteenOClockRomania()
+    {
+        var romaniaZone = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
+        DateTime nowRomania = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, romaniaZone);
+        return nowRomania.DayOfWeek == DayOfWeek.Monday
+            && nowRomania.TimeOfDay >= TimeSpan.FromHours(15);
     }
 
     private static SubscriptionPlan ParsePlan(string metadata)

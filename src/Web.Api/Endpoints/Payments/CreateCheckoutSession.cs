@@ -15,7 +15,9 @@ internal sealed class CreateCheckoutSession : IEndpoint
         string PriceId,
         string Mode,          // "payment" or "subscription"
         string Plan,          // e.g. "solo", "start", "pro", "infiintare_pfa"
-        long? BillingAnchorUnix);
+        long? BillingAnchorUnix,
+        string? SuccessUrl = null,
+        string? CancelUrl = null);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -38,7 +40,9 @@ internal sealed class CreateCheckoutSession : IEndpoint
                 request.PriceId,
                 request.Mode,
                 request.Plan,
-                request.BillingAnchorUnix);
+                request.BillingAnchorUnix,
+                request.SuccessUrl,
+                request.CancelUrl);
 
             Result<string> result = await handler.Handle(command, cancellationToken);
 

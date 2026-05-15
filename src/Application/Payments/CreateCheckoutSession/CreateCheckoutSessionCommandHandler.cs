@@ -19,14 +19,15 @@ internal sealed class CreateCheckoutSessionCommandHandler(
 #pragma warning restore S1075
 
         // Build success/cancel URLs
-        // Success URL returns user to the subscription page or dashboard
-        string successUrl = command.Mode == "subscription"
-            ? $"{baseUrl}/inregistrare/succes?session_id={{CHECKOUT_SESSION_ID}}&plan={command.Plan}"
-            : $"{baseUrl}/inregistrare/abonament?pfa_paid=true&session_id={{CHECKOUT_SESSION_ID}}";
+        // Subscription: after paying, user must still complete the PFA step
+        // Payment (Infiintare PFA): goes to the registration success page
+        string successUrl = command.SuccessUrl ?? (command.Mode == "subscription"
+            ? $"{baseUrl}/inregistrare/pfa?subscribed=1&session_id={{CHECKOUT_SESSION_ID}}&plan={command.Plan}"
+            : $"{baseUrl}/inregistrare/succes?session_id={{CHECKOUT_SESSION_ID}}");
 
-        string cancelUrl = command.Mode == "subscription"
+        string cancelUrl = command.CancelUrl ?? (command.Mode == "subscription"
             ? $"{baseUrl}/inregistrare/abonament"
-            : $"{baseUrl}/inregistrare/pfa";
+            : $"{baseUrl}/inregistrare/pfa");
 
         // Build metadata: include plan name + billing anchor for subscriptions
         string metadata = string.Empty;

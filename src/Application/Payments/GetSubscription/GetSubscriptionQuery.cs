@@ -12,4 +12,5 @@ public sealed record SubscriptionResponse(
     string? StripeSubscriptionId,
     DateTime FirstBillingDateUtc,
     DateTime? NextBillingDateUtc,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    bool DashboardAccessGranted);
