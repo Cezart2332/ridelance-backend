@@ -15,7 +15,7 @@ internal sealed class CreateCheckoutSessionCommandHandler(
         CancellationToken cancellationToken)
     {
 #pragma warning disable S1075 // URIs should not be hardcoded
-        string baseUrl = configuration["App:BaseUrl"] ?? "http://localhost:5173";
+        string baseUrl = configuration["App:BaseUrl"] ?? throw new InvalidOperationException("App:BaseUrl is missing in configuration.");
 #pragma warning restore S1075
 
         // Build success/cancel URLs

@@ -29,13 +29,23 @@ builder.Services.AddSignalR();
 // CORS
 builder.Services.AddCors(options =>
 {
+    string? baseUrl = builder.Configuration["App:BaseUrl"];
     options.AddPolicy("Frontend", policy =>
     {
-        policy.WithOrigins(
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "https://ridelance.ro",
-                "https://www.ridelance.ro")
+        var origins = new List<string>
+        {
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "https://ridelance.ro",
+            "https://www.ridelance.ro"
+        };
+
+        if (!string.IsNullOrEmpty(baseUrl))
+        {
+            origins.Add(baseUrl);
+        }
+
+        policy.WithOrigins(origins.Distinct().ToArray())
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
