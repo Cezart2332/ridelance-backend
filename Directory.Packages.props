@@ -8,7 +8,7 @@
     <PackageVersion Include="DotNetEnv" Version="3.2.0" />
     <PackageVersion Include="Mjml.Net" Version="4.11.0" />
     <PackageVersion Include="Resend" Version="0.5.0" />
-    <PackageVersion Include="Stripe.net" Version="47.3.0" />
+    <PackageVersion Include="Stripe.net" Version="51.1.0" />
     <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.24.0.138807" />
     <!-- Application -->
     <PackageVersion Include="Scrutor" Version="7.0.0" />
