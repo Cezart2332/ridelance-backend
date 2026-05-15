@@ -15,12 +15,12 @@ internal sealed class ChatRoomConfiguration : IEntityTypeConfiguration<ChatRoom>
         builder.HasOne(r => r.ClientUser)
             .WithMany()
             .HasForeignKey(r => r.ClientUserId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(r => r.ProfessionalUser)
             .WithMany()
             .HasForeignKey(r => r.ProfessionalUserId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(r => r.Messages)
             .WithOne(m => m.ChatRoom)
