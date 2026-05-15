@@ -36,6 +36,6 @@ internal sealed class PfaRegistrationConfiguration : IEntityTypeConfiguration<Pf
         builder.HasMany(r => r.Documents)
             .WithOne()
             .HasForeignKey(d => d.PfaRegistrationId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
