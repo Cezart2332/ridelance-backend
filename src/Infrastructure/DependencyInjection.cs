@@ -14,6 +14,7 @@ using Infrastructure.Payments;
 using Application.Abstractions;
 using Resend;
 using Infrastructure.Time;
+using Infrastructure.BackgroundJobs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -63,6 +64,9 @@ public static class DependencyInjection
 
         // Stripe
         services.AddScoped<IStripeService, StripeService>();
+
+        // Background Jobs
+        services.AddHostedService<MondayAccessGrantJob>();
 
         return services;
     }

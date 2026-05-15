@@ -30,6 +30,7 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             sub.StripeSubscriptionId,
             sub.FirstBillingDateUtc,
             sub.NextBillingDateUtc,
-            sub.CreatedAtUtc));
+            sub.CreatedAtUtc,
+            sub.DashboardAccessGranted));
     }
 }
