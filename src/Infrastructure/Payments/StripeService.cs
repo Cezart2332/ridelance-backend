@@ -111,12 +111,12 @@ internal sealed class StripeService : IStripeService
         if (string.IsNullOrEmpty(_webhookSecret))
         {
             // No webhook secret configured — skip verification in dev
-            return EventUtility.ParseEvent(payload);
+            return EventUtility.ParseEvent(payload, throwOnApiVersionMismatch: false);
         }
 
         try
         {
-            return EventUtility.ConstructEvent(payload, stripeSignatureHeader, _webhookSecret);
+            return EventUtility.ConstructEvent(payload, stripeSignatureHeader, _webhookSecret, throwOnApiVersionMismatch: false);
         }
         catch (StripeException ex)
         {
