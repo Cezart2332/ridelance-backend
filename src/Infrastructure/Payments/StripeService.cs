@@ -130,15 +130,21 @@ internal sealed class StripeService : IStripeService
     /// </summary>
     private static long? TryParseBillingAnchor(string metadata)
     {
-        const string prefix = "billingAnchor:";
-        if (!metadata.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        // Metadata format: "plan:solo|billingAnchor:12345678" or "plan:solo"
+        if (string.IsNullOrEmpty(metadata))
         {
             return null;
         }
 
-        if (long.TryParse(metadata[prefix.Length..], out long ts))
+        string[] parts = metadata.Split('|');
+        foreach (string part in parts)
         {
-            return ts;
+            const string prefix = "billingAnchor:";
+            if (part.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                long.TryParse(part[prefix.Length..], out long ts))
+            {
+                return ts;
+            }
         }
 
         return null;
