@@ -10,6 +10,7 @@ using Infrastructure.DomainEvents;
 using Infrastructure.Notifications;
 using Infrastructure.Services;
 using Infrastructure.Email;
+using Infrastructure.Payments;
 using Application.Abstractions;
 using Resend;
 using Infrastructure.Time;
@@ -59,6 +60,9 @@ public static class DependencyInjection
         services.AddTransient<IEmailService, ResendEmailService>();
         services.AddSingleton<IMjmlRenderer, MjmlRendererAdapter>();
         services.AddSingleton<ILicensePlateDetectionService, LicensePlateDetectionService>();
+
+        // Stripe
+        services.AddScoped<IStripeService, StripeService>();
 
         return services;
     }
