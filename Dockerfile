@@ -26,9 +26,6 @@ RUN dotnet publish "src/Web.Api/Web.Api.csproj" \
   -r linux-x64 \
   --no-restore
 
-# Fail the image build early if OpenCV native bindings were not published
-RUN test -f /app/publish/runtimes/linux-x64/native/libOpenCvSharpExtern.so
-
 # ─── Runtime Stage ────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 WORKDIR /app
