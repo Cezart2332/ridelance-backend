@@ -52,6 +52,11 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
                 Permissions.ViewOwnProfile,
                 Permissions.ViewCars
             ],
+            UserRole.CarPoster =>
+            [
+                Permissions.ManageOwnCars,
+                Permissions.ViewCars,
+            ],
             _ => []
         };
 
@@ -75,6 +80,7 @@ public static class Permissions
     public const string ViewOwnProfile = "profile:view";
     
     public const string ManageCars = "cars:manage";
+    public const string ManageOwnCars = "cars:manage_own";
     public const string ViewCars = "cars:view";
     public const string ViewServiceOrders = "payments:view_service_orders";
 }
