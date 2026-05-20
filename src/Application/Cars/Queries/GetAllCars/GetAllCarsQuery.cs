@@ -2,7 +2,7 @@ using Application.Abstractions.Messaging;
 
 namespace Application.Cars.Queries.GetAllCars;
 
-public sealed record GetAllCarsQuery(bool AdminMode = false) : IQuery<List<CarDto>>;
+public sealed record GetAllCarsQuery(bool AdminMode = false, Guid? PosterUserId = null) : IQuery<List<CarDto>>;
 
 public sealed record CarDto(
     Guid Id,
@@ -23,6 +23,9 @@ public sealed record CarDto(
     List<string> Badges,
     string Description,
     bool Active,
+    string ListingSource,
+    string ApprovalStatus,
+    bool PostedByAdmin,
     List<CarImageDto> Images,
     DateTime CreatedAtUtc,
     CarStatsDto Stats);

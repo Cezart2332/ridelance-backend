@@ -1,6 +1,8 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Cars.Queries.GetAllCars;
+using Domain.Cars;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -13,7 +15,7 @@ internal sealed class GetCarByIdQueryHandler(IApplicationDbContext context)
 {
     public async Task<Result<CarDto>> Handle(GetCarByIdQuery query, CancellationToken cancellationToken)
     {
-        Domain.Cars.Car? car = await context.Cars
+        Car? car = await context.Cars
             .AsNoTracking()
             .Include(c => c.Images.OrderBy(i => i.DisplayOrder))
             .Include(c => c.Leads)
@@ -24,6 +26,17 @@ internal sealed class GetCarByIdQueryHandler(IApplicationDbContext context)
             return Result.Failure<CarDto>(Error.NotFound("Car.NotFound", "Mașina nu a fost găsită."));
         }
 
+        bool postedByAdmin = true;
+        if (car.PostedByUserId.HasValue)
+        {
+            UserRole? role = await context.Users
+                .AsNoTracking()
+                .Where(u => u.Id == car.PostedByUserId.Value)
+                .Select(u => (UserRole?)u.Role)
+                .FirstOrDefaultAsync(cancellationToken);
+            postedByAdmin = role == UserRole.Admin;
+        }
+
         return new CarDto(
             car.Id, car.Brand, car.Model, car.Year,
             car.Engine, car.Transmission, car.Location,
@@ -31,6 +44,9 @@ internal sealed class GetCarByIdQueryHandler(IApplicationDbContext context)
             car.OfferType.ToString(), car.Status.ToString(),
             car.UberCategories, car.BoltCategories, car.Badges,
             car.Description, car.Active,
+            car.ListingSource.ToString(),
+            car.ApprovalStatus.ToString(),
+            postedByAdmin,
             car.Images.OrderBy(i => i.DisplayOrder)
                 .Select(i => new CarImageDto(i.Id, i.Url, i.DisplayOrder))
                 .ToList(),

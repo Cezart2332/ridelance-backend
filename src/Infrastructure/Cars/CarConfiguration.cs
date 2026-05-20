@@ -22,6 +22,9 @@ internal sealed class CarConfiguration : IEntityTypeConfiguration<Car>
         builder.Property(c => c.Description).HasMaxLength(2048);
         builder.Property(c => c.OfferType).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(32);
+        builder.Property(c => c.ListingSource).HasConversion<string>().HasMaxLength(32);
+        builder.Property(c => c.ApprovalStatus).HasConversion<string>().HasMaxLength(32);
+        builder.Property(c => c.PostedByUserId);
 
         var stringListComparer = new ValueComparer<List<string>>(
             (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),

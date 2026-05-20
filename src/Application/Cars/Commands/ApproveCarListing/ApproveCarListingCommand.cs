@@ -6,21 +6,26 @@ using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
-namespace Application.Cars.Commands.DeleteCar;
+namespace Application.Cars.Commands.ApproveCarListing;
 
-public sealed record DeleteCarCommand(Guid CarId) : ICommand;
+public sealed record ApproveCarListingCommand(Guid CarId, bool Approve) : ICommand;
 
-internal sealed class DeleteCarCommandHandler(
+internal sealed class ApproveCarListingCommandHandler(
     IApplicationDbContext context,
     IUserContext userContext)
-    : ICommandHandler<DeleteCarCommand>
+    : ICommandHandler<ApproveCarListingCommand>
 {
-    public async Task<Result> Handle(DeleteCarCommand command, CancellationToken cancellationToken)
+    public async Task<Result> Handle(ApproveCarListingCommand command, CancellationToken cancellationToken)
     {
         Result<User> userResult = await CarAccessHelper.GetCurrentUserAsync(context, userContext, cancellationToken);
         if (userResult.IsFailure)
         {
             return Result.Failure(userResult.Error);
+        }
+
+        if (userResult.Value.Role != UserRole.Admin)
+        {
+            return Result.Failure(Error.Problem("Car.Forbidden", "Doar administratorii pot valida anunțurile."));
         }
 
         Car? car = await context.Cars
@@ -31,13 +36,18 @@ internal sealed class DeleteCarCommandHandler(
             return Result.Failure(Error.NotFound("Car.NotFound", "Mașina nu a fost găsită."));
         }
 
-        Result access = CarAccessHelper.ValidateCarManagement(userResult.Value, car);
-        if (access.IsFailure)
+        if (command.Approve)
         {
-            return access;
+            car.ApprovalStatus = CarApprovalStatus.Approved;
+            car.Active = true;
+        }
+        else
+        {
+            car.ApprovalStatus = CarApprovalStatus.Rejected;
+            car.Active = false;
         }
 
-        context.Cars.Remove(car);
+        car.UpdatedAtUtc = DateTime.UtcNow;
         await context.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }

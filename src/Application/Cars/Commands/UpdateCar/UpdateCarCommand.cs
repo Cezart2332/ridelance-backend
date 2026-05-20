@@ -1,6 +1,8 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Cars;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -24,19 +26,34 @@ public sealed record UpdateCarCommand(
     List<string> BoltCategories,
     List<string> Badges,
     string Description,
-    bool Active) : ICommand;
+    bool Active,
+    string ListingSource) : ICommand;
 
-internal sealed class UpdateCarCommandHandler(IApplicationDbContext context)
+internal sealed class UpdateCarCommandHandler(
+    IApplicationDbContext context,
+    IUserContext userContext)
     : ICommandHandler<UpdateCarCommand>
 {
     public async Task<Result> Handle(UpdateCarCommand command, CancellationToken cancellationToken)
     {
+        Result<User> userResult = await CarAccessHelper.GetCurrentUserAsync(context, userContext, cancellationToken);
+        if (userResult.IsFailure)
+        {
+            return Result.Failure(userResult.Error);
+        }
+
         Car? car = await context.Cars
             .FirstOrDefaultAsync(c => c.Id == command.CarId, cancellationToken);
 
         if (car is null)
         {
             return Result.Failure(Error.NotFound("Car.NotFound", "Mașina nu a fost găsită."));
+        }
+
+        Result access = CarAccessHelper.ValidateCarManagement(userResult.Value, car);
+        if (access.IsFailure)
+        {
+            return access;
         }
 
         if (!Enum.TryParse<CarOfferType>(command.OfferType, out CarOfferType offerType))
@@ -48,6 +65,13 @@ internal sealed class UpdateCarCommandHandler(IApplicationDbContext context)
         {
             status = CarStatus.Available;
         }
+
+        if (!Enum.TryParse<CarListingSource>(command.ListingSource, ignoreCase: true, out CarListingSource listingSource))
+        {
+            listingSource = car.ListingSource;
+        }
+
+        bool isAdmin = userResult.Value.Role == UserRole.Admin;
 
         car.Brand = command.Brand;
         car.Model = command.Model;
@@ -65,7 +89,18 @@ internal sealed class UpdateCarCommandHandler(IApplicationDbContext context)
         car.BoltCategories = command.BoltCategories;
         car.Badges = command.Badges;
         car.Description = command.Description;
-        car.Active = command.Active;
+        car.ListingSource = listingSource;
+
+        if (isAdmin)
+        {
+            car.Active = command.Active;
+        }
+        else
+        {
+            car.ApprovalStatus = CarApprovalStatus.Pending;
+            car.Active = false;
+        }
+
         car.UpdatedAtUtc = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);

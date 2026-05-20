@@ -1,7 +1,9 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
 using Domain.Cars;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -11,6 +13,7 @@ public sealed record UploadCarImageCommand(Guid CarId, string FileName, Stream F
 
 internal sealed class UploadCarImageCommandHandler(
     IApplicationDbContext context,
+    IUserContext userContext,
     ILicensePlateDetectionService licensePlateDetectionService)
     : ICommandHandler<UploadCarImageCommand, Guid>
 {
@@ -38,6 +41,18 @@ internal sealed class UploadCarImageCommandHandler(
         if (car is null)
         {
             return Result.Failure<Guid>(Error.NotFound("Car.NotFound", "Masina nu a fost gasita."));
+        }
+
+        Result<User> userResult = await CarAccessHelper.GetCurrentUserAsync(context, userContext, cancellationToken);
+        if (userResult.IsFailure)
+        {
+            return Result.Failure<Guid>(userResult.Error);
+        }
+
+        Result access = CarAccessHelper.ValidateCarManagement(userResult.Value, car);
+        if (access.IsFailure)
+        {
+            return Result.Failure<Guid>(access.Error);
         }
 
         // Save to disk

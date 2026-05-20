@@ -37,6 +37,11 @@ public sealed class Car : Entity
     // Visibility
     public bool Active { get; set; } = true;
 
+    // Listing metadata
+    public Guid? PostedByUserId { get; set; }
+    public CarListingSource ListingSource { get; set; } = CarListingSource.Ridelance;
+    public CarApprovalStatus ApprovalStatus { get; set; } = CarApprovalStatus.Approved;
+
     // Audit
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;

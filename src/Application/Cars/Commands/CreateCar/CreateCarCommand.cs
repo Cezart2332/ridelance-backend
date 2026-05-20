@@ -1,6 +1,9 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Cars;
+using Domain.Users;
+using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Cars.Commands.CreateCar;
@@ -22,13 +25,28 @@ public sealed record CreateCarCommand(
     List<string> BoltCategories,
     List<string> Badges,
     string Description,
-    bool Active) : ICommand<Guid>;
+    bool Active,
+    string ListingSource) : ICommand<Guid>;
 
-internal sealed class CreateCarCommandHandler(IApplicationDbContext context)
+internal sealed class CreateCarCommandHandler(
+    IApplicationDbContext context,
+    IUserContext userContext)
     : ICommandHandler<CreateCarCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateCarCommand command, CancellationToken cancellationToken)
     {
+        Result<User> userResult = await CarAccessHelper.GetCurrentUserAsync(context, userContext, cancellationToken);
+        if (userResult.IsFailure)
+        {
+            return Result.Failure<Guid>(userResult.Error);
+        }
+
+        User user = userResult.Value;
+        if (!CarAccessHelper.CanPostCars(user))
+        {
+            return Result.Failure<Guid>(Error.Problem("Car.Forbidden", "Nu ai permisiunea de a publica mașini."));
+        }
+
         if (!Enum.TryParse<CarOfferType>(command.OfferType, out CarOfferType offerType))
         {
             offerType = CarOfferType.Weekly;
@@ -39,6 +57,12 @@ internal sealed class CreateCarCommandHandler(IApplicationDbContext context)
             status = CarStatus.Available;
         }
 
+        if (!Enum.TryParse<CarListingSource>(command.ListingSource, ignoreCase: true, out CarListingSource listingSource))
+        {
+            listingSource = CarListingSource.Ridelance;
+        }
+
+        bool isAdmin = user.Role == UserRole.Admin;
         var car = new Car
         {
             Id = Guid.NewGuid(),
@@ -58,9 +82,12 @@ internal sealed class CreateCarCommandHandler(IApplicationDbContext context)
             BoltCategories = command.BoltCategories,
             Badges = command.Badges,
             Description = command.Description,
-            Active = command.Active,
+            PostedByUserId = user.Id,
+            ListingSource = listingSource,
+            ApprovalStatus = isAdmin ? CarApprovalStatus.Approved : CarApprovalStatus.Pending,
+            Active = isAdmin && command.Active,
             CreatedAtUtc = DateTime.UtcNow,
-            UpdatedAtUtc = DateTime.UtcNow
+            UpdatedAtUtc = DateTime.UtcNow,
         };
 
         context.Cars.Add(car);
