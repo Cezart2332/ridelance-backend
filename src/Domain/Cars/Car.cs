@@ -20,6 +20,7 @@ public sealed class Car : Entity
     public decimal PricePerWeek { get; set; }
     public decimal? OldPrice { get; set; }
     public bool DiscountActive { get; set; }
+    public decimal? Garantie { get; set; }
 
     // Classification
     public CarOfferType OfferType { get; set; } = CarOfferType.Weekly;

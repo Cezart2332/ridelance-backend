@@ -46,6 +46,7 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             command.UserEmail,
             command.UserId.ToString(),
             metadata,
+            sessionMetadata: null,
             cancellationToken);
 
         return sessionUrl;

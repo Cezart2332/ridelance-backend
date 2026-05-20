@@ -13,6 +13,7 @@ public interface IApplicationDbContext
 {
     DbSet<User> Users { get; }
     DbSet<PfaRegistration> PfaRegistrations { get; }
+    DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; }
     DbSet<Document> Documents { get; }
     DbSet<ChatRoom> ChatRooms { get; }
     DbSet<ChatMessage> ChatMessages { get; }
@@ -23,6 +24,7 @@ public interface IApplicationDbContext
     DbSet<CarLead> CarLeads { get; }
     DbSet<UserSubscription> UserSubscriptions { get; }
     DbSet<PaymentRecord> PaymentRecords { get; }
+    DbSet<ServiceOrder> ServiceOrders { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -18,6 +18,7 @@ public interface IStripeService
         string? customerEmail,
         string? userId,
         string? metadata,
+        IReadOnlyDictionary<string, string>? sessionMetadata = null,
         CancellationToken cancellationToken = default);
 #pragma warning restore CA1054
 

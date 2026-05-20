@@ -20,7 +20,7 @@ internal sealed class Update : IEndpoint
             var command = new UpdateCarCommand(
                 id, request.Brand, request.Model, request.Year,
                 request.Engine, request.Transmission, request.Location,
-                request.PricePerWeek, request.OldPrice, request.DiscountActive,
+                request.PricePerWeek, request.OldPrice, request.DiscountActive, request.Garantie,
                 request.OfferType, request.Status,
                 request.UberCategories, request.BoltCategories, request.Badges,
                 request.Description, request.Active);
@@ -36,7 +36,7 @@ internal sealed class Update : IEndpoint
 internal sealed record UpdateCarRequest(
     string Brand, string Model, int Year,
     string Engine, string Transmission, string Location,
-    decimal PricePerWeek, decimal? OldPrice, bool DiscountActive,
+    decimal PricePerWeek, decimal? OldPrice, bool DiscountActive, decimal? Garantie,
     string OfferType, string Status,
     List<string> UberCategories, List<string> BoltCategories,
     List<string> Badges, string Description, bool Active);

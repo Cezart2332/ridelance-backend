@@ -1,3 +1,4 @@
+using Application.Abstractions;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
@@ -20,7 +21,8 @@ namespace Application.Payments.HandleWebhook;
 /// </summary>
 internal sealed class HandleStripeWebhookCommandHandler(
     IApplicationDbContext context,
-    IStripeService stripeService)
+    IStripeService stripeService,
+    IEmailService emailService)
     : ICommandHandler<HandleStripeWebhookCommand>
 {
     public async Task<Result> Handle(
@@ -55,6 +57,13 @@ internal sealed class HandleStripeWebhookCommandHandler(
     {
         if (e.Data.Object is not Session session)
         {
+            return;
+        }
+
+        string? serviceOrderIdStr = session.Metadata?.GetValueOrDefault("serviceOrderId");
+        if (Guid.TryParse(serviceOrderIdStr, out Guid serviceOrderId))
+        {
+            await HandlePublicServiceOrderCompleted(session, serviceOrderId, ct);
             return;
         }
 
@@ -148,6 +157,36 @@ internal sealed class HandleStripeWebhookCommandHandler(
         }
 
         await context.SaveChangesAsync(ct);
+    }
+
+    private async Task HandlePublicServiceOrderCompleted(Session session, Guid serviceOrderId, CancellationToken ct)
+    {
+        ServiceOrder? order = await context.ServiceOrders
+            .FirstOrDefaultAsync(o => o.Id == serviceOrderId, ct);
+
+        if (order is null || order.Status == ServiceOrderStatus.Paid)
+        {
+            return;
+        }
+
+        order.Status = ServiceOrderStatus.Paid;
+        order.StripeSessionId = session.Id;
+        order.AmountBani = session.AmountTotal;
+        order.PaidAtUtc = DateTime.UtcNow;
+
+        await context.SaveChangesAsync(ct);
+
+        decimal amountLei = (session.AmountTotal ?? 0) / 100m;
+        string html = ServiceOrderConfirmationEmail.BuildHtml(
+            order.CustomerName,
+            order.ServiceTitle,
+            amountLei);
+
+        await emailService.SendEmailAsync(
+            order.CustomerEmail,
+            ServiceOrderConfirmationEmail.Subject,
+            html,
+            ct);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

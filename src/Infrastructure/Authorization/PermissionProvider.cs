@@ -24,6 +24,7 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
             [
                 Permissions.ViewPfaRegistrations,
                 Permissions.ManagePfaRegistrations,
+                Permissions.ManageClientIncome,
                 Permissions.ManageContabili,
                 Permissions.ViewAllDocuments,
                 Permissions.DownloadDocuments,
@@ -35,6 +36,7 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
             UserRole.Contabil =>
             [
                 Permissions.ViewAssignedClients,
+                Permissions.ManageClientIncome,
                 Permissions.ViewAllDocuments,
                 Permissions.DownloadDocuments,
                 Permissions.SendMessages,
@@ -65,6 +67,7 @@ public static class Permissions
     public const string UploadDocuments = "documents:upload";
     public const string DownloadDocuments = "documents:download";
     public const string ViewAssignedClients = "clients:view_assigned";
+    public const string ManageClientIncome = "clients:manage_income";
     public const string ViewAllChats = "chats:view_all";
     public const string SendMessages = "chats:send";
     public const string ViewOwnProfile = "profile:view";

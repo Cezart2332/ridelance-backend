@@ -15,6 +15,7 @@ public sealed record CarDto(
     decimal PricePerWeek,
     decimal? OldPrice,
     bool DiscountActive,
+    decimal? Garantie,
     string OfferType,
     string Status,
     List<string> UberCategories,

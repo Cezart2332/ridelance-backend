@@ -49,6 +49,20 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
                 d.UploadedAtUtc))
             .ToList();
 
+        DateTime now = DateTime.UtcNow;
+        int incomeYear = now.Year;
+        int incomeMonth = now.Month;
+
+        PfaMonthlyIncome? monthlyIncome = pfa is null
+            ? null
+            : await context.PfaMonthlyIncomes
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    i => i.PfaRegistrationId == pfa.Id && i.Year == incomeYear && i.Month == incomeMonth,
+                    cancellationToken);
+
+        decimal? venitTotal = monthlyIncome?.ComputeVenitTotal();
+
         return new DashboardSummaryResponse(
             pfa?.Status.ToString(),
             pfa?.RegistrationType.ToString(),
@@ -60,6 +74,14 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
             pending,
             rejected,
             unread,
-            recent);
+            recent,
+            monthlyIncome?.VenitCash,
+            monthlyIncome?.VenitCard,
+            monthlyIncome?.VenitBolt,
+            monthlyIncome?.VenitUber,
+            monthlyIncome?.TaxeEstimate,
+            venitTotal,
+            monthlyIncome is null ? null : incomeYear,
+            monthlyIncome is null ? null : incomeMonth);
     }
 }

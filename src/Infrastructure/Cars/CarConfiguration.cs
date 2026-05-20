@@ -18,6 +18,7 @@ internal sealed class CarConfiguration : IEntityTypeConfiguration<Car>
         builder.Property(c => c.Location).HasMaxLength(512).IsRequired();
         builder.Property(c => c.PricePerWeek).HasColumnType("decimal(10,2)");
         builder.Property(c => c.OldPrice).HasColumnType("decimal(10,2)");
+        builder.Property(c => c.Garantie).HasColumnType("decimal(10,2)");
         builder.Property(c => c.Description).HasMaxLength(2048);
         builder.Property(c => c.OfferType).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(32);

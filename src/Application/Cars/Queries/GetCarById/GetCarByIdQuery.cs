@@ -27,7 +27,7 @@ internal sealed class GetCarByIdQueryHandler(IApplicationDbContext context)
         return new CarDto(
             car.Id, car.Brand, car.Model, car.Year,
             car.Engine, car.Transmission, car.Location,
-            car.PricePerWeek, car.OldPrice, car.DiscountActive,
+            car.PricePerWeek, car.OldPrice, car.DiscountActive, car.Garantie,
             car.OfferType.ToString(), car.Status.ToString(),
             car.UberCategories, car.BoltCategories, car.Badges,
             car.Description, car.Active,

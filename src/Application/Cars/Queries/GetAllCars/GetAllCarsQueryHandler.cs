@@ -35,6 +35,7 @@ internal sealed class GetAllCarsQueryHandler(IApplicationDbContext context)
             c.PricePerWeek,
             c.OldPrice,
             c.DiscountActive,
+            c.Garantie,
             c.OfferType.ToString(),
             c.Status.ToString(),
             c.UberCategories,

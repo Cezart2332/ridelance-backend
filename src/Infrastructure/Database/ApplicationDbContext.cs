@@ -19,6 +19,7 @@ public sealed class ApplicationDbContext(
 {
     public DbSet<User> Users { get; set; }
     public DbSet<PfaRegistration> PfaRegistrations { get; set; }
+    public DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; set; }
     public DbSet<Document> Documents { get; set; }
     public DbSet<ChatRoom> ChatRooms { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
@@ -29,6 +30,7 @@ public sealed class ApplicationDbContext(
     public DbSet<CarLead> CarLeads { get; set; }
     public DbSet<UserSubscription> UserSubscriptions { get; set; }
     public DbSet<PaymentRecord> PaymentRecords { get; set; }
+    public DbSet<ServiceOrder> ServiceOrders { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
