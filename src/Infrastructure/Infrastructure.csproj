@@ -14,7 +14,7 @@
     <PackageReference Include="Microsoft.ML.OnnxRuntime" />
     <PackageReference Include="OpenCvSharp4" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Condition="'$(OS)' == 'Windows_NT'" />
-    <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64" />
+    <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64.slim" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,5 +24,6 @@
   <ItemGroup>
 	<InternalsVisibleTo Include="ArchitectureTests" />
   </ItemGroup>
+
 
 </Project>

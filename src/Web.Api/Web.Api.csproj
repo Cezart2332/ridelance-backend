@@ -31,4 +31,21 @@
     <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- Native .so must land in the Web.Api publish output (not only Infrastructure/bin) -->
+  <Target Name="CopyOpenCvNativeLibraryToPublish"
+          AfterTargets="Publish"
+          Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+    <PropertyGroup>
+      <_OpenCvNativeFile>$(NuGetPackageRoot)opencvsharp4.official.runtime.linux-x64.slim\4.13.0.20260302\runtimes\linux-x64\native\libOpenCvSharpExtern.so</_OpenCvNativeFile>
+      <_OpenCvPublishDir>$(PublishDir)runtimes/linux-x64/native/</_OpenCvPublishDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(_OpenCvPublishDir)" />
+    <Copy SourceFiles="$(_OpenCvNativeFile)"
+          DestinationFiles="$(_OpenCvPublishDir)libOpenCvSharpExtern.so"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(_OpenCvNativeFile)')" />
+    <Error Text="OpenCV native library (libOpenCvSharpExtern.so) was not found under $(NuGetPackageRoot)opencvsharp4.official.runtime.linux-x64.slim."
+           Condition="!Exists('$(_OpenCvPublishDir)libOpenCvSharpExtern.so')" />
+  </Target>
+
 </Project>
