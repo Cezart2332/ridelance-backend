@@ -55,7 +55,8 @@ RUN ln -s /usr/lib/x86_64-linux-gnu/libtiff.so.6 \
 
 # Disable invariant globalization to use icu-libs
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
-ENV LD_LIBRARY_PATH=/app/runtimes/linux-x64/native
+# RID publish flattens native .so files to /app; keep runtimes/ on PATH for the OpenCvSharpExtern symlink below
+ENV LD_LIBRARY_PATH=/app:/app/runtimes/linux-x64/native
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
@@ -68,7 +69,10 @@ ENV ASPNETCORE_URLS=http://+:8080
 # Copy the published output from the build stage
 COPY --from=build /app/publish .
 
-# OpenCvSharp P/Invoke probes several library names
-RUN ln -sf libOpenCvSharpExtern.so /app/runtimes/linux-x64/native/OpenCvSharpExtern.so
+# OpenCvSharp P/Invoke probes several library names; publish emits libOpenCvSharpExtern.so at /app root
+RUN test -f /app/libOpenCvSharpExtern.so \
+  || (echo "OpenCvSharp native library missing from publish output:" && find /app -name '*.so' && exit 1)
+RUN mkdir -p /app/runtimes/linux-x64/native \
+  && ln -sf /app/libOpenCvSharpExtern.so /app/runtimes/linux-x64/native/OpenCvSharpExtern.so
 
 ENTRYPOINT ["dotnet", "Web.Api.dll"]
