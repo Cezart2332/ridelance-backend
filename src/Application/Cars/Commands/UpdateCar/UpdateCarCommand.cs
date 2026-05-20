@@ -17,6 +17,7 @@ public sealed record UpdateCarCommand(
     decimal PricePerWeek,
     decimal? OldPrice,
     bool DiscountActive,
+    decimal? Garantie,
     string OfferType,
     string Status,
     List<string> UberCategories,
@@ -57,6 +58,7 @@ internal sealed class UpdateCarCommandHandler(IApplicationDbContext context)
         car.PricePerWeek = command.PricePerWeek;
         car.OldPrice = command.OldPrice;
         car.DiscountActive = command.DiscountActive;
+        car.Garantie = command.Garantie;
         car.OfferType = offerType;
         car.Status = status;
         car.UberCategories = command.UberCategories;

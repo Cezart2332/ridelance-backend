@@ -33,8 +33,23 @@ internal sealed class StripeService : IStripeService
         string? customerEmail,
         string? userId,
         string? metadata,
+        IReadOnlyDictionary<string, string>? sessionMetadata = null,
         CancellationToken cancellationToken = default)
     {
+        var meta = new Dictionary<string, string>
+        {
+            ["userId"] = userId ?? string.Empty,
+            ["customMetadata"] = metadata ?? string.Empty,
+        };
+
+        if (sessionMetadata is not null)
+        {
+            foreach (KeyValuePair<string, string> entry in sessionMetadata)
+            {
+                meta[entry.Key] = entry.Value;
+            }
+        }
+
         var options = new SessionCreateOptions
         {
             PaymentMethodTypes = ["card"],
@@ -50,11 +65,7 @@ internal sealed class StripeService : IStripeService
             SuccessUrl = successUrl,
             CancelUrl = cancelUrl,
             CustomerEmail = customerEmail,
-            Metadata = new Dictionary<string, string>
-            {
-                ["userId"] = userId ?? string.Empty,
-                ["customMetadata"] = metadata ?? string.Empty,
-            },
+            Metadata = meta,
         };
 
         // For subscriptions: add billing_cycle_anchor to Monday 15:00 Romania time

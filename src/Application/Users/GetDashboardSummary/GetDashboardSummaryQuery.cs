@@ -22,7 +22,17 @@ public sealed record DashboardSummaryResponse(
     int UnreadNotifications,
 
     // Recent documents uploaded (last 5)
-    List<RecentDocumentDto> RecentDocuments);
+    List<RecentDocumentDto> RecentDocuments,
+
+    // Monthly income (current month, set by contabil)
+    decimal? VenitCash,
+    decimal? VenitCard,
+    decimal? VenitBolt,
+    decimal? VenitUber,
+    decimal? TaxeEstimate,
+    decimal? VenitTotal,
+    int? IncomeYear,
+    int? IncomeMonth);
 
 public sealed record RecentDocumentDto(
     Guid Id,
