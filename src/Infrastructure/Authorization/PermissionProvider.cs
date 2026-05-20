@@ -31,10 +31,12 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
                 Permissions.ViewAllChats,
                 Permissions.SendMessages,
                 Permissions.ManageCars,
-                Permissions.ViewCars
+                Permissions.ViewCars,
+                Permissions.ViewServiceOrders
             ],
             UserRole.Contabil =>
             [
+                Permissions.ViewPfaRegistrations,
                 Permissions.ViewAssignedClients,
                 Permissions.ManageClientIncome,
                 Permissions.ViewAllDocuments,
@@ -74,4 +76,5 @@ public static class Permissions
     
     public const string ManageCars = "cars:manage";
     public const string ViewCars = "cars:view";
+    public const string ViewServiceOrders = "payments:view_service_orders";
 }

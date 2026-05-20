@@ -26,7 +26,7 @@ internal sealed class UploadImage : IEndpoint
                 ? CustomResults.Problem(result)
                 : Results.Ok(new { imageId = result.Value, url = $"/uploads/cars/{result.Value}" });
         })
-        .RequireAuthorization(Permissions.ManageCars)
+        .RequireAuthorization()
         .DisableAntiforgery()
         .WithTags(Tags.Cars);
     }
@@ -45,7 +45,7 @@ internal sealed class DeleteImage : IEndpoint
             Result result = await handler.Handle(new DeleteCarImageCommand(id, imageId), cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
         })
-        .RequireAuthorization(Permissions.ManageCars)
+        .RequireAuthorization()
         .WithTags(Tags.Cars);
     }
 }

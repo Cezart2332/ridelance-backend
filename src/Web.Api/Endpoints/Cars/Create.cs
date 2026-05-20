@@ -22,12 +22,12 @@ internal sealed class Create : IEndpoint
                 request.PricePerWeek, request.OldPrice, request.DiscountActive, request.Garantie,
                 request.OfferType, request.Status,
                 request.UberCategories, request.BoltCategories, request.Badges,
-                request.Description, request.Active);
+                request.Description, request.Active, request.ListingSource);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.Created($"/cars/{result.Value}", new { id = result.Value });
         })
-        .RequireAuthorization(Permissions.ManageCars)
+        .RequireAuthorization()
         .WithTags(Tags.Cars);
     }
 }
@@ -38,4 +38,5 @@ internal sealed record CreateCarRequest(
     decimal PricePerWeek, decimal? OldPrice, bool DiscountActive, decimal? Garantie,
     string OfferType, string Status,
     List<string> UberCategories, List<string> BoltCategories,
-    List<string> Badges, string Description, bool Active);
+    List<string> Badges, string Description, bool Active,
+    string ListingSource = "Ridelance");

@@ -24,7 +24,8 @@ internal sealed class Register : IEndpoint
             ICommandHandler<RegisterUserCommand, Guid> handler,
             CancellationToken cancellationToken) =>
         {
-            if (!Enum.TryParse<UserRole>(request.Role, ignoreCase: true, out UserRole role))
+            if (!Enum.TryParse<UserRole>(request.Role, ignoreCase: true, out UserRole role)
+                || role is UserRole.Admin or UserRole.Contabil)
             {
                 role = UserRole.Client;
             }
