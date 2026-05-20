@@ -19,11 +19,15 @@ RUN dotnet restore "src/Web.Api/Web.Api.csproj"
 # Copy the rest of the source code
 COPY . .
 
-# Build and publish the application
+# Build and publish for Linux x64 so OpenCvSharp native runtimes are included
 RUN dotnet publish "src/Web.Api/Web.Api.csproj" \
   -c Release \
   -o /app/publish \
+  -r linux-x64 \
   --no-restore
+
+# Fail the image build early if OpenCV native bindings were not published
+RUN test -f /app/publish/runtimes/linux-x64/native/libOpenCvSharpExtern.so
 
 # ─── Runtime Stage ────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
@@ -39,8 +43,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libgomp1 \
   libfontconfig1 \
   libfreetype6 \
-  libtesseract5 \
-  tesseract-ocr \
   libjpeg-turbo8 \
   libpng16-16t64 \
   libtiff6 \
@@ -56,6 +58,7 @@ RUN ln -s /usr/lib/x86_64-linux-gnu/libtiff.so.6 \
 
 # Disable invariant globalization to use icu-libs
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+ENV LD_LIBRARY_PATH=/app/runtimes/linux-x64/native
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
@@ -67,5 +70,8 @@ ENV ASPNETCORE_URLS=http://+:8080
 
 # Copy the published output from the build stage
 COPY --from=build /app/publish .
+
+# OpenCvSharp P/Invoke probes several library names
+RUN ln -sf libOpenCvSharpExtern.so /app/runtimes/linux-x64/native/OpenCvSharpExtern.so
 
 ENTRYPOINT ["dotnet", "Web.Api.dll"]
