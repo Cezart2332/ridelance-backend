@@ -66,14 +66,7 @@ internal sealed class UploadCarImageCommandHandler(
         // Automatically detect and blur license plates
         command.FileStream.Seek(0, SeekOrigin.Begin);
         byte[] processedImage;
-        try
-        {
-            processedImage = await licensePlateDetectionService.ProcessImageAsync(command.FileStream, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure<Guid>(Error.Problem("CarImage.ProcessingError", "Eroare la procesarea imaginii (blurarea plăcuței de înmatriculare). Detalii: " + ex.Message));
-        }
+        processedImage = await licensePlateDetectionService.ProcessImageAsync(command.FileStream, cancellationToken);
 
         await File.WriteAllBytesAsync(filePath, processedImage, cancellationToken);
 
