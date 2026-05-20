@@ -14,7 +14,7 @@ COPY ["src/Infrastructure/Infrastructure.csproj", "src/Infrastructure/"]
 COPY ["src/SharedKernel/SharedKernel.csproj", "src/SharedKernel/"]
 
 # Restore dependencies
-RUN dotnet restore "src/Web.Api/Web.Api.csproj"
+RUN dotnet restore "src/Web.Api/Web.Api.csproj" -r linux-x64
 
 # Copy the rest of the source code
 COPY . .
