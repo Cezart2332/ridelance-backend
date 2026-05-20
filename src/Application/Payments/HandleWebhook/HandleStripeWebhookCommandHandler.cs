@@ -22,7 +22,8 @@ namespace Application.Payments.HandleWebhook;
 internal sealed class HandleStripeWebhookCommandHandler(
     IApplicationDbContext context,
     IStripeService stripeService,
-    IEmailService emailService)
+    IEmailService emailService,
+    IMjmlRenderer mjmlRenderer)
     : ICommandHandler<HandleStripeWebhookCommand>
 {
     public async Task<Result> Handle(
@@ -177,10 +178,11 @@ internal sealed class HandleStripeWebhookCommandHandler(
         await context.SaveChangesAsync(ct);
 
         decimal amountLei = (session.AmountTotal ?? 0) / 100m;
-        string html = ServiceOrderConfirmationEmail.BuildHtml(
+        string mjml = ServiceOrderConfirmationEmail.BuildMjml(
             order.CustomerName,
             order.ServiceTitle,
             amountLei);
+        string html = mjmlRenderer.Render(mjml);
 
         await emailService.SendEmailAsync(
             order.CustomerEmail,

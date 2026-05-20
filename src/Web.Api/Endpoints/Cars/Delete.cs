@@ -19,7 +19,7 @@ internal sealed class Delete : IEndpoint
             Result result = await handler.Handle(new DeleteCarCommand(id), cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
         })
-        .RequireAuthorization(Permissions.ManageCars)
+        .RequireAuthorization()
         .WithTags(Tags.Cars);
     }
 }
@@ -36,7 +36,7 @@ internal sealed class ToggleActive : IEndpoint
             Result<bool> result = await handler.Handle(new ToggleCarActiveCommand(id), cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(new { active = result.Value });
         })
-        .RequireAuthorization(Permissions.ManageCars)
+        .RequireAuthorization()
         .WithTags(Tags.Cars);
     }
 }
