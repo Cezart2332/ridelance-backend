@@ -58,12 +58,12 @@ public sealed class LicensePlateDetectionService : ILicensePlateDetectionService
 
     public async Task<byte[]> ProcessImageAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
+        using var memoryStream = new MemoryStream();
+        await imageStream.CopyToAsync(memoryStream, cancellationToken);
+        byte[] imageBytes = memoryStream.ToArray();
+
         try
         {
-            using var memoryStream = new MemoryStream();
-            await imageStream.CopyToAsync(memoryStream, cancellationToken);
-            byte[] imageBytes = memoryStream.ToArray();
-
             using Mat src = Cv2.ImDecode(imageBytes, ImreadModes.Color);
             if (src.Empty())
             {
@@ -167,10 +167,24 @@ public sealed class LicensePlateDetectionService : ILicensePlateDetectionService
 
             return src.ToBytes(".jpg");
         }
+        catch (DllNotFoundException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "OpenCV native libraries unavailable; saving image without license-plate blur.");
+            return imageBytes;
+        }
+        catch (TypeInitializationException ex) when (ex.InnerException is DllNotFoundException)
+        {
+            _logger.LogWarning(
+                ex,
+                "OpenCV native libraries unavailable; saving image without license-plate blur.");
+            return imageBytes;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "License plate processing failed.");
-            throw new InvalidOperationException("License plate processing failed.", ex);
+            _logger.LogError(ex, "License plate processing failed; saving original image.");
+            return imageBytes;
         }
     }
 

@@ -14,7 +14,7 @@
     <PackageReference Include="Microsoft.ML.OnnxRuntime" />
     <PackageReference Include="OpenCvSharp4" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Condition="'$(OS)' == 'Windows_NT'" />
-    <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64.slim" />
+    <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64" />
   </ItemGroup>
 
   <ItemGroup>

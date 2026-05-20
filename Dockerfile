@@ -43,10 +43,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   tesseract-ocr \
   libjpeg-turbo8 \
   libpng16-16t64 \
-  libtiff6 \          
+  libtiff6 \
   libwebp7 \
   libx11-6 \
   libgl1 \
+  libopenexr-3-1-30 \
   && rm -rf /var/lib/apt/lists/*
 
 
