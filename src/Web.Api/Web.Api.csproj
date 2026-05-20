@@ -7,6 +7,11 @@
     <DockerComposeProjectPath>..\..\docker-compose.dcproj</DockerComposeProjectPath>
   </PropertyGroup>
 
+  <!-- Entry-point reference so linux-x64 publish/restore copies libOpenCvSharpExtern.so (Dockerfile uses -r linux-x64). -->
+  <ItemGroup>
+    <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64.slim" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
     <PackageReference Include="DotNetEnv" />
