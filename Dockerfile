@@ -47,7 +47,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libx11-6 \
   libgl1 \
   libopenexr-3-1-30 \
-  && rm -rf /var/lib/apt/lists/*
+  libopenjp2-7 \
+  libglib2.0-0t64 \
+  libcharls2-2 \
+  && rm -rf /var/lib/apt/lists/* \
+  && ldconfig
 
 
 RUN ln -s /usr/lib/x86_64-linux-gnu/libtiff.so.6 \
@@ -69,10 +73,13 @@ ENV ASPNETCORE_URLS=http://+:8080
 # Copy the published output from the build stage
 COPY --from=build /app/publish .
 
-# OpenCvSharp P/Invoke probes several library names; publish emits libOpenCvSharpExtern.so at /app root
+# OpenCvSharp P/Invoke probes OpenCvSharpExtern.so (no lib prefix) under /app; publish emits libOpenCvSharpExtern.so
 RUN test -f /app/libOpenCvSharpExtern.so \
   || (echo "OpenCvSharp native library missing from publish output:" && find /app -name '*.so' && exit 1)
 RUN mkdir -p /app/runtimes/linux-x64/native \
-  && ln -sf /app/libOpenCvSharpExtern.so /app/runtimes/linux-x64/native/OpenCvSharpExtern.so
+  && ln -sf /app/libOpenCvSharpExtern.so /app/OpenCvSharpExtern.so \
+  && ln -sf /app/libOpenCvSharpExtern.so /app/runtimes/linux-x64/native/OpenCvSharpExtern.so \
+  && ldd /app/libOpenCvSharpExtern.so | tee /tmp/opencv-ldd.txt \
+  && ! grep -q "not found" /tmp/opencv-ldd.txt
 
 ENTRYPOINT ["dotnet", "Web.Api.dll"]
