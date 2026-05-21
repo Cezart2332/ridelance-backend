@@ -26,6 +26,15 @@ RUN dotnet publish "src/Web.Api/Web.Api.csproj" \
   -r linux-x64 \
   --no-restore
 
+# OpenCvSharp manylinux binary links OpenEXR 2.x (libIlmImf-2_5.so.25); Noble only ships OpenEXR 3.x
+FROM ubuntu:22.04 AS openexr2
+RUN apt-get update && apt-get install -y --no-install-recommends libopenexr25 \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /openexr-libs \
+  && find /usr/lib/x86_64-linux-gnu -maxdepth 1 \
+       \( -name 'libIlm*.so.25*' -o -name 'libIex*.so.25*' -o -name 'libImath*.so.25*' -o -name 'libHalf*.so.25*' \) \
+       -exec cp -a {} /openexr-libs/ \;
+
 # ─── Runtime Stage ────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 WORKDIR /app
@@ -46,12 +55,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libwebp7 \
   libx11-6 \
   libgl1 \
-  libopenexr-3-1-30 \
   libopenjp2-7 \
   libglib2.0-0t64 \
-  && rm -rf /var/lib/apt/lists/* \
-  && ldconfig
+  && rm -rf /var/lib/apt/lists/*
 
+# OpenEXR 2.5 runtime libs (from Jammy; required by libOpenCvSharpExtern.so on Noble)
+COPY --from=openexr2 /openexr-libs/ /usr/lib/x86_64-linux-gnu/
+
+RUN ldconfig
 
 RUN ln -s /usr/lib/x86_64-linux-gnu/libtiff.so.6 \
   /usr/lib/x86_64-linux-gnu/libtiff.so.5
