@@ -49,7 +49,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libopenexr-3-1-30 \
   libopenjp2-7 \
   libglib2.0-0t64 \
-  libcharls2-2 \
   && rm -rf /var/lib/apt/lists/* \
   && ldconfig
 
