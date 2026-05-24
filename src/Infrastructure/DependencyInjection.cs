@@ -67,6 +67,7 @@ public static class DependencyInjection
 
         // Background Jobs
         services.AddHostedService<MondayAccessGrantJob>();
+        services.AddHostedService<RecurringDocumentationNotificationJob>();
 
         return services;
     }

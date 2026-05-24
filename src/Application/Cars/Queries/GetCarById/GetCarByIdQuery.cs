@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Cars;
 using Application.Cars.Queries.GetAllCars;
 using Domain.Cars;
 using Domain.Users;
@@ -37,20 +38,6 @@ internal sealed class GetCarByIdQueryHandler(IApplicationDbContext context)
             postedByAdmin = role == UserRole.Admin;
         }
 
-        return new CarDto(
-            car.Id, car.Brand, car.Model, car.Year,
-            car.Engine, car.Transmission, car.Location,
-            car.PricePerWeek, car.OldPrice, car.DiscountActive, car.Garantie,
-            car.OfferType.ToString(), car.Status.ToString(),
-            car.UberCategories, car.BoltCategories, car.Badges,
-            car.Description, car.Active,
-            car.ListingSource.ToString(),
-            car.ApprovalStatus.ToString(),
-            postedByAdmin,
-            car.Images.OrderBy(i => i.DisplayOrder)
-                .Select(i => new CarImageDto(i.Id, i.Url, i.DisplayOrder))
-                .ToList(),
-            car.CreatedAtUtc,
-            new CarStatsDto(car.Leads.Count * 3, car.Leads.Count, car.Leads.Count));
+        return CarDtoMapper.ToDto(car, postedByAdmin);
     }
 }
