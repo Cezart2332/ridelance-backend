@@ -23,7 +23,7 @@ internal sealed class SubscribeToPushCommandHandler(IApplicationDbContext contex
         // Add or update the subscription. Wait, we don't have PushSubscriptions in context yet.
         // I will add it to IApplicationDbContext soon.
         PushSubscription? existingSub = await context.PushSubscriptions
-            .SingleOrDefaultAsync(s => s.Endpoint == request.Endpoint && s.UserId == request.UserId, cancellationToken);
+            .SingleOrDefaultAsync(s => s.Endpoint == request.Endpoint, cancellationToken);
 
         if (existingSub is null)
         {
@@ -40,6 +40,7 @@ internal sealed class SubscribeToPushCommandHandler(IApplicationDbContext contex
         }
         else
         {
+            existingSub.UserId = request.UserId;
             existingSub.P256dh = request.P256dh;
             existingSub.Auth = request.Auth;
         }

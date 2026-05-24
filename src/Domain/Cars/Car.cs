@@ -46,6 +46,10 @@ public sealed class Car : Entity
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 
+    // Analytics (forms = Leads.Count)
+    public int ViewCount { get; set; }
+    public int ClickCount { get; set; }
+
     // Navigation
     public List<CarImage> Images { get; set; } = [];
     public List<CarLead> Leads { get; set; } = [];
