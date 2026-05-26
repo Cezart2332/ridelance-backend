@@ -38,6 +38,10 @@ internal sealed class CreateCheckoutSessionCommandHandler(
                 : $"plan:{command.Plan}";
         }
 
+        IReadOnlyDictionary<string, string>? sessionMetadata = command.IsPlanChange
+            ? new Dictionary<string, string> { ["isPlanChange"] = "true" }
+            : null;
+
         string sessionUrl = await stripeService.CreateCheckoutSessionAsync(
             command.PriceId,
             command.Mode,
@@ -46,7 +50,7 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             command.UserEmail,
             command.UserId.ToString(),
             metadata,
-            sessionMetadata: null,
+            sessionMetadata,
             cancellationToken);
 
         return sessionUrl;

@@ -18,5 +18,6 @@ public sealed record CreateCheckoutSessionCommand(
     string? SuccessUrl = null,
     [property: SuppressMessage("Design", "CA1054:Uri parameters should not be strings", Justification = "Strings are preferred for API DTOs")]
     [param: SuppressMessage("Design", "CA1054:Uri parameters should not be strings", Justification = "Strings are preferred for API DTOs")]
-    string? CancelUrl = null
+    string? CancelUrl = null,
+    bool IsPlanChange = false
 ) : ICommand<string>;
