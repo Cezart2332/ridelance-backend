@@ -6,6 +6,7 @@ public sealed record GetDashboardSummaryQuery(Guid UserId) : IQuery<DashboardSum
 
 public sealed record DashboardSummaryResponse(
     // PFA Status
+    Guid? PfaRegistrationId,
     string? PfaStatus,
     string? PfaRegistrationType,
     string? PfaCui,
@@ -32,7 +33,13 @@ public sealed record DashboardSummaryResponse(
     decimal? TaxeEstimate,
     decimal? VenitTotal,
     int? IncomeYear,
-    int? IncomeMonth);
+    int? IncomeMonth,
+
+    // Revenue chart (all months of IncomeYear for user's PFA)
+    int RevenueChartYear,
+    List<MonthlyRevenuePointDto> MonthlyRevenue);
+
+public sealed record MonthlyRevenuePointDto(int Month, decimal VenitTotal);
 
 public sealed record RecentDocumentDto(
     Guid Id,

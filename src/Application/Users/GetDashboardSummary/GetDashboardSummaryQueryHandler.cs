@@ -63,7 +63,25 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
 
         decimal? venitTotal = monthlyIncome?.ComputeVenitTotal();
 
+        List<MonthlyRevenuePointDto> monthlyRevenue = [];
+        if (pfa is not null)
+        {
+            List<PfaMonthlyIncome> yearIncomes = await context.PfaMonthlyIncomes
+                .AsNoTracking()
+                .Where(i => i.PfaRegistrationId == pfa.Id && i.Year == incomeYear)
+                .ToListAsync(cancellationToken);
+
+            monthlyRevenue = Enumerable.Range(1, 12)
+                .Select(month =>
+                {
+                    PfaMonthlyIncome? row = yearIncomes.FirstOrDefault(i => i.Month == month);
+                    return new MonthlyRevenuePointDto(month, row?.ComputeVenitTotal() ?? 0);
+                })
+                .ToList();
+        }
+
         return new DashboardSummaryResponse(
+            pfa?.Id,
             pfa?.Status.ToString(),
             pfa?.RegistrationType.ToString(),
             pfa?.Cui,
@@ -82,6 +100,8 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
             monthlyIncome?.TaxeEstimate,
             venitTotal,
             monthlyIncome is null ? null : incomeYear,
-            monthlyIncome is null ? null : incomeMonth);
+            monthlyIncome is null ? null : incomeMonth,
+            incomeYear,
+            monthlyRevenue);
     }
 }
