@@ -112,6 +112,9 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
             if (existing is not null)
             {
+                bool isPlanChange = session.Metadata?.GetValueOrDefault("isPlanChange") == "true";
+                bool preserveDashboardAccess = isPlanChange && existing.DashboardAccessGranted;
+
                 existing.Plan = plan;
                 existing.Status = SubscriptionStatus.ActivePendingBilling;
                 existing.StripeSubscriptionId = session.SubscriptionId;
@@ -119,8 +122,12 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 existing.FirstBillingDateUtc = firstBilling;
                 existing.NextBillingDateUtc = firstBilling;
                 existing.CancelledAtUtc = null;
-                existing.DashboardAccessGranted = grantAccessNow;
-                existing.DashboardAccessGrantedUtc = accessGrantedUtc;
+
+                if (!preserveDashboardAccess)
+                {
+                    existing.DashboardAccessGranted = grantAccessNow;
+                    existing.DashboardAccessGrantedUtc = accessGrantedUtc;
+                }
             }
             else
             {

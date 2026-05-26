@@ -17,7 +17,8 @@ internal sealed class CreateCheckoutSession : IEndpoint
         string Plan,          // e.g. "solo", "start", "pro", "infiintare_pfa"
         long? BillingAnchorUnix,
         string? SuccessUrl = null,
-        string? CancelUrl = null);
+        string? CancelUrl = null,
+        bool IsPlanChange = false);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -42,7 +43,8 @@ internal sealed class CreateCheckoutSession : IEndpoint
                 request.Plan,
                 request.BillingAnchorUnix,
                 request.SuccessUrl,
-                request.CancelUrl);
+                request.CancelUrl,
+                request.IsPlanChange);
 
             Result<string> result = await handler.Handle(command, cancellationToken);
 
