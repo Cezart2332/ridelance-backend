@@ -1,6 +1,7 @@
 using Domain.Cars;
 using Domain.Chat;
 using Domain.Documents;
+using Domain.Expenses;
 using Domain.Notifications;
 using Domain.Payments;
 using Domain.PfaRegistrations;
@@ -15,6 +16,7 @@ public interface IApplicationDbContext
     DbSet<PfaRegistration> PfaRegistrations { get; }
     DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; }
     DbSet<Document> Documents { get; }
+    DbSet<DeductibleExpense> DeductibleExpenses { get; }
     DbSet<ChatRoom> ChatRooms { get; }
     DbSet<ChatMessage> ChatMessages { get; }
     DbSet<Notification> Notifications { get; }

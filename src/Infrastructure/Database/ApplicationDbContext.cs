@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Domain.Cars;
 using Domain.Chat;
 using Domain.Documents;
+using Domain.Expenses;
 using Domain.Notifications;
 using Domain.Payments;
 using Domain.PfaRegistrations;
@@ -21,6 +22,7 @@ public sealed class ApplicationDbContext(
     public DbSet<PfaRegistration> PfaRegistrations { get; set; }
     public DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; set; }
     public DbSet<Document> Documents { get; set; }
+    public DbSet<DeductibleExpense> DeductibleExpenses { get; set; }
     public DbSet<ChatRoom> ChatRooms { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
     public DbSet<Notification> Notifications { get; set; }
