@@ -1,9 +1,14 @@
 using Application.Abstractions;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Notifications;
 using Application.Abstractions.Services;
+using Domain.Notifications;
 using Domain.Payments;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using SharedKernel;
 using Stripe;
 using Stripe.Checkout;
@@ -23,7 +28,10 @@ internal sealed class HandleStripeWebhookCommandHandler(
     IApplicationDbContext context,
     IStripeService stripeService,
     IEmailService emailService,
-    IMjmlRenderer mjmlRenderer)
+    IMjmlRenderer mjmlRenderer,
+    IWebPushService webPushService,
+    IConfiguration configuration,
+    ILogger<HandleStripeWebhookCommandHandler> logger)
     : ICommandHandler<HandleStripeWebhookCommand>
 {
     public async Task<Result> Handle(
@@ -36,6 +44,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
         if (stripeEvent is null)
         {
+            logger.LogWarning("Stripe webhook signature validation failed. Please check that Stripe__WebhookSecret in your .env matches the webhook secret from your stripe listen CLI command.");
             return Result.Failure(Error.Problem("Stripe.WebhookSignature", "Invalid Stripe webhook signature."));
         }
 
@@ -79,6 +88,16 @@ internal sealed class HandleStripeWebhookCommandHandler(
         if (mode == "payment")
         {
             // One-time payment completed (e.g. Înființare PFA)
+            string? planStr = session.Metadata?.GetValueOrDefault("customMetadata") ?? string.Empty;
+            string description = planStr switch
+            {
+                var s when s.Contains("infiintare_pfa", StringComparison.OrdinalIgnoreCase) => "Înființare PFA",
+                var s when s.Contains("sediu_social", StringComparison.OrdinalIgnoreCase) => "Găzduire Sediu Social",
+                var s when s.Contains("start_ride", StringComparison.OrdinalIgnoreCase) => "Start Ride",
+                _ => BuildDescriptionFromSession(session)
+            };
+
+
             var record = new Domain.Payments.PaymentRecord
             {
                 Id = Guid.NewGuid(),
@@ -86,13 +105,14 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 PaymentType = PaymentType.OneTime,
                 Status = PaymentStatus.Succeeded,
                 AmountBani = session.AmountTotal ?? 0,
-                Description = BuildDescriptionFromSession(session),
+                Description = description,
                 StripePaymentId = session.PaymentIntentId,
                 StripeSessionId = session.Id,
                 CreatedAtUtc = DateTime.UtcNow,
             };
             context.PaymentRecords.Add(record);
         }
+
         else if (mode == "subscription")
         {
             // Subscription checkout completed — record first payment + create subscription record
@@ -115,7 +135,15 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 bool isPlanChange = session.Metadata?.GetValueOrDefault("isPlanChange") == "true";
                 bool preserveDashboardAccess = isPlanChange && existing.DashboardAccessGranted;
 
-                existing.Plan = plan;
+                if (isPlanChange)
+                {
+                    existing.PendingPlan = plan;
+                }
+                else
+                {
+                    existing.Plan = plan;
+                    existing.PendingPlan = null;
+                }
                 existing.Status = SubscriptionStatus.ActivePendingBilling;
                 existing.StripeSubscriptionId = session.SubscriptionId;
                 existing.StripeCustomerId = session.CustomerId;
@@ -136,6 +164,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
                     Id = Guid.NewGuid(),
                     UserId = userId,
                     Plan = plan,
+                    PendingPlan = null,
                     Status = SubscriptionStatus.ActivePendingBilling,
                     StripeSubscriptionId = session.SubscriptionId,
                     StripeCustomerId = session.CustomerId,
@@ -165,6 +194,45 @@ internal sealed class HandleStripeWebhookCommandHandler(
         }
 
         await context.SaveChangesAsync(ct);
+
+        // Send payment confirmation email
+        User? user = await context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+        if (user != null)
+        {
+            decimal amountLei = (session.AmountTotal ?? 0) / 100m;
+            string description = mode == "payment"
+                ? BuildDescriptionFromSession(session)
+                : $"Abonament săptămânal RIDElance — Plan {session.Metadata?.GetValueOrDefault("customMetadata") ?? "Start"}";
+
+            string mjml = ServiceOrderConfirmationEmail.BuildMjml(
+                $"{user.FirstName} {user.LastName}",
+                description,
+                amountLei);
+            string html = mjmlRenderer.Render(mjml);
+
+            try
+            {
+                await emailService.SendEmailAsync(
+                    user.Email,
+                    ServiceOrderConfirmationEmail.Subject,
+                    html,
+                    ct);
+            }
+            catch
+            {
+                // Ignore email failure
+            }
+
+            // Send in-app and push notifications
+            string descriptionForNotification = mode == "payment"
+                ? BuildDescriptionFromSession(session)
+                : $"Plan {session.Metadata?.GetValueOrDefault("customMetadata") ?? "Start"}";
+
+            await SendPaymentNotificationsAsync(userId, descriptionForNotification, amountLei, mode, ct);
+        }
     }
 
     private async Task HandlePublicServiceOrderCompleted(Session session, Guid serviceOrderId, CancellationToken ct)
@@ -234,6 +302,12 @@ internal sealed class HandleStripeWebhookCommandHandler(
         sub.DashboardAccessGranted = true;
         sub.DashboardAccessGrantedUtc ??= DateTime.UtcNow;
 
+        if (sub.PendingPlan.HasValue)
+        {
+            sub.Plan = sub.PendingPlan.Value;
+            sub.PendingPlan = null;
+        }
+
         // Record the payment
         var record = new Domain.Payments.PaymentRecord
         {
@@ -249,6 +323,39 @@ internal sealed class HandleStripeWebhookCommandHandler(
         context.PaymentRecords.Add(record);
 
         await context.SaveChangesAsync(ct);
+
+        // Send payment confirmation email
+        User? user = await context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == sub.UserId, ct);
+
+        if (user != null)
+        {
+            decimal amountLei = invoice.AmountPaid / 100m;
+            string description = $"Abonament săptămânal RIDElance — Plan {sub.Plan}";
+
+            string mjml = ServiceOrderConfirmationEmail.BuildMjml(
+                $"{user.FirstName} {user.LastName}",
+                description,
+                amountLei);
+            string html = mjmlRenderer.Render(mjml);
+
+            try
+            {
+                await emailService.SendEmailAsync(
+                    user.Email,
+                    ServiceOrderConfirmationEmail.Subject,
+                    html,
+                    ct);
+            }
+            catch
+            {
+                // Ignore email failure
+            }
+
+            // Send in-app and push notifications
+            await SendPaymentNotificationsAsync(sub.UserId, $"Plan {sub.Plan}", amountLei, "subscription", ct);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -383,5 +490,60 @@ internal sealed class HandleStripeWebhookCommandHandler(
     {
         return session.LineItems?.Data?.FirstOrDefault()?.Description
             ?? "Serviciu individual RIDElance";
+    }
+
+    private async Task SendPaymentNotificationsAsync(Guid userId, string description, decimal amountLei, string mode, CancellationToken ct)
+    {
+        // 1. Create In-App Notification
+        string notificationText = mode == "payment"
+            ? $"Plată confirmată: {description} ({amountLei:N2} lei)."
+            : $"Plată confirmată: abonament {description} ({amountLei:N2} lei).";
+
+        var notification = new Notification
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Text = notificationText,
+            Type = NotificationTypes.PaymentConfirmed,
+            IsRead = false,
+            CreatedAtUtc = DateTime.UtcNow
+        };
+        context.Notifications.Add(notification);
+        await context.SaveChangesAsync(ct);
+
+        // 2. Load User with PushSubscriptions to send Push
+        User? user = await context.Users
+            .Include(u => u.PushSubscriptions)
+            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+        if (user != null)
+        {
+            string pushTitle = "Plată confirmată";
+            string pushBody = mode == "payment"
+                ? $"Plata pentru {description} a fost înregistrată."
+                : $"Plata pentru abonament a fost efectuată.";
+
+            // Keep push body very short (under 50 chars)
+            if (pushBody.Length > 50)
+            {
+                pushBody = pushBody[..47] + "...";
+            }
+
+            Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
+            string relativePath = "/app/dashboard?section=istoric_plati";
+            string deepLink = appBaseUri is null ? relativePath : new Uri(appBaseUri, relativePath).ToString();
+
+            foreach (PushSubscription sub in user.PushSubscriptions)
+            {
+                try
+                {
+                    await webPushService.SendPushNotificationAsync(sub, pushTitle, pushBody, deepLink, ct);
+                }
+                catch
+                {
+                    // Ignore push failures
+                }
+            }
+        }
     }
 }

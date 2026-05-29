@@ -89,7 +89,7 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
                 .Where(s => s.UserId == userId)
                 .ToListAsync(cancellationToken);
 
-            string pushBody = notificationText;
+            string pushBody = RecurringDocumentationTexts.BuildPushNotificationText(nowUtc);
 
             foreach (PushSubscription subscription in subscriptions)
             {

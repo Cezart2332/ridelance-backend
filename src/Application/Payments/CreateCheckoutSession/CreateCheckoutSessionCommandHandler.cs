@@ -1,5 +1,7 @@
+using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SharedKernel;
 
@@ -7,6 +9,7 @@ namespace Application.Payments.CreateCheckoutSession;
 
 internal sealed class CreateCheckoutSessionCommandHandler(
     IStripeService stripeService,
+    IApplicationDbContext context,
     IConfiguration configuration)
     : ICommandHandler<CreateCheckoutSessionCommand, string>
 {
@@ -14,6 +17,21 @@ internal sealed class CreateCheckoutSessionCommandHandler(
         CreateCheckoutSessionCommand command,
         CancellationToken cancellationToken)
     {
+        if (command.IsPlanChange)
+        {
+            Domain.Payments.UserSubscription? subscription = await context.UserSubscriptions
+                .Where(s => s.UserId == command.UserId)
+                .OrderByDescending(s => s.CreatedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (subscription is not null && subscription.Status == Domain.Payments.SubscriptionStatus.ActivePendingBilling)
+            {
+                return Result.Failure<string>(Error.Problem(
+                    "Subscription.PendingChange",
+                    "Ai deja o schimbare de abonament programată pentru lunea viitoare. Poți schimba abonamentul doar o dată pe săptămână."));
+            }
+        }
+
 #pragma warning disable S1075 // URIs should not be hardcoded
         string baseUrl = configuration["App:BaseUrl"] ?? throw new InvalidOperationException("App:BaseUrl is missing in configuration.");
 #pragma warning restore S1075
@@ -29,14 +47,12 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             ? $"{baseUrl}/inregistrare/abonament"
             : $"{baseUrl}/inregistrare/pfa");
 
-        // Build metadata: include plan name + billing anchor for subscriptions
-        string metadata = string.Empty;
-        if (command.Mode == "subscription")
-        {
-            metadata = command.BillingAnchorUnix.HasValue
-                ? $"plan:{command.Plan}|billingAnchor:{command.BillingAnchorUnix.Value}"
-                : $"plan:{command.Plan}";
-        }
+        // Build metadata: include plan/service name + billing anchor for subscriptions
+        string metadata = command.Mode == "subscription" && command.BillingAnchorUnix.HasValue
+            ? $"plan:{command.Plan}|billingAnchor:{command.BillingAnchorUnix.Value}"
+            : $"plan:{command.Plan}";
+
+
 
         IReadOnlyDictionary<string, string>? sessionMetadata = command.IsPlanChange
             ? new Dictionary<string, string> { ["isPlanChange"] = "true" }

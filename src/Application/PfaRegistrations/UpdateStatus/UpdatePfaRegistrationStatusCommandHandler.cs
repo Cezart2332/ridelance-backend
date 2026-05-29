@@ -1,12 +1,22 @@
+using Application.Abstractions;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Notifications;
+using Domain.Notifications;
 using Domain.PfaRegistrations;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using SharedKernel;
 
 namespace Application.PfaRegistrations.UpdateStatus;
 
-internal sealed class UpdatePfaRegistrationStatusCommandHandler(IApplicationDbContext context)
+internal sealed class UpdatePfaRegistrationStatusCommandHandler(
+    IApplicationDbContext context,
+    IEmailService emailService,
+    IMjmlRenderer mjmlRenderer,
+    IWebPushService webPushService,
+    IConfiguration configuration)
     : ICommandHandler<UpdatePfaRegistrationStatusCommand>
 {
     public async Task<Result> Handle(
@@ -15,6 +25,8 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(IApplicationDbCo
     {
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.Documents)
+            .Include(r => r.User)
+                .ThenInclude(u => u.PushSubscriptions)
             .SingleOrDefaultAsync(r => r.Id == command.RegistrationId, cancellationToken);
 
         if (registration is null)
@@ -66,7 +78,64 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(IApplicationDbCo
         registration.ReviewedAtUtc = DateTime.UtcNow;
         registration.ReviewedByUserId = command.ReviewerUserId;
 
+        // Create in-app notification
+        string text = command.NewStatus == PfaRegistrationStatus.Approved
+            ? "Dosarul tău PFA a fost aprobat! CUI-ul a fost generat."
+            : "Dosarul tău PFA a fost respins. Vezi mențiunile contabilului.";
+
+        var notification = new Notification
+        {
+            Id = Guid.NewGuid(),
+            UserId = registration.UserId,
+            Text = text,
+            Type = NotificationTypes.PfaStatusUpdate,
+            IsRead = false,
+            CreatedAtUtc = DateTime.UtcNow
+        };
+        context.Notifications.Add(notification);
+
         await context.SaveChangesAsync(cancellationToken);
+
+        // Send styled MJML Email
+        string mjml = command.NewStatus == PfaRegistrationStatus.Approved
+            ? ClientRegistrationStatusEmail.BuildApprovedMjml(registration.User.FirstName, registration.Cui ?? "")
+            : ClientRegistrationStatusEmail.BuildRejectedMjml(registration.User.FirstName, command.ReviewNote ?? "");
+
+        string htmlBody = mjmlRenderer.Render(mjml);
+        string subject = command.NewStatus == PfaRegistrationStatus.Approved
+            ? ClientRegistrationStatusEmail.ApprovedSubject
+            : ClientRegistrationStatusEmail.RejectedSubject;
+
+        try
+        {
+            await emailService.SendEmailAsync(registration.User.Email, subject, htmlBody, cancellationToken);
+        }
+        catch
+        {
+            // Log/ignore email sending errors to prevent failing the status update
+        }
+
+        // Send web push notification
+        string pushTitle = command.NewStatus == PfaRegistrationStatus.Approved ? "PFA Aprobat" : "Dosar PFA Neconform";
+        string pushBody = command.NewStatus == PfaRegistrationStatus.Approved
+            ? "PFA-ul tău a fost aprobat!"
+            : "Dosarul tău necesită modificări.";
+
+        Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
+        string relativePath = "/app/dashboard";
+        string deepLink = appBaseUri is null ? relativePath : new Uri(appBaseUri, relativePath).ToString();
+
+        foreach (PushSubscription sub in registration.User.PushSubscriptions)
+        {
+            try
+            {
+                await webPushService.SendPushNotificationAsync(sub, pushTitle, pushBody, deepLink, cancellationToken);
+            }
+            catch
+            {
+                // Ignore push sending failures
+            }
+        }
 
         return Result.Success();
     }

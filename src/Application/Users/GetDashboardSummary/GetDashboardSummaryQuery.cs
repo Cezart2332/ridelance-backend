@@ -37,7 +37,19 @@ public sealed record DashboardSummaryResponse(
 
     // Revenue chart (all months of IncomeYear for user's PFA)
     int RevenueChartYear,
-    List<MonthlyRevenuePointDto> MonthlyRevenue);
+    List<MonthlyRevenuePointDto> MonthlyRevenue,
+
+    // YTD tax breakdown (auto-computed from all months of the year)
+    int TaxYear,
+    decimal YtdTotalIncome,
+    decimal YtdDeductibleExpenses,
+    decimal YtdProfit,
+    decimal YtdCas,
+    decimal YtdCass,
+    decimal YtdIncomeTax,
+    decimal YtdTotalTax,
+    decimal YtdNetIncome,
+    List<YtdExpenseDto> YtdExpenses);
 
 public sealed record MonthlyRevenuePointDto(int Month, decimal VenitTotal);
 
@@ -47,3 +59,12 @@ public sealed record RecentDocumentDto(
     string Category,
     string Status,
     DateTime UploadedAtUtc);
+
+public sealed record YtdExpenseDto(
+    Guid Id,
+    string ItemName,
+    string CatalogCategory,
+    string DeductibleLabel,
+    decimal? AmountRon,
+    int Month,
+    string DocumentStatus);

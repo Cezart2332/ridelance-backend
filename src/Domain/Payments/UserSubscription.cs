@@ -12,6 +12,7 @@ public sealed class UserSubscription : Entity
     public Guid UserId { get; set; }
 
     public SubscriptionPlan Plan { get; set; }
+    public SubscriptionPlan? PendingPlan { get; set; }
     public SubscriptionStatus Status { get; set; } = SubscriptionStatus.ActivePendingBilling;
 
     /// <summary>Stripe subscription ID (sub_xxx)</summary>
