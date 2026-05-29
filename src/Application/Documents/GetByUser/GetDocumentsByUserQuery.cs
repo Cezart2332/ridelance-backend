@@ -12,4 +12,5 @@ public sealed record DocumentSummary(
     string Category,
     string Status,
     long FileSize,
-    DateTime UploadedAtUtc);
+    DateTime UploadedAtUtc,
+    DateTime? ExpiresAtUtc);

@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.Users;
 using FluentValidation;
@@ -16,8 +17,7 @@ public sealed record UpsertPfaMonthlyIncomeCommand(
     decimal VenitCash,
     decimal VenitCard,
     decimal VenitBolt,
-    decimal VenitUber,
-    decimal TaxeEstimate) : ICommand<PfaMonthlyIncomeResponse>;
+    decimal VenitUber) : ICommand<PfaMonthlyIncomeResponse>;
 
 internal sealed class UpsertPfaMonthlyIncomeCommandValidator : AbstractValidator<UpsertPfaMonthlyIncomeCommand>
 {
@@ -29,7 +29,6 @@ internal sealed class UpsertPfaMonthlyIncomeCommandValidator : AbstractValidator
         RuleFor(c => c.VenitCard).GreaterThanOrEqualTo(0);
         RuleFor(c => c.VenitBolt).GreaterThanOrEqualTo(0);
         RuleFor(c => c.VenitUber).GreaterThanOrEqualTo(0);
-        RuleFor(c => c.TaxeEstimate).GreaterThanOrEqualTo(0);
     }
 }
 
@@ -93,9 +92,37 @@ internal sealed class UpsertPfaMonthlyIncomeCommandHandler(
         income.VenitCard = command.VenitCard;
         income.VenitBolt = command.VenitBolt;
         income.VenitUber = command.VenitUber;
-        income.TaxeEstimate = command.TaxeEstimate;
         income.UpdatedAtUtc = DateTime.UtcNow;
         income.UpdatedByUserId = userContext.UserId;
+
+        // ── Auto-compute taxes from YTD data ────────────────────────────────────
+        // 1. Sum all monthly incomes for the year (including the one being saved)
+        List<PfaMonthlyIncome> yearIncomes = await context.PfaMonthlyIncomes
+            .Where(i => i.PfaRegistrationId == command.PfaRegistrationId && i.Year == command.Year)
+            .ToListAsync(cancellationToken);
+
+        // Replace or add the current month in the in-memory list for the sum
+        decimal ytdGrossIncome = yearIncomes
+            .Where(i => i.Month != command.Month)
+            .Sum(i => i.ComputeVenitTotal())
+            + income.ComputeVenitTotal();
+
+        // 2. Sum verified deductible expenses for the year
+        decimal ytdExpenses = await context.DeductibleExpenses
+            .AsNoTracking()
+            .Where(e =>
+                e.PfaRegistrationId == command.PfaRegistrationId &&
+                e.Year == command.Year)
+            .Join(
+                context.Documents.AsNoTracking().Where(d => d.Status == DocumentStatus.Verified),
+                e => e.DocumentId,
+                d => d.Id,
+                (e, _) => e.AmountRon ?? 0m)
+            .SumAsync(cancellationToken);
+
+        // 3. Compute and store the YTD estimated tax
+        PfaTaxCalculator.TaxResult tax = PfaTaxCalculator.Compute(ytdGrossIncome, ytdExpenses, command.Year);
+        income.TaxeEstimate = tax.TotalTax;
 
         await context.SaveChangesAsync(cancellationToken);
 

@@ -22,6 +22,13 @@ public static class RecurringDocumentationTexts
         return $"Este începutul lunii ({monthLabel}). Te rugăm să încarci documentația recurentă: {checklist}.";
     }
 
+    public static string BuildPushNotificationText(DateTime? referenceUtc = null)
+    {
+        DateTime reference = referenceUtc ?? DateTime.UtcNow;
+        string monthLabel = FormatRomaniaMonth(reference);
+        return $"Te rugăm să încarci documentele pentru {monthLabel}.";
+    }
+
     public static string BuildDeepLink(Uri? appBaseUri)
     {
         const string path = "/app/dashboard?section=doc_recurring";

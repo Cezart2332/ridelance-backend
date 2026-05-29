@@ -10,4 +10,5 @@ public sealed record UploadDocumentCommand(
     string FileName,
     string ContentType,
     Stream FileStream,
-    long FileSize) : ICommand<Guid>;
+    long FileSize,
+    DateTime? ExpiresAtUtc) : ICommand<Guid>;

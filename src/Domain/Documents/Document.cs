@@ -17,6 +17,7 @@ public sealed class Document : Entity
     public string EncryptionIv { get; set; } = string.Empty;
     public long FileSize { get; set; }
     public DateTime UploadedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? ExpiresAtUtc { get; set; }
 
     // Navigation
     public User User { get; set; } = null!;

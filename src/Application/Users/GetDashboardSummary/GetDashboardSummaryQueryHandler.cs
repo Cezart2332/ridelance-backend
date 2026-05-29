@@ -1,6 +1,8 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.PfaRegistrations;
 using Domain.Documents;
+using Domain.Expenses;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -63,10 +65,13 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
 
         decimal? venitTotal = monthlyIncome?.ComputeVenitTotal();
 
+        // All monthly incomes for the revenue chart
         List<MonthlyRevenuePointDto> monthlyRevenue = [];
+        List<PfaMonthlyIncome> yearIncomes = [];
+
         if (pfa is not null)
         {
-            List<PfaMonthlyIncome> yearIncomes = await context.PfaMonthlyIncomes
+            yearIncomes = await context.PfaMonthlyIncomes
                 .AsNoTracking()
                 .Where(i => i.PfaRegistrationId == pfa.Id && i.Year == incomeYear)
                 .ToListAsync(cancellationToken);
@@ -78,6 +83,57 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
                     return new MonthlyRevenuePointDto(month, row?.ComputeVenitTotal() ?? 0);
                 })
                 .ToList();
+        }
+
+        // ── YTD Tax Computation ─────────────────────────────────────────────────
+        decimal ytdTotalIncome = 0m;
+        decimal ytdDeductibleExpenses = 0m;
+        List<YtdExpenseDto> ytdExpenses = [];
+        PfaTaxCalculator.TaxResult taxResult = PfaTaxCalculator.Compute(0m, 0m, incomeYear);
+
+        if (pfa is not null)
+        {
+            // Sum all monthly income for the year
+            ytdTotalIncome = yearIncomes.Sum(i => i.ComputeVenitTotal());
+
+            // Fetch all deductible expenses for the year with their document status
+            var expensesWithStatus = await context.DeductibleExpenses
+                .AsNoTracking()
+                .Where(e => e.PfaRegistrationId == pfa.Id && e.Year == incomeYear)
+                .Join(
+                    context.Documents.AsNoTracking(),
+                    e => e.DocumentId,
+                    d => d.Id,
+                    (e, d) => new
+                    {
+                        e.Id,
+                        e.ItemName,
+                        e.CatalogCategory,
+                        e.DeductibleLabel,
+                        e.AmountRon,
+                        e.Month,
+                        d.Status
+                    })
+                .ToListAsync(cancellationToken);
+
+            ytdExpenses = expensesWithStatus
+                .Select(e => new YtdExpenseDto(
+                    e.Id,
+                    e.ItemName,
+                    e.CatalogCategory,
+                    e.DeductibleLabel,
+                    e.AmountRon,
+                    e.Month,
+                    e.Status.ToString()))
+                .ToList();
+
+            // Only verified expenses reduce the tax base
+            ytdDeductibleExpenses = expensesWithStatus
+                .Where(e => e.Status == DocumentStatus.Verified)
+                .Sum(e => e.AmountRon ?? 0m);
+
+            // Run the tax formula
+            taxResult = PfaTaxCalculator.Compute(ytdTotalIncome, ytdDeductibleExpenses, incomeYear);
         }
 
         return new DashboardSummaryResponse(
@@ -102,6 +158,17 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
             monthlyIncome is null ? null : incomeYear,
             monthlyIncome is null ? null : incomeMonth,
             incomeYear,
-            monthlyRevenue);
+            monthlyRevenue,
+            // YTD tax breakdown
+            incomeYear,
+            ytdTotalIncome,
+            ytdDeductibleExpenses,
+            taxResult.Profit,
+            taxResult.Cas,
+            taxResult.Cass,
+            taxResult.IncomeTax,
+            taxResult.TotalTax,
+            taxResult.NetIncome,
+            ytdExpenses);
     }
 }

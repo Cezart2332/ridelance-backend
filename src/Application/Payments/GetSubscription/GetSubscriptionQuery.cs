@@ -15,4 +15,7 @@ public sealed record SubscriptionResponse(
     DateTime CreatedAtUtc,
     bool DashboardAccessGranted,
     string? PfaStatus = null,
-    string? PfaRegistrationType = null);
+    string? PfaRegistrationType = null,
+    string? PendingPlan = null,
+    bool HasPaidInfiintare = false);
+

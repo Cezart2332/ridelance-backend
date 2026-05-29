@@ -90,7 +90,8 @@ internal sealed class CreateDeductibleExpenseCommandHandler(
             displayFileName,
             command.ContentType,
             command.FileStream,
-            command.FileSize);
+            command.FileSize,
+            null);
 
         Result<Guid> uploadResult = await uploadHandler.Handle(uploadCommand, cancellationToken);
 
