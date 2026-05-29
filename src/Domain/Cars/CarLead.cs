@@ -10,6 +10,7 @@ public sealed class CarLead
     public string UserName { get; set; } = string.Empty;
     public string UserEmail { get; set; } = string.Empty;
     public string UserPhone { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
     public string InterestType { get; set; } = string.Empty; // "Închiriere săptămânală" or "La rămânere"
 
     // Admin
