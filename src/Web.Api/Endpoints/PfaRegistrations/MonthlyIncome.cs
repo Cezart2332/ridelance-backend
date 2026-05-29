@@ -15,8 +15,7 @@ internal sealed class MonthlyIncome : IEndpoint
         decimal VenitCash,
         decimal VenitCard,
         decimal VenitBolt,
-        decimal VenitUber,
-        decimal TaxeEstimate);
+        decimal VenitUber);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -47,8 +46,7 @@ internal sealed class MonthlyIncome : IEndpoint
                 request.VenitCash,
                 request.VenitCard,
                 request.VenitBolt,
-                request.VenitUber,
-                request.TaxeEstimate);
+                request.VenitUber);
 
             Result<PfaMonthlyIncomeResponse> result = await handler.Handle(command, cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);

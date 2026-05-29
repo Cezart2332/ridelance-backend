@@ -17,6 +17,7 @@ internal sealed class Upload : IEndpoint
             [FromForm] string category,
             [FromForm] string? pfaRegistrationId,
             [FromForm] string? userId,
+            [FromForm] string? expiresAt,
             HttpContext httpContext,
             IUserContext userContext,
             ICommandHandler<UploadDocumentCommand, Guid> handler,
@@ -36,6 +37,13 @@ internal sealed class Upload : IEndpoint
 
             Guid? parsedPfaId = Guid.TryParse(pfaRegistrationId, out Guid g) ? g : null;
 
+            DateTime? expiresAtUtc = null;
+            if (!string.IsNullOrWhiteSpace(expiresAt) &&
+                DateTime.TryParse(expiresAt, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime parsedExpiry))
+            {
+                expiresAtUtc = parsedExpiry.ToUniversalTime();
+            }
+
             using Stream stream = file.OpenReadStream();
 
             var command = new UploadDocumentCommand(
@@ -45,7 +53,8 @@ internal sealed class Upload : IEndpoint
                 file.FileName,
                 file.ContentType,
                 stream,
-                file.Length);
+                file.Length,
+                expiresAtUtc);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
 
