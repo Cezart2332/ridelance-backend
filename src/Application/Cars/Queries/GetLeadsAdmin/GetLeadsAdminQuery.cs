@@ -15,6 +15,7 @@ public sealed record CarLeadDto(
     string UserName,
     string UserEmail,
     string UserPhone,
+    string City,
     string InterestType,
     string Status,
     string? AdminNote,
@@ -42,6 +43,7 @@ internal sealed class GetLeadsAdminQueryHandler(IApplicationDbContext context)
             .Select(l => new CarLeadDto(
                 l.Id, l.CarId, l.CarName,
                 l.UserName, l.UserEmail, l.UserPhone,
+                l.City,
                 l.InterestType,
                 l.Status.ToString(), l.AdminNote,
                 l.CreatedAtUtc))

@@ -11,6 +11,7 @@ public sealed record SubmitCarLeadCommand(
     string UserName,
     string UserEmail,
     string UserPhone,
+    string City,
     string InterestType) : ICommand<Guid>;
 
 internal sealed class SubmitCarLeadCommandHandler(IApplicationDbContext context)
@@ -34,6 +35,7 @@ internal sealed class SubmitCarLeadCommandHandler(IApplicationDbContext context)
             UserName = command.UserName,
             UserEmail = command.UserEmail,
             UserPhone = command.UserPhone,
+            City = command.City,
             InterestType = command.InterestType,
             Status = CarLeadStatus.New,
             CreatedAtUtc = DateTime.UtcNow

@@ -21,7 +21,7 @@ internal sealed class SubmitLead : IEndpoint
         {
             var command = new SubmitCarLeadCommand(
                 id, request.UserName, request.UserEmail, request.UserPhone,
-                request.InterestType);
+                request.City, request.InterestType);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(new { leadId = result.Value });
@@ -32,7 +32,7 @@ internal sealed class SubmitLead : IEndpoint
 
 internal sealed record SubmitLeadRequest(
     string UserName, string UserEmail, string UserPhone,
-    string InterestType);
+    string City, string InterestType);
 
 internal sealed class GetLeads : IEndpoint
 {
