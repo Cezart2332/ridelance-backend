@@ -1,3 +1,4 @@
+using Domain.Bolt;
 using Domain.Cars;
 using Domain.Chat;
 using Domain.Documents;
@@ -27,6 +28,8 @@ public interface IApplicationDbContext
     DbSet<UserSubscription> UserSubscriptions { get; }
     DbSet<PaymentRecord> PaymentRecords { get; }
     DbSet<ServiceOrder> ServiceOrders { get; }
+    DbSet<BoltIntegration> BoltIntegrations { get; }
+    DbSet<BoltOrder> BoltOrders { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
