@@ -1,4 +1,5 @@
 using Application.Abstractions.Data;
+using Domain.Bolt;
 using Domain.Cars;
 using Domain.Chat;
 using Domain.Documents;
@@ -33,6 +34,8 @@ public sealed class ApplicationDbContext(
     public DbSet<UserSubscription> UserSubscriptions { get; set; }
     public DbSet<PaymentRecord> PaymentRecords { get; set; }
     public DbSet<ServiceOrder> ServiceOrders { get; set; }
+    public DbSet<BoltIntegration> BoltIntegrations { get; set; }
+    public DbSet<BoltOrder> BoltOrders { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

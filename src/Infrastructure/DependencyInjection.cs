@@ -65,10 +65,15 @@ public static class DependencyInjection
         // Stripe
         services.AddScoped<IStripeService, StripeService>();
 
+        // Bolt
+        services.AddHttpClient();
+        services.AddScoped<IBoltService, BoltService>();
+
         // Background Jobs
         services.AddHostedService<MondayAccessGrantJob>();
         services.AddHostedService<RecurringDocumentationNotificationJob>();
         services.AddHostedService<DocumentExpiryCheckJob>();
+        services.AddHostedService<BoltSyncJob>();
 
         return services;
     }
