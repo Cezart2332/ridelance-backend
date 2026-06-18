@@ -62,8 +62,8 @@ internal sealed class StripeService : IStripeService
                 }
             ],
             Mode = mode, // "payment" or "subscription"
-            SuccessUrl = successUrl,
-            CancelUrl = cancelUrl,
+            UiMode = "embedded_page",
+            ReturnUrl = successUrl.Replace("{{CHECKOUT_SESSION_ID}}", "{CHECKOUT_SESSION_ID}"),
             CustomerEmail = customerEmail,
             Metadata = meta,
         };
@@ -85,7 +85,16 @@ internal sealed class StripeService : IStripeService
         var service = new SessionService();
         Session session = await service.CreateAsync(options, cancellationToken: cancellationToken);
 
-        return session.Url;
+        return session.ClientSecret;
+    }
+
+    public async Task<(string Status, string? CustomerEmail)> GetSessionStatusAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var service = new SessionService();
+        Session session = await service.GetAsync(sessionId, cancellationToken: cancellationToken);
+        return (session.Status, session.CustomerDetails?.Email);
     }
 
     public async Task<string> GetOrCreateCustomerAsync(

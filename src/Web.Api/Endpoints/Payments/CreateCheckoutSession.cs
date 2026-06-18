@@ -49,7 +49,7 @@ internal sealed class CreateCheckoutSession : IEndpoint
             Result<string> result = await handler.Handle(command, cancellationToken);
 
             return result.Match(
-                url => Results.Ok(new { url }),
+                clientSecret => Results.Ok(new { clientSecret }),
                 CustomResults.Problem);
         })
         .RequireAuthorization()
