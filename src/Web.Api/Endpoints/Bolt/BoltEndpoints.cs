@@ -55,6 +55,18 @@ internal sealed class BoltEndpoints : IEndpoint
             return result.Match(Results.Ok, CustomResults.Problem);
         });
 
+        group.MapGet("dashboard", async (
+            string? period,
+            int? year,
+            int? month,
+            IQueryHandler<GetBoltDashboardQuery, BoltDashboardResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            var query = new GetBoltDashboardQuery(period, year, month);
+            Result<BoltDashboardResponse> result = await handler.Handle(query, cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        });
+
         group.MapPost("sync", async (
             ICommandHandler<SyncBoltOrdersCommand, bool> handler,
             CancellationToken cancellationToken) =>

@@ -117,6 +117,107 @@ internal sealed class StripeService : IStripeService
         return customer.Id;
     }
 
+    public async Task<string> GetOrCreateRecurringPriceAsync(
+        string lookupKey,
+        string productName,
+        long unitAmount,
+        string currency,
+        string interval,
+        IReadOnlyDictionary<string, string>? metadata = null,
+        CancellationToken cancellationToken = default)
+    {
+        var priceService = new PriceService();
+        StripeList<Price> existingPrices = await priceService.ListAsync(
+            new PriceListOptions
+            {
+                Active = true,
+                Limit = 1,
+                LookupKeys = [lookupKey],
+            },
+            cancellationToken: cancellationToken);
+
+        Price? existingPrice = existingPrices.Data.FirstOrDefault();
+        if (existingPrice is not null)
+        {
+            return existingPrice.Id;
+        }
+
+        Dictionary<string, string> priceMetadata = metadata is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(metadata);
+
+        priceMetadata["lookupKey"] = lookupKey;
+
+        Price price = await priceService.CreateAsync(
+            new PriceCreateOptions
+            {
+                Currency = currency,
+                UnitAmount = unitAmount,
+                LookupKey = lookupKey,
+                Recurring = new PriceRecurringOptions
+                {
+                    Interval = interval,
+                },
+                ProductData = new PriceProductDataOptions
+                {
+                    Name = productName,
+                    Metadata = priceMetadata,
+                },
+                Metadata = priceMetadata,
+            },
+            cancellationToken: cancellationToken);
+
+        return price.Id;
+    }
+
+    public async Task<string> GetOrCreateOneTimePriceAsync(
+        string lookupKey,
+        string productName,
+        long unitAmount,
+        string currency,
+        IReadOnlyDictionary<string, string>? metadata = null,
+        CancellationToken cancellationToken = default)
+    {
+        var priceService = new PriceService();
+        StripeList<Price> existingPrices = await priceService.ListAsync(
+            new PriceListOptions
+            {
+                Active = true,
+                Limit = 1,
+                LookupKeys = [lookupKey],
+            },
+            cancellationToken: cancellationToken);
+
+        Price? existingPrice = existingPrices.Data.FirstOrDefault();
+        if (existingPrice is not null)
+        {
+            return existingPrice.Id;
+        }
+
+        Dictionary<string, string> priceMetadata = metadata is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(metadata);
+
+        priceMetadata["lookupKey"] = lookupKey;
+
+        Price price = await priceService.CreateAsync(
+            new PriceCreateOptions
+            {
+                Currency = currency,
+                UnitAmount = unitAmount,
+                LookupKey = lookupKey,
+                ProductData = new PriceProductDataOptions
+                {
+                    Name = productName,
+                    Metadata = priceMetadata,
+                },
+                Metadata = priceMetadata,
+            },
+            cancellationToken: cancellationToken);
+
+        return price.Id;
+    }
+
     public Stripe.Event? ConstructWebhookEvent(string payload, string stripeSignatureHeader)
     {
         if (string.IsNullOrEmpty(_webhookSecret))

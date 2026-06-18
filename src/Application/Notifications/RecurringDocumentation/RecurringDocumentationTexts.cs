@@ -17,15 +17,15 @@ public static class RecurringDocumentationTexts
     public static string BuildNotificationText(DateTime? referenceUtc = null)
     {
         DateTime reference = referenceUtc ?? DateTime.UtcNow;
-        string monthLabel = FormatRomaniaMonth(reference);
+        string monthLabel = FormatPreviousRomaniaMonth(reference);
         string checklist = string.Join(", ", RequiredDocuments);
-        return $"Este începutul lunii ({monthLabel}). Te rugăm să încarci documentația recurentă: {checklist}.";
+        return $"Este începutul lunii. Te rugăm să încarci documentația recurentă pentru {monthLabel}: {checklist}.";
     }
 
     public static string BuildPushNotificationText(DateTime? referenceUtc = null)
     {
         DateTime reference = referenceUtc ?? DateTime.UtcNow;
-        string monthLabel = FormatRomaniaMonth(reference);
+        string monthLabel = FormatPreviousRomaniaMonth(reference);
         return $"Te rugăm să încarci documentele pentru {monthLabel}.";
     }
 
@@ -37,21 +37,21 @@ public static class RecurringDocumentationTexts
 
     public static (int Year, int Month) GetRomaniaYearMonth(DateTime utcNow)
     {
-        var romania = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
+        TimeZoneInfo romania = GetRomaniaTimeZone();
         DateTime local = TimeZoneInfo.ConvertTimeFromUtc(utcNow, romania);
         return (local.Year, local.Month);
     }
 
     public static bool IsFirstDayOfMonthInRomania(DateTime utcNow)
     {
-        var romania = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
+        TimeZoneInfo romania = GetRomaniaTimeZone();
         DateTime local = TimeZoneInfo.ConvertTimeFromUtc(utcNow, romania);
         return local.Day == 1;
     }
 
     public static (DateTime StartUtc, DateTime EndUtc) GetRomaniaMonthBoundsUtc(DateTime referenceUtc)
     {
-        var romania = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
+        TimeZoneInfo romania = GetRomaniaTimeZone();
         DateTime local = TimeZoneInfo.ConvertTimeFromUtc(referenceUtc, romania);
         var startLocal = new DateTime(local.Year, local.Month, 1, 0, 0, 0, DateTimeKind.Unspecified);
         DateTime endLocal = startLocal.AddMonths(1);
@@ -60,10 +60,27 @@ public static class RecurringDocumentationTexts
             TimeZoneInfo.ConvertTimeToUtc(endLocal, romania));
     }
 
-    private static string FormatRomaniaMonth(DateTime utcNow)
+    private static string FormatPreviousRomaniaMonth(DateTime utcNow)
     {
-        var romania = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
+        TimeZoneInfo romania = GetRomaniaTimeZone();
         DateTime local = TimeZoneInfo.ConvertTimeFromUtc(utcNow, romania);
-        return local.ToString("MMMM yyyy", new CultureInfo("ro-RO"));
+        DateTime previousMonth = local.AddMonths(-1);
+        return previousMonth.ToString("MMMM yyyy", new CultureInfo("ro-RO"));
+    }
+
+    private static TimeZoneInfo GetRomaniaTimeZone()
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("Europe/Bucharest");
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
+        }
     }
 }

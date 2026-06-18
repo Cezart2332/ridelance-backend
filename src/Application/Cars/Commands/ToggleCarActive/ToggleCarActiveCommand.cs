@@ -44,6 +44,13 @@ internal sealed class ToggleCarActiveCommandHandler(
                 "Anunțul trebuie aprobat de administrator înainte de a fi activat."));
         }
 
+        if (userResult.Value.Role == UserRole.CarPoster && car.PaymentStatus != CarListingPaymentStatus.Paid)
+        {
+            return Result.Failure<bool>(Error.Problem(
+                "Car.PaymentRequired",
+                "Anunțul trebuie să aibă plata activă înainte de a fi vizibil."));
+        }
+
         car.Active = !car.Active;
         car.UpdatedAtUtc = DateTime.UtcNow;
         await context.SaveChangesAsync(cancellationToken);

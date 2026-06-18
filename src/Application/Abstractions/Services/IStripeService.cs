@@ -31,6 +31,29 @@ public interface IStripeService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Finds an active recurring price by lookup key or creates it in the configured Stripe account.
+    /// </summary>
+    Task<string> GetOrCreateRecurringPriceAsync(
+        string lookupKey,
+        string productName,
+        long unitAmount,
+        string currency,
+        string interval,
+        IReadOnlyDictionary<string, string>? metadata = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finds an active one-time price by lookup key or creates it in the configured Stripe account.
+    /// </summary>
+    Task<string> GetOrCreateOneTimePriceAsync(
+        string lookupKey,
+        string productName,
+        long unitAmount,
+        string currency,
+        IReadOnlyDictionary<string, string>? metadata = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Constructs a validated Stripe webhook event from the raw payload.
     /// Returns null if signature is invalid.
     /// </summary>

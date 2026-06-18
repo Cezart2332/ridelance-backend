@@ -10,4 +10,6 @@ public sealed record SendRecurringDocumentationNotificationsCommand(
 public sealed record SendRecurringDocumentationNotificationsResult(
     int UsersNotified,
     int InAppCreated,
-    int PushSent);
+    int PushSent,
+    int RecurringDocumentationCreated = 0,
+    int TaxThresholdCreated = 0);

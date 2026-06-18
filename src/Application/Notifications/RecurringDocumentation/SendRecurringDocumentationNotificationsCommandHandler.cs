@@ -1,7 +1,11 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
+using Application.Notifications.TaxThreshold;
+using Application.PfaRegistrations;
+using Domain.Documents;
 using Domain.Notifications;
+using Domain.PfaRegistrations;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -28,6 +32,7 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
 
         (DateTime monthStartUtc, DateTime monthEndUtc) =
             RecurringDocumentationTexts.GetRomaniaMonthBoundsUtc(nowUtc);
+        (int taxYear, _) = RecurringDocumentationTexts.GetRomaniaYearMonth(nowUtc);
         string notificationText = RecurringDocumentationTexts.BuildNotificationText(nowUtc);
         Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase)
             ? parsedBase
@@ -53,53 +58,102 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
         int inAppCreated = 0;
         int pushSent = 0;
         int usersNotified = 0;
+        int recurringDocumentationCreated = 0;
+        int taxThresholdCreated = 0;
 
         foreach (Guid userId in userIds)
         {
-            if (!request.ForceResend)
-            {
-                bool alreadySent = await context.Notifications.AnyAsync(
-                    n => n.UserId == userId &&
-                         n.Type == NotificationTypes.RecurringDocumentation &&
-                         n.CreatedAtUtc >= monthStartUtc &&
-                         n.CreatedAtUtc < monthEndUtc,
-                    cancellationToken);
+            bool notifiedThisUser = false;
+            List<PushSubscription>? subscriptions = null;
 
-                if (alreadySent)
+            bool documentationAlreadySent = !request.ForceResend && await context.Notifications.AnyAsync(
+                n => n.UserId == userId &&
+                     n.Type == NotificationTypes.RecurringDocumentation &&
+                     n.CreatedAtUtc >= monthStartUtc &&
+                     n.CreatedAtUtc < monthEndUtc,
+                cancellationToken);
+
+            if (!documentationAlreadySent)
+            {
+                var notification = new Notification
                 {
-                    continue;
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    Text = notificationText,
+                    Type = NotificationTypes.RecurringDocumentation,
+                    IsRead = false,
+                    CreatedAtUtc = nowUtc,
+                };
+
+                context.Notifications.Add(notification);
+                inAppCreated++;
+                recurringDocumentationCreated++;
+                notifiedThisUser = true;
+
+                subscriptions = await GetPushSubscriptionsAsync(userId, cancellationToken);
+
+                string pushBody = RecurringDocumentationTexts.BuildPushNotificationText(nowUtc);
+
+                foreach (PushSubscription subscription in subscriptions)
+                {
+                    await webPushService.SendPushNotificationAsync(
+                        subscription,
+                        RecurringDocumentationTexts.PushTitle,
+                        pushBody,
+                        deepLink,
+                        cancellationToken);
+                    pushSent++;
                 }
             }
 
-            var notification = new Notification
+            bool taxThresholdAlreadySent = !request.ForceResend && await context.Notifications.AnyAsync(
+                n => n.UserId == userId &&
+                     n.Type == NotificationTypes.TaxThreshold &&
+                     n.CreatedAtUtc >= monthStartUtc &&
+                     n.CreatedAtUtc < monthEndUtc,
+                cancellationToken);
+
+            if (!taxThresholdAlreadySent)
             {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                Text = notificationText,
-                Type = NotificationTypes.RecurringDocumentation,
-                IsRead = false,
-                CreatedAtUtc = nowUtc,
-            };
+                PfaTaxCalculator.TaxThresholdProgress? progress =
+                    await BuildTaxThresholdProgressAsync(userId, taxYear, cancellationToken);
 
-            context.Notifications.Add(notification);
-            inAppCreated++;
-            usersNotified++;
+                if (progress is not null)
+                {
+                    var taxNotification = new Notification
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = userId,
+                        Text = TaxThresholdTexts.BuildNotificationText(taxYear, progress),
+                        Type = NotificationTypes.TaxThreshold,
+                        IsRead = false,
+                        CreatedAtUtc = nowUtc,
+                    };
 
-            List<PushSubscription> subscriptions = await context.PushSubscriptions
-                .Where(s => s.UserId == userId)
-                .ToListAsync(cancellationToken);
+                    context.Notifications.Add(taxNotification);
+                    inAppCreated++;
+                    taxThresholdCreated++;
+                    notifiedThisUser = true;
 
-            string pushBody = RecurringDocumentationTexts.BuildPushNotificationText(nowUtc);
+                    subscriptions ??= await GetPushSubscriptionsAsync(userId, cancellationToken);
+                    string taxPushBody = TaxThresholdTexts.BuildPushNotificationText(taxYear, progress);
 
-            foreach (PushSubscription subscription in subscriptions)
+                    foreach (PushSubscription subscription in subscriptions)
+                    {
+                        await webPushService.SendPushNotificationAsync(
+                            subscription,
+                            TaxThresholdTexts.PushTitle,
+                            taxPushBody,
+                            deepLink,
+                            cancellationToken);
+                        pushSent++;
+                    }
+                }
+            }
+
+            if (notifiedThisUser)
             {
-                await webPushService.SendPushNotificationAsync(
-                    subscription,
-                    RecurringDocumentationTexts.PushTitle,
-                    pushBody,
-                    deepLink,
-                    cancellationToken);
-                pushSent++;
+                usersNotified++;
             }
         }
 
@@ -108,6 +162,67 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        return new SendRecurringDocumentationNotificationsResult(usersNotified, inAppCreated, pushSent);
+        return new SendRecurringDocumentationNotificationsResult(
+            usersNotified,
+            inAppCreated,
+            pushSent,
+            recurringDocumentationCreated,
+            taxThresholdCreated);
+    }
+
+    private async Task<List<PushSubscription>> GetPushSubscriptionsAsync(
+        Guid userId,
+        CancellationToken cancellationToken) =>
+        await context.PushSubscriptions
+            .Where(s => s.UserId == userId)
+            .ToListAsync(cancellationToken);
+
+    private async Task<PfaTaxCalculator.TaxThresholdProgress?> BuildTaxThresholdProgressAsync(
+        Guid userId,
+        int year,
+        CancellationToken cancellationToken)
+    {
+        PfaRegistration? pfa = await context.PfaRegistrations
+            .AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .OrderByDescending(p => p.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (pfa is null)
+        {
+            return null;
+        }
+
+        List<PfaMonthlyIncome> incomes = await context.PfaMonthlyIncomes
+            .AsNoTracking()
+            .Where(i => i.PfaRegistrationId == pfa.Id && i.Year == year)
+            .ToListAsync(cancellationToken);
+
+        decimal totalIncome = incomes.Sum(i => i.ComputeVenitTotal());
+
+        var expensesWithStatus = await context.DeductibleExpenses
+            .AsNoTracking()
+            .Where(e => e.PfaRegistrationId == pfa.Id && e.Year == year)
+            .Join(
+                context.Documents.AsNoTracking(),
+                e => e.DocumentId,
+                d => d.Id,
+                (e, d) => new
+                {
+                    e.AmountRon,
+                    d.Status
+                })
+            .ToListAsync(cancellationToken);
+
+        decimal verifiedExpenses = expensesWithStatus
+            .Where(e => e.Status == DocumentStatus.Verified)
+            .Sum(e => e.AmountRon ?? 0m);
+
+        if (totalIncome <= 0m && verifiedExpenses <= 0m)
+        {
+            return null;
+        }
+
+        return PfaTaxCalculator.ComputeThresholdProgress(totalIncome, verifiedExpenses, year);
     }
 }

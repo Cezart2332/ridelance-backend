@@ -22,6 +22,22 @@ internal sealed class CreatePublicServiceCheckoutCommandHandler(
             return Result.Failure<string>(Error.Problem("Service.InvalidKey", "Serviciul selectat nu este disponibil."));
         }
 
+        if (command.ServiceKey.Equals("infiintare_pfa", StringComparison.OrdinalIgnoreCase))
+        {
+            priceId = await stripeService.GetOrCreateOneTimePriceAsync(
+                "ridelance_infiintare_pfa_public_450_ron",
+                "Infiintare PFA RIDElance - serviciu separat",
+                45000,
+                "ron",
+                new Dictionary<string, string>
+                {
+                    ["app"] = "ridelance",
+                    ["kind"] = "public_pfa_setup",
+                    ["billing_unit"] = "one_time",
+                },
+                cancellationToken);
+        }
+
         if (string.IsNullOrWhiteSpace(priceId))
         {
             return Result.Failure<string>(Error.Problem("Stripe.PriceMissing", "Configurația Stripe pentru acest serviciu lipsește."));

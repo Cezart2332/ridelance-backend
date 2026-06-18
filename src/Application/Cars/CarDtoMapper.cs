@@ -31,6 +31,8 @@ internal static class CarDtoMapper
             car.Active,
             car.ListingSource.ToString(),
             car.ApprovalStatus.ToString(),
+            car.PaymentStatus.ToString(),
+            car.PaidAtUtc,
             postedByAdmin,
             car.Images.OrderBy(i => i.DisplayOrder)
                 .Select(i => new CarImageDto(i.Id, i.Url, i.DisplayOrder))

@@ -80,7 +80,13 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
                 .Select(month =>
                 {
                     PfaMonthlyIncome? row = yearIncomes.FirstOrDefault(i => i.Month == month);
-                    return new MonthlyRevenuePointDto(month, row?.ComputeVenitTotal() ?? 0);
+                    return new MonthlyRevenuePointDto(
+                        month,
+                        row?.ComputeVenitTotal() ?? 0,
+                        row?.VenitCash ?? 0,
+                        row?.VenitCard ?? 0,
+                        row?.VenitBolt ?? 0,
+                        row?.VenitUber ?? 0);
                 })
                 .ToList();
         }
