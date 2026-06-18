@@ -7,7 +7,7 @@ public interface IStripeService
 {
     /// <summary>
     /// Creates a Stripe Checkout Session for a one-time payment or subscription.
-    /// Returns the session URL to redirect the user.
+    /// Returns the session client secret for embedded checkout.
     /// </summary>
 #pragma warning disable CA1054 // URIs should not be hardcoded
     Task<string> CreateCheckoutSessionAsync(
@@ -21,6 +21,13 @@ public interface IStripeService
         IReadOnlyDictionary<string, string>? sessionMetadata = null,
         CancellationToken cancellationToken = default);
 #pragma warning restore CA1054
+
+    /// <summary>
+    /// Retrieves the status and customer details of an existing Stripe Checkout Session.
+    /// </summary>
+    Task<(string Status, string? CustomerEmail)> GetSessionStatusAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates or retrieves a Stripe Customer for the user.

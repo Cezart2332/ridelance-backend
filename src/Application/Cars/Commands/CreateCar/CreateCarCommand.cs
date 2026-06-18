@@ -57,10 +57,9 @@ internal sealed class CreateCarCommandHandler(
             status = CarStatus.Available;
         }
 
-        if (!Enum.TryParse<CarListingSource>(command.ListingSource, ignoreCase: true, out CarListingSource listingSource))
-        {
-            listingSource = CarListingSource.Ridelance;
-        }
+        CarListingSource listingSource = user.Role == UserRole.Admin
+            ? CarListingSource.Ridelance
+            : CarListingSource.External;
 
         bool isAdmin = user.Role == UserRole.Admin;
         bool requiresPayment = user.Role == UserRole.CarPoster;

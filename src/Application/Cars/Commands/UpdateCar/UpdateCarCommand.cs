@@ -66,10 +66,6 @@ internal sealed class UpdateCarCommandHandler(
             status = CarStatus.Available;
         }
 
-        if (!Enum.TryParse<CarListingSource>(command.ListingSource, ignoreCase: true, out CarListingSource listingSource))
-        {
-            listingSource = car.ListingSource;
-        }
 
         bool isAdmin = userResult.Value.Role == UserRole.Admin;
 
@@ -89,7 +85,6 @@ internal sealed class UpdateCarCommandHandler(
         car.BoltCategories = command.BoltCategories;
         car.Badges = command.Badges;
         car.Description = command.Description;
-        car.ListingSource = listingSource;
 
         if (isAdmin)
         {
