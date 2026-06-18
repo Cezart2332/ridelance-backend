@@ -41,6 +41,10 @@ public sealed class Car : Entity
     public Guid? PostedByUserId { get; set; }
     public CarListingSource ListingSource { get; set; } = CarListingSource.Ridelance;
     public CarApprovalStatus ApprovalStatus { get; set; } = CarApprovalStatus.Approved;
+    public CarListingPaymentStatus PaymentStatus { get; set; } = CarListingPaymentStatus.NotRequired;
+    public string? StripeCheckoutSessionId { get; set; }
+    public string? StripeSubscriptionId { get; set; }
+    public DateTime? PaidAtUtc { get; set; }
 
     // Audit
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

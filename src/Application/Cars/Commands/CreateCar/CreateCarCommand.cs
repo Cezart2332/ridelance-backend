@@ -63,6 +63,7 @@ internal sealed class CreateCarCommandHandler(
         }
 
         bool isAdmin = user.Role == UserRole.Admin;
+        bool requiresPayment = user.Role == UserRole.CarPoster;
         var car = new Car
         {
             Id = Guid.NewGuid(),
@@ -85,6 +86,7 @@ internal sealed class CreateCarCommandHandler(
             PostedByUserId = user.Id,
             ListingSource = listingSource,
             ApprovalStatus = isAdmin ? CarApprovalStatus.Approved : CarApprovalStatus.Pending,
+            PaymentStatus = requiresPayment ? CarListingPaymentStatus.Pending : CarListingPaymentStatus.NotRequired,
             Active = isAdmin && command.Active,
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow,

@@ -3,6 +3,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
 using Application.Abstractions.Services;
+using Domain.Cars;
 using Domain.Notifications;
 using Domain.Payments;
 using Domain.Users;
@@ -85,6 +86,13 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
         string mode = session.Mode; // "payment" or "subscription"
 
+        if (session.Metadata?.GetValueOrDefault("paymentKind") == "car_listing" ||
+            Guid.TryParse(session.Metadata?.GetValueOrDefault("carId"), out _))
+        {
+            await HandleCarListingCheckoutCompleted(session, userId, ct);
+            return;
+        }
+
         if (mode == "payment")
         {
             // One-time payment completed (e.g. Înființare PFA)
@@ -121,10 +129,10 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
             DateTime firstBilling = GetNextMondayBillingDateUtc();
 
-            // Grant dashboard access immediately only if it's currently Monday at or after 15:00 Romania time.
-            // Otherwise the Monday 15:00 background job will flip the flag.
-            bool grantAccessNow = IsOnOrAfterMondayFifteenOClockRomania();
-            DateTime? accessGrantedUtc = grantAccessNow ? DateTime.UtcNow : null;
+            // The account is usable immediately after the subscription checkout.
+            // Monday 15:00 remains the automatic billing anchor, not an access gate.
+            bool grantAccessNow = true;
+            DateTime? accessGrantedUtc = DateTime.UtcNow;
 
             // Check if subscription already exists for this user (e.g. upgrade)
             UserSubscription? existing = await context.UserSubscriptions
@@ -204,7 +212,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
         {
             decimal amountLei = (session.AmountTotal ?? 0) / 100m;
             string description = mode == "payment"
-                ? BuildDescriptionFromSession(session)
+                ? BuildOneTimeDescription(session)
                 : $"Abonament săptămânal RIDElance — Plan {session.Metadata?.GetValueOrDefault("customMetadata") ?? "Start"}";
 
             string mjml = ServiceOrderConfirmationEmail.BuildMjml(
@@ -228,10 +236,85 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
             // Send in-app and push notifications
             string descriptionForNotification = mode == "payment"
-                ? BuildDescriptionFromSession(session)
+                ? BuildOneTimeDescription(session)
                 : $"Plan {session.Metadata?.GetValueOrDefault("customMetadata") ?? "Start"}";
 
             await SendPaymentNotificationsAsync(userId, descriptionForNotification, amountLei, mode, ct);
+        }
+    }
+
+    private async Task HandleCarListingCheckoutCompleted(Session session, Guid userId, CancellationToken ct)
+    {
+        if (!Guid.TryParse(session.Metadata?.GetValueOrDefault("carId"), out Guid carId))
+        {
+            return;
+        }
+
+        Car? car = await context.Cars
+            .FirstOrDefaultAsync(c => c.Id == carId && c.PostedByUserId == userId, ct);
+
+        if (car is null)
+        {
+            return;
+        }
+
+        car.PaymentStatus = CarListingPaymentStatus.Paid;
+        car.StripeCheckoutSessionId = session.Id;
+        car.StripeSubscriptionId = session.SubscriptionId;
+        car.PaidAtUtc = DateTime.UtcNow;
+        car.Active = car.ApprovalStatus == CarApprovalStatus.Approved;
+        car.UpdatedAtUtc = DateTime.UtcNow;
+
+        bool paymentRecordExists = await context.PaymentRecords
+            .AnyAsync(p => p.StripeSessionId == session.Id, ct);
+
+        if (!paymentRecordExists)
+        {
+            context.PaymentRecords.Add(new Domain.Payments.PaymentRecord
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                PaymentType = PaymentType.Subscription,
+                Status = PaymentStatus.Succeeded,
+                AmountBani = session.AmountTotal ?? 0,
+                Description = $"Publicare mașină RIDElance — {car.Brand} {car.Model}",
+                StripePaymentId = session.PaymentIntentId,
+                StripeSessionId = session.Id,
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+        }
+
+        await context.SaveChangesAsync(ct);
+
+        User? user = await context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+        if (user is not null)
+        {
+            decimal amountLei = (session.AmountTotal ?? 0) / 100m;
+            string description = $"Publicare mașină RIDElance — {car.Brand} {car.Model}";
+
+            try
+            {
+                string mjml = ServiceOrderConfirmationEmail.BuildMjml(
+                    $"{user.FirstName} {user.LastName}",
+                    description,
+                    amountLei);
+                string html = mjmlRenderer.Render(mjml);
+
+                await emailService.SendEmailAsync(
+                    user.Email,
+                    ServiceOrderConfirmationEmail.Subject,
+                    html,
+                    ct);
+            }
+            catch
+            {
+                // Ignore email failure
+            }
+
+            await SendPaymentNotificationsAsync(userId, description, amountLei, "payment", ct);
         }
     }
 
@@ -284,6 +367,64 @@ internal sealed class HandleStripeWebhookCommandHandler(
         string? stripeSubId = invoice.Lines?.FirstOrDefault()?.SubscriptionId;
         if (string.IsNullOrEmpty(stripeSubId))
         {
+            return;
+        }
+
+        Car? paidCar = await context.Cars
+            .FirstOrDefaultAsync(c => c.StripeSubscriptionId == stripeSubId, ct);
+
+        if (paidCar is not null)
+        {
+            paidCar.PaymentStatus = CarListingPaymentStatus.Paid;
+            paidCar.Active = paidCar.ApprovalStatus == CarApprovalStatus.Approved;
+            paidCar.UpdatedAtUtc = DateTime.UtcNow;
+
+            var carPaymentRecord = new Domain.Payments.PaymentRecord
+            {
+                Id = Guid.NewGuid(),
+                UserId = paidCar.PostedByUserId!.Value,
+                PaymentType = PaymentType.Subscription,
+                Status = PaymentStatus.Succeeded,
+                AmountBani = invoice.AmountPaid,
+                Description = $"Publicare mașină RIDElance — {paidCar.Brand} {paidCar.Model}",
+                StripePaymentId = invoice.Payments?.FirstOrDefault()?.Payment?.PaymentIntentId,
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+            context.PaymentRecords.Add(carPaymentRecord);
+
+            await context.SaveChangesAsync(ct);
+
+            User? carPoster = await context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == paidCar.PostedByUserId!.Value, ct);
+
+            if (carPoster is not null)
+            {
+                decimal amountLei = invoice.AmountPaid / 100m;
+                string description = $"Publicare mașină RIDElance — {paidCar.Brand} {paidCar.Model}";
+
+                try
+                {
+                    string mjml = ServiceOrderConfirmationEmail.BuildMjml(
+                        $"{carPoster.FirstName} {carPoster.LastName}",
+                        description,
+                        amountLei);
+                    string html = mjmlRenderer.Render(mjml);
+
+                    await emailService.SendEmailAsync(
+                        carPoster.Email,
+                        ServiceOrderConfirmationEmail.Subject,
+                        html,
+                        ct);
+                }
+                catch
+                {
+                    // Ignore email failure
+                }
+
+                await SendPaymentNotificationsAsync(paidCar.PostedByUserId.Value, description, amountLei, "payment", ct);
+            }
+
             return;
         }
 
@@ -374,6 +515,31 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return;
         }
 
+        Car? car = await context.Cars
+            .FirstOrDefaultAsync(c => c.StripeSubscriptionId == stripeSubId, ct);
+
+        if (car is not null)
+        {
+            car.PaymentStatus = CarListingPaymentStatus.PastDue;
+            car.Active = false;
+            car.UpdatedAtUtc = DateTime.UtcNow;
+
+            context.PaymentRecords.Add(new Domain.Payments.PaymentRecord
+            {
+                Id = Guid.NewGuid(),
+                UserId = car.PostedByUserId!.Value,
+                PaymentType = PaymentType.Subscription,
+                Status = PaymentStatus.Failed,
+                AmountBani = invoice.AmountDue,
+                Description = $"Publicare mașină RIDElance — plată eșuată pentru {car.Brand} {car.Model}",
+                StripePaymentId = invoice.Payments?.FirstOrDefault()?.Payment?.PaymentIntentId,
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+
+            await context.SaveChangesAsync(ct);
+            return;
+        }
+
         UserSubscription? sub = await context.UserSubscriptions
             .FirstOrDefaultAsync(s => s.StripeSubscriptionId == stripeSubId, ct);
 
@@ -407,6 +573,19 @@ internal sealed class HandleStripeWebhookCommandHandler(
     {
         if (e.Data.Object is not Subscription stripeSubscription)
         {
+            return;
+        }
+
+        Car? car = await context.Cars
+            .FirstOrDefaultAsync(c => c.StripeSubscriptionId == stripeSubscription.Id, ct);
+
+        if (car is not null)
+        {
+            car.PaymentStatus = CarListingPaymentStatus.Cancelled;
+            car.Active = false;
+            car.UpdatedAtUtc = DateTime.UtcNow;
+
+            await context.SaveChangesAsync(ct);
             return;
         }
 
@@ -453,18 +632,6 @@ internal sealed class HandleStripeWebhookCommandHandler(
         return TimeZoneInfo.ConvertTimeToUtc(nextMondayRomania, romaniaZone);
     }
 
-    /// <summary>
-    /// Returns true if it is currently Monday at or after 15:00 Romania time.
-    /// Used to immediately grant dashboard access if a user pays at the right moment.
-    /// </summary>
-    private static bool IsOnOrAfterMondayFifteenOClockRomania()
-    {
-        var romaniaZone = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
-        DateTime nowRomania = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, romaniaZone);
-        return nowRomania.DayOfWeek == DayOfWeek.Monday
-            && nowRomania.TimeOfDay >= TimeSpan.FromHours(15);
-    }
-
     private static SubscriptionPlan ParsePlan(string metadata)
     {
         // metadata format: "plan:solo|billingAnchor:1234567"
@@ -490,6 +657,30 @@ internal sealed class HandleStripeWebhookCommandHandler(
     {
         return session.LineItems?.Data?.FirstOrDefault()?.Description
             ?? "Serviciu individual RIDElance";
+    }
+
+    private static string BuildOneTimeDescription(Session session)
+    {
+        string? metadata = session.Metadata?.GetValueOrDefault("customMetadata");
+        if (!string.IsNullOrWhiteSpace(metadata))
+        {
+            if (metadata.Contains("infiintare_pfa", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Înființare PFA";
+            }
+
+            if (metadata.Contains("sediu_social", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Găzduire Sediu Social";
+            }
+
+            if (metadata.Contains("start_ride", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Start Ride";
+            }
+        }
+
+        return BuildDescriptionFromSession(session);
     }
 
     private async Task SendPaymentNotificationsAsync(Guid userId, string description, decimal amountLei, string mode, CancellationToken ct)

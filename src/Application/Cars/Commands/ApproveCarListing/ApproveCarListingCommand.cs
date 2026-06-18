@@ -38,6 +38,14 @@ internal sealed class ApproveCarListingCommandHandler(
 
         if (command.Approve)
         {
+            if (car.PaymentStatus != CarListingPaymentStatus.NotRequired &&
+                car.PaymentStatus != CarListingPaymentStatus.Paid)
+            {
+                return Result.Failure(Error.Problem(
+                    "Car.PaymentRequired",
+                    "Anunțul trebuie plătit înainte de aprobare."));
+            }
+
             car.ApprovalStatus = CarApprovalStatus.Approved;
             car.Active = true;
         }

@@ -14,6 +14,19 @@ public static class PfaTaxCalculator
         decimal TotalTax,
         decimal NetIncome);
 
+    public sealed record TaxThresholdProgress(
+        decimal Profit,
+        decimal CasFirstThreshold,
+        decimal CasSecondThreshold,
+        decimal CassFirstThreshold,
+        decimal CassMaximumThreshold,
+        decimal RemainingToNextCasThreshold,
+        decimal RemainingToNextCassThreshold,
+        bool HasReachedCasFirstThreshold,
+        bool HasReachedCasSecondThreshold,
+        bool HasReachedCassFirstThreshold,
+        bool HasReachedCassMaximumThreshold);
+
     /// <summary>
     /// Computes all PFA taxes for the given year.
     /// </summary>
@@ -72,5 +85,52 @@ public static class PfaTaxCalculator
             IncomeTax: Math.Round(incomeTax, 2),
             TotalTax: Math.Round(totalTax, 2),
             NetIncome: Math.Round(netIncome, 2));
+    }
+
+    public static TaxThresholdProgress ComputeThresholdProgress(
+        decimal annualIncome,
+        decimal deductibleExpenses,
+        int year)
+    {
+        decimal grossSalary = year >= 2025 ? 4050m : 3300m;
+        decimal profit = Math.Max(0m, annualIncome - deductibleExpenses);
+
+        decimal casFirstThreshold = grossSalary * 12m;
+        decimal casSecondThreshold = grossSalary * 24m;
+        decimal cassFirstThreshold = grossSalary * 6m;
+        decimal cassMaximumThreshold = grossSalary * 72m;
+
+        decimal remainingToNextCasThreshold = 0m;
+        if (profit < casFirstThreshold)
+        {
+            remainingToNextCasThreshold = casFirstThreshold - profit;
+        }
+        else if (profit < casSecondThreshold)
+        {
+            remainingToNextCasThreshold = casSecondThreshold - profit;
+        }
+
+        decimal remainingToNextCassThreshold = 0m;
+        if (profit < cassFirstThreshold)
+        {
+            remainingToNextCassThreshold = cassFirstThreshold - profit;
+        }
+        else if (profit < cassMaximumThreshold)
+        {
+            remainingToNextCassThreshold = cassMaximumThreshold - profit;
+        }
+
+        return new TaxThresholdProgress(
+            Profit: Math.Round(profit, 2),
+            CasFirstThreshold: Math.Round(casFirstThreshold, 2),
+            CasSecondThreshold: Math.Round(casSecondThreshold, 2),
+            CassFirstThreshold: Math.Round(cassFirstThreshold, 2),
+            CassMaximumThreshold: Math.Round(cassMaximumThreshold, 2),
+            RemainingToNextCasThreshold: Math.Round(remainingToNextCasThreshold, 2),
+            RemainingToNextCassThreshold: Math.Round(remainingToNextCassThreshold, 2),
+            HasReachedCasFirstThreshold: profit >= casFirstThreshold,
+            HasReachedCasSecondThreshold: profit >= casSecondThreshold,
+            HasReachedCassFirstThreshold: profit >= cassFirstThreshold,
+            HasReachedCassMaximumThreshold: profit >= cassMaximumThreshold);
     }
 }

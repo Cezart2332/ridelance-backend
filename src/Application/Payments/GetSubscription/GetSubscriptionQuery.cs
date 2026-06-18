@@ -6,16 +6,15 @@ namespace Application.Payments.GetSubscription;
 public sealed record GetSubscriptionQuery(Guid UserId) : IQuery<SubscriptionResponse?>;
 
 public sealed record SubscriptionResponse(
-    Guid Id,
-    string Plan,
-    string Status,
+    Guid? Id,
+    string? Plan,
+    string? Status,
     string? StripeSubscriptionId,
-    DateTime FirstBillingDateUtc,
+    DateTime? FirstBillingDateUtc,
     DateTime? NextBillingDateUtc,
-    DateTime CreatedAtUtc,
+    DateTime? CreatedAtUtc,
     bool DashboardAccessGranted,
     string? PfaStatus = null,
     string? PfaRegistrationType = null,
     string? PendingPlan = null,
     bool HasPaidInfiintare = false);
-

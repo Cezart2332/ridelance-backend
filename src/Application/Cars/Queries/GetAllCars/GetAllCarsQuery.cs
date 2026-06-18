@@ -25,6 +25,8 @@ public sealed record CarDto(
     bool Active,
     string ListingSource,
     string ApprovalStatus,
+    string PaymentStatus,
+    DateTime? PaidAtUtc,
     bool PostedByAdmin,
     List<CarImageDto> Images,
     DateTime CreatedAtUtc,

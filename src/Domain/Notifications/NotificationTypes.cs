@@ -3,6 +3,7 @@ namespace Domain.Notifications;
 public static class NotificationTypes
 {
     public const string RecurringDocumentation = "RecurringDocumentation";
+    public const string TaxThreshold = "TaxThreshold";
     public const string ChatRoomMessage = "ChatRoomMessage";
     public const string PfaStatusUpdate = "PfaStatusUpdate";
     public const string OnboardingStarted = "OnboardingStarted";

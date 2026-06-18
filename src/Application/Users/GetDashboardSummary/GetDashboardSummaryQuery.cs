@@ -51,7 +51,13 @@ public sealed record DashboardSummaryResponse(
     decimal YtdNetIncome,
     List<YtdExpenseDto> YtdExpenses);
 
-public sealed record MonthlyRevenuePointDto(int Month, decimal VenitTotal);
+public sealed record MonthlyRevenuePointDto(
+    int Month,
+    decimal VenitTotal,
+    decimal VenitCash,
+    decimal VenitCard,
+    decimal VenitBolt,
+    decimal VenitUber);
 
 public sealed record RecentDocumentDto(
     Guid Id,

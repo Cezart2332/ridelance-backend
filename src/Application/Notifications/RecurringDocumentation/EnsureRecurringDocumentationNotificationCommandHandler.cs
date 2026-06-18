@@ -27,7 +27,7 @@ internal sealed class EnsureRecurringDocumentationNotificationCommandHandler(
             return Result.Failure<EnsureRecurringDocumentationNotificationResult>(sendResult.Error);
         }
 
-        if (sendResult.Value.InAppCreated == 0)
+        if (sendResult.Value.RecurringDocumentationCreated == 0)
         {
             return new EnsureRecurringDocumentationNotificationResult(false, null, false);
         }

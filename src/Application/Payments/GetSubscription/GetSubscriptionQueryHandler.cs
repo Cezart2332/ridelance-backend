@@ -13,6 +13,25 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
         GetSubscriptionQuery query,
         CancellationToken cancellationToken)
     {
+        Domain.PfaRegistrations.PfaRegistration? pfa = await context.PfaRegistrations
+            .AsNoTracking()
+            .Where(p => p.UserId == query.UserId)
+            .OrderByDescending(p => p.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        bool hasPaidInfiintare = await context.PaymentRecords
+            .AnyAsync(r => r.UserId == query.UserId &&
+                           r.PaymentType == PaymentType.OneTime &&
+                           r.Status == PaymentStatus.Succeeded &&
+                           (r.Description.Contains("pfa") ||
+                            r.Description.Contains("înființare") ||
+                            r.Description.Contains("infiintare") ||
+                            r.Description.Contains("Serviciu") ||
+                            r.AmountBani == 30000 ||
+                            r.AmountBani == 45000 ||
+                            r.AmountBani == 79900),
+                      cancellationToken);
+
         UserSubscription? sub = await context.UserSubscriptions
             .Where(s => s.UserId == query.UserId)
             .OrderByDescending(s => s.CreatedAtUtc)
@@ -20,7 +39,19 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
 
         if (sub is null)
         {
-            return Result.Success<SubscriptionResponse?>(null);
+            return Result.Success<SubscriptionResponse?>(new SubscriptionResponse(
+                null,
+                null,
+                "NoSubscription",
+                null,
+                null,
+                null,
+                null,
+                false,
+                pfa?.Status.ToString(),
+                pfa?.RegistrationType.ToString(),
+                null,
+                hasPaidInfiintare));
         }
 
         // Auto Catch-Up for local development/testing where NextBillingDateUtc is in the past
@@ -66,25 +97,6 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
                 await context.SaveChangesAsync(cancellationToken);
             }
         }
-
-        Domain.PfaRegistrations.PfaRegistration? pfa = await context.PfaRegistrations
-            .AsNoTracking()
-            .Where(p => p.UserId == query.UserId)
-            .OrderByDescending(p => p.CreatedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        bool hasPaidInfiintare = await context.PaymentRecords
-            .AnyAsync(r => r.UserId == query.UserId &&
-                           r.PaymentType == PaymentType.OneTime &&
-                           r.Status == PaymentStatus.Succeeded &&
-                           (r.Description.Contains("pfa") ||
-                            r.Description.Contains("înființare") ||
-                            r.Description.Contains("infiintare") ||
-                            r.Description.Contains("Serviciu") ||
-                            r.AmountBani == 45000 ||
-                            r.AmountBani == 79900),
-                      cancellationToken);
-
 
         return Result.Success<SubscriptionResponse?>(new SubscriptionResponse(
             sub.Id,

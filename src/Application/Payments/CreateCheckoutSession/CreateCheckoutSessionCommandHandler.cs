@@ -58,8 +58,24 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             ? new Dictionary<string, string> { ["isPlanChange"] = "true" }
             : null;
 
+        string priceId = command.Mode == "payment" &&
+            command.Plan.Equals("infiintare_pfa", StringComparison.OrdinalIgnoreCase)
+                ? await stripeService.GetOrCreateOneTimePriceAsync(
+                    "ridelance_infiintare_pfa_300_ron",
+                    "Infiintare PFA RIDElance",
+                    30000,
+                    "ron",
+                    new Dictionary<string, string>
+                    {
+                        ["app"] = "ridelance",
+                        ["kind"] = "pfa_setup",
+                        ["billing_unit"] = "one_time",
+                    },
+                    cancellationToken)
+                : command.PriceId;
+
         string sessionUrl = await stripeService.CreateCheckoutSessionAsync(
-            command.PriceId,
+            priceId,
             command.Mode,
             successUrl,
             cancelUrl,
