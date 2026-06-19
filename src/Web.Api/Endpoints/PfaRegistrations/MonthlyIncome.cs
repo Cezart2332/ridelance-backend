@@ -54,5 +54,21 @@ internal sealed class MonthlyIncome : IEndpoint
         .RequireAuthorization()
         .HasPermission(Permissions.ManageClientIncome)
         .WithTags(Tags.PfaRegistrations);
+
+        app.MapPut("pfa-registrations/{id:guid}/monthly-income/process", async (
+            Guid id,
+            int year,
+            int month,
+            bool isProcessed,
+            ICommandHandler<ProcessPfaMonthlyIncomeCommand, PfaMonthlyIncomeResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            var command = new ProcessPfaMonthlyIncomeCommand(id, year, month, isProcessed);
+            Result<PfaMonthlyIncomeResponse> result = await handler.Handle(command, cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(Permissions.ManageClientIncome)
+        .WithTags(Tags.PfaRegistrations);
     }
 }

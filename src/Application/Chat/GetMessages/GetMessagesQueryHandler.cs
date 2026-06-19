@@ -59,6 +59,20 @@ internal sealed class GetMessagesQueryHandler(IApplicationDbContext context)
             return Result.Failure<ChatMessageListResponse>(ChatErrors.AccessDenied);
         }
 
+        // Mark messages from counterparty as read when chat is opened
+        List<ChatMessage> unreadMessages = await context.ChatMessages
+            .Where(m => m.ChatRoomId == query.ChatRoomId && m.SenderId != query.RequestingUserId && !m.IsRead)
+            .ToListAsync(cancellationToken);
+
+        if (unreadMessages.Count > 0)
+        {
+            foreach (ChatMessage m in unreadMessages)
+            {
+                m.IsRead = true;
+            }
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
         IQueryable<ChatMessage> messagesQuery = context.ChatMessages
             .AsNoTracking()
             .Where(m => m.ChatRoomId == query.ChatRoomId);

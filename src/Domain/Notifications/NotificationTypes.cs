@@ -10,4 +10,5 @@ public static class NotificationTypes
     public const string DocumentUploaded = "DocumentUploaded";
     public const string PaymentConfirmed = "PaymentConfirmed";
     public const string DocumentExpiringSoon = "DocumentExpiringSoon";
+    public const string MonthProcessed = "MonthProcessed";
 }

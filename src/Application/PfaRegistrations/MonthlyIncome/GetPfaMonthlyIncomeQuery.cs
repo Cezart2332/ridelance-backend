@@ -39,6 +39,7 @@ internal sealed class GetPfaMonthlyIncomeQueryHandler(
         }
 
         PfaMonthlyIncome? income = await context.PfaMonthlyIncomes
+            .Include(i => i.ProcessedByUser)
             .AsNoTracking()
             .SingleOrDefaultAsync(
                 i => i.PfaRegistrationId == query.PfaRegistrationId
@@ -59,6 +60,10 @@ internal sealed class GetPfaMonthlyIncomeQueryHandler(
                 0,
                 0,
                 0,
+                null,
+                false,
+                null,
+                null,
                 null);
         }
 
@@ -106,5 +111,9 @@ internal sealed class GetPfaMonthlyIncomeQueryHandler(
             income.VenitUber,
             income.TaxeEstimate,
             income.ComputeVenitTotal(),
-            income.UpdatedAtUtc);
+            income.UpdatedAtUtc,
+            income.IsProcessed,
+            income.ProcessedAtUtc,
+            income.ProcessedByUserId,
+            income.ProcessedByUser != null ? $"{income.ProcessedByUser.FirstName} {income.ProcessedByUser.LastName}" : null);
 }

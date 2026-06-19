@@ -1,3 +1,5 @@
+using Domain.Users;
+
 namespace Domain.PfaRegistrations;
 
 public sealed class PfaMonthlyIncome
@@ -13,8 +15,12 @@ public sealed class PfaMonthlyIncome
     public decimal TaxeEstimate { get; set; }
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
     public Guid UpdatedByUserId { get; set; }
+    public bool IsProcessed { get; set; }
+    public DateTime? ProcessedAtUtc { get; set; }
+    public Guid? ProcessedByUserId { get; set; }
 
     public PfaRegistration PfaRegistration { get; set; } = null!;
+    public User? ProcessedByUser { get; set; }
 
     public decimal ComputeVenitTotal() => VenitCash + VenitCard + VenitBolt + VenitUber;
 }

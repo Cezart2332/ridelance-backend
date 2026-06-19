@@ -3,6 +3,7 @@ using System;
 using Infrastructure.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260618124115_AddIsProcessedToMonthlyIncome")]
+    partial class AddIsProcessedToMonthlyIncome
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -952,95 +955,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("user_subscriptions", "public");
                 });
 
-            modelBuilder.Entity("Domain.PfaRegistrations.PfaActivityLog", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("ActivityType")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("activity_type");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<Guid>("PerformedByUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("performed_by_user_id");
-
-                    b.Property<Guid>("PfaRegistrationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("pfa_registration_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_pfa_activity_logs");
-
-                    b.HasIndex("PerformedByUserId")
-                        .HasDatabaseName("ix_pfa_activity_logs_performed_by_user_id");
-
-                    b.HasIndex("PfaRegistrationId")
-                        .HasDatabaseName("ix_pfa_activity_logs_pfa_registration_id");
-
-                    b.ToTable("pfa_activity_logs", "public");
-                });
-
-            modelBuilder.Entity("Domain.PfaRegistrations.PfaInternalNote", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("content");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by_user_id");
-
-                    b.Property<int>("Month")
-                        .HasColumnType("integer")
-                        .HasColumnName("month");
-
-                    b.Property<Guid>("PfaRegistrationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("pfa_registration_id");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at_utc");
-
-                    b.Property<int>("Year")
-                        .HasColumnType("integer")
-                        .HasColumnName("year");
-
-                    b.HasKey("Id")
-                        .HasName("pk_pfa_internal_notes");
-
-                    b.HasIndex("CreatedByUserId")
-                        .HasDatabaseName("ix_pfa_internal_notes_created_by_user_id");
-
-                    b.HasIndex("PfaRegistrationId")
-                        .HasDatabaseName("ix_pfa_internal_notes_pfa_registration_id");
-
-                    b.ToTable("pfa_internal_notes", "public");
-                });
-
             modelBuilder.Entity("Domain.PfaRegistrations.PfaMonthlyIncome", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1061,14 +975,6 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("PfaRegistrationId")
                         .HasColumnType("uuid")
                         .HasColumnName("pfa_registration_id");
-
-                    b.Property<DateTime?>("ProcessedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("processed_at_utc");
-
-                    b.Property<Guid?>("ProcessedByUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("processed_by_user_id");
 
                     b.Property<decimal>("TaxeEstimate")
                         .HasPrecision(18, 2)
@@ -1109,9 +1015,6 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_pfa_monthly_incomes");
-
-                    b.HasIndex("ProcessedByUserId")
-                        .HasDatabaseName("ix_pfa_monthly_incomes_processed_by_user_id");
 
                     b.HasIndex("PfaRegistrationId", "Year", "Month")
                         .IsUnique()
@@ -1515,48 +1418,6 @@ namespace Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Domain.PfaRegistrations.PfaActivityLog", b =>
-                {
-                    b.HasOne("Domain.Users.User", "PerformedByUser")
-                        .WithMany()
-                        .HasForeignKey("PerformedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_pfa_activity_logs_users_performed_by_user_id");
-
-                    b.HasOne("Domain.PfaRegistrations.PfaRegistration", "PfaRegistration")
-                        .WithMany()
-                        .HasForeignKey("PfaRegistrationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_pfa_activity_logs_pfa_registrations_pfa_registration_id");
-
-                    b.Navigation("PerformedByUser");
-
-                    b.Navigation("PfaRegistration");
-                });
-
-            modelBuilder.Entity("Domain.PfaRegistrations.PfaInternalNote", b =>
-                {
-                    b.HasOne("Domain.Users.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_pfa_internal_notes_users_created_by_user_id");
-
-                    b.HasOne("Domain.PfaRegistrations.PfaRegistration", "PfaRegistration")
-                        .WithMany()
-                        .HasForeignKey("PfaRegistrationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_pfa_internal_notes_pfa_registrations_pfa_registration_id");
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("PfaRegistration");
-                });
-
             modelBuilder.Entity("Domain.PfaRegistrations.PfaMonthlyIncome", b =>
                 {
                     b.HasOne("Domain.PfaRegistrations.PfaRegistration", "PfaRegistration")
@@ -1566,15 +1427,7 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_pfa_monthly_incomes_pfa_registrations_pfa_registration_id");
 
-                    b.HasOne("Domain.Users.User", "ProcessedByUser")
-                        .WithMany()
-                        .HasForeignKey("ProcessedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_pfa_monthly_incomes_users_processed_by_user_id");
-
                     b.Navigation("PfaRegistration");
-
-                    b.Navigation("ProcessedByUser");
                 });
 
             modelBuilder.Entity("Domain.PfaRegistrations.PfaRegistration", b =>

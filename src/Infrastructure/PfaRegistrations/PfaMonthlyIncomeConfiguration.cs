@@ -18,10 +18,16 @@ internal sealed class PfaMonthlyIncomeConfiguration : IEntityTypeConfiguration<P
         builder.Property(i => i.VenitBolt).HasPrecision(18, 2);
         builder.Property(i => i.VenitUber).HasPrecision(18, 2);
         builder.Property(i => i.TaxeEstimate).HasPrecision(18, 2);
+        builder.Property(i => i.IsProcessed).HasDefaultValue(false);
 
         builder.HasOne(i => i.PfaRegistration)
             .WithMany()
             .HasForeignKey(i => i.PfaRegistrationId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(i => i.ProcessedByUser)
+            .WithMany()
+            .HasForeignKey(i => i.ProcessedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

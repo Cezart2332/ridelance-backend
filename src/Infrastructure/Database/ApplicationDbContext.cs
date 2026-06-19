@@ -22,6 +22,8 @@ public sealed class ApplicationDbContext(
     public DbSet<User> Users { get; set; }
     public DbSet<PfaRegistration> PfaRegistrations { get; set; }
     public DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; set; }
+    public DbSet<PfaInternalNote> PfaInternalNotes { get; set; }
+    public DbSet<PfaActivityLog> PfaActivityLogs { get; set; }
     public DbSet<Document> Documents { get; set; }
     public DbSet<DeductibleExpense> DeductibleExpenses { get; set; }
     public DbSet<ChatRoom> ChatRooms { get; set; }
