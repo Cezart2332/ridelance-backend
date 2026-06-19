@@ -11,4 +11,8 @@ public sealed record PfaMonthlyIncomeResponse(
     decimal VenitUber,
     decimal TaxeEstimate,
     decimal VenitTotal,
-    DateTime? UpdatedAtUtc);
+    DateTime? UpdatedAtUtc,
+    bool IsProcessed,
+    DateTime? ProcessedAtUtc,
+    Guid? ProcessedByUserId,
+    string? ProcessedByUserName);
