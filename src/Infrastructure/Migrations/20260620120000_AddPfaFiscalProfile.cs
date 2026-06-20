@@ -8,6 +8,8 @@ namespace Infrastructure.Migrations
     /// <inheritdoc />
     public partial class AddPfaFiscalProfile : Migration
     {
+        private static readonly string[] PlatformAccountUniqueIndexColumns = ["pfa_registration_id", "provider", "kind"];
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -150,7 +152,7 @@ namespace Infrastructure.Migrations
                 name: "ix_pfa_platform_accounts_pfa_registration_id_provider_kind",
                 schema: "public",
                 table: "pfa_platform_accounts",
-                columns: new[] { "pfa_registration_id", "provider", "kind" },
+                columns: PlatformAccountUniqueIndexColumns,
                 unique: true);
         }
 
