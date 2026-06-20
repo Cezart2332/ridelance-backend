@@ -19,5 +19,14 @@ public enum DocumentCategory
     RaportBolt = 14,
     Cheltuiala = 15,
     CertificatInregistrare = 16,
+    CertificatConstatator = 17,
+    DovadaPlataArr = 18,
+    AutorizatieTransportAlternativ = 19,
+    Talon = 20,
+    CarteIdentitateAuto = 21,
+    ContractVehicul = 22,
+    AcordLeasing = 23,
+    DovadaPlataCopieConformaEcusoane = 24,
+    CopieConforma = 25,
     Other = 99
 }

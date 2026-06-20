@@ -28,10 +28,16 @@ internal sealed class CheckDocumentExpiryCommandHandler(
     private static readonly HashSet<DocumentCategory> ExpirableCategories =
     [
         DocumentCategory.Buletin,
+        DocumentCategory.CarteIdentitate,
         DocumentCategory.AsigurareCalatori,
         DocumentCategory.ITP,
+        DocumentCategory.Talon,
         DocumentCategory.RCA,
         DocumentCategory.PermisConducere,
+        DocumentCategory.CopieConforma,
+        DocumentCategory.EcusonUber,
+        DocumentCategory.EcusonBolt,
+        DocumentCategory.ContractVehicul,
     ];
 
     // Notify at these days-before-expiry windows
@@ -91,10 +97,16 @@ internal sealed class CheckDocumentExpiryCommandHandler(
             string categoryLabel = doc.Category switch
             {
                 DocumentCategory.Buletin => "Buletin / CI",
+                DocumentCategory.CarteIdentitate => "Carte de identitate",
                 DocumentCategory.AsigurareCalatori => "Asigurare Călători",
                 DocumentCategory.ITP => "ITP",
+                DocumentCategory.Talon => "Talon / certificat de înmatriculare",
                 DocumentCategory.RCA => "Poliță RCA",
                 DocumentCategory.PermisConducere => "Permis de Conducere",
+                DocumentCategory.CopieConforma => "Copie conformă",
+                DocumentCategory.EcusonUber => "Ecuson Uber",
+                DocumentCategory.EcusonBolt => "Ecuson Bolt",
+                DocumentCategory.ContractVehicul => "Contract vehicul",
                 _ => doc.Category.ToString()
             };
 

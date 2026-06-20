@@ -1,6 +1,7 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.PfaRegistrations;
+using Application.PfaRegistrations.FiscalProfile;
 using Domain.Documents;
 using Domain.Expenses;
 using Domain.PfaRegistrations;
@@ -142,6 +143,34 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
             taxResult = PfaTaxCalculator.Compute(ytdTotalIncome, ytdDeductibleExpenses, incomeYear);
         }
 
+        PfaFiscalSettingsResponse? fiscalSettings = null;
+        if (pfa is not null)
+        {
+            PfaFiscalProfile? profile = await context.PfaFiscalProfiles
+                .AsNoTracking()
+                .SingleOrDefaultAsync(fp => fp.PfaRegistrationId == pfa.Id, cancellationToken);
+
+            List<PfaPlatformAccount> accounts = await context.PfaPlatformAccounts
+                .AsNoTracking()
+                .Where(a => a.PfaRegistrationId == pfa.Id)
+                .OrderBy(a => a.Kind)
+                .ThenBy(a => a.Provider)
+                .ToListAsync(cancellationToken);
+
+            PfaFleetConsent? consent = await context.PfaFleetConsents
+                .AsNoTracking()
+                .SingleOrDefaultAsync(c => c.PfaRegistrationId == pfa.Id, cancellationToken);
+
+            fiscalSettings = new PfaFiscalSettingsResponse(
+                profile is null
+                    ? PfaFiscalProfileMapper.DefaultProfile(pfa.Id)
+                    : PfaFiscalProfileMapper.MapProfile(profile),
+                accounts.Select(PfaFiscalProfileMapper.MapAccount).ToList(),
+                consent is null
+                    ? PfaFiscalProfileMapper.DefaultConsent(pfa.Id)
+                    : PfaFiscalProfileMapper.MapConsent(consent));
+        }
+
         return new DashboardSummaryResponse(
             pfa?.Id,
             pfa?.Status.ToString(),
@@ -175,6 +204,7 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
             taxResult.IncomeTax,
             taxResult.TotalTax,
             taxResult.NetIncome,
-            ytdExpenses);
+            ytdExpenses,
+            fiscalSettings);
     }
 }
