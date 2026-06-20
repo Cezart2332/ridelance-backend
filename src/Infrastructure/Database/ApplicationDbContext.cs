@@ -21,6 +21,9 @@ public sealed class ApplicationDbContext(
 {
     public DbSet<User> Users { get; set; }
     public DbSet<PfaRegistration> PfaRegistrations { get; set; }
+    public DbSet<PfaFiscalProfile> PfaFiscalProfiles { get; set; }
+    public DbSet<PfaPlatformAccount> PfaPlatformAccounts { get; set; }
+    public DbSet<PfaFleetConsent> PfaFleetConsents { get; set; }
     public DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; set; }
     public DbSet<PfaInternalNote> PfaInternalNotes { get; set; }
     public DbSet<PfaActivityLog> PfaActivityLogs { get; set; }

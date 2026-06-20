@@ -12,9 +12,11 @@ using Infrastructure.Services;
 using Infrastructure.Email;
 using Infrastructure.Payments;
 using Application.Abstractions;
+using Application.Abstractions.Security;
 using Resend;
 using Infrastructure.Time;
 using Infrastructure.BackgroundJobs;
+using Infrastructure.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -49,6 +51,7 @@ public static class DependencyInjection
         services.Configure<EncryptionSettings>(configuration.GetSection("Encryption"));
         services.Configure<FileStorageSettings>(configuration.GetSection("FileStorage"));
         services.AddScoped<IFileEncryptionService, FileEncryptionService>();
+        services.AddScoped<ISecretProtector, SecretProtector>();
         services.AddScoped<IFileStorageService, LocalFileStorageService>();
 
         // Email Service

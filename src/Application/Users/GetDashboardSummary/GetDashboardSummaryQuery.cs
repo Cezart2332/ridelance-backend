@@ -1,4 +1,5 @@
 using Application.Abstractions.Messaging;
+using Application.PfaRegistrations.FiscalProfile;
 
 namespace Application.Users.GetDashboardSummary;
 
@@ -49,7 +50,8 @@ public sealed record DashboardSummaryResponse(
     decimal YtdIncomeTax,
     decimal YtdTotalTax,
     decimal YtdNetIncome,
-    List<YtdExpenseDto> YtdExpenses);
+    List<YtdExpenseDto> YtdExpenses,
+    PfaFiscalSettingsResponse? FiscalSettings);
 
 public sealed record MonthlyRevenuePointDto(
     int Month,

@@ -15,6 +15,9 @@ public interface IApplicationDbContext
 {
     DbSet<User> Users { get; }
     DbSet<PfaRegistration> PfaRegistrations { get; }
+    DbSet<PfaFiscalProfile> PfaFiscalProfiles { get; }
+    DbSet<PfaPlatformAccount> PfaPlatformAccounts { get; }
+    DbSet<PfaFleetConsent> PfaFleetConsents { get; }
     DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; }
     DbSet<PfaInternalNote> PfaInternalNotes { get; }
     DbSet<PfaActivityLog> PfaActivityLogs { get; }

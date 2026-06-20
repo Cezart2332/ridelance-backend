@@ -34,5 +34,8 @@ public sealed class PfaRegistration : Entity
     public User User { get; set; } = null!;
     public User? ReviewedByUser { get; set; }
     public User? AssignedContabil { get; set; }
+    public PfaFiscalProfile? FiscalProfile { get; set; }
+    public PfaFleetConsent? FleetConsent { get; set; }
+    public List<PfaPlatformAccount> PlatformAccounts { get; set; } = [];
     public List<Document> Documents { get; set; } = [];
 }
