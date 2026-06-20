@@ -37,7 +37,7 @@ internal static class PfaAccess
 
         bool allowed = caller.Role == UserRole.Admin
             || pfa.UserId == userContext.UserId
-            || (caller.Role == UserRole.Contabil && pfa.AssignedContabilId == userContext.UserId);
+            || caller.Role == UserRole.Contabil && pfa.AssignedContabilId == userContext.UserId;
 
         if (!allowed)
         {
