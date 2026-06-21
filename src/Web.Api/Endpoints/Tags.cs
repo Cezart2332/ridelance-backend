@@ -2,6 +2,7 @@ namespace Web.Api.Endpoints;
 
 public static class Tags
 {
+    public const string Admin = "Admin";
     public const string Users = "Users";
     public const string PfaRegistrations = "PFA Registrations";
     public const string Documents = "Documents";
