@@ -1537,6 +1537,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("last_name");
 
+                    b.Property<DateTime?>("LastActivityAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_activity_at_utc");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text")

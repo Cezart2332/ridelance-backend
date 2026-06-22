@@ -34,6 +34,7 @@ internal sealed class LoginUserCommandHandler(
 
         user.RefreshToken = refreshToken;
         user.RefreshTokenExpiryUtc = DateTime.UtcNow.AddDays(7);
+        user.LastActivityAtUtc = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
 

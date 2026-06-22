@@ -18,6 +18,7 @@ public sealed record PfaRegistrationSummary(
     string Status,
     string AccountStatus,
     string? SubscriptionStatus,
+    string? SubscriptionPlan,
     string? FullName,
     string? Phone,
     int? ContractDuration,

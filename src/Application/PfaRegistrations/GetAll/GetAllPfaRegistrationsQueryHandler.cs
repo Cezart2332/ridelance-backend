@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Admin;
 using Domain.PfaRegistrations;
 using Domain.Payments;
 using Domain.Users;
@@ -52,36 +53,43 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                 r.IsOwner,
                 DocumentCount = r.Documents.Count,
                 r.CreatedAtUtc,
-                LastActivityAtUtc = context.ChatRooms
+                UserLastActivityAtUtc = r.User.LastActivityAtUtc,
+                ChatActivityAtUtc = context.ChatRooms
                     .Where(cr => cr.ClientUserId == r.UserId)
                     .OrderByDescending(cr => cr.LastMessageAtUtc)
                     .Select(cr => (DateTime?)cr.LastMessageAtUtc)
                     .FirstOrDefault()
             })
-            .OrderByDescending(x => x.LastActivityAtUtc ?? x.CreatedAtUtc)
-            .Skip((query.Page - 1) * query.PageSize)
-            .Take(query.PageSize)
             .ToListAsync(cancellationToken);
 
+        // ponytail: sort in memory because activity is max(login, chat); move to SQL if PFA count grows.
+        pagedData = pagedData
+            .OrderByDescending(x => GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc) ?? x.CreatedAtUtc)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .ToList();
+
         Guid[] userIds = pagedData.Select(x => x.UserId).Distinct().ToArray();
-        Dictionary<Guid, SubscriptionStatus> latestSubscriptionStatuses = await context.UserSubscriptions
+        var latestSubscriptions = await context.UserSubscriptions
             .AsNoTracking()
             .Where(s => userIds.Contains(s.UserId))
             .GroupBy(s => s.UserId)
             .Select(g => new
             {
                 UserId = g.Key,
-                Status = g.OrderByDescending(s => s.CreatedAtUtc).Select(s => s.Status).First()
+                Subscription = g.OrderByDescending(s => s.CreatedAtUtc)
+                    .Select(s => new { s.Status, s.Plan })
+                    .First()
             })
-            .ToDictionaryAsync(x => x.UserId, x => x.Status, cancellationToken);
+            .ToDictionaryAsync(x => x.UserId, x => x.Subscription, cancellationToken);
 
         var items = pagedData
             .Select(x =>
             {
-                latestSubscriptionStatuses.TryGetValue(x.UserId, out SubscriptionStatus subscriptionStatus);
-                bool hasSubscription = latestSubscriptionStatuses.ContainsKey(x.UserId);
-                string? subscriptionStatusText = hasSubscription ? subscriptionStatus.ToString() : null;
-                string accountStatus = ResolveAccountStatus(x.Status, hasSubscription ? subscriptionStatus : null);
+                bool hasSubscription = latestSubscriptions.TryGetValue(x.UserId, out var subscription);
+                string? subscriptionStatusText = hasSubscription ? subscription!.Status.ToString() : null;
+                string? subscriptionPlanText = hasSubscription ? subscription!.Plan.ToString() : null;
+                string accountStatus = ResolveAccountStatus(x.Status, hasSubscription ? subscription!.Status : null);
 
                 return new PfaRegistrationSummary(
                     x.Id,
@@ -92,6 +100,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     x.Status.ToString(),
                     accountStatus,
                     subscriptionStatusText,
+                    subscriptionPlanText,
                     x.FullName,
                     x.Phone,
                     x.ContractDuration,
@@ -102,7 +111,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     x.IsOwner,
                     x.DocumentCount,
                     x.CreatedAtUtc,
-                    x.LastActivityAtUtc);
+                    GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc));
             })
             .ToList();
 

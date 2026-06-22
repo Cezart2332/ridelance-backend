@@ -112,13 +112,13 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
 
         var enrolledPfas = pfas
             .Where(p => p.Status == PfaRegistrationStatus.Approved)
-            .OrderByDescending(p => lastActivityByUserId.GetValueOrDefault(p.UserId) ?? p.CreatedAtUtc)
+            .OrderByDescending(p => LatestActivity(p.User.LastActivityAtUtc, lastActivityByUserId.GetValueOrDefault(p.UserId)) ?? p.CreatedAtUtc)
             .Take(12)
             .Select(p => ToPfaCard(
                 p,
                 latestSubscriptions.GetValueOrDefault(p.UserId),
                 currentMonthIncomes.FirstOrDefault(i => i.PfaRegistrationId == p.Id),
-                lastActivityByUserId.GetValueOrDefault(p.UserId)))
+                LatestActivity(p.User.LastActivityAtUtc, lastActivityByUserId.GetValueOrDefault(p.UserId))))
             .ToList();
 
         var response = new AdminOverviewResponse(
@@ -264,7 +264,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
             CustomerAge(pfa.CreatedAtUtc),
             AccountStatus(pfa.Status, subscription?.Status),
             CurrentMonthStatus(currentMonthIncome, pfa.Documents),
-            RelativeTime(lastActivityAtUtc ?? pfa.CreatedAtUtc),
+            lastActivityAtUtc is null ? "Fără activitate" : RelativeTime(lastActivityAtUtc.Value),
             lastActivityAtUtc);
 
     internal static string CompanyName(PfaRegistration pfa) =>
@@ -361,6 +361,21 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
 
         int days = (int)diff.TotalDays;
         return days == 1 ? "Ieri" : $"Acum {days} zile";
+    }
+
+    internal static DateTime? LatestActivity(DateTime? first, DateTime? second)
+    {
+        if (first is null)
+        {
+            return second;
+        }
+
+        if (second is null)
+        {
+            return first;
+        }
+
+        return first > second ? first : second;
     }
 
     private static (DateTime StartUtc, DateTime EndUtc) ResolveDateRange(AdminOverviewFilters filters)
