@@ -76,12 +76,15 @@ internal sealed class GetAdminPfaDetailQueryHandler(IApplicationDbContext contex
                 $"{l.PerformedByUser.FirstName} {l.PerformedByUser.LastName}"))
             .ToListAsync(cancellationToken);
 
-        DateTime? lastActivityAtUtc = await context.ChatRooms
+        DateTime? chatActivityAtUtc = await context.ChatRooms
             .AsNoTracking()
             .Where(r => r.ClientUserId == pfa.UserId)
             .OrderByDescending(r => r.LastMessageAtUtc)
             .Select(r => (DateTime?)r.LastMessageAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
+        DateTime? lastActivityAtUtc = GetAdminOverviewQueryHandler.LatestActivity(
+            pfa.User.LastActivityAtUtc,
+            chatActivityAtUtc);
 
         string? lastProcessedMonth = lastProcessedIncome is null
             ? null
@@ -103,7 +106,7 @@ internal sealed class GetAdminPfaDetailQueryHandler(IApplicationDbContext contex
             GetAdminOverviewQueryHandler.SubscriptionStatusLabel(subscription?.Status),
             pfa.RegistrationType.ToString(),
             GetAdminOverviewQueryHandler.CurrentMonthStatus(currentMonthIncome, pfa.Documents),
-            GetAdminOverviewQueryHandler.RelativeTime(lastActivityAtUtc ?? pfa.CreatedAtUtc),
+            lastActivityAtUtc is null ? "Fără activitate" : GetAdminOverviewQueryHandler.RelativeTime(lastActivityAtUtc.Value),
             priceBani,
             subscription?.CreatedAtUtc,
             subscription?.NextBillingDateUtc,

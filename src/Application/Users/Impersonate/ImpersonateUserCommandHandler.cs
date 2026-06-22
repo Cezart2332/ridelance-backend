@@ -39,6 +39,7 @@ internal sealed class ImpersonateUserCommandHandler(
 
         targetUser.RefreshToken = refreshToken;
         targetUser.RefreshTokenExpiryUtc = DateTime.UtcNow.AddDays(7);
+        targetUser.LastActivityAtUtc = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
 

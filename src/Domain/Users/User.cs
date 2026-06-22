@@ -13,6 +13,7 @@ public sealed class User : Entity
     public UserRole Role { get; set; } = UserRole.Client;
     public string? RefreshToken { get; set; }
     public DateTime? RefreshTokenExpiryUtc { get; set; }
+    public DateTime? LastActivityAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public List<PushSubscription> PushSubscriptions { get; set; } = [];
