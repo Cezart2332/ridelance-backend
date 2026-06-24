@@ -2,6 +2,7 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
+using Application.Bolt;
 using Domain.Bolt;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -54,6 +55,13 @@ internal sealed class SyncBoltOrdersCommandHandler(
             integration.IsConnected = true;
             integration.ErrorMessage = null;
             integration.LastFetchedAtUtc = DateTime.UtcNow;
+            await context.SaveChangesAsync(cancellationToken);
+
+            await BoltMonthlyIncomeUpdater.UpdateAsync(
+                context,
+                userId,
+                orders.Select(o => o.OrderCreatedTime),
+                cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
 
             return true;

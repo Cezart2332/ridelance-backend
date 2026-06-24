@@ -23,4 +23,5 @@ public sealed class PfaMonthlyIncome
     public User? ProcessedByUser { get; set; }
 
     public decimal ComputeVenitTotal() => VenitCash + VenitCard + VenitBolt + VenitUber;
+    public decimal ComputePlatformIncome() => VenitBolt + VenitUber;
 }

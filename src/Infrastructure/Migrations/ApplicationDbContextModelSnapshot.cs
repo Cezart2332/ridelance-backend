@@ -1462,6 +1462,97 @@ namespace Infrastructure.Migrations
                     b.ToTable("pfa_registrations", "public");
                 });
 
+            modelBuilder.Entity("Domain.Uber.UberCsvImport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("CashCollected")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cash_collected");
+
+                    b.Property<decimal>("Commission")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("commission");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("FileType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("file_type");
+
+                    b.Property<decimal>("GrossEarnings")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("gross_earnings");
+
+                    b.Property<DateTime>("ImportedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("imported_at_utc");
+
+                    b.Property<double>("Kilometers")
+                        .HasColumnType("double precision")
+                        .HasColumnName("kilometers");
+
+                    b.Property<int>("Month")
+                        .HasColumnType("integer")
+                        .HasColumnName("month");
+
+                    b.Property<decimal>("NetEarnings")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("net_earnings");
+
+                    b.Property<double>("OnlineHours")
+                        .HasColumnType("double precision")
+                        .HasColumnName("online_hours");
+
+                    b.Property<Guid>("PfaRegistrationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pfa_registration_id");
+
+                    b.Property<double>("RideHours")
+                        .HasColumnType("double precision")
+                        .HasColumnName("ride_hours");
+
+                    b.Property<int>("Trips")
+                        .HasColumnType("integer")
+                        .HasColumnName("trips");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer")
+                        .HasColumnName("year");
+
+                    b.HasKey("Id")
+                        .HasName("pk_uber_csv_imports");
+
+                    b.HasIndex("PfaRegistrationId", "Year", "Month")
+                        .HasDatabaseName("ix_uber_csv_imports_pfa_registration_id_year_month");
+
+                    b.HasIndex("PfaRegistrationId", "Year", "Month", "FileType", "FileName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_uber_csv_imports_pfa_registration_id_year_month_file_type_file_name");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_uber_csv_imports_user_id");
+
+                    b.ToTable("uber_csv_imports", "public");
+                });
+
             modelBuilder.Entity("Domain.Users.PushSubscription", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1896,6 +1987,27 @@ namespace Infrastructure.Migrations
                     b.Navigation("AssignedContabil");
 
                     b.Navigation("ReviewedByUser");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.Uber.UberCsvImport", b =>
+                {
+                    b.HasOne("Domain.PfaRegistrations.PfaRegistration", "PfaRegistration")
+                        .WithMany()
+                        .HasForeignKey("PfaRegistrationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_uber_csv_imports_pfa_registrations_pfa_registration_id");
+
+                    b.HasOne("Domain.Users.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_uber_csv_imports_users_user_id");
+
+                    b.Navigation("PfaRegistration");
 
                     b.Navigation("User");
                 });

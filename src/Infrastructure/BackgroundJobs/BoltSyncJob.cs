@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Application.Abstractions.Data;
 using Application.Abstractions.Services;
+using Application.Bolt;
 using Domain.Bolt;
 using Microsoft.EntityFrameworkCore;
 
@@ -95,6 +96,13 @@ internal sealed class BoltSyncJob(
                 integration.ErrorMessage = null;
                 integration.LastFetchedAtUtc = DateTime.UtcNow;
 
+                await context.SaveChangesAsync(ct);
+
+                await BoltMonthlyIncomeUpdater.UpdateAsync(
+                    context,
+                    integration.UserId,
+                    orders.Select(o => o.OrderCreatedTime),
+                    ct);
                 await context.SaveChangesAsync(ct);
                 
                 logger.LogInformation("Successfully synced {Count} orders for user: {UserId}", orders.Count, integration.UserId);
