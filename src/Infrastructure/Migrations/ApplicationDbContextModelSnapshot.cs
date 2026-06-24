@@ -1540,15 +1540,15 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_uber_csv_imports");
 
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_uber_csv_imports_user_id");
+
                     b.HasIndex("PfaRegistrationId", "Year", "Month")
                         .HasDatabaseName("ix_uber_csv_imports_pfa_registration_id_year_month");
 
                     b.HasIndex("PfaRegistrationId", "Year", "Month", "FileType", "FileName")
                         .IsUnique()
-                        .HasDatabaseName("ix_uber_csv_imports_pfa_registration_id_year_month_file_type_file_name");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_uber_csv_imports_user_id");
+                        .HasDatabaseName("ix_uber_csv_imports_pfa_registration_id_year_month_file_type_f");
 
                     b.ToTable("uber_csv_imports", "public");
                 });
@@ -1622,15 +1622,15 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("first_name");
 
+                    b.Property<DateTime?>("LastActivityAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_activity_at_utc");
+
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
                         .HasColumnName("last_name");
-
-                    b.Property<DateTime?>("LastActivityAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_activity_at_utc");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()

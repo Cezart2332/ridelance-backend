@@ -62,7 +62,7 @@ namespace Infrastructure.Migrations
                 columns: PeriodIndexColumns);
 
             migrationBuilder.CreateIndex(
-                name: "ix_uber_csv_imports_pfa_registration_id_year_month_file_type_file_name",
+                name: "ix_uber_csv_imports_pfa_registration_id_year_month_file_type_f",
                 schema: "public",
                 table: "uber_csv_imports",
                 columns: UniqueImportIndexColumns,
