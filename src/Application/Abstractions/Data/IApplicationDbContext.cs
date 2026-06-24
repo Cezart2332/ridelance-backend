@@ -6,6 +6,7 @@ using Domain.Expenses;
 using Domain.Notifications;
 using Domain.Payments;
 using Domain.PfaRegistrations;
+using Domain.Uber;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,6 +36,7 @@ public interface IApplicationDbContext
     DbSet<ServiceOrder> ServiceOrders { get; }
     DbSet<BoltIntegration> BoltIntegrations { get; }
     DbSet<BoltOrder> BoltOrders { get; }
+    DbSet<UberCsvImport> UberCsvImports { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

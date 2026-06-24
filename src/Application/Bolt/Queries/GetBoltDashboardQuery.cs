@@ -42,6 +42,9 @@ public sealed record BoltDashboardResponse(
     int? Month,
     int TotalOrdersCount,
     decimal TotalNetEarnings,
+    decimal TotalCashEarnings,
+    decimal TotalCardEarnings,
+    decimal TotalBusinessEarnings,
     decimal TotalTips,
     decimal TotalCommissions,
     double TotalRideDistanceKm,
@@ -124,6 +127,9 @@ internal sealed class GetBoltDashboardQueryHandler(
 
         int totalOrders = orders.Count;
         decimal totalNet = orders.Sum(o => o.NetEarnings);
+        decimal totalCash = orders.Where(IsCash).Sum(o => o.NetEarnings);
+        decimal totalBusiness = orders.Where(IsBusiness).Sum(o => o.NetEarnings);
+        decimal totalCard = orders.Where(o => !IsCash(o)).Sum(o => o.NetEarnings);
         decimal totalTips = orders.Sum(o => o.Tip);
         decimal totalCommissions = orders.Sum(o => o.Commission);
         double totalDistanceKm = orders.Sum(o => o.RideDistance) / 1000.0;
@@ -163,6 +169,9 @@ internal sealed class GetBoltDashboardQueryHandler(
             selectedMonth,
             totalOrders,
             totalNet,
+            totalCash,
+            totalCard,
+            totalBusiness,
             totalTips,
             totalCommissions,
             Math.Round(totalDistanceKm, 1),
@@ -190,6 +199,9 @@ internal sealed class GetBoltDashboardQueryHandler(
             year,
             month,
             0,
+            0m,
+            0m,
+            0m,
             0m,
             0m,
             0m,
@@ -295,6 +307,12 @@ internal sealed class GetBoltDashboardQueryHandler(
             list.Sum(o => o.Commission),
             Math.Round(list.Sum(GetRideHours), 2));
     }
+
+    private static bool IsCash(BoltOrder order) =>
+        order.PaymentMethod.Contains("cash", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBusiness(BoltOrder order) =>
+        order.PaymentMethod.Contains("business", StringComparison.OrdinalIgnoreCase);
 
     private static double GetRideHours(BoltOrder order)
     {

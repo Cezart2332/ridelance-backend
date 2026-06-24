@@ -104,8 +104,8 @@ internal sealed class UpsertPfaMonthlyIncomeCommandHandler(
         // Replace or add the current month in the in-memory list for the sum
         decimal ytdGrossIncome = yearIncomes
             .Where(i => i.Month != command.Month)
-            .Sum(i => i.ComputeVenitTotal())
-            + income.ComputeVenitTotal();
+            .Sum(i => i.ComputePlatformIncome())
+            + income.ComputePlatformIncome();
 
         // 2. Sum verified deductible expenses for the year
         decimal ytdExpenses = await context.DeductibleExpenses

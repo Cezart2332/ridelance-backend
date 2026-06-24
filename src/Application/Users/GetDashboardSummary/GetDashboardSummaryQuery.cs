@@ -35,6 +35,8 @@ public sealed record DashboardSummaryResponse(
     decimal? VenitTotal,
     int? IncomeYear,
     int? IncomeMonth,
+    DashboardPeriodStatsDto MonthlyStats,
+    DashboardPeriodStatsDto YearlyStats,
 
     // Revenue chart (all months of IncomeYear for user's PFA)
     int RevenueChartYear,
@@ -60,6 +62,15 @@ public sealed record MonthlyRevenuePointDto(
     decimal VenitCard,
     decimal VenitBolt,
     decimal VenitUber);
+
+public sealed record DashboardPeriodStatsDto(
+    int Year,
+    int? Month,
+    decimal VenitCash,
+    decimal VenitCard,
+    decimal VenitBolt,
+    decimal VenitUber,
+    decimal VenitTotal);
 
 public sealed record RecentDocumentDto(
     Guid Id,

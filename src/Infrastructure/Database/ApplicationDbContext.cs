@@ -7,6 +7,7 @@ using Domain.Expenses;
 using Domain.Notifications;
 using Domain.Payments;
 using Domain.PfaRegistrations;
+using Domain.Uber;
 using Domain.Users;
 using Infrastructure.DomainEvents;
 using Microsoft.EntityFrameworkCore;
@@ -41,6 +42,7 @@ public sealed class ApplicationDbContext(
     public DbSet<ServiceOrder> ServiceOrders { get; set; }
     public DbSet<BoltIntegration> BoltIntegrations { get; set; }
     public DbSet<BoltOrder> BoltOrders { get; set; }
+    public DbSet<UberCsvImport> UberCsvImports { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -76,6 +76,7 @@ public static class DependencyInjection
         services.AddHostedService<MondayAccessGrantJob>();
         services.AddHostedService<RecurringDocumentationNotificationJob>();
         services.AddHostedService<DocumentExpiryCheckJob>();
+        services.AddHostedService<PfaIncomePeriodInitializationJob>();
         services.AddHostedService<BoltSyncJob>();
 
         return services;
