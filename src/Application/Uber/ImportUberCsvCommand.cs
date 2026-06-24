@@ -292,17 +292,17 @@ internal static class UberCsvParser
         string[] header = rows[0];
         string normalizedHeader = Normalize(string.Join(",", header));
 
-        if (normalizedHeader.Contains("castiguri primite"))
+        if (normalizedHeader.Contains(Normalize("castiguri primite")))
         {
             return ParseEarnings(fileName, header, rows.Skip(1));
         }
 
-        if (normalizedHeader.Contains("durata conectarii"))
+        if (normalizedHeader.Contains(Normalize("durata conectarii")))
         {
             return ParseHours(fileName, header, rows.Skip(1));
         }
 
-        if (normalizedHeader.Contains("distanta cursei"))
+        if (normalizedHeader.Contains(Normalize("distanta cursei")))
         {
             return ParseTrips(fileName, header, rows.Skip(1));
         }
