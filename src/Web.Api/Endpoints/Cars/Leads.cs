@@ -5,7 +5,6 @@ using Application.Cars.Queries.GetLeadsAdmin;
 using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
 using Web.Api.Infrastructure;
-using Infrastructure.Authorization;
 
 namespace Web.Api.Endpoints.Cars;
 
@@ -47,7 +46,9 @@ internal sealed class GetLeads : IEndpoint
             Result<List<CarLeadDto>> result = await handler.Handle(new GetLeadsAdminQuery(carId, status), cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
         })
-        .RequireAuthorization(Permissions.ManageCars)
+        // Role-based filtering happens in the handler: admins see everything,
+        // posters only the leads for their own listings.
+        .RequireAuthorization()
         .WithTags(Tags.Cars);
     }
 }
@@ -65,7 +66,8 @@ internal sealed class UpdateLeadStatusEndpoint : IEndpoint
             Result result = await handler.Handle(new UpdateLeadStatusCommand(leadId, request.Status, request.AdminNote), cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
         })
-        .RequireAuthorization(Permissions.ManageCars)
+        // Ownership is enforced in the handler (admin or the listing's poster).
+        .RequireAuthorization()
         .WithTags(Tags.Cars);
     }
 }

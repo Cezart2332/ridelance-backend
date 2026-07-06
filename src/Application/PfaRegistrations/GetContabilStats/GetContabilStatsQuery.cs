@@ -20,7 +20,7 @@ public sealed record ContabilStatsResponse(
     int UnreadMessages,
     string MonthLabel);
 
-public sealed record GetContabilStatsQuery : IQuery<ContabilStatsResponse>;
+public sealed record GetContabilStatsQuery(int? Year = null, int? Month = null) : IQuery<ContabilStatsResponse>;
 
 internal sealed class GetContabilStatsQueryHandler(
     IApplicationDbContext context,
@@ -44,11 +44,16 @@ internal sealed class GetContabilStatsQueryHandler(
                 Error.Failure("Auth.Unauthorized", "Doar contabilii pot accesa aceste statistici."));
         }
 
-        (DateTime monthStartUtc, DateTime monthEndUtc) = RecurringDocumentationTexts.GetRomaniaMonthBoundsUtc(DateTime.UtcNow);
-        (int currentYear, int currentMonth) = RecurringDocumentationTexts.GetRomaniaYearMonth(DateTime.UtcNow);
-        
+        // Reference instant: mid-month of the requested period, or now for the current month.
+        DateTime referenceUtc = query.Year is int y && query.Month is int m && m >= 1 && m <= 12
+            ? new DateTime(y, m, 15, 12, 0, 0, DateTimeKind.Utc)
+            : DateTime.UtcNow;
+
+        (DateTime monthStartUtc, DateTime monthEndUtc) = RecurringDocumentationTexts.GetRomaniaMonthBoundsUtc(referenceUtc);
+        (int currentYear, int currentMonth) = RecurringDocumentationTexts.GetRomaniaYearMonth(referenceUtc);
+
         // Month label in Romanian (e.g. "Iunie 2026")
-        string monthLabel = DateTime.UtcNow.ToString("MMMM yyyy", new CultureInfo("ro-RO"));
+        string monthLabel = referenceUtc.ToString("MMMM yyyy", new CultureInfo("ro-RO"));
         // Capitalize first letter of month label
         if (!string.IsNullOrEmpty(monthLabel))
         {

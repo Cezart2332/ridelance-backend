@@ -71,6 +71,7 @@ internal sealed class CreatePfaRegistrationCommandHandler(
             City = command.City,
             County = command.County,
             IsOwner = command.IsOwner,
+            Cui = string.IsNullOrWhiteSpace(command.Cui) ? null : command.Cui.Trim().ToUpperInvariant(),
             Status = PfaRegistrationStatus.Pending,
             CreatedAtUtc = DateTime.UtcNow,
             AssignedContabilId = assignedContabil?.Id

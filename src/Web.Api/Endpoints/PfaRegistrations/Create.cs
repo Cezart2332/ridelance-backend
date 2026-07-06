@@ -19,7 +19,8 @@ internal sealed class Create : IEndpoint
         string? Number,
         string? City,
         string? County,
-        bool IsOwner);
+        bool IsOwner,
+        string? Cui = null);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -44,7 +45,8 @@ internal sealed class Create : IEndpoint
                 request.Number,
                 request.City,
                 request.County,
-                request.IsOwner);
+                request.IsOwner,
+                request.Cui);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
 

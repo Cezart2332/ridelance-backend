@@ -13,4 +13,5 @@ public sealed record CreatePfaRegistrationCommand(
     string? Number,
     string? City,
     string? County,
-    bool IsOwner) : ICommand<Guid>;
+    bool IsOwner,
+    string? Cui = null) : ICommand<Guid>;

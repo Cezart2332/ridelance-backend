@@ -14,7 +14,6 @@ internal sealed class Impersonate : IEndpoint
         app.MapPost("users/impersonate/{userId:guid}", async (
             Guid userId,
             ICommandHandler<ImpersonateUserCommand, LoginResponse> handler,
-            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
             var command = new ImpersonateUserCommand(userId);
@@ -26,15 +25,8 @@ internal sealed class Impersonate : IEndpoint
                 return CustomResults.Problem(result);
             }
 
-            // Set refresh token as HTTP-only cookie for the target user
-            httpContext.Response.Cookies.Append("refreshToken", result.Value.RefreshToken, new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.Strict,
-                Expires = DateTimeOffset.UtcNow.AddDays(7),
-                Path = "/users"
-            });
+            // The refresh token cookie is intentionally left untouched: it stays
+            // the admin's, so the admin can always return to their own session.
 
             // Return access token, role, and userId
             return Results.Ok(new

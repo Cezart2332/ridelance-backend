@@ -12,6 +12,7 @@ internal sealed class CreatePfaRegistrationCommandValidator
         {
             RuleFor(x => x.FullName).NotEmpty().WithMessage("Full name is required.");
             RuleFor(x => x.Phone).NotEmpty().WithMessage("Phone number is required.");
+            RuleFor(x => x.Cui).NotEmpty().WithMessage("CUI is required for existing PFAs.");
         });
 
         When(x => x.RegistrationType == RegistrationType.NuAmPfa, () =>

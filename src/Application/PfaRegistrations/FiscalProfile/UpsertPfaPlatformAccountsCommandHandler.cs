@@ -18,7 +18,7 @@ internal sealed class UpsertPfaPlatformAccountsCommandHandler(
         UpsertPfaPlatformAccountsCommand command,
         CancellationToken cancellationToken)
     {
-        Result<PfaRegistration> access = await PfaAccess.EnsureCanManageAsync(
+        Result<PfaRegistration> access = await PfaAccess.EnsureCanViewAsync(
             context,
             userContext,
             command.PfaRegistrationId,
@@ -27,6 +27,16 @@ internal sealed class UpsertPfaPlatformAccountsCommandHandler(
         if (access.IsFailure)
         {
             return Result.Failure<IReadOnlyList<PfaPlatformAccountResponse>>(access.Error);
+        }
+
+        // The PFA owner may manage their own Driver accounts, but Fleet accounts
+        // (created and operated by RIDElance) remain staff-only.
+        bool isOwnerOnly = access.Value.UserId == userContext.UserId;
+        if (isOwnerOnly &&
+            command.Accounts.Any(i => string.Equals(i.Kind, "Fleet", StringComparison.OrdinalIgnoreCase)))
+        {
+            return Result.Failure<IReadOnlyList<PfaPlatformAccountResponse>>(
+                Error.Failure("PfaPlatformAccount.Forbidden", "Fleet accounts can only be updated by RIDElance staff."));
         }
 
         List<PfaPlatformAccount> existingAccounts = await context.PfaPlatformAccounts

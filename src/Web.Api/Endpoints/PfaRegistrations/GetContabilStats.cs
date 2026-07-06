@@ -12,10 +12,12 @@ internal sealed class GetContabilStats : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("pfa-registrations/contabil-stats", async (
+            int? year,
+            int? month,
             IQueryHandler<GetContabilStatsQuery, ContabilStatsResponse> handler,
             CancellationToken cancellationToken) =>
         {
-            var query = new GetContabilStatsQuery();
+            var query = new GetContabilStatsQuery(year, month);
             Result<ContabilStatsResponse> result = await handler.Handle(query, cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         })
