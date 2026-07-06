@@ -34,7 +34,7 @@ internal sealed class GetLeadsAdminQueryHandler(
             .AsNoTracking()
             .SingleOrDefaultAsync(u => u.Id == userContext.UserId, cancellationToken);
 
-        if (caller is null || (caller.Role != UserRole.Admin && caller.Role != UserRole.CarPoster))
+        if (caller is null || caller.Role != UserRole.Admin && caller.Role != UserRole.CarPoster)
         {
             return Result.Failure<List<CarLeadDto>>(
                 Error.Failure("CarLead.Forbidden", "Nu ai acces la lead-urile anunțurilor."));
