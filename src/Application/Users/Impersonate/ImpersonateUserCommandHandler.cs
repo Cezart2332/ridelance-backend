@@ -33,19 +33,18 @@ internal sealed class ImpersonateUserCommandHandler(
             return Result.Failure<LoginResponse>(UserErrors.NotFound(command.TargetUserId));
         }
 
-        // Generate tokens for target user
+        // Generate only a short-lived access token for the target user.
+        // The refresh token (cookie) stays the admin's, so the admin session
+        // survives and the target user's own devices are not logged out.
         string accessToken = tokenProvider.Create(targetUser);
-        string refreshToken = tokenProvider.CreateRefreshToken();
 
-        targetUser.RefreshToken = refreshToken;
-        targetUser.RefreshTokenExpiryUtc = DateTime.UtcNow.AddDays(7);
         targetUser.LastActivityAtUtc = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
 
         var response = new LoginResponse(
             accessToken,
-            refreshToken,
+            string.Empty,
             targetUser.Role.ToString(),
             targetUser.Id);
 

@@ -64,10 +64,13 @@ internal static class PfaAccess
             .AsNoTracking()
             .SingleOrDefaultAsync(u => u.Id == userContext.UserId, cancellationToken);
 
-        if (caller?.Role != UserRole.Admin)
+        bool canManage = caller?.Role == UserRole.Admin
+            || (caller?.Role == UserRole.Contabil && result.Value.AssignedContabilId == userContext.UserId);
+
+        if (!canManage)
         {
             return Result.Failure<PfaRegistration>(
-                Error.Failure("PfaRegistration.Forbidden", "Only admins can update fiscal profile settings."));
+                Error.Failure("PfaRegistration.Forbidden", "Only admins or the assigned accountant can update fiscal profile settings."));
         }
 
         return result;

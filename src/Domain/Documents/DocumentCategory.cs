@@ -28,5 +28,10 @@ public enum DocumentCategory
     AcordLeasing = 23,
     DovadaPlataCopieConformaEcusoane = 24,
     CopieConforma = 25,
+    FacturaComisionUber = 26,
+    FacturaComisionBolt = 27,
+    DecontTvaIntracomunitar = 28,
+    DecontTaxaNerezident = 29,
+    CertificatTvaIntracomunitar = 30,
     Other = 99
 }
