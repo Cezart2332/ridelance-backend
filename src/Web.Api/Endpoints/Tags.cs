@@ -10,4 +10,5 @@ public static class Tags
     public const string Notifications = "Notifications";
     public const string Cars = "Cars";
     public const string Payments = "Payments";
+    public const string Office = "Office";
 }

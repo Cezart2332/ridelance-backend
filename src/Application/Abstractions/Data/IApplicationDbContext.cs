@@ -4,6 +4,7 @@ using Domain.Chat;
 using Domain.Documents;
 using Domain.Expenses;
 using Domain.Notifications;
+using Domain.Office;
 using Domain.Payments;
 using Domain.PfaRegistrations;
 using Domain.Uber;
@@ -37,6 +38,9 @@ public interface IApplicationDbContext
     DbSet<BoltIntegration> BoltIntegrations { get; }
     DbSet<BoltOrder> BoltOrders { get; }
     DbSet<UberCsvImport> UberCsvImports { get; }
+    DbSet<OfficeAppointment> OfficeAppointments { get; }
+    DbSet<OfficeScheduleDay> OfficeScheduleDays { get; }
+    DbSet<OfficeBlockedSlot> OfficeBlockedSlots { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
