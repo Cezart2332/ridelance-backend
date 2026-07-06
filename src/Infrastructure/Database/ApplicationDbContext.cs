@@ -5,6 +5,7 @@ using Domain.Chat;
 using Domain.Documents;
 using Domain.Expenses;
 using Domain.Notifications;
+using Domain.Office;
 using Domain.Payments;
 using Domain.PfaRegistrations;
 using Domain.Uber;
@@ -43,6 +44,9 @@ public sealed class ApplicationDbContext(
     public DbSet<BoltIntegration> BoltIntegrations { get; set; }
     public DbSet<BoltOrder> BoltOrders { get; set; }
     public DbSet<UberCsvImport> UberCsvImports { get; set; }
+    public DbSet<OfficeAppointment> OfficeAppointments { get; set; }
+    public DbSet<OfficeScheduleDay> OfficeScheduleDays { get; set; }
+    public DbSet<OfficeBlockedSlot> OfficeBlockedSlots { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
