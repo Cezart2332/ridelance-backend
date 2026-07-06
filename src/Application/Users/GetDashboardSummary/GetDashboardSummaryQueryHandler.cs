@@ -161,6 +161,22 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
             taxResult = PfaTaxCalculator.Compute(ytdTotalIncome, ytdDeductibleExpenses, incomeYear);
         }
 
+        PfaTaxCalculator.TaxThresholdProgress thresholdProgress =
+            PfaTaxCalculator.ComputeThresholdProgress(ytdTotalIncome, ytdDeductibleExpenses, incomeYear);
+
+        var taxThresholds = new TaxThresholdsDto(
+            thresholdProgress.Profit,
+            thresholdProgress.CasFirstThreshold,
+            thresholdProgress.CasSecondThreshold,
+            thresholdProgress.CassFirstThreshold,
+            thresholdProgress.CassMaximumThreshold,
+            thresholdProgress.RemainingToNextCasThreshold,
+            thresholdProgress.RemainingToNextCassThreshold,
+            thresholdProgress.HasReachedCasFirstThreshold,
+            thresholdProgress.HasReachedCasSecondThreshold,
+            thresholdProgress.HasReachedCassFirstThreshold,
+            thresholdProgress.HasReachedCassMaximumThreshold);
+
         PfaFiscalSettingsResponse? fiscalSettings = null;
         if (pfa is not null)
         {
@@ -225,6 +241,7 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
             taxResult.TotalTax,
             taxResult.NetIncome,
             ytdExpenses,
+            taxThresholds,
             fiscalSettings);
     }
 }

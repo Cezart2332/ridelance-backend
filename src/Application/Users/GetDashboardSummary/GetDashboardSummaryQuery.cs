@@ -53,7 +53,22 @@ public sealed record DashboardSummaryResponse(
     decimal YtdTotalTax,
     decimal YtdNetIncome,
     List<YtdExpenseDto> YtdExpenses,
+    TaxThresholdsDto TaxThresholds,
     PfaFiscalSettingsResponse? FiscalSettings);
+
+/// <summary>CAS/CASS contribution thresholds and how far the current YTD profit is from the next one.</summary>
+public sealed record TaxThresholdsDto(
+    decimal Profit,
+    decimal CasFirstThreshold,
+    decimal CasSecondThreshold,
+    decimal CassFirstThreshold,
+    decimal CassMaximumThreshold,
+    decimal RemainingToNextCasThreshold,
+    decimal RemainingToNextCassThreshold,
+    bool HasReachedCasFirstThreshold,
+    bool HasReachedCasSecondThreshold,
+    bool HasReachedCassFirstThreshold,
+    bool HasReachedCassMaximumThreshold);
 
 public sealed record MonthlyRevenuePointDto(
     int Month,
