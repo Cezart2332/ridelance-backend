@@ -47,8 +47,9 @@ internal sealed class CompanyInfo : IEndpoint
             try
             {
 #pragma warning disable S1075 // URIs should not be hardcoded — public ANAF web service endpoint
+                // NB: ANAF moved the service — the old "PlatitorTvaRest/api/v9/ws/tva" path now returns 404.
                 response = await client.PostAsJsonAsync(
-                    "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v9/ws/tva",
+                    "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v9/tva",
                     payload,
                     cancellationToken);
 #pragma warning restore S1075
