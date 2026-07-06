@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Web.Api.Extensions;
 using Web.Api.Infrastructure;
@@ -39,16 +40,18 @@ internal sealed class CompanyInfo : IEndpoint
 
             var payload = new[]
             {
-                new { cui = cuiNumber, data = DateTime.UtcNow.ToString("yyyy-MM-dd") }
+                new { cui = cuiNumber, data = DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) }
             };
 
             HttpResponseMessage response;
             try
             {
+#pragma warning disable S1075 // URIs should not be hardcoded — public ANAF web service endpoint
                 response = await client.PostAsJsonAsync(
                     "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v9/ws/tva",
                     payload,
                     cancellationToken);
+#pragma warning restore S1075
             }
             catch (Exception)
             {
@@ -60,7 +63,7 @@ internal sealed class CompanyInfo : IEndpoint
                 return Results.Problem(statusCode: 502, detail: "Serviciul ANAF a răspuns cu eroare. Încearcă din nou.");
             }
 
-            using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
             if (!doc.RootElement.TryGetProperty("found", out JsonElement found) || found.GetArrayLength() == 0)
             {
                 return Results.Problem(statusCode: 404, detail: "Nu am găsit nicio firmă înregistrată cu acest CUI.");
@@ -69,7 +72,7 @@ internal sealed class CompanyInfo : IEndpoint
             JsonElement entry = found[0];
             JsonElement general = entry.GetProperty("date_generale");
 
-            string? GetString(JsonElement element, string property) =>
+            static string? GetString(JsonElement element, string property) =>
                 element.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String
                     ? value.GetString()
                     : null;

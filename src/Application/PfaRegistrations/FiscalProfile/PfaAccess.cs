@@ -65,7 +65,7 @@ internal static class PfaAccess
             .SingleOrDefaultAsync(u => u.Id == userContext.UserId, cancellationToken);
 
         bool canManage = caller?.Role == UserRole.Admin
-            || (caller?.Role == UserRole.Contabil && result.Value.AssignedContabilId == userContext.UserId);
+            || caller?.Role == UserRole.Contabil && result.Value.AssignedContabilId == userContext.UserId;
 
         if (!canManage)
         {
