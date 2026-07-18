@@ -105,6 +105,13 @@ internal sealed class GetContabilStatsQueryHandler(
             .ToListAsync(cancellationToken))
             .ToHashSet();
 
+        // Linked bank connections waive the monthly bank-statement upload
+        var linkedBankUsers = (await context.BankConnections
+            .Where(bc => clientUserIds.Contains(bc.UserId) && bc.Status == Domain.Banking.BankConnectionStatus.Linked)
+            .Select(bc => bc.UserId)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+
         // Get monthly incomes for current month
         Dictionary<Guid, PfaMonthlyIncome> monthlyIncomes = await context.PfaMonthlyIncomes
             .Where(i => pfaIds.Contains(i.PfaRegistrationId) && i.Year == currentYear && i.Month == currentMonth)
@@ -139,7 +146,8 @@ internal sealed class GetContabilStatsQueryHandler(
             bool isUberMandatory = venitUber > 0 || venitUber == 0 && venitBolt == 0 && !hasBoltIntegration;
             bool isBoltMandatory = venitBolt > 0 || hasBoltIntegration;
 
-            bool missingExtras = !clientDocs.Any(d => d.Category == DocumentCategory.ExtrasBancar);
+            bool hasLinkedBank = linkedBankUsers.Contains(pfa.UserId);
+            bool missingExtras = !hasLinkedBank && !clientDocs.Any(d => d.Category == DocumentCategory.ExtrasBancar);
             bool missingUber = isUberMandatory && !clientDocs.Any(d => d.Category == DocumentCategory.RaportUber);
             bool missingBolt = isBoltMandatory && !clientDocs.Any(d => d.Category == DocumentCategory.RaportBolt);
 

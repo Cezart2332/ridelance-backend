@@ -1,4 +1,5 @@
 using Application.Abstractions.Data;
+using Domain.Banking;
 using Domain.Bolt;
 using Domain.Cars;
 using Domain.Chat;
@@ -41,8 +42,12 @@ public sealed class ApplicationDbContext(
     public DbSet<UserSubscription> UserSubscriptions { get; set; }
     public DbSet<PaymentRecord> PaymentRecords { get; set; }
     public DbSet<ServiceOrder> ServiceOrders { get; set; }
+    public DbSet<IssuedInvoice> IssuedInvoices { get; set; }
     public DbSet<BoltIntegration> BoltIntegrations { get; set; }
     public DbSet<BoltOrder> BoltOrders { get; set; }
+    public DbSet<BankConnection> BankConnections { get; set; }
+    public DbSet<BankAccount> BankAccounts { get; set; }
+    public DbSet<BankTransaction> BankTransactions { get; set; }
     public DbSet<UberCsvImport> UberCsvImports { get; set; }
     public DbSet<OfficeAppointment> OfficeAppointments { get; set; }
     public DbSet<OfficeScheduleDay> OfficeScheduleDays { get; set; }
