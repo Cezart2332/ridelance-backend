@@ -9,7 +9,9 @@ using Infrastructure.Database;
 using Infrastructure.DomainEvents;
 using Infrastructure.Notifications;
 using Infrastructure.Services;
+using Infrastructure.Banking;
 using Infrastructure.Email;
+using Infrastructure.Invoicing;
 using Infrastructure.Payments;
 using Application.Abstractions;
 using Application.Abstractions.Security;
@@ -68,9 +70,18 @@ public static class DependencyInjection
         // Stripe
         services.AddScoped<IStripeService, StripeService>();
 
+        // Oblio (facturare)
+        services.Configure<OblioOptions>(configuration.GetSection(OblioOptions.SectionName));
+        services.AddHttpClient<IOblioService, OblioService>();
+        services.AddScoped<IInvoiceGenerator, InvoiceGenerator>();
+
         // Bolt
         services.AddHttpClient();
         services.AddScoped<IBoltService, BoltService>();
+
+        // GoCardless Bank Account Data (open banking)
+        services.Configure<GoCardlessOptions>(configuration.GetSection(GoCardlessOptions.SectionName));
+        services.AddHttpClient<IBankDataProvider, GoCardlessBankDataProvider>();
 
         // Background Jobs
         services.AddHostedService<MondayAccessGrantJob>();
@@ -78,6 +89,7 @@ public static class DependencyInjection
         services.AddHostedService<DocumentExpiryCheckJob>();
         services.AddHostedService<PfaIncomePeriodInitializationJob>();
         services.AddHostedService<BoltSyncJob>();
+        services.AddHostedService<BankSyncJob>();
 
         return services;
     }

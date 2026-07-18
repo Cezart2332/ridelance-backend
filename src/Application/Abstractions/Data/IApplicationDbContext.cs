@@ -1,3 +1,4 @@
+using Domain.Banking;
 using Domain.Bolt;
 using Domain.Cars;
 using Domain.Chat;
@@ -35,8 +36,12 @@ public interface IApplicationDbContext
     DbSet<UserSubscription> UserSubscriptions { get; }
     DbSet<PaymentRecord> PaymentRecords { get; }
     DbSet<ServiceOrder> ServiceOrders { get; }
+    DbSet<IssuedInvoice> IssuedInvoices { get; }
     DbSet<BoltIntegration> BoltIntegrations { get; }
     DbSet<BoltOrder> BoltOrders { get; }
+    DbSet<BankConnection> BankConnections { get; }
+    DbSet<BankAccount> BankAccounts { get; }
+    DbSet<BankTransaction> BankTransactions { get; }
     DbSet<UberCsvImport> UberCsvImports { get; }
     DbSet<OfficeAppointment> OfficeAppointments { get; }
     DbSet<OfficeScheduleDay> OfficeScheduleDays { get; }

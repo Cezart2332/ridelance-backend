@@ -31,6 +31,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
     IEmailService emailService,
     IMjmlRenderer mjmlRenderer,
     IWebPushService webPushService,
+    IInvoiceGenerator invoiceGenerator,
     IConfiguration configuration,
     ILogger<HandleStripeWebhookCommandHandler> logger)
     : ICommandHandler<HandleStripeWebhookCommand>
@@ -93,6 +94,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return;
         }
 
+        Guid? paymentRecordIdForInvoice = null;
+
         if (mode == "payment")
         {
             // One-time payment completed (e.g. Înființare PFA)
@@ -119,6 +122,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 CreatedAtUtc = DateTime.UtcNow,
             };
             context.PaymentRecords.Add(record);
+            paymentRecordIdForInvoice = record.Id;
         }
 
         else if (mode == "subscription")
@@ -199,9 +203,16 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 CreatedAtUtc = DateTime.UtcNow,
             };
             context.PaymentRecords.Add(record);
+            paymentRecordIdForInvoice = record.Id;
         }
 
         await context.SaveChangesAsync(ct);
+
+        // Generate Oblio invoice (never throws; failures are stored for admin review)
+        if (paymentRecordIdForInvoice.HasValue)
+        {
+            await invoiceGenerator.GenerateForPaymentRecordAsync(paymentRecordIdForInvoice.Value, ct);
+        }
 
         // Send payment confirmation email
         User? user = await context.Users
@@ -268,9 +279,10 @@ internal sealed class HandleStripeWebhookCommandHandler(
         bool paymentRecordExists = await context.PaymentRecords
             .AnyAsync(p => p.StripeSessionId == session.Id, ct);
 
+        Guid? carPaymentRecordId = null;
         if (!paymentRecordExists)
         {
-            context.PaymentRecords.Add(new Domain.Payments.PaymentRecord
+            var carRecord = new Domain.Payments.PaymentRecord
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
@@ -281,10 +293,17 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 StripePaymentId = session.PaymentIntentId,
                 StripeSessionId = session.Id,
                 CreatedAtUtc = DateTime.UtcNow,
-            });
+            };
+            context.PaymentRecords.Add(carRecord);
+            carPaymentRecordId = carRecord.Id;
         }
 
         await context.SaveChangesAsync(ct);
+
+        if (carPaymentRecordId.HasValue)
+        {
+            await invoiceGenerator.GenerateForPaymentRecordAsync(carPaymentRecordId.Value, ct);
+        }
 
         User? user = await context.Users
             .AsNoTracking()
@@ -334,6 +353,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
         order.PaidAtUtc = DateTime.UtcNow;
 
         await context.SaveChangesAsync(ct);
+
+        await invoiceGenerator.GenerateForServiceOrderAsync(order.Id, ct);
 
         decimal amountLei = (session.AmountTotal ?? 0) / 100m;
         string mjml = ServiceOrderConfirmationEmail.BuildMjml(
@@ -393,6 +414,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
             context.PaymentRecords.Add(carPaymentRecord);
 
             await context.SaveChangesAsync(ct);
+
+            await invoiceGenerator.GenerateForPaymentRecordAsync(carPaymentRecord.Id, ct);
 
             User? carPoster = await context.Users
                 .AsNoTracking()
@@ -464,6 +487,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
         context.PaymentRecords.Add(record);
 
         await context.SaveChangesAsync(ct);
+
+        await invoiceGenerator.GenerateForPaymentRecordAsync(record.Id, ct);
 
         // Send payment confirmation email
         User? user = await context.Users
