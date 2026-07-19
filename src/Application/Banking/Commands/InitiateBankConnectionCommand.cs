@@ -82,7 +82,9 @@ internal sealed class InitiateBankConnectionCommandHandler(
             string reference = Guid.NewGuid().ToString("N");
             string baseUrl = configuration["App:BaseUrl"]
                 ?? throw new InvalidOperationException("App:BaseUrl is missing in configuration.");
-            string redirect = $"{baseUrl.TrimEnd('/')}/app/dashboard?section=banca";
+            // Fără query string: whitelist-ul de redirect-uri Enable Banking nu acceptă query.
+            // Frontend-ul (DashboardPage) deschide tabul Banca pe baza parametrilor de callback.
+            string redirect = $"{baseUrl.TrimEnd('/')}/app/dashboard";
 
             BankRequisitionCreated created = await provider.CreateRequisitionAsync(
                 institution.Id,
