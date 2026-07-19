@@ -136,8 +136,10 @@ internal sealed class GoCardlessBankDataProvider(
 
     public async Task<BankRequisitionDetails> GetRequisitionAsync(
         string requisitionId,
+        string? authorizationCode = null,
         CancellationToken cancellationToken = default)
     {
+        // GoCardless nu folosește schimb de cod la redirect — authorizationCode e ignorat.
         EnsureConfigured();
         string token = await GetAccessTokenAsync(cancellationToken);
 
