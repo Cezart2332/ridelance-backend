@@ -30,7 +30,7 @@ internal sealed class EnableBankingBankDataProvider(
 
     private readonly EnableBankingOptions _options = optionsAccessor.Value;
 
-    private (string ApplicationId, string PrivateKeyPem)? _credentials;
+    private (string ApplicationId, string PrivateKeyPem, string KeySource)? _credentials;
     private bool _credentialsResolved;
 
     public string ProviderName => "EnableBanking";
@@ -42,7 +42,7 @@ internal sealed class EnableBankingBankDataProvider(
     /// din fișierul .pem găsit lângă aplicație — al cărui nume (convenția Enable Banking)
     /// este chiar Application ID-ul.
     /// </summary>
-    private (string ApplicationId, string PrivateKeyPem)? ResolveCredentials()
+    private (string ApplicationId, string PrivateKeyPem, string KeySource)? ResolveCredentials()
     {
         if (_credentialsResolved)
         {
@@ -56,6 +56,21 @@ internal sealed class EnableBankingBankDataProvider(
         string? privateKeyPem = string.IsNullOrWhiteSpace(_options.PrivateKeyPem)
             ? null
             : _options.PrivateKeyPem;
+        string keySource = "EnableBanking:PrivateKeyPem";
+
+        // Valoare care e de fapt o cale către fișier (greșeală frecventă de config).
+        if (privateKeyPem is not null &&
+            !privateKeyPem.Contains("BEGIN", StringComparison.Ordinal) &&
+            privateKeyPem.Trim().EndsWith(".pem", StringComparison.OrdinalIgnoreCase))
+        {
+            string asPath = ResolveKeyPath(privateKeyPem.Trim());
+            if (File.Exists(asPath))
+            {
+                privateKeyPem = File.ReadAllText(asPath);
+                applicationId ??= EnableBankingKeyFile.ApplicationIdFromFileName(asPath);
+                keySource = $"fișierul {asPath} (dat în EnableBanking:PrivateKeyPem)";
+            }
+        }
 
         if (privateKeyPem is null)
         {
@@ -67,11 +82,12 @@ internal sealed class EnableBankingBankDataProvider(
             {
                 privateKeyPem = File.ReadAllText(path);
                 applicationId ??= EnableBankingKeyFile.ApplicationIdFromFileName(path);
+                keySource = $"fișierul {path}";
             }
         }
 
         _credentials = applicationId is not null && privateKeyPem is not null
-            ? (applicationId, privateKeyPem)
+            ? (applicationId, privateKeyPem, keySource)
             : null;
         return _credentials;
     }
@@ -514,7 +530,7 @@ internal sealed class EnableBankingBankDataProvider(
         private static string? _token;
         private static DateTime _expiresUtc;
 
-        public static string Get(string applicationId, string privateKeyPem)
+        public static string Get(string applicationId, string privateKeyPem, string keySource)
         {
             lock (Sync)
             {
@@ -524,13 +540,13 @@ internal sealed class EnableBankingBankDataProvider(
                 }
 
                 const int lifetimeSeconds = 3600;
-                _token = Create(applicationId, privateKeyPem, lifetimeSeconds);
+                _token = Create(applicationId, privateKeyPem, keySource, lifetimeSeconds);
                 _expiresUtc = DateTime.UtcNow.AddSeconds(lifetimeSeconds - 300);
                 return _token;
             }
         }
 
-        private static string Create(string applicationId, string privateKeyPem, int lifetimeSeconds)
+        private static string Create(string applicationId, string privateKeyPem, string keySource, int lifetimeSeconds)
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
@@ -550,15 +566,18 @@ internal sealed class EnableBankingBankDataProvider(
 
             string signingInput = $"{Base64Url(Encoding.UTF8.GetBytes(header))}.{Base64Url(Encoding.UTF8.GetBytes(payload))}";
 
+            string normalized = NormalizePrivateKey(privateKeyPem);
+
             using var rsa = RSA.Create();
             try
             {
-                rsa.ImportFromPem(NormalizePrivateKey(privateKeyPem));
+                rsa.ImportFromPem(normalized);
             }
             catch (ArgumentException ex)
             {
                 throw new BankDataProviderException(
-                    "Cheia privată Enable Banking nu este un PEM valid (acceptă PEM brut sau base64).", ex);
+                    $"Cheia privată Enable Banking (sursă: {keySource}) nu este un PEM valid. " +
+                    $"{DescribeKeyProblem(normalized)} Eroarea .NET: {ex.Message}", ex);
             }
 
             byte[] signature = rsa.SignData(
@@ -571,13 +590,16 @@ internal sealed class EnableBankingBankDataProvider(
 
         private static string NormalizePrivateKey(string raw)
         {
-            string value = raw.Trim();
+            // Ghilimele rămase din .env / paste ("-----BEGIN…" sau '-----BEGIN…').
+            string value = raw.Trim().Trim('"', '\'').Trim();
 
             if (!value.Contains("BEGIN", StringComparison.Ordinal))
             {
                 try
                 {
-                    value = Encoding.UTF8.GetString(Convert.FromBase64String(value)).Trim();
+                    value = Encoding.UTF8.GetString(
+                        Convert.FromBase64String(string.Concat(value.Where(c => !char.IsWhiteSpace(c)))))
+                        .Trim().Trim('"', '\'').Trim();
                 }
                 catch (FormatException)
                 {
@@ -586,7 +608,46 @@ internal sealed class EnableBankingBankDataProvider(
             }
 
             // Env-urile pe o singură linie ajung cu "\n" escapat.
-            return value.Replace("\\n", "\n", StringComparison.Ordinal);
+            value = value.Replace("\\n", "\n", StringComparison.Ordinal);
+
+            // Reconstruim PEM-ul indiferent cum au fost stricate newline-urile la copiere
+            // (spații în loc de newline, CRLF, indentare): extragem corpul base64 dintre
+            // antete, eliminăm orice whitespace și îl reîmpachetăm pe linii de 64.
+            int begin = value.IndexOf("-----BEGIN ", StringComparison.Ordinal);
+            int beginEnd = begin >= 0 ? value.IndexOf("-----", begin + 11, StringComparison.Ordinal) : -1;
+            int end = value.IndexOf("-----END ", StringComparison.Ordinal);
+            if (begin < 0 || beginEnd < 0 || end <= beginEnd)
+            {
+                return value;
+            }
+
+            string label = value[(begin + 11)..beginEnd].Trim();
+            string body = string.Concat(
+                value[(beginEnd + 5)..end].Where(c => !char.IsWhiteSpace(c)));
+
+            var pem = new StringBuilder();
+            pem.Append("-----BEGIN ").Append(label).Append("-----\n");
+            for (int i = 0; i < body.Length; i += 64)
+            {
+                pem.Append(body, i, Math.Min(64, body.Length - i)).Append('\n');
+            }
+            pem.Append("-----END ").Append(label).Append("-----\n");
+            return pem.ToString();
+        }
+
+        /// <summary>Descriere sigură a problemei — nu include niciun octet din cheie.</summary>
+        private static string DescribeKeyProblem(string normalized)
+        {
+            if (!normalized.Contains("-----BEGIN ", StringComparison.Ordinal))
+            {
+                return $"Conținutul (lungime {normalized.Length} caractere) nu are antetul \"-----BEGIN\" — " +
+                    "nu pare a fi un PEM sau base64-ul lui; verifică dacă nu cumva e o cale greșită de fișier " +
+                    "sau un paste incomplet.";
+            }
+
+            return "Antetul PEM există, dar corpul base64 dintre \"-----BEGIN\" și \"-----END\" nu s-a putut " +
+                "decoda nici după normalizare (newline-uri/spații reparate automat) — cel mai probabil " +
+                "conținutul a fost trunchiat sau modificat la copiere.";
         }
 
         private static string Base64Url(byte[] bytes) =>
@@ -613,12 +674,12 @@ internal sealed class EnableBankingBankDataProvider(
         bool expectBody,
         CancellationToken ct)
     {
-        (string applicationId, string privateKeyPem) = ResolveCredentials()
+        (string applicationId, string privateKeyPem, string keySource) = ResolveCredentials()
             ?? throw new BankDataProviderException("Integrarea Enable Banking nu este configurată.");
 
         using var request = new HttpRequestMessage(method, BuildUri(path));
-        request.Headers.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", JwtCache.Get(applicationId, privateKeyPem));
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", JwtCache.Get(applicationId, privateKeyPem, keySource));
         if (body is not null)
         {
             request.Content = JsonContent.Create(body);
@@ -683,6 +744,7 @@ internal sealed class EnableBankingBankDataProvider(
         {
             throw new BankDataProviderException(
                 "Integrarea Enable Banking nu este configurată. Pune fișierul .pem al aplicației lângă Web.Api " +
+                $"(căutat în: {AppContext.BaseDirectory} și {Directory.GetCurrentDirectory()}) " +
                 "sau setează EnableBanking:ApplicationId și EnableBanking:PrivateKeyPem.");
         }
     }
