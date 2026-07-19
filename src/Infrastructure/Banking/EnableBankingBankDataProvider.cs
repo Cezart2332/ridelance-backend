@@ -30,11 +30,62 @@ internal sealed class EnableBankingBankDataProvider(
 
     private readonly EnableBankingOptions _options = optionsAccessor.Value;
 
+    private (string ApplicationId, string PrivateKeyPem)? _credentials;
+    private bool _credentialsResolved;
+
     public string ProviderName => "EnableBanking";
 
-    public bool IsConfigured =>
-        !string.IsNullOrWhiteSpace(_options.ApplicationId) &&
-        !string.IsNullOrWhiteSpace(_options.PrivateKeyPem);
+    public bool IsConfigured => ResolveCredentials() is not null;
+
+    /// <summary>
+    /// Credențialele vin din config (ApplicationId + PrivateKeyPem) sau, în lipsă,
+    /// din fișierul .pem găsit lângă aplicație — al cărui nume (convenția Enable Banking)
+    /// este chiar Application ID-ul.
+    /// </summary>
+    private (string ApplicationId, string PrivateKeyPem)? ResolveCredentials()
+    {
+        if (_credentialsResolved)
+        {
+            return _credentials;
+        }
+        _credentialsResolved = true;
+
+        string? applicationId = string.IsNullOrWhiteSpace(_options.ApplicationId)
+            ? null
+            : _options.ApplicationId.Trim();
+        string? privateKeyPem = string.IsNullOrWhiteSpace(_options.PrivateKeyPem)
+            ? null
+            : _options.PrivateKeyPem;
+
+        if (privateKeyPem is null)
+        {
+            string? path = string.IsNullOrWhiteSpace(_options.PrivateKeyPath)
+                ? EnableBankingKeyFile.Find()
+                : ResolveKeyPath(_options.PrivateKeyPath.Trim());
+
+            if (path is not null && File.Exists(path))
+            {
+                privateKeyPem = File.ReadAllText(path);
+                applicationId ??= EnableBankingKeyFile.ApplicationIdFromFileName(path);
+            }
+        }
+
+        _credentials = applicationId is not null && privateKeyPem is not null
+            ? (applicationId, privateKeyPem)
+            : null;
+        return _credentials;
+    }
+
+    private static string ResolveKeyPath(string path)
+    {
+        if (Path.IsPathRooted(path))
+        {
+            return path;
+        }
+
+        string besideApp = Path.Combine(AppContext.BaseDirectory, path);
+        return File.Exists(besideApp) ? besideApp : Path.GetFullPath(path);
+    }
 
     public async Task<IReadOnlyList<BankInstitutionInfo>> ListInstitutionsAsync(
         string countryCode,
@@ -463,7 +514,7 @@ internal sealed class EnableBankingBankDataProvider(
         private static string? _token;
         private static DateTime _expiresUtc;
 
-        public static string Get(EnableBankingOptions options)
+        public static string Get(string applicationId, string privateKeyPem)
         {
             lock (Sync)
             {
@@ -473,13 +524,13 @@ internal sealed class EnableBankingBankDataProvider(
                 }
 
                 const int lifetimeSeconds = 3600;
-                _token = Create(options, lifetimeSeconds);
+                _token = Create(applicationId, privateKeyPem, lifetimeSeconds);
                 _expiresUtc = DateTime.UtcNow.AddSeconds(lifetimeSeconds - 300);
                 return _token;
             }
         }
 
-        private static string Create(EnableBankingOptions options, int lifetimeSeconds)
+        private static string Create(string applicationId, string privateKeyPem, int lifetimeSeconds)
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
@@ -487,7 +538,7 @@ internal sealed class EnableBankingBankDataProvider(
             {
                 ["typ"] = "JWT",
                 ["alg"] = "RS256",
-                ["kid"] = options.ApplicationId,
+                ["kid"] = applicationId,
             });
             string payload = JsonSerializer.Serialize(new Dictionary<string, object>
             {
@@ -502,7 +553,7 @@ internal sealed class EnableBankingBankDataProvider(
             using var rsa = RSA.Create();
             try
             {
-                rsa.ImportFromPem(NormalizePrivateKey(options.PrivateKeyPem));
+                rsa.ImportFromPem(NormalizePrivateKey(privateKeyPem));
             }
             catch (ArgumentException ex)
             {
@@ -562,9 +613,12 @@ internal sealed class EnableBankingBankDataProvider(
         bool expectBody,
         CancellationToken ct)
     {
+        (string applicationId, string privateKeyPem) = ResolveCredentials()
+            ?? throw new BankDataProviderException("Integrarea Enable Banking nu este configurată.");
+
         using var request = new HttpRequestMessage(method, BuildUri(path));
         request.Headers.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", JwtCache.Get(_options));
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", JwtCache.Get(applicationId, privateKeyPem));
         if (body is not null)
         {
             request.Content = JsonContent.Create(body);
@@ -628,7 +682,8 @@ internal sealed class EnableBankingBankDataProvider(
         if (!IsConfigured)
         {
             throw new BankDataProviderException(
-                "Integrarea Enable Banking nu este configurată. Setează EnableBanking:ApplicationId și EnableBanking:PrivateKeyPem.");
+                "Integrarea Enable Banking nu este configurată. Pune fișierul .pem al aplicației lângă Web.Api " +
+                "sau setează EnableBanking:ApplicationId și EnableBanking:PrivateKeyPem.");
         }
     }
 
