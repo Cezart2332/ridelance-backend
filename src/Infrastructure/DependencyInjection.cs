@@ -87,7 +87,8 @@ public static class DependencyInjection
 
         string? configuredBankProvider = configuration["Banking:Provider"];
         bool useEnableBanking = string.IsNullOrWhiteSpace(configuredBankProvider)
-            ? !string.IsNullOrWhiteSpace(configuration["EnableBanking:ApplicationId"])
+            ? !string.IsNullOrWhiteSpace(configuration["EnableBanking:ApplicationId"]) ||
+              EnableBankingKeyFile.Find() is not null
             : string.Equals(configuredBankProvider, "EnableBanking", StringComparison.OrdinalIgnoreCase);
 
         if (useEnableBanking)

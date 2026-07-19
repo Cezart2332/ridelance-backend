@@ -32,6 +32,10 @@
     <None Update="models\best.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Cheia privată Enable Banking (numele fișierului = Application ID). Gitignored; ajunge doar în output. -->
+    <None Update="*.pem">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
