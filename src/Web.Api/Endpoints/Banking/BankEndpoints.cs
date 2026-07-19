@@ -12,7 +12,7 @@ namespace Web.Api.Endpoints.Banking;
 internal sealed class BankEndpoints : IEndpoint
 {
     public sealed record InitiateConnectionRequest(string InstitutionId);
-    public sealed record FinalizeConnectionRequest(string Reference);
+    public sealed record FinalizeConnectionRequest(string Reference, string? Code = null);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -55,7 +55,7 @@ internal sealed class BankEndpoints : IEndpoint
             CancellationToken cancellationToken) =>
         {
             Result<BankConnectionResponse> result = await handler.Handle(
-                new FinalizeBankConnectionCommand(request.Reference),
+                new FinalizeBankConnectionCommand(request.Reference, request.Code),
                 cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         });

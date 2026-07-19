@@ -24,8 +24,13 @@ public interface IBankDataProvider
         int accessValidForDays,
         CancellationToken cancellationToken = default);
 
+    /// <param name="authorizationCode">
+    /// Codul one-time întors de provider la redirect (ex. Enable Banking ?code=);
+    /// null pentru providerii care nu folosesc schimb de cod (GoCardless).
+    /// </param>
     Task<BankRequisitionDetails> GetRequisitionAsync(
         string requisitionId,
+        string? authorizationCode = null,
         CancellationToken cancellationToken = default);
 
     Task DeleteRequisitionAsync(
@@ -65,10 +70,15 @@ public enum BankRequisitionStatus
     Suspended,
 }
 
+/// <param name="UpdatedRequisitionId">
+/// Setat când providerul schimbă identificatorul în timpul finalizării
+/// (ex. Enable Banking: authorization_id devine session_id); se persistă în locul celui vechi.
+/// </param>
 public sealed record BankRequisitionDetails(
     BankRequisitionStatus Status,
     IReadOnlyList<string> AccountIds,
-    DateTime? ConsentExpiresAtUtc);
+    DateTime? ConsentExpiresAtUtc,
+    string? UpdatedRequisitionId = null);
 
 public sealed record BankAccountDetailsInfo(
     string? Iban,

@@ -45,7 +45,7 @@ internal sealed class GetGoCardlessStatusQueryHandler(
 
         if (!provider.IsConfigured)
         {
-            error = "Lipsesc datele de configurare GoCardless (SecretId, SecretKey).";
+            error = $"Lipsesc datele de configurare pentru providerul bancar ({provider.ProviderName}).";
         }
         else
         {

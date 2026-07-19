@@ -80,9 +80,24 @@ public static class DependencyInjection
         services.AddHttpClient();
         services.AddScoped<IBoltService, BoltService>();
 
-        // GoCardless Bank Account Data (open banking)
+        // Open banking (PSD2 AIS) — providerul activ e ales din config:
+        // Banking:Provider explicit, altfel Enable Banking dacă are credențiale, altfel GoCardless.
         services.Configure<GoCardlessOptions>(configuration.GetSection(GoCardlessOptions.SectionName));
-        services.AddHttpClient<IBankDataProvider, GoCardlessBankDataProvider>();
+        services.Configure<EnableBankingOptions>(configuration.GetSection(EnableBankingOptions.SectionName));
+
+        string? configuredBankProvider = configuration["Banking:Provider"];
+        bool useEnableBanking = string.IsNullOrWhiteSpace(configuredBankProvider)
+            ? !string.IsNullOrWhiteSpace(configuration["EnableBanking:ApplicationId"])
+            : string.Equals(configuredBankProvider, "EnableBanking", StringComparison.OrdinalIgnoreCase);
+
+        if (useEnableBanking)
+        {
+            services.AddHttpClient<IBankDataProvider, EnableBankingBankDataProvider>();
+        }
+        else
+        {
+            services.AddHttpClient<IBankDataProvider, GoCardlessBankDataProvider>();
+        }
 
         // Background Jobs
         services.AddHostedService<MondayAccessGrantJob>();

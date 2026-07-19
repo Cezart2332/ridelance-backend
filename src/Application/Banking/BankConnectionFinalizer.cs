@@ -19,11 +19,19 @@ public sealed class BankConnectionFinalizer(
 {
     public async Task<BankConnection> FinalizeAsync(
         BankConnection connection,
+        string? authorizationCode,
         CancellationToken cancellationToken)
     {
         string requisitionId = secretProtector.Unprotect(connection.ProviderRequisitionId);
 
-        BankRequisitionDetails details = await provider.GetRequisitionAsync(requisitionId, cancellationToken);
+        BankRequisitionDetails details =
+            await provider.GetRequisitionAsync(requisitionId, authorizationCode, cancellationToken);
+
+        // Enable Banking: după schimbul codului, identificatorul devine session_id.
+        if (!string.IsNullOrEmpty(details.UpdatedRequisitionId))
+        {
+            connection.ProviderRequisitionId = secretProtector.Protect(details.UpdatedRequisitionId);
+        }
 
         switch (details.Status)
         {

@@ -57,7 +57,7 @@ internal sealed class GetBankConnectionQueryHandler(
         {
             try
             {
-                await finalizer.FinalizeAsync(connection, cancellationToken);
+                await finalizer.FinalizeAsync(connection, authorizationCode: null, cancellationToken);
             }
             catch (BankDataProviderException)
             {

@@ -9,7 +9,7 @@ using SharedKernel;
 
 namespace Application.Banking.Commands;
 
-public sealed record FinalizeBankConnectionCommand(string Reference)
+public sealed record FinalizeBankConnectionCommand(string Reference, string? AuthorizationCode = null)
     : ICommand<BankConnectionResponse>;
 
 internal sealed class FinalizeBankConnectionCommandHandler(
@@ -46,7 +46,7 @@ internal sealed class FinalizeBankConnectionCommandHandler(
 
         try
         {
-            await finalizer.FinalizeAsync(connection, cancellationToken);
+            await finalizer.FinalizeAsync(connection, command.AuthorizationCode, cancellationToken);
         }
         catch (BankDataProviderException ex)
         {
