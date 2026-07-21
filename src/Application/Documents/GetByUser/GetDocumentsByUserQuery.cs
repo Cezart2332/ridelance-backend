@@ -13,4 +13,8 @@ public sealed record DocumentSummary(
     string Status,
     long FileSize,
     DateTime UploadedAtUtc,
-    DateTime? ExpiresAtUtc);
+    DateTime? ExpiresAtUtc,
+    string AiStatus,
+    string? AiSummary,
+    string? AiDetectedType,
+    DateTime? AiExtractedExpiresAtUtc);

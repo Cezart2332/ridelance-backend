@@ -19,6 +19,9 @@ internal sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.Status).HasConversion<string>().HasMaxLength(32);
         builder.Property(d => d.EncryptedFilePath).HasMaxLength(1024).IsRequired();
         builder.Property(d => d.EncryptionIv).HasMaxLength(64).IsRequired();
+        builder.Property(d => d.AiStatus).HasConversion<string>().HasMaxLength(32);
+        builder.Property(d => d.AiSummary).HasMaxLength(1024);
+        builder.Property(d => d.AiDetectedType).HasMaxLength(256);
 
         builder.HasOne(d => d.User)
             .WithMany()

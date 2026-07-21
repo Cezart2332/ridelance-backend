@@ -25,6 +25,7 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(
     {
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.Documents)
+            .Include(r => r.OnboardingSections)
             .Include(r => r.User)
                 .ThenInclude(u => u.PushSubscriptions)
             .SingleOrDefaultAsync(r => r.Id == command.RegistrationId, cancellationToken);
@@ -78,6 +79,20 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(
         registration.ReviewedAtUtc = DateTime.UtcNow;
         registration.ReviewedByUserId = command.ReviewerUserId;
 
+        // Aprobarea PFA = validarea secțiunii 1 de onboarding → deblochează secțiunea 2.
+        if (command.NewStatus == PfaRegistrationStatus.Approved &&
+            registration.OnboardingSections.All(s => s.SectionKey != OnboardingSectionKey.AutorizatieTransport))
+        {
+            context.OnboardingSectionApprovals.Add(new OnboardingSectionApproval
+            {
+                Id = Guid.NewGuid(),
+                PfaRegistrationId = registration.Id,
+                SectionKey = OnboardingSectionKey.AutorizatieTransport,
+                Status = OnboardingSectionStatus.InProgress,
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+        }
+
         // Create in-app notification
         string text = command.NewStatus == PfaRegistrationStatus.Approved
             ? "Dosarul tău PFA a fost aprobat! CUI-ul a fost generat."
@@ -122,7 +137,7 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(
             : "Dosarul tău necesită modificări.";
 
         Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
-        string relativePath = "/app/dashboard";
+        string relativePath = "/onboarding";
         string deepLink = appBaseUri is null ? relativePath : new Uri(appBaseUri, relativePath).ToString();
 
         foreach (PushSubscription sub in registration.User.PushSubscriptions)

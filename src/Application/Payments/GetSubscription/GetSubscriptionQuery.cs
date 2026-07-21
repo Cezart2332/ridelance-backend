@@ -17,4 +17,5 @@ public sealed record SubscriptionResponse(
     string? PfaStatus = null,
     string? PfaRegistrationType = null,
     string? PendingPlan = null,
-    bool HasPaidInfiintare = false);
+    bool HasPaidInfiintare = false,
+    bool OnboardingSectionsValidated = false);
