@@ -38,4 +38,5 @@ public sealed class PfaRegistration : Entity
     public PfaFleetConsent? FleetConsent { get; set; }
     public List<PfaPlatformAccount> PlatformAccounts { get; set; } = [];
     public List<Document> Documents { get; set; } = [];
+    public List<OnboardingSectionApproval> OnboardingSections { get; set; } = [];
 }

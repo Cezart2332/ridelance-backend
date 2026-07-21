@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
 using Application.Abstractions.Services;
+using Application.Documents.AiVerification;
 using Domain.Documents;
 using Domain.Notifications;
 using Domain.PfaRegistrations;
@@ -42,6 +43,9 @@ internal sealed class UploadDocumentCommandHandler(
             return Result.Failure<Guid>(DocumentErrors.FileTooLarge);
         }
 
+        bool aiConfigured = !string.IsNullOrWhiteSpace(
+            configuration["OpenRouter:ApiKey"] ?? Environment.GetEnvironmentVariable("OpenRouter__ApiKey"));
+
         string storedFileName = $"{Guid.NewGuid()}{Path.GetExtension(command.FileName)}";
 
         EncryptedFileResult encryptionResult = await fileEncryptionService.EncryptAndSaveAsync(
@@ -63,7 +67,10 @@ internal sealed class UploadDocumentCommandHandler(
             EncryptionIv = encryptionResult.Iv,
             FileSize = command.FileSize,
             UploadedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = command.ExpiresAtUtc
+            ExpiresAtUtc = command.ExpiresAtUtc,
+            AiStatus = aiConfigured && DocumentAiCatalog.IsEligible(command.Category)
+                ? DocumentAiStatus.Queued
+                : DocumentAiStatus.None
         };
 
         context.Documents.Add(document);

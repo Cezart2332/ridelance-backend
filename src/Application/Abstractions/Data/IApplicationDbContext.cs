@@ -24,6 +24,7 @@ public interface IApplicationDbContext
     DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; }
     DbSet<PfaInternalNote> PfaInternalNotes { get; }
     DbSet<PfaActivityLog> PfaActivityLogs { get; }
+    DbSet<OnboardingSectionApproval> OnboardingSectionApprovals { get; }
     DbSet<Document> Documents { get; }
     DbSet<DeductibleExpense> DeductibleExpenses { get; }
     DbSet<ChatRoom> ChatRooms { get; }

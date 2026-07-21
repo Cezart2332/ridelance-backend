@@ -18,6 +18,12 @@ public sealed class Document : Entity
     public long FileSize { get; set; }
     public DateTime UploadedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresAtUtc { get; set; }
+    public DocumentAiStatus AiStatus { get; set; } = DocumentAiStatus.None;
+    public string? AiSummary { get; set; }
+    public string? AiDetectedType { get; set; }
+    public DateTime? AiExtractedExpiresAtUtc { get; set; }
+    public DateTime? AiProcessedAtUtc { get; set; }
+    public int AiAttempts { get; set; }
 
     // Navigation
     public User User { get; set; } = null!;

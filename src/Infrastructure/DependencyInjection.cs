@@ -3,6 +3,8 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Notifications;
 using Application.Abstractions.Services;
+using Application.Abstractions.Ai;
+using Infrastructure.Ai;
 using Infrastructure.Authentication;
 using Infrastructure.Authorization;
 using Infrastructure.Database;
@@ -80,6 +82,17 @@ public static class DependencyInjection
         services.AddHttpClient();
         services.AddScoped<IBoltService, BoltService>();
 
+        // AI (prevalidarea documentelor prin OpenRouter / Gemini)
+        services.Configure<OpenRouterOptions>(configuration.GetSection(OpenRouterOptions.SectionName));
+        string? openRouterApiKey = configuration["OpenRouter:ApiKey"] ??
+                                   Environment.GetEnvironmentVariable("OpenRouter__ApiKey");
+        if (!string.IsNullOrWhiteSpace(openRouterApiKey))
+        {
+            services.Configure<OpenRouterOptions>(o => o.ApiKey = openRouterApiKey);
+        }
+        services.AddHttpClient<IDocumentAiAnalyzer, OpenRouterDocumentAiAnalyzer>(client =>
+            client.Timeout = TimeSpan.FromMinutes(3));
+
         // Open banking (PSD2 AIS) — providerul activ e ales din config:
         // Banking:Provider explicit, altfel Enable Banking dacă are credențiale, altfel GoCardless.
         services.Configure<GoCardlessOptions>(configuration.GetSection(GoCardlessOptions.SectionName));
@@ -107,6 +120,7 @@ public static class DependencyInjection
         services.AddHostedService<PfaIncomePeriodInitializationJob>();
         services.AddHostedService<BoltSyncJob>();
         services.AddHostedService<BankSyncJob>();
+        services.AddHostedService<DocumentAiVerificationJob>();
 
         return services;
     }

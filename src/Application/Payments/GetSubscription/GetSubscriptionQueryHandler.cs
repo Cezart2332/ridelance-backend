@@ -19,18 +19,17 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             .OrderByDescending(p => p.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        bool hasPaidInfiintare = await context.PaymentRecords
-            .AnyAsync(r => r.UserId == query.UserId &&
-                           r.PaymentType == PaymentType.OneTime &&
-                           r.Status == PaymentStatus.Succeeded &&
-                           (r.Description.Contains("pfa") ||
-                            r.Description.Contains("înființare") ||
-                            r.Description.Contains("infiintare") ||
-                            r.Description.Contains("Serviciu") ||
-                            r.AmountBani == 30000 ||
-                            r.AmountBani == 45000 ||
-                            r.AmountBani == 79900),
-                      cancellationToken);
+        bool hasPaidInfiintare = await InfiintarePaymentCheck.HasPaidAsync(
+            context, query.UserId, cancellationToken);
+
+        // Onboarding complet = PFA aprobat + cele 3 secțiuni de documente validate de admin.
+        bool onboardingSectionsValidated =
+            pfa is { Status: Domain.PfaRegistrations.PfaRegistrationStatus.Approved } &&
+            await context.OnboardingSectionApprovals
+                .CountAsync(a => a.PfaRegistrationId == pfa.Id &&
+                                 a.Status == Domain.PfaRegistrations.OnboardingSectionStatus.Validated &&
+                                 a.SectionKey != Domain.PfaRegistrations.OnboardingSectionKey.Pfa,
+                            cancellationToken) == 3;
 
         UserSubscription? sub = await context.UserSubscriptions
             .Where(s => s.UserId == query.UserId)
@@ -51,7 +50,8 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
                 pfa?.Status.ToString(),
                 pfa?.RegistrationType.ToString(),
                 null,
-                hasPaidInfiintare));
+                hasPaidInfiintare,
+                onboardingSectionsValidated));
         }
 
         // Auto Catch-Up for local development/testing where NextBillingDateUtc is in the past
@@ -110,7 +110,8 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             pfa?.Status.ToString(),
             pfa?.RegistrationType.ToString(),
             sub.PendingPlan?.ToString(),
-            hasPaidInfiintare));
+            hasPaidInfiintare,
+            onboardingSectionsValidated));
     }
 
 
