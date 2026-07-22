@@ -3,18 +3,20 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Application.Abstractions.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Infrastructure.Invoicing;
 
 /// <summary>
 /// Oblio.eu REST API client (https://www.oblio.eu/api).
-/// Generates invoices only — nothing is sent to SPV (e-Factura): the
-/// /docs/einvoice endpoint is never called from here.
+/// Invoices are emailed to the client by Oblio (sendEmail). SPV (e-Factura)
+/// submission is opt-in via Oblio:SendToSpv and never fails the invoice.
 /// </summary>
 internal sealed class OblioService(
     HttpClient httpClient,
-    IOptions<OblioOptions> optionsAccessor) : IOblioService
+    IOptions<OblioOptions> optionsAccessor,
+    ILogger<OblioService> logger) : IOblioService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -119,6 +121,9 @@ internal sealed class OblioService(
                 ["vatIncluded"] = true,
             }).ToList(),
             ["internalNote"] = internalNote,
+            // Oblio trimite factura pe emailul clientului, cu șablonul din
+            // Setări → Email-uri alarme → Document pe email.
+            ["sendEmail"] = string.IsNullOrWhiteSpace(client.Email) ? 0 : 1,
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri("docs/invoice"));
@@ -131,7 +136,51 @@ internal sealed class OblioService(
         string number = data.TryGetProperty("number", out JsonElement nr) ? nr.ToString() : string.Empty;
         string link = data.TryGetProperty("link", out JsonElement lk) ? lk.GetString() ?? string.Empty : string.Empty;
 
+        if (_options.SendToSpv && !string.IsNullOrEmpty(number))
+        {
+            await TrySendToSpvAsync(seriesName, number, token, cancellationToken);
+        }
+
         return new OblioInvoiceResult(seriesName, number, link);
+    }
+
+    /// <summary>
+    /// Trimite factura la SPV (e-Factura). Factura e deja emisă, deci un eșec
+    /// aici doar se loghează — nu invalidează emiterea.
+    /// </summary>
+    private async Task TrySendToSpvAsync(string seriesName, string number, string token, CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri("docs/einvoice"));
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            request.Content = JsonContent.Create(
+                new Dictionary<string, object?>
+                {
+                    ["cif"] = _options.Cif,
+                    ["seriesName"] = seriesName,
+                    ["number"] = number,
+                },
+                options: JsonOptions);
+
+            HttpResponseMessage response = await httpClient.SendAsync(request, ct);
+            string payload = await response.Content.ReadAsStringAsync(ct);
+
+            if (response.IsSuccessStatusCode)
+            {
+                logger.LogInformation("Factura {Series}-{Number} a fost trimisă la SPV.", seriesName, number);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Trimiterea facturii {Series}-{Number} la SPV a eșuat ({StatusCode}): {Error}",
+                    seriesName, number, (int)response.StatusCode, ExtractErrorMessage(payload));
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "Trimiterea facturii {Series}-{Number} la SPV a eșuat.", seriesName, number);
+        }
     }
 
     // ── HTTP helpers ─────────────────────────────────────────────────────────
