@@ -159,12 +159,15 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
                 LeadsGenerated: leads.Count,
                 MonthlyRevenueBani: carMonthlyRevenue),
             PfaStats: new AdminPfaStats(
-                TotalEnrolled: pfas.Count(p => p.Status == PfaRegistrationStatus.Approved),
-                Active: pfas.Count(p => p.Status == PfaRegistrationStatus.Approved && latestSubscriptions.GetValueOrDefault(p.UserId)?.Status is SubscriptionStatus.Active or SubscriptionStatus.ActivePendingBilling),
+                // Înrolat = onboarding complet (OnboardingCompletedAtUtc), nu doar dosar PFA aprobat.
+                TotalEnrolled: pfas.Count(p => p.OnboardingCompletedAtUtc is not null),
+                Active: pfas.Count(p => p.OnboardingCompletedAtUtc is not null && latestSubscriptions.GetValueOrDefault(p.UserId)?.Status is SubscriptionStatus.Active or SubscriptionStatus.ActivePendingBilling),
                 NewRequests: pfas.Count(p => p.Status == PfaRegistrationStatus.Pending),
                 ClientBlocked: currentMonthIncomes.Count(i => !i.IsProcessed),
-                Inactive: pfas.Count(p => p.Status == PfaRegistrationStatus.Approved && latestSubscriptions.GetValueOrDefault(p.UserId) is null),
-                FailedPayment: latestSubscriptions.Values.Count(s => s.Status == SubscriptionStatus.PastDue)),
+                Inactive: pfas.Count(p => p.OnboardingCompletedAtUtc is not null && latestSubscriptions.GetValueOrDefault(p.UserId) is null),
+                FailedPayment: latestSubscriptions.Values.Count(s => s.Status == SubscriptionStatus.PastDue),
+                // Dosar aprobat dar onboarding neterminat — vizibili separat, nu pierduți din KPI.
+                InOnboarding: pfas.Count(p => p.Status == PfaRegistrationStatus.Approved && p.OnboardingCompletedAtUtc is null)),
             EnrolledPfas: enrolledPfas);
 
         return response;

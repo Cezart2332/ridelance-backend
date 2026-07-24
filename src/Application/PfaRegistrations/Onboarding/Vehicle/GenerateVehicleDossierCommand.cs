@@ -1,0 +1,145 @@
+using Application.Abstractions.Data;
+using Application.Abstractions.Dossiers;
+using Application.Abstractions.Messaging;
+using Application.Abstractions.Services;
+using Domain.Documents;
+using Domain.PfaRegistrations;
+using Microsoft.EntityFrameworkCore;
+using SharedKernel;
+
+namespace Application.PfaRegistrations.Onboarding.Vehicle;
+
+/// <summary>Pasul 5 — generează dosarul PDF copie conformă & ecusoane și îl salvează criptat.</summary>
+public sealed record GenerateVehicleDossierCommand(Guid UserId) : ICommand<VehicleStateResponse>;
+
+internal sealed class GenerateVehicleDossierCommandHandler(
+    IApplicationDbContext context,
+    IDossierGenerator dossierGenerator,
+    IFileEncryptionService fileEncryptionService)
+    : ICommandHandler<GenerateVehicleDossierCommand, VehicleStateResponse>
+{
+    public async Task<Result<VehicleStateResponse>> Handle(
+        GenerateVehicleDossierCommand command,
+        CancellationToken cancellationToken)
+    {
+        PfaRegistration? registration = await context.PfaRegistrations
+            .Include(r => r.User)
+            .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
+            .Include(r => r.Vehicles).ThenInclude(v => v.Badges)
+            .Where(r => r.UserId == command.UserId)
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (registration is null)
+        {
+            return Result.Failure<VehicleStateResponse>(VehicleShared.NoRegistration);
+        }
+
+        PfaVehicle? vehicle = VehicleShared.PrimaryVehicle(registration);
+        if (vehicle is null)
+        {
+            return Result.Failure<VehicleStateResponse>(VehicleShared.VehicleNotFound);
+        }
+
+        if (vehicle.CopyRequest is null)
+        {
+            return Result.Failure<VehicleStateResponse>(VehicleShared.CopyRequestNotFound);
+        }
+
+        VehicleCopyRequest copy = vehicle.CopyRequest;
+        DateTime nowUtc = DateTime.UtcNow;
+
+        List<DocumentCategory> uploaded = await context.Documents
+            .Where(d => d.UserId == command.UserId && d.Status != DocumentStatus.Rejected)
+            .Select(d => d.Category)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var included = OnboardingSectionCatalog
+            .RequirementsFor(OnboardingSectionKey.CopieConforma)
+            .Concat(OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.Vehicul))
+            .Where(req => req.AcceptedCategories.Any(uploaded.Contains))
+            .Select(req => req.Label)
+            .Distinct()
+            .ToList();
+
+        var badgeLines = vehicle.Badges
+            .OrderBy(b => b.Provider)
+            .Select(b => new VehicleBadgeLine(b.Provider.ToString(), b.SetCount, b.TotalFeeSnapshotBani))
+            .ToList();
+        long badgesTotal = vehicle.Badges.Sum(b => b.TotalFeeSnapshotBani);
+
+        string applicantName = $"{registration.User.FirstName} {registration.User.LastName}".Trim();
+        string? vehicleDescription = BuildVehicleDescription(vehicle);
+
+        var data = new VehicleDossierData(
+            applicantName,
+            registration.Cui,
+            registration.LegalName,
+            vehicle.PlateNumber,
+            vehicle.Vin,
+            vehicleDescription,
+            copy.Years,
+            copy.FeePerYearSnapshotBani,
+            copy.TotalFeeSnapshotBani,
+            badgeLines,
+            badgesTotal,
+            included,
+            nowUtc);
+
+        byte[] pdf = dossierGenerator.GenerateVehicleDossier(data);
+
+        string platePart = string.IsNullOrWhiteSpace(vehicle.PlateNumber) ? "vehicul" : vehicle.PlateNumber;
+        string cuiPart = string.IsNullOrWhiteSpace(registration.Cui) ? "PFA" : registration.Cui;
+        string fileName = $"Dosar_Copie_Conforma_Ecusoane_{platePart}_{cuiPart}.pdf";
+        string storedFileName = $"{Guid.NewGuid()}.pdf";
+
+        using var stream = new MemoryStream(pdf);
+        EncryptedFileResult encrypted = await fileEncryptionService.EncryptAndSaveAsync(
+            stream, storedFileName, cancellationToken);
+
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            UserId = command.UserId,
+            PfaRegistrationId = registration.Id,
+            PfaVehicleId = vehicle.Id,
+            OriginalFileName = fileName,
+            StoredFileName = storedFileName,
+            ContentType = "application/pdf",
+            Category = DocumentCategory.DosarCopieConformaEcusoane,
+            Status = DocumentStatus.Verified,
+            EncryptedFilePath = encrypted.FilePath,
+            EncryptionIv = encrypted.Iv,
+            FileSize = pdf.Length,
+            UploadedAtUtc = nowUtc,
+            IssuedAtUtc = nowUtc,
+            AiStatus = DocumentAiStatus.None,
+        };
+        context.Documents.Add(document);
+
+        copy.DossierDocumentId = document.Id;
+        copy.DossierGeneratedAtUtc = nowUtc;
+        if (copy.Status == VehicleCopyRequestStatus.Draft)
+        {
+            copy.Status = VehicleCopyRequestStatus.DossierGenerated;
+        }
+        copy.UpdatedAtUtc = nowUtc;
+
+        await context.SaveChangesAsync(cancellationToken);
+
+        return Result.Success(VehicleShared.ToResponse(vehicle, copy.FeePerYearSnapshotBani,
+            vehicle.Badges.Count > 0 ? vehicle.Badges[0].FeePerSetSnapshotBani : VehicleShared.DefaultBadgeFeePerSetBani));
+    }
+
+    private static string? BuildVehicleDescription(PfaVehicle vehicle)
+    {
+        string? year = vehicle.FirstRegistrationYear?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string[] parts = new[] { vehicle.Make, vehicle.Model, year }
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p!)
+            .ToArray();
+
+        return parts.Length == 0 ? null : string.Join(" ", parts);
+    }
+}

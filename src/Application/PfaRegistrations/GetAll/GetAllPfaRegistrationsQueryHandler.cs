@@ -43,6 +43,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                 UserLastName = r.User.LastName,
                 r.RegistrationType,
                 r.Status,
+                r.OnboardingCompletedAtUtc,
                 r.FullName,
                 r.Phone,
                 r.ContractDuration,
@@ -89,7 +90,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                 bool hasSubscription = latestSubscriptions.TryGetValue(x.UserId, out var subscription);
                 string? subscriptionStatusText = hasSubscription ? subscription!.Status.ToString() : null;
                 string? subscriptionPlanText = hasSubscription ? subscription!.Plan.ToString() : null;
-                string accountStatus = ResolveAccountStatus(x.Status, hasSubscription ? subscription!.Status : null);
+                string accountStatus = ResolveAccountStatus(x.Status, x.OnboardingCompletedAtUtc, hasSubscription ? subscription!.Status : null);
 
                 return new PfaRegistrationSummary(
                     x.Id,
@@ -118,11 +119,20 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
         return new PfaRegistrationListResponse(items, totalCount);
     }
 
-    private static string ResolveAccountStatus(PfaRegistrationStatus pfaStatus, SubscriptionStatus? subscriptionStatus)
+    private static string ResolveAccountStatus(
+        PfaRegistrationStatus pfaStatus,
+        DateTime? onboardingCompletedAtUtc,
+        SubscriptionStatus? subscriptionStatus)
     {
         if (pfaStatus != PfaRegistrationStatus.Approved)
         {
             return "Nou";
+        }
+
+        // Dosar PFA aprobat, dar onboardingul nu e complet → încă în onboarding, nu „înrolat".
+        if (onboardingCompletedAtUtc is null)
+        {
+            return "În onboarding";
         }
 
         return subscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.ActivePendingBilling

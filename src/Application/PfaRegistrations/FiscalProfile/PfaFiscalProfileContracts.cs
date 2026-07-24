@@ -38,7 +38,6 @@ public sealed record UpsertPfaPlatformAccountItem(
     string? Email,
     string? Phone,
     string? FullName,
-    string? Password,
     string? Status);
 
 public sealed record PfaFiscalSettingsResponse(
@@ -74,7 +73,6 @@ public sealed record PfaPlatformAccountResponse(
     string? Email,
     string? Phone,
     string? FullName,
-    bool HasPassword,
     string Status,
     DateTime? ConfiguredAtUtc,
     DateTime? UpdatedAtUtc);

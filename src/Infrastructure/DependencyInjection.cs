@@ -16,7 +16,11 @@ using Infrastructure.Email;
 using Infrastructure.Invoicing;
 using Infrastructure.Payments;
 using Application.Abstractions;
+using Application.Abstractions.Dossiers;
 using Application.Abstractions.Security;
+using Application.Abstractions.Settings;
+using Infrastructure.AppSettings;
+using Infrastructure.Dossiers;
 using Resend;
 using Infrastructure.Time;
 using Infrastructure.BackgroundJobs;
@@ -58,6 +62,13 @@ public static class DependencyInjection
         services.AddScoped<IFileEncryptionService, FileEncryptionService>();
         services.AddScoped<ISecretProtector, SecretProtector>();
         services.AddScoped<IFileStorageService, LocalFileStorageService>();
+
+        // Parametri comerciali/operaționali configurabili (cache 60s peste app_settings)
+        services.AddScoped<IAppSettings, AppSettingsService>();
+
+        // Generarea dosarelor PDF (QuestPDF — licență Community, venit anual < 1M USD)
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        services.AddScoped<IDossierGenerator, ArrDossierGenerator>();
 
         // Email Service
         services.AddHttpClient<IResend, ResendClient>();

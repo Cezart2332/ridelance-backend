@@ -52,7 +52,6 @@ internal static class PfaFiscalProfileMapper
             account.Email,
             account.Phone,
             account.FullName,
-            !string.IsNullOrWhiteSpace(account.PasswordProtected),
             account.Status.ToString(),
             account.ConfiguredAtUtc,
             account.UpdatedAtUtc);

@@ -22,14 +22,10 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
         bool hasPaidInfiintare = await InfiintarePaymentCheck.HasPaidAsync(
             context, query.UserId, cancellationToken);
 
-        // Onboarding complet = PFA aprobat + cele 3 secțiuni de documente validate de admin.
-        bool onboardingSectionsValidated =
-            pfa is { Status: Domain.PfaRegistrations.PfaRegistrationStatus.Approved } &&
-            await context.OnboardingSectionApprovals
-                .CountAsync(a => a.PfaRegistrationId == pfa.Id &&
-                                 a.Status == Domain.PfaRegistrations.OnboardingSectionStatus.Validated &&
-                                 a.SectionKey != Domain.PfaRegistrations.OnboardingSectionKey.Pfa,
-                            cancellationToken) == 3;
+        // Onboarding complet = înrolat = toate secțiunile obligatorii validate.
+        // Semnalul unic este OnboardingCompletedAtUtc (setat de OnboardingProgress),
+        // nu mai deducem din Status==Approved (care înseamnă doar „dosar PFA aprobat").
+        bool onboardingSectionsValidated = pfa?.OnboardingCompletedAtUtc is not null;
 
         UserSubscription? sub = await context.UserSubscriptions
             .Where(s => s.UserId == query.UserId)

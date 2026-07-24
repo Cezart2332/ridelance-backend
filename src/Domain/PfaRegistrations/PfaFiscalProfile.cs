@@ -9,6 +9,10 @@ public sealed class PfaFiscalProfile : Entity
     public Guid PfaRegistrationId { get; set; }
     public PfaTaxationSystem TaxationSystem { get; set; } = PfaTaxationSystem.RealSystem;
     public bool IsVatPayer { get; set; }
+
+    // Pasul 2.1 — TVA (răspuns ghidat, fără a hard-coda „TVA intracomunitar")
+    public VatAnswer VatAnswer { get; set; } = VatAnswer.Unknown;
+    public VatRegistrationKind VatRegistrationKind { get; set; } = VatRegistrationKind.Unknown;
     public bool HasEmployees { get; set; }
     public PfaAccountingRegime AccountingRegime { get; set; } = PfaAccountingRegime.SingleEntry;
     public PfaSpecialVatCodeStatus SpecialVatCodeStatus { get; set; } = PfaSpecialVatCodeStatus.ToVerify;

@@ -2,7 +2,25 @@ using Domain.Documents;
 
 namespace Application.Documents.AiVerification;
 
-public sealed record DocumentAiExpectation(string Label, string Details, bool ExpectsExpiryDate);
+/// <summary>Un câmp de business pe care OCR-ul îl extrage din document pentru precompletare.</summary>
+public sealed record ExtractedFieldSpec(
+    string Key,
+    string Description,
+    ExtractedFieldType Type,
+    bool Required,
+    bool Sensitive = false);
+
+public sealed record DocumentAiExpectation(
+    string Label,
+    string Details,
+    bool ExpectsExpiryDate,
+    IReadOnlyList<ExtractedFieldSpec>? Fields = null,
+    // Auto-respingerea la verdict negativ e opțională per categorie — la ~20 de categorii
+    // auto-respingerea în lanț ar produce respingeri false. Rămâne activă pentru „tip greșit/ilizibil”.
+    bool AutoRejectOnFailure = true)
+{
+    public IReadOnlyList<ExtractedFieldSpec> FieldSpecs => Fields ?? [];
+}
 
 /// <summary>
 /// Descrie, per categorie, ce ar trebui să conțină documentul încărcat, pentru
@@ -47,7 +65,10 @@ public static class DocumentAiCatalog
         [DocumentCategory.RCA] = new(
             "Poliță RCA",
             "Poliță de asigurare RCA pentru un vehicul, cu numărul de înmatriculare și perioada de valabilitate (dată de sfârșit).",
-            true),
+            true,
+            [
+                new("plate_number", "Numărul de înmatriculare al vehiculului asigurat", ExtractedFieldType.Plate, Required: false),
+            ]),
         [DocumentCategory.AsigurareCalatori] = new(
             "Asigurare de persoane/călători",
             "Poliță de asigurare pentru persoanele transportate (asigurare de accidente a călătorilor), cu perioadă de valabilitate.",
@@ -63,11 +84,19 @@ public static class DocumentAiCatalog
         [DocumentCategory.CertificatInregistrare] = new(
             "Certificat de înregistrare (CUI)",
             "Certificat de înregistrare fiscală al unui PFA/firmei emis de ONRC/ANAF, cu CUI și denumirea entității. Nu are dată de expirare.",
-            false),
+            false,
+            [
+                new("cui", "Codul unic de înregistrare (CUI/CIF), fără prefixul RO", ExtractedFieldType.Cui, Required: true),
+                new("legal_name", "Denumirea completă a PFA-ului/entității", ExtractedFieldType.Text, Required: false),
+            ]),
         [DocumentCategory.CertificatConstatator] = new(
             "Certificat constatator",
             "Certificat constatator emis de ONRC pentru un PFA/firmă, cu date despre activitate (coduri CAEN).",
-            false),
+            false,
+            [
+                new("cui", "Codul unic de înregistrare (CUI/CIF), fără prefixul RO", ExtractedFieldType.Cui, Required: false),
+                new("registry_number", "Numărul de ordine în registrul comerțului (ex. F40/…/2024)", ExtractedFieldType.Text, Required: false),
+            ]),
         [DocumentCategory.DovadaPlataArr] = new(
             "Dovadă plată ARR",
             "Dovadă de plată către ARR (ordin de plată, chitanță, confirmare de plată) pentru autorizația de transport alternativ.",
@@ -83,11 +112,21 @@ public static class DocumentAiCatalog
         [DocumentCategory.Talon] = new(
             "Talon (Certificat de înmatriculare)",
             "Certificatul de înmatriculare (talonul) al unui vehicul: conține numărul de înmatriculare, marca, seria de șasiu (VIN) și deținătorul.",
-            false),
+            false,
+            [
+                new("plate_number", "Numărul de înmatriculare (ex. B123ABC)", ExtractedFieldType.Plate, Required: true),
+                new("vin", "Seria de șasiu (VIN), 17 caractere", ExtractedFieldType.Vin, Required: true),
+                new("make", "Marca vehiculului", ExtractedFieldType.Text, Required: false),
+                new("model", "Modelul vehiculului", ExtractedFieldType.Text, Required: false),
+            ]),
         [DocumentCategory.CarteIdentitateAuto] = new(
             "Carte de identitate a vehiculului (CIV)",
             "Cartea de identitate a vehiculului (CIV) emisă de RAR: conține seria de șasiu (VIN), marca și istoricul deținătorilor. Nu are dată de expirare.",
-            false),
+            false,
+            [
+                new("vin", "Seria de șasiu (VIN), 17 caractere", ExtractedFieldType.Vin, Required: true),
+                new("make", "Marca vehiculului", ExtractedFieldType.Text, Required: false),
+            ]),
         [DocumentCategory.ContractVehicul] = new(
             "Contract vehicul",
             "Contract pentru folosința vehiculului (comodat, închiriere sau proprietate) între deținător și utilizator, semnat de părți.",
@@ -109,4 +148,9 @@ public static class DocumentAiCatalog
 
     public static string LabelFor(DocumentCategory category) =>
         For(category)?.Label ?? category.ToString();
+
+    /// <summary>Specificația unui câmp extras, după categorie + cheie (pentru normalizare/aplicare la confirmare).</summary>
+    public static ExtractedFieldSpec? FieldSpec(DocumentCategory category, string key) =>
+        For(category)?.FieldSpecs.FirstOrDefault(f =>
+            string.Equals(f.Key, key, StringComparison.OrdinalIgnoreCase));
 }
