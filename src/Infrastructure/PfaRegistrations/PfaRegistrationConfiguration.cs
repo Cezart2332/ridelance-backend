@@ -14,6 +14,10 @@ internal sealed class PfaRegistrationConfiguration : IEntityTypeConfiguration<Pf
 
         builder.Property(r => r.RegistrationType).HasConversion<string>().HasMaxLength(32);
         builder.Property(r => r.Status).HasConversion<string>().HasMaxLength(32);
+        builder.Property(r => r.PfaSource).HasConversion<string>().HasMaxLength(16);
+        builder.Property(r => r.LegalName).HasMaxLength(256);
+        builder.Property(r => r.RegistryNumber).HasMaxLength(64);
+        builder.Property(r => r.CaenCodes).HasColumnType("jsonb");
         builder.Property(r => r.FullName).HasMaxLength(256);
         builder.Property(r => r.Phone).HasMaxLength(32);
         builder.Property(r => r.Cui).HasMaxLength(32);
@@ -36,6 +40,11 @@ internal sealed class PfaRegistrationConfiguration : IEntityTypeConfiguration<Pf
         builder.HasMany(r => r.Documents)
             .WithOne()
             .HasForeignKey(d => d.PfaRegistrationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(r => r.PartnerLead)
+            .WithOne(l => l.PfaRegistration)
+            .HasForeignKey<PfaPartnerLead>(l => l.PfaRegistrationId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -44,6 +44,12 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
             ? "Documentul ar trebui să aibă o dată de expirare / valabilitate — extrage-o obligatoriu dacă este vizibilă."
             : "Dacă documentul are totuși o dată de expirare / valabilitate, extrage-o.";
 
+        string fieldsInstruction = request.Fields.Count == 0
+            ? "Nu extrage câmpuri de business suplimentare."
+            : "Extrage următoarele câmpuri de business în „fields” (per câmp: value = textul exact sau null dacă lipsește, confidence = 0..1):\n" +
+              string.Join("\n", request.Fields.Select(f =>
+                  $"- {f.Key} ({f.Type}): {f.Description}{(f.Required ? " [obligatoriu]" : string.Empty)}"));
+
         var payload = new
         {
             model = config.Model,
@@ -72,6 +78,7 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
                                 $"Tip de document așteptat: {request.ExpectedDocumentLabel}.\n" +
                                 $"Descriere: {request.ExpectationDetails}\n" +
                                 $"{expiryInstruction}\n" +
+                                $"{fieldsInstruction}\n" +
                                 $"Nume fișier încărcat: {request.FileName}",
                         },
                         filePart,
@@ -132,7 +139,11 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         "Răspunde STRICT cu un obiect JSON valid, fără niciun alt text, în exact acest format: " +
         "{\"matches_expected_type\": boolean, \"readable\": boolean, \"expired\": boolean sau null dacă nu se aplică, " +
         "\"expires_at\": \"YYYY-MM-DD\" sau null, \"detected_type\": \"ce document este de fapt, pe scurt\", " +
-        "\"valid\": boolean, \"reason\": \"explicație scurtă în română, max 200 de caractere, pe înțelesul clientului\"}. " +
+        "\"valid\": boolean, \"reason\": \"explicație scurtă în română, max 200 de caractere, pe înțelesul clientului\", " +
+        "\"overall_confidence\": number între 0 și 1, " +
+        "\"fields\": { \"cheie_camp\": {\"value\": \"text sau null\", \"confidence\": number între 0 și 1}, ... }}. " +
+        "Extrage în \"fields\" DOAR câmpurile cerute în mesajul utilizatorului; dacă nu sunt cerute câmpuri, întoarce \"fields\": {}. " +
+        "NU pune NICIODATĂ în \"fields\" CNP, serie sau număr de act de identitate. " +
         "Câmpul \"valid\" este true doar dacă documentul corespunde tipului așteptat, este lizibil și nu este expirat. " +
         "Dacă ai dubii rezonabile, preferă \"valid\": true și explică în \"reason\" — verificarea finală o face un om.";
 
@@ -174,7 +185,11 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
                 expiresAt = parsed;
             }
 
-            return new DocumentAiAnalysisResult(matches, readable, valid, expired, expiresAt, detectedType, reason);
+            double overallConfidence = GetDouble(root, "overall_confidence") ?? 0d;
+            IReadOnlyList<AiFieldResult> fields = ParseFields(root);
+
+            return new DocumentAiAnalysisResult(
+                matches, readable, valid, expired, expiresAt, detectedType, reason, fields, overallConfidence);
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
         {
@@ -184,6 +199,42 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
                 "Răspunsul serviciului AI nu a putut fi interpretat."));
         }
     }
+
+    private static List<AiFieldResult> ParseFields(JsonElement root)
+    {
+        if (!root.TryGetProperty("fields", out JsonElement fields) || fields.ValueKind != JsonValueKind.Object)
+        {
+            return [];
+        }
+
+        var results = new List<AiFieldResult>();
+        foreach (JsonProperty field in fields.EnumerateObject())
+        {
+            string key = field.Name;
+            string? value = null;
+            double confidence = 0d;
+
+            if (field.Value.ValueKind == JsonValueKind.Object)
+            {
+                value = GetString(field.Value, "value");
+                confidence = GetDouble(field.Value, "confidence") ?? 0d;
+            }
+            else if (field.Value.ValueKind == JsonValueKind.String)
+            {
+                // Model tolerant: uneori întoarce direct valoarea, fără obiect.
+                value = field.Value.GetString();
+            }
+
+            results.Add(new AiFieldResult(key, value, Math.Clamp(confidence, 0d, 1d)));
+        }
+
+        return results;
+    }
+
+    private static double? GetDouble(JsonElement root, string property) =>
+        root.TryGetProperty(property, out JsonElement element) && element.ValueKind == JsonValueKind.Number
+            ? element.GetDouble()
+            : null;
 
     private static bool? GetBool(JsonElement root, string property)
     {

@@ -80,7 +80,9 @@ public sealed record AdminPfaStats(
     int NewRequests,
     int ClientBlocked,
     int Inactive,
-    int FailedPayment);
+    int FailedPayment,
+    // PFA-uri cu dosarul aprobat dar onboarding neterminat (nu mai sunt „înrolați" prematur).
+    int InOnboarding = 0);
 
 public sealed record AdminOverviewPfaCard(
     Guid Id,

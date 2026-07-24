@@ -1,3 +1,4 @@
+using Domain.AppSettings;
 using Domain.Banking;
 using Domain.Bolt;
 using Domain.Cars;
@@ -25,7 +26,19 @@ public interface IApplicationDbContext
     DbSet<PfaInternalNote> PfaInternalNotes { get; }
     DbSet<PfaActivityLog> PfaActivityLogs { get; }
     DbSet<OnboardingSectionApproval> OnboardingSectionApprovals { get; }
+    DbSet<OnboardingEligibilityProfile> OnboardingEligibilityProfiles { get; }
+    DbSet<PfaPartnerLead> PfaPartnerLeads { get; }
+    DbSet<OnboardingSignaturePacket> OnboardingSignaturePackets { get; }
+    DbSet<OnboardingSignatureDocument> OnboardingSignatureDocuments { get; }
+    DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; }
+    DbSet<PfaOblioAccount> PfaOblioAccounts { get; }
+    DbSet<ArrAuthorizationRequest> ArrAuthorizationRequests { get; }
+    DbSet<PfaVehicle> PfaVehicles { get; }
+    DbSet<VehicleCopyRequest> VehicleCopyRequests { get; }
+    DbSet<VehicleBadge> VehicleBadges { get; }
     DbSet<Document> Documents { get; }
+    DbSet<ExtractedField> ExtractedFields { get; }
+    DbSet<AppSetting> AppSettings { get; }
     DbSet<DeductibleExpense> DeductibleExpenses { get; }
     DbSet<ChatRoom> ChatRooms { get; }
     DbSet<ChatMessage> ChatMessages { get; }

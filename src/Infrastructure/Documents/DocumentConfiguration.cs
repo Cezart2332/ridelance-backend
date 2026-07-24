@@ -22,6 +22,8 @@ internal sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.AiStatus).HasConversion<string>().HasMaxLength(32);
         builder.Property(d => d.AiSummary).HasMaxLength(1024);
         builder.Property(d => d.AiDetectedType).HasMaxLength(256);
+        builder.Property(d => d.AiExtractedJson).HasColumnType("jsonb");
+        builder.Property(d => d.PlatformProvider).HasMaxLength(32);
 
         builder.HasOne(d => d.User)
             .WithMany()

@@ -88,6 +88,10 @@ internal sealed class ValidateOnboardingSectionCommandHandler(
                    "Onboardingul este complet — poți activa abonamentul.";
         }
 
+        // Înrolarea reală se produce abia acum, când ultima secțiune obligatorie e validată
+        // (nu la aprobarea dosarului PFA). Singura poartă de înrolare.
+        OnboardingProgress.TryMarkCompleted(registration, DateTime.UtcNow);
+
         context.Notifications.Add(new Notification
         {
             Id = Guid.NewGuid(),

@@ -19,6 +19,12 @@ internal sealed class GetOnboardingStateForRegistrationQueryHandler(IApplication
         PfaRegistration? registration = await context.PfaRegistrations
             .AsNoTracking()
             .Include(r => r.OnboardingSections)
+            .Include(r => r.FiscalProfile)
+            .Include(r => r.BankAccountDeclaration)
+            .Include(r => r.OblioAccount)
+            .Include(r => r.ArrAuthorizationRequest)
+            .Include(r => r.PlatformAccounts)
+            .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
             .SingleOrDefaultAsync(r => r.Id == query.RegistrationId, cancellationToken);
 
         if (registration is null)
@@ -27,9 +33,13 @@ internal sealed class GetOnboardingStateForRegistrationQueryHandler(IApplication
                 PfaRegistrationErrors.NotFound(query.RegistrationId));
         }
 
+        OnboardingEligibilityProfile? eligibility = await context.OnboardingEligibilityProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.UserId == registration.UserId, cancellationToken);
+
         bool hasPaidInfiintare = await InfiintarePaymentCheck.HasPaidAsync(
             context, registration.UserId, cancellationToken);
 
-        return Result.Success(OnboardingStateBuilder.Build(registration, hasPaidInfiintare));
+        return Result.Success(OnboardingStateBuilder.Build(registration, hasPaidInfiintare, eligibility));
     }
 }

@@ -9,6 +9,15 @@ public sealed record OnboardingSectionDto(
     DateTime? SubmittedAtUtc,
     DateTime? ValidatedAtUtc);
 
+/// <summary>Un pas al onboardingului (6 pași), cu status derivat din frunzele/semnalele lui.</summary>
+public sealed record OnboardingStepDto(
+    int Order,
+    string Key,
+    string Label,
+    string Status,
+    string? BlockReason,
+    string Path);
+
 public sealed record OnboardingStateResponse(
     Guid? PfaRegistrationId,
     string? PfaStatus,
@@ -16,7 +25,11 @@ public sealed record OnboardingStateResponse(
     string? PfaReviewNote,
     bool HasPaidInfiintare,
     List<OnboardingSectionDto> Sections,
-    bool AllSectionsValidated);
+    bool AllSectionsValidated,
+    // Proiecția pe 6 pași (grupare în cod, status derivat — niciodată stocat).
+    List<OnboardingStepDto> Steps,
+    // DOAR PENTRU TESTARE — de șters odată cu SkipOnboardingStepCommand.
+    bool TestSkipEnabled = false);
 
 internal static class OnboardingStateBuilder
 {
@@ -31,7 +44,10 @@ internal static class OnboardingStateBuilder
     /// Derivă starea completă de onboarding: secțiunea PFA din PfaRegistration
     /// (nu are rând propriu), secțiunile 2–4 din rândurile OnboardingSectionApproval.
     /// </summary>
-    public static OnboardingStateResponse Build(PfaRegistration? registration, bool hasPaidInfiintare)
+    public static OnboardingStateResponse Build(
+        PfaRegistration? registration,
+        bool hasPaidInfiintare,
+        OnboardingEligibilityProfile? eligibility = null)
     {
         OnboardingSectionStatus pfaStatus = registration switch
         {
@@ -70,6 +86,8 @@ internal static class OnboardingStateBuilder
                 row?.ValidatedAtUtc));
         }
 
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(registration, pfaStatus, eligibility);
+
         return new OnboardingStateResponse(
             registration?.Id,
             registration?.Status.ToString(),
@@ -77,6 +95,7 @@ internal static class OnboardingStateBuilder
             registration?.ReviewNote,
             hasPaidInfiintare,
             sections,
-            allValidated);
+            allValidated,
+            steps);
     }
 }

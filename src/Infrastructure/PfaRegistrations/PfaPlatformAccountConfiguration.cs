@@ -17,8 +17,9 @@ internal sealed class PfaPlatformAccountConfiguration : IEntityTypeConfiguration
         builder.Property(a => a.Email).HasMaxLength(256);
         builder.Property(a => a.Phone).HasMaxLength(32);
         builder.Property(a => a.FullName).HasMaxLength(256);
-        builder.Property(a => a.PasswordProtected).HasMaxLength(1024);
         builder.Property(a => a.Status).HasConversion<string>().HasMaxLength(32);
+        builder.Property(a => a.OperatorAccountId).HasMaxLength(128);
+        builder.Property(a => a.OnboardingStatus).HasConversion<string>().HasMaxLength(32);
 
         builder.HasOne(a => a.PfaRegistration)
             .WithMany(r => r.PlatformAccounts)

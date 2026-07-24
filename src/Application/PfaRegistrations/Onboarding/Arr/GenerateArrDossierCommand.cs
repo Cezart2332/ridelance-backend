@@ -1,0 +1,122 @@
+using Application.Abstractions.Data;
+using Application.Abstractions.Dossiers;
+using Application.Abstractions.Messaging;
+using Application.Abstractions.Services;
+using Domain.Documents;
+using Domain.PfaRegistrations;
+using Microsoft.EntityFrameworkCore;
+using SharedKernel;
+
+namespace Application.PfaRegistrations.Onboarding.Arr;
+
+/// <summary>Pasul 3 — generează dosarul PDF ARR și îl salvează ca document criptat.</summary>
+public sealed record GenerateArrDossierCommand(Guid UserId) : ICommand<ArrStateResponse>;
+
+internal sealed class GenerateArrDossierCommandHandler(
+    IApplicationDbContext context,
+    IDossierGenerator dossierGenerator,
+    IFileEncryptionService fileEncryptionService)
+    : ICommandHandler<GenerateArrDossierCommand, ArrStateResponse>
+{
+    public async Task<Result<ArrStateResponse>> Handle(
+        GenerateArrDossierCommand command,
+        CancellationToken cancellationToken)
+    {
+        PfaRegistration? registration = await context.PfaRegistrations
+            .Include(r => r.ArrAuthorizationRequest)
+            .Include(r => r.User)
+            .Where(r => r.UserId == command.UserId)
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (registration?.ArrAuthorizationRequest is null)
+        {
+            return Result.Failure<ArrStateResponse>(ArrShared.NotFound);
+        }
+
+        ArrAuthorizationRequest request = registration.ArrAuthorizationRequest;
+
+        // Documentele deja încărcate (non-respinse) care satisfac cerințele pasului ARR.
+        List<DocumentCategory> uploaded = await context.Documents
+            .Where(d => d.UserId == command.UserId && d.Status != DocumentStatus.Rejected)
+            .Select(d => d.Category)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var included = OnboardingSectionCatalog
+            .RequirementsFor(OnboardingSectionKey.AutorizatieTransport)
+            .Where(req => req.AcceptedCategories.Any(uploaded.Contains))
+            .Select(req => req.Label)
+            .ToList();
+
+        string applicantName = $"{registration.User.FirstName} {registration.User.LastName}".Trim();
+        string? address = BuildAddress(registration);
+        DateTime nowUtc = DateTime.UtcNow;
+
+        var data = new ArrDossierData(
+            applicantName,
+            registration.Cui,
+            registration.LegalName,
+            address,
+            request.AgencyName,
+            request.FeeSnapshotBani,
+            included,
+            nowUtc);
+
+        byte[] pdf = dossierGenerator.GenerateArrDossier(data);
+
+        string cuiPart = string.IsNullOrWhiteSpace(registration.Cui) ? "PFA" : registration.Cui;
+        string fileName = $"Dosar_Autorizatie_Transport_Alternativ_{cuiPart}_{nowUtc:yyyyMMdd}.pdf";
+        string storedFileName = $"{Guid.NewGuid()}.pdf";
+
+        using var stream = new MemoryStream(pdf);
+        EncryptedFileResult encrypted = await fileEncryptionService.EncryptAndSaveAsync(
+            stream, storedFileName, cancellationToken);
+
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            UserId = command.UserId,
+            PfaRegistrationId = registration.Id,
+            OriginalFileName = fileName,
+            StoredFileName = storedFileName,
+            ContentType = "application/pdf",
+            Category = DocumentCategory.DosarAutorizatieArr,
+            Status = DocumentStatus.Verified,
+            EncryptedFilePath = encrypted.FilePath,
+            EncryptionIv = encrypted.Iv,
+            FileSize = pdf.Length,
+            UploadedAtUtc = nowUtc,
+            IssuedAtUtc = nowUtc,
+            AiStatus = DocumentAiStatus.None,
+        };
+        context.Documents.Add(document);
+
+        request.DossierDocumentId = document.Id;
+        request.DossierGeneratedAtUtc = nowUtc;
+        if (request.Status == ArrAuthorizationStatus.Draft)
+        {
+            request.Status = ArrAuthorizationStatus.DossierGenerated;
+        }
+        request.UpdatedAtUtc = nowUtc;
+
+        await context.SaveChangesAsync(cancellationToken);
+
+        return Result.Success(ArrShared.ToResponse(request));
+    }
+
+    private static string? BuildAddress(PfaRegistration r)
+    {
+        string[] parts = new[]
+            {
+                string.IsNullOrWhiteSpace(r.Street) ? null : $"{r.Street} {r.Number}".Trim(),
+                r.City,
+                r.County,
+            }
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p!)
+            .ToArray();
+
+        return parts.Length == 0 ? null : string.Join(", ", parts);
+    }
+}

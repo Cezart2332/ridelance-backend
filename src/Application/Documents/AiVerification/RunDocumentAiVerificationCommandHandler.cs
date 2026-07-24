@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Application.Abstractions;
 using Application.Abstractions.Ai;
 using Application.Abstractions.Data;
@@ -25,6 +26,9 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
     : ICommandHandler<RunDocumentAiVerificationCommand>
 {
     private const int MaxAttempts = 3;
+
+    /// <summary>Prag sub care câmpul intră în verificarea manuală a adminului (nu blochează fluxul).</summary>
+    private const double ManualReviewThreshold = 0.75;
 
     public async Task<Result> Handle(
         RunDocumentAiVerificationCommand command,
@@ -74,6 +78,10 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
                 "Fișierul documentului nu a putut fi citit."));
         }
 
+        var fieldRequests = expectation.FieldSpecs
+            .Select(f => new AiFieldRequest(f.Key, f.Description, f.Type.ToString(), f.Required))
+            .ToList();
+
         Result<DocumentAiAnalysisResult> analysis = await analyzer.AnalyzeAsync(
             new DocumentAiAnalysisRequest(
                 fileBytes,
@@ -81,7 +89,8 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
                 document.OriginalFileName,
                 expectation.Label,
                 expectation.Details,
-                expectation.ExpectsExpiryDate),
+                expectation.ExpectsExpiryDate,
+                fieldRequests),
             cancellationToken);
 
         if (analysis.IsFailure)
@@ -109,6 +118,8 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             document.ExpiresAtUtc ??= expiresUtc;
         }
 
+        await PopulateExtractedFieldsAsync(document, expectation, result, cancellationToken);
+
         bool isValid = result.IsValid &&
                        result.MatchesExpectedType &&
                        result.IsReadable &&
@@ -122,6 +133,15 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         }
 
         document.AiStatus = DocumentAiStatus.Failed;
+
+        // Auto-respingerea e opțională per categorie: OCR-ul nu trebuie să blocheze fluxul.
+        // Când e dezactivată, documentul rămâne în coada adminului (AiRequiresManualReview).
+        if (!expectation.AutoRejectOnFailure)
+        {
+            document.AiRequiresManualReview = true;
+            await context.SaveChangesAsync(cancellationToken);
+            return Result.Success();
+        }
 
         if (document.Status == DocumentStatus.Pending)
         {
@@ -149,6 +169,98 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         await NotifyUserAsync(document.User, expectation.Label, reason, cancellationToken);
 
         return Result.Success();
+    }
+
+    private async Task PopulateExtractedFieldsAsync(
+        Document document,
+        DocumentAiExpectation expectation,
+        DocumentAiAnalysisResult result,
+        CancellationToken cancellationToken)
+    {
+        document.AiConfidence = result.OverallConfidence;
+
+        if (expectation.FieldSpecs.Count == 0)
+        {
+            return;
+        }
+
+        List<ExtractedField> existing = await context.ExtractedFields
+            .Where(f => f.DocumentId == document.Id)
+            .ToListAsync(cancellationToken);
+
+        DateTime nowUtc = DateTime.UtcNow;
+        bool requiresManualReview = false;
+        var redacted = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (ExtractedFieldSpec spec in expectation.FieldSpecs)
+        {
+            AiFieldResult? field = result.Fields
+                .FirstOrDefault(f => string.Equals(f.Key, spec.Key, StringComparison.OrdinalIgnoreCase));
+
+            string? normalized = ExtractedFieldValidators.Normalize(spec.Type, field?.Value);
+
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                // Lipsă: contează doar dacă e obligatoriu (intră în coada adminului).
+                if (spec.Required)
+                {
+                    requiresManualReview = true;
+                }
+
+                continue;
+            }
+
+            double aiConfidence = field?.Confidence ?? 0d;
+            bool validatorPassed = ExtractedFieldValidators.Validate(spec.Type, normalized);
+            double effective = ExtractedFieldValidators.EffectiveConfidence(validatorPassed, aiConfidence);
+
+            bool needsReview = !validatorPassed || effective < ManualReviewThreshold;
+            if (needsReview)
+            {
+                requiresManualReview = true;
+            }
+
+            redacted[spec.Key] = spec.Sensitive
+                ? new { value = "***", confidence = effective }
+                : new { value = normalized, confidence = effective };
+
+            ExtractedField? row = existing.FirstOrDefault(f =>
+                string.Equals(f.FieldKey, spec.Key, StringComparison.OrdinalIgnoreCase));
+
+            if (row is null)
+            {
+                row = new ExtractedField
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentId = document.Id,
+                    FieldKey = spec.Key,
+                    AiValue = field?.Value?.Trim(),
+                    IsSensitive = spec.Sensitive,
+                    CreatedAtUtc = nowUtc,
+                };
+                context.ExtractedFields.Add(row);
+                existing.Add(row);
+            }
+
+            // AiValue rămâne imutabil (dovada primei extrageri); reîmprospătăm doar derivatele.
+            row.AiNormalizedValue = normalized;
+            row.AiConfidence = aiConfidence;
+            row.ValidatorPassed = validatorPassed;
+            row.EffectiveConfidence = effective;
+            row.IsSensitive = spec.Sensitive;
+            row.UpdatedAtUtc = nowUtc;
+
+            // Valoarea confirmată de om câștigă întotdeauna — nu retrogradăm starea.
+            if (row.ConfirmedSource == ExtractedFieldSource.None)
+            {
+                row.ReviewState = needsReview
+                    ? ExtractedFieldReviewState.NeedsManualReview
+                    : ExtractedFieldReviewState.NeedsUserConfirmation;
+            }
+        }
+
+        document.AiExtractedJson = JsonSerializer.Serialize(redacted);
+        document.AiRequiresManualReview = requiresManualReview;
     }
 
     private async Task NotifyUserAsync(

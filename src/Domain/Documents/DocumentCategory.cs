@@ -33,5 +33,7 @@ public enum DocumentCategory
     DecontTvaIntracomunitar = 28,
     DecontTaxaNerezident = 29,
     CertificatTvaIntracomunitar = 30,
+    DosarAutorizatieArr = 31,
+    DosarCopieConformaEcusoane = 32,
     Other = 99
 }

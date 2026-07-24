@@ -13,6 +13,8 @@ internal sealed class PfaFiscalProfileConfiguration : IEntityTypeConfiguration<P
         builder.HasIndex(p => p.PfaRegistrationId).IsUnique();
 
         builder.Property(p => p.TaxationSystem).HasConversion<string>().HasMaxLength(32);
+        builder.Property(p => p.VatAnswer).HasConversion<string>().HasMaxLength(16);
+        builder.Property(p => p.VatRegistrationKind).HasConversion<string>().HasMaxLength(32);
         builder.Property(p => p.AccountingRegime).HasConversion<string>().HasMaxLength(32);
         builder.Property(p => p.SpecialVatCodeStatus).HasConversion<string>().HasMaxLength(32);
         builder.Property(p => p.UberStatus).HasConversion<string>().HasMaxLength(32);

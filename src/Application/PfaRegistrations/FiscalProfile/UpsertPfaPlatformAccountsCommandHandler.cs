@@ -1,7 +1,6 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
-using Application.Abstractions.Security;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -10,8 +9,7 @@ namespace Application.PfaRegistrations.FiscalProfile;
 
 internal sealed class UpsertPfaPlatformAccountsCommandHandler(
     IApplicationDbContext context,
-    IUserContext userContext,
-    ISecretProtector secretProtector)
+    IUserContext userContext)
     : ICommandHandler<UpsertPfaPlatformAccountsCommand, IReadOnlyList<PfaPlatformAccountResponse>>
 {
     public async Task<Result<IReadOnlyList<PfaPlatformAccountResponse>>> Handle(
@@ -83,12 +81,7 @@ internal sealed class UpsertPfaPlatformAccountsCommandHandler(
             account.UpdatedAtUtc = DateTime.UtcNow;
             account.UpdatedByUserId = userContext.UserId;
 
-            if (kind == PfaPlatformAccountKind.Fleet && !string.IsNullOrWhiteSpace(item.Password))
-            {
-                account.PasswordProtected = secretProtector.Protect(item.Password.Trim());
-                account.PasswordUpdatedAtUtc = DateTime.UtcNow;
-            }
-
+            // Parolele nu se colectează/stochează (anti-pattern).
             if (account.Status == PfaFleetAccountStatus.Configured && account.ConfiguredAtUtc is null)
             {
                 account.ConfiguredAtUtc = DateTime.UtcNow;
