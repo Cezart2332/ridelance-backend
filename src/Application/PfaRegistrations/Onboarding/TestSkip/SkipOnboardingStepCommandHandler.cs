@@ -7,9 +7,10 @@ using SharedKernel;
 namespace Application.PfaRegistrations.Onboarding.TestSkip;
 
 /// <summary>
-/// DOAR PENTRU TESTARE — de șters. Avansează onboardingul cu un pas fără
-/// documente și fără admin: PFA Pending/Rejected → Approved, apoi validează
-/// pe rând secțiunile de documente și deblochează următoarea.
+/// DOAR PENTRU TESTARE — de șters. Avansează onboardingul cu un pas (din cei 6) forțând starea
+/// entităților ghidate, FĂRĂ documente. Fiecare apel finalizează primul pas neîncheiat, ca testerul
+/// să ajungă la înrolare fără să încarce nimic. Înrolarea reală se produce tot prin poarta unică
+/// (<see cref="OnboardingProgress.TryMarkCompleted"/>) când toți cei 6 pași sunt Completed.
 /// </summary>
 internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext context)
     : ICommandHandler<SkipOnboardingStepCommand>
@@ -20,19 +21,18 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
 
     private static readonly Error AlreadyComplete = Error.Problem(
         "Onboarding.TestSkip.AlreadyComplete",
-        "Toate secțiunile sunt deja validate.");
-
-    private static readonly OnboardingSectionKey[] DocumentSections =
-    [
-        OnboardingSectionKey.AutorizatieTransport,
-        OnboardingSectionKey.CopieConforma,
-        OnboardingSectionKey.Vehicul,
-    ];
+        "Toți pașii sunt deja finalizați.");
 
     public async Task<Result> Handle(SkipOnboardingStepCommand command, CancellationToken cancellationToken)
     {
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.OnboardingSections)
+            .Include(r => r.FiscalProfile)
+            .Include(r => r.BankAccountDeclaration)
+            .Include(r => r.OblioAccount)
+            .Include(r => r.ArrAuthorizationRequest)
+            .Include(r => r.PlatformAccounts)
+            .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
             .Where(r => r.UserId == command.UserId)
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -42,77 +42,203 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
             return Result.Failure(NoRegistration);
         }
 
-        if (registration.Status != PfaRegistrationStatus.Approved)
-        {
-            registration.Status = PfaRegistrationStatus.Approved;
-            registration.ReviewedAtUtc = DateTime.UtcNow;
-            registration.ReviewNote = null;
-            Unlock(registration, OnboardingSectionKey.AutorizatieTransport);
+        OnboardingEligibilityProfile? eligibility = await context.OnboardingEligibilityProfiles
+            .FirstOrDefaultAsync(e => e.UserId == command.UserId, cancellationToken);
 
-            await context.SaveChangesAsync(cancellationToken);
-            return Result.Success();
+        DateTime now = DateTime.UtcNow;
+
+        OnboardingSectionStatus pfaStatus = registration.Status switch
+        {
+            PfaRegistrationStatus.Approved => OnboardingSectionStatus.Validated,
+            PfaRegistrationStatus.Rejected => OnboardingSectionStatus.Rejected,
+            _ => OnboardingSectionStatus.AwaitingValidation,
+        };
+
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(registration, pfaStatus, eligibility);
+        OnboardingStepDto? next = steps.FirstOrDefault(s => s.Status != "Completed");
+
+        if (next is null)
+        {
+            return Result.Failure(AlreadyComplete);
         }
 
-        foreach (OnboardingSectionKey key in DocumentSections)
+        switch (next.Key)
         {
-            OnboardingSectionApproval? row = registration.OnboardingSections
-                .SingleOrDefault(s => s.SectionKey == key);
-
-            if (row?.Status == OnboardingSectionStatus.Validated)
-            {
-                continue;
-            }
-
-            if (row is null)
-            {
-                row = new OnboardingSectionApproval
-                {
-                    Id = Guid.NewGuid(),
-                    PfaRegistrationId = registration.Id,
-                    SectionKey = key,
-                    CreatedAtUtc = DateTime.UtcNow,
-                };
-                context.OnboardingSectionApprovals.Add(row);
-            }
-
-            row.Status = OnboardingSectionStatus.Validated;
-            row.ValidatedAtUtc = DateTime.UtcNow;
-            row.Note = null;
-
-            if (OnboardingSectionCatalog.NextSection(key) is OnboardingSectionKey next)
-            {
-                Unlock(registration, next);
-            }
-
-            // Ultima secțiune validată → înrolare (aceeași poartă ca fluxul real).
-            OnboardingProgress.TryMarkCompleted(registration, DateTime.UtcNow);
-
-            await context.SaveChangesAsync(cancellationToken);
-            return Result.Success();
+            case "eligibility": ForceEligibility(eligibility, command.UserId, now); break;
+            case "pfa": ForcePfa(registration, now); break;
+            case "fiscal": ForceFiscal(registration, now); break;
+            case "arr": ForceArr(registration, now); break;
+            case "platforms": ForcePlatforms(registration, now); break;
+            case "vehicle": ForceVehicle(registration, now); break;
+            default: break;
         }
 
-        return Result.Failure(AlreadyComplete);
+        await context.SaveChangesAsync(cancellationToken);
+
+        return Result.Success();
     }
 
-    private void Unlock(PfaRegistration registration, OnboardingSectionKey key)
+    private void ForceEligibility(OnboardingEligibilityProfile? profile, Guid userId, DateTime now)
     {
-        OnboardingSectionApproval? row = registration.OnboardingSections
-            .SingleOrDefault(s => s.SectionKey == key);
-
-        if (row is null)
+        if (profile is null)
         {
-            context.OnboardingSectionApprovals.Add(new OnboardingSectionApproval
+            profile = new OnboardingEligibilityProfile
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                CreatedAtUtc = now,
+            };
+            context.OnboardingEligibilityProfiles.Add(profile);
+        }
+
+        profile.DateOfBirth ??= DateOnly.FromDateTime(now.AddYears(-30));
+        profile.CategoryBObtainedOn ??= DateOnly.FromDateTime(now.AddYears(-5));
+        profile.HasDriverCertificate = true;
+        profile.Status = EligibilityStatus.Eligible;
+        profile.UpdatedAtUtc = now;
+    }
+
+    private static void ForcePfa(PfaRegistration registration, DateTime now)
+    {
+        registration.Status = PfaRegistrationStatus.Approved;
+        registration.ReviewedAtUtc = now;
+        registration.ReviewNote = null;
+    }
+
+    private void ForceFiscal(PfaRegistration registration, DateTime now)
+    {
+        PfaFiscalProfile fiscal = registration.FiscalProfile ?? AddFiscal(registration);
+        fiscal.VatAnswer = VatAnswer.Yes;
+
+        PfaBankAccountDeclaration bank = registration.BankAccountDeclaration ?? AddBank(registration, now);
+        bank.Status = BankDeclarationStatus.Verified;
+        bank.IbanMasked ??= "RO49••••1234";
+        bank.UpdatedAtUtc = now;
+
+        PfaOblioAccount oblio = registration.OblioAccount ?? AddOblio(registration, now);
+        oblio.AccountCreationConsent = true;
+        oblio.DataProcessingConsent = true;
+        oblio.EInvoiceConsent = true;
+        oblio.AutoInvoicingConsent = true;
+        oblio.RidelanceManagementConsent = true;
+        oblio.TermsAcceptedConsent = true;
+        oblio.IntegrationStatus = OblioIntegrationStatus.Active;
+        oblio.UpdatedAtUtc = now;
+    }
+
+    private void ForceArr(PfaRegistration registration, DateTime now)
+    {
+        ArrAuthorizationRequest arr = registration.ArrAuthorizationRequest ?? AddArr(registration, now);
+        arr.Status = ArrAuthorizationStatus.Issued;
+        arr.AuthorizationNumber ??= "TEST-ARR-0001";
+        arr.UpdatedAtUtc = now;
+    }
+
+    private void ForcePlatforms(PfaRegistration registration, DateTime now)
+    {
+        PfaPlatformAccount? account = registration.PlatformAccounts
+            .FirstOrDefault(p => p.Kind == PfaPlatformAccountKind.Driver);
+
+        if (account is null)
+        {
+            account = new PfaPlatformAccount
             {
                 Id = Guid.NewGuid(),
                 PfaRegistrationId = registration.Id,
-                SectionKey = key,
-                Status = OnboardingSectionStatus.InProgress,
-                CreatedAtUtc = DateTime.UtcNow,
-            });
+                Provider = PfaPlatformProvider.Uber,
+                Kind = PfaPlatformAccountKind.Driver,
+            };
+            context.PfaPlatformAccounts.Add(account);
+            registration.PlatformAccounts.Add(account);
         }
-        else if (row.Status == OnboardingSectionStatus.Locked)
+
+        account.IsSelectedByUser = true;
+        account.OnboardingStatus = PfaPlatformOnboardingStatus.Active;
+        account.UpdatedAtUtc = now;
+    }
+
+    private void ForceVehicle(PfaRegistration registration, DateTime now)
+    {
+        PfaVehicle? vehicle = registration.Vehicles
+            .OrderByDescending(v => v.CreatedAtUtc)
+            .FirstOrDefault();
+
+        if (vehicle is null)
         {
-            row.Status = OnboardingSectionStatus.InProgress;
+            vehicle = new PfaVehicle
+            {
+                Id = Guid.NewGuid(),
+                PfaRegistrationId = registration.Id,
+                PlateNumber = "B00TEST",
+                Status = PfaVehicleStatus.Active,
+                CreatedAtUtc = now,
+            };
+            context.PfaVehicles.Add(vehicle);
+            registration.Vehicles.Add(vehicle);
         }
+
+        VehicleCopyRequest copy = vehicle.CopyRequest ?? new VehicleCopyRequest
+        {
+            Id = Guid.NewGuid(),
+            PfaVehicleId = vehicle.Id,
+            Years = 1,
+            CreatedAtUtc = now,
+        };
+
+        if (vehicle.CopyRequest is null)
+        {
+            context.VehicleCopyRequests.Add(copy);
+            vehicle.CopyRequest = copy;
+        }
+
+        copy.Status = VehicleCopyRequestStatus.Issued;
+        copy.UpdatedAtUtc = now;
+    }
+
+    private PfaFiscalProfile AddFiscal(PfaRegistration registration)
+    {
+        var fiscal = new PfaFiscalProfile { Id = Guid.NewGuid(), PfaRegistrationId = registration.Id };
+        context.PfaFiscalProfiles.Add(fiscal);
+        registration.FiscalProfile = fiscal;
+        return fiscal;
+    }
+
+    private PfaBankAccountDeclaration AddBank(PfaRegistration registration, DateTime now)
+    {
+        var bank = new PfaBankAccountDeclaration
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = registration.Id,
+            CreatedAtUtc = now,
+        };
+        context.PfaBankAccountDeclarations.Add(bank);
+        registration.BankAccountDeclaration = bank;
+        return bank;
+    }
+
+    private PfaOblioAccount AddOblio(PfaRegistration registration, DateTime now)
+    {
+        var oblio = new PfaOblioAccount
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = registration.Id,
+            CreatedAtUtc = now,
+        };
+        context.PfaOblioAccounts.Add(oblio);
+        registration.OblioAccount = oblio;
+        return oblio;
+    }
+
+    private ArrAuthorizationRequest AddArr(PfaRegistration registration, DateTime now)
+    {
+        var arr = new ArrAuthorizationRequest
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = registration.Id,
+            CreatedAtUtc = now,
+        };
+        context.ArrAuthorizationRequests.Add(arr);
+        registration.ArrAuthorizationRequest = arr;
+        return arr;
     }
 }
