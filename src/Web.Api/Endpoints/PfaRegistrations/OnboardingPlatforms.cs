@@ -17,7 +17,8 @@ internal sealed class OnboardingPlatforms : IEndpoint
         string Provider,
         bool HasExistingAccount,
         string? OperatorAccountId,
-        Guid? AffiliationContractDocumentId);
+        Guid? AffiliationContractDocumentId,
+        string? ExistingAccountAnswer);
 
     public sealed record AdvanceRequest(string Provider, string OnboardingStatus);
 
@@ -65,7 +66,8 @@ internal sealed class OnboardingPlatforms : IEndpoint
             Result<PlatformOnboardingResponse> result = await handler.Handle(
                 new SubmitPlatformAccountCommand(
                     userContext.UserId, provider, request.HasExistingAccount,
-                    request.OperatorAccountId, request.AffiliationContractDocumentId),
+                    request.OperatorAccountId, request.AffiliationContractDocumentId,
+                    request.ExistingAccountAnswer),
                 cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);

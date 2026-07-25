@@ -9,7 +9,8 @@ public sealed record PlatformAccountDto(
     bool HasExistingAccount,
     string? OperatorAccountId,
     bool HasAffiliationContract,
-    string OnboardingStatus);
+    string OnboardingStatus,
+    string? ExistingAccountAnswer);
 
 public sealed record PlatformOnboardingResponse(
     Guid? PfaRegistrationId,
@@ -36,7 +37,8 @@ internal static class PlatformShared
         a.HasExistingAccount,
         a.OperatorAccountId,
         a.AffiliationContractDocumentId is not null,
-        a.OnboardingStatus.ToString());
+        a.OnboardingStatus.ToString(),
+        a.ExistingAccountAnswer);
 
     public static PlatformOnboardingResponse ToResponse(PfaRegistration registration)
     {

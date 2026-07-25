@@ -32,24 +32,43 @@ public static class DocumentAiCatalog
     {
         [DocumentCategory.Buletin] = new(
             "Buletin (Carte de identitate)",
-            "Carte de identitate românească a unei persoane fizice: conține fotografie, nume, prenume și dată de expirare.",
-            true),
+            "Carte de identitate românească a unei persoane fizice: conține fotografie, nume, prenume și dată de expirare. NU extrage CNP-ul sau seria/numărul actului.",
+            true,
+            [
+                new("date_of_birth", "Data nașterii titularului (o poți deduce din CNP fără a returna CNP-ul)", ExtractedFieldType.Date, Required: false, Sensitive: true),
+                new("full_name", "Numele și prenumele titularului", ExtractedFieldType.Text, Required: false),
+            ]),
         [DocumentCategory.CarteIdentitate] = new(
             "Carte de identitate",
-            "Carte de identitate românească a unei persoane fizice: conține fotografie, nume, prenume și dată de expirare.",
-            true),
+            "Carte de identitate românească a unei persoane fizice: conține fotografie, nume, prenume și dată de expirare. NU extrage CNP-ul sau seria/numărul actului.",
+            true,
+            [
+                new("date_of_birth", "Data nașterii titularului (o poți deduce din CNP fără a returna CNP-ul)", ExtractedFieldType.Date, Required: false, Sensitive: true),
+                new("full_name", "Numele și prenumele titularului", ExtractedFieldType.Text, Required: false),
+            ]),
         [DocumentCategory.PermisConducere] = new(
             "Permis de conducere",
-            "Permis de conducere românesc/UE: conține fotografie, categorii de vehicule și dată de expirare (4b).",
-            true),
+            "Permis de conducere românesc/UE: conține fotografie, categorii de vehicule și date (4b = expirare per categorie, 10 = data obținerii categoriei). NU extrage numărul actului.",
+            true,
+            [
+                new("category_b_obtained_on", "Data obținerii categoriei B (coloana 10 din tabelul de categorii)", ExtractedFieldType.Date, Required: false),
+                new("driving_categories", "Categoriile deținute (ex. B, BE)", ExtractedFieldType.Text, Required: false),
+                new("licence_expires_on", "Data de expirare a permisului (4b)", ExtractedFieldType.Date, Required: false),
+            ]),
         [DocumentCategory.AtestatSofer] = new(
             "Atestat de șofer (transport alternativ)",
             "Certificat/atestat profesional pentru conducător auto de transport alternativ (ridesharing), emis de ARR, cu perioadă de valabilitate.",
-            true),
+            true,
+            [
+                new("atestat_expires_on", "Data de expirare a atestatului", ExtractedFieldType.Date, Required: false),
+            ]),
         [DocumentCategory.AtestatTransport] = new(
             "Atestat / Certificat de transport",
             "Certificat de competență profesională sau atestat pentru transport rutier emis de ARR, cu perioadă de valabilitate.",
-            true),
+            true,
+            [
+                new("atestat_expires_on", "Data de expirare a atestatului", ExtractedFieldType.Date, Required: false),
+            ]),
         [DocumentCategory.AdeverintaMedicala] = new(
             "Adeverință medicală",
             "Adeverință sau aviz medical (și/sau psihologic) pentru conducător auto, emisă de o unitate medicală, de regulă cu dată de emitere recentă sau valabilitate.",
@@ -104,11 +123,19 @@ public static class DocumentAiCatalog
         [DocumentCategory.AutorizatieTransportAlternativ] = new(
             "Autorizație transport alternativ",
             "Autorizația pentru transport alternativ emisă de ARR pe numele PFA-ului/operatorului, cu perioadă de valabilitate.",
-            true),
+            true,
+            [
+                new("authorization_number", "Numărul autorizației de transport alternativ", ExtractedFieldType.Text, Required: false),
+                new("authorization_expires_on", "Data de expirare a autorizației", ExtractedFieldType.Date, Required: false),
+            ]),
         [DocumentCategory.CopieConforma] = new(
             "Copie conformă",
             "Copia conformă a autorizației de transport alternativ, emisă de ARR pentru un vehicul anume, cu perioadă de valabilitate.",
-            true),
+            true,
+            [
+                new("copy_conforma_number", "Seria/numărul copiei conforme", ExtractedFieldType.Text, Required: false),
+                new("copy_conforma_expires_on", "Data de expirare a copiei conforme", ExtractedFieldType.Date, Required: false),
+            ]),
         [DocumentCategory.Talon] = new(
             "Talon (Certificat de înmatriculare)",
             "Certificatul de înmatriculare (talonul) al unui vehicul: conține numărul de înmatriculare, marca, seria de șasiu (VIN) și deținătorul.",
@@ -131,6 +158,15 @@ public static class DocumentAiCatalog
             "Contract vehicul",
             "Contract pentru folosința vehiculului (comodat, închiriere sau proprietate) între deținător și utilizator, semnat de părți.",
             false),
+        [DocumentCategory.ExtrasBancar] = new(
+            "Extras de cont / confirmare IBAN",
+            "Extras de cont bancar sau document de confirmare a IBAN-ului pentru contul PFA-ului, cu IBAN-ul și titularul contului.",
+            false,
+            [
+                new("iban", "IBAN-ul contului (24 de caractere pentru România)", ExtractedFieldType.Iban, Required: true),
+            ],
+            // Un extras bancar valid nu trebuie respins automat dacă modelul nu recunoaște „tipul” exact.
+            AutoRejectOnFailure: false),
         [DocumentCategory.AcordLeasing] = new(
             "Acord leasing",
             "Acordul societății de leasing pentru utilizarea vehiculului în activitatea de transport alternativ.",

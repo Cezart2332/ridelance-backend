@@ -12,7 +12,8 @@ public sealed record SubmitPlatformAccountCommand(
     PfaPlatformProvider Provider,
     bool HasExistingAccount,
     string? OperatorAccountId,
-    Guid? AffiliationContractDocumentId) : ICommand<PlatformOnboardingResponse>;
+    Guid? AffiliationContractDocumentId,
+    string? ExistingAccountAnswer = null) : ICommand<PlatformOnboardingResponse>;
 
 internal sealed class SubmitPlatformAccountCommandHandler(IApplicationDbContext context)
     : ICommandHandler<SubmitPlatformAccountCommand, PlatformOnboardingResponse>
@@ -50,6 +51,9 @@ internal sealed class SubmitPlatformAccountCommandHandler(IApplicationDbContext 
 
         account.IsSelectedByUser = true;
         account.HasExistingAccount = command.HasExistingAccount;
+        account.ExistingAccountAnswer = string.IsNullOrWhiteSpace(command.ExistingAccountAnswer)
+            ? null
+            : command.ExistingAccountAnswer.Trim();
         account.OperatorAccountId = string.IsNullOrWhiteSpace(command.OperatorAccountId) ? null : command.OperatorAccountId.Trim();
         account.AffiliationContractDocumentId = command.AffiliationContractDocumentId;
         account.UpdatedAtUtc = DateTime.UtcNow;

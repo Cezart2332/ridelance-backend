@@ -7,8 +7,11 @@ namespace Domain.PfaRegistrations;
 public static class CopyConformaRules
 {
     public const int MinYears = 1;
-    /// <summary>Perioada maximă pentru care se poate solicita copia conformă.</summary>
-    public const int MaxYears = 5;
+    /// <summary>
+    /// Perioada maximă pentru care se poate solicita copia conformă: 3 ani, fără a depăși
+    /// valabilitatea autorizației de transport (care se emite tot pe 3 ani).
+    /// </summary>
+    public const int MaxYears = 3;
 
     public static bool IsValidPeriod(int years) => years is >= MinYears and <= MaxYears;
 
