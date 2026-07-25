@@ -68,15 +68,12 @@ internal static class OnboardingStateBuilder
                 registration?.ReviewedAtUtc),
         };
 
-        bool allValidated = pfaStatus == OnboardingSectionStatus.Validated;
-
         foreach (OnboardingSectionKey key in DocumentSections)
         {
             OnboardingSectionApproval? row = registration?.OnboardingSections
                 .SingleOrDefault(s => s.SectionKey == key);
 
             OnboardingSectionStatus status = row?.Status ?? OnboardingSectionStatus.Locked;
-            allValidated &= status == OnboardingSectionStatus.Validated;
 
             sections.Add(new OnboardingSectionDto(
                 key.ToString(),
@@ -88,6 +85,10 @@ internal static class OnboardingStateBuilder
 
         List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(registration, pfaStatus, eligibility);
 
+        // „Onboarding complet" = toți cei 6 pași finalizați (nu doar cele 3 secțiuni de documente).
+        // Asta gateuiește redirectul spre plata abonamentului.
+        bool allStepsCompleted = OnboardingStepCatalog.AllCompleted(steps);
+
         return new OnboardingStateResponse(
             registration?.Id,
             registration?.Status.ToString(),
@@ -95,7 +96,7 @@ internal static class OnboardingStateBuilder
             registration?.ReviewNote,
             hasPaidInfiintare,
             sections,
-            allValidated,
+            allStepsCompleted,
             steps);
     }
 }

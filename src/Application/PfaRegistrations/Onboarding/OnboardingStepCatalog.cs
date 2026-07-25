@@ -28,6 +28,10 @@ public static class OnboardingStepCatalog
         new(5, "vehicle", "Vehicul, copie conformă & ecusoane", "/onboarding/vehicle"),
     ];
 
+    /// <summary>Toți cei 6 pași sunt finalizați — condiția reală de înrolare.</summary>
+    public static bool AllCompleted(IReadOnlyList<OnboardingStepDto> steps) =>
+        steps.Count > 0 && steps.All(s => s.Status == Completed);
+
     public static List<OnboardingStepDto> BuildSteps(
         PfaRegistration? registration,
         OnboardingSectionStatus pfaStatus,

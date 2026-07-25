@@ -17,8 +17,8 @@ internal sealed class GetOnboardingStateQueryHandler(
         GetOnboardingStateQuery query,
         CancellationToken cancellationToken)
     {
+        // Tracked (fără AsNoTracking) — ca să putem seta înrolarea când toți cei 6 pași sunt gata.
         PfaRegistration? registration = await context.PfaRegistrations
-            .AsNoTracking()
             .Include(r => r.OnboardingSections)
             .Include(r => r.FiscalProfile)
             .Include(r => r.BankAccountDeclaration)
@@ -33,6 +33,13 @@ internal sealed class GetOnboardingStateQueryHandler(
         OnboardingEligibilityProfile? eligibility = await context.OnboardingEligibilityProfiles
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.UserId == query.UserId, cancellationToken);
+
+        // Înrolarea reală: abia când TOȚI cei 6 pași sunt finalizați. Singura poartă de înrolare.
+        if (registration is not null &&
+            OnboardingProgress.TryMarkCompleted(registration, eligibility, DateTime.UtcNow))
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
 
         bool hasPaidInfiintare = await InfiintarePaymentCheck.HasPaidAsync(
             context, query.UserId, cancellationToken);

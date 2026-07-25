@@ -84,13 +84,11 @@ internal sealed class ValidateOnboardingSectionCommandHandler(
         }
         else
         {
-            text = $"Secțiunea „{OnboardingSectionCatalog.SectionLabel(command.SectionKey)}” a fost validată! " +
-                   "Onboardingul este complet — poți activa abonamentul.";
+            text = $"Secțiunea „{OnboardingSectionCatalog.SectionLabel(command.SectionKey)}” a fost validată!";
         }
 
-        // Înrolarea reală se produce abia acum, când ultima secțiune obligatorie e validată
-        // (nu la aprobarea dosarului PFA). Singura poartă de înrolare.
-        OnboardingProgress.TryMarkCompleted(registration, DateTime.UtcNow);
+        // Înrolarea NU se produce aici — se declanșează abia când toți cei 6 pași sunt finalizați
+        // (vezi OnboardingProgress.TryMarkCompleted, apelat din GetOnboardingStateQueryHandler).
 
         context.Notifications.Add(new Notification
         {

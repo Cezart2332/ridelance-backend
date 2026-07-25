@@ -10,20 +10,17 @@ namespace Application.PfaRegistrations.Onboarding;
 /// </summary>
 public static class OnboardingProgress
 {
-    /// <summary>Secțiunile de documente care trebuie validate pentru a finaliza onboardingul.</summary>
-    public static readonly OnboardingSectionKey[] RequiredDocumentSections =
-    [
-        OnboardingSectionKey.AutorizatieTransport,
-        OnboardingSectionKey.CopieConforma,
-        OnboardingSectionKey.Vehicul,
-    ];
-
     /// <summary>
-    /// Marchează dosarul ca înrolat dacă (și doar dacă) e prima dată când toate condițiile
-    /// sunt îndeplinite. Întoarce <c>true</c> exact la tranziția spre „înrolat", ca apelantul
-    /// să declanșeze notificarea/emailul de înrolare o singură dată.
+    /// Marchează dosarul ca înrolat dacă (și doar dacă) e prima dată când TOȚI cei 6 pași sunt
+    /// finalizați (nu doar secțiunile de documente). Întoarce <c>true</c> exact la tranziția spre
+    /// „înrolat", ca apelantul să declanșeze notificarea/emailul de înrolare o singură dată.
+    /// Necesită un <paramref name="registration"/> cu navele încărcate (fiscal, bancă, Oblio, ARR,
+    /// platforme, vehicule) + profilul de eligibilitate.
     /// </summary>
-    public static bool TryMarkCompleted(PfaRegistration registration, DateTime nowUtc)
+    public static bool TryMarkCompleted(
+        PfaRegistration registration,
+        OnboardingEligibilityProfile? eligibility,
+        DateTime nowUtc)
     {
         if (registration.OnboardingCompletedAtUtc is not null)
         {
@@ -35,11 +32,11 @@ public static class OnboardingProgress
             return false;
         }
 
-        bool allValidated = RequiredDocumentSections.All(key =>
-            registration.OnboardingSections.Any(s =>
-                s.SectionKey == key && s.Status == OnboardingSectionStatus.Validated));
+        // Status == Approved ⇒ pasul PFA e Validat; derivăm ceilalți pași din entități.
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
+            registration, OnboardingSectionStatus.Validated, eligibility);
 
-        if (!allValidated)
+        if (!OnboardingStepCatalog.AllCompleted(steps))
         {
             return false;
         }
