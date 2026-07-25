@@ -57,12 +57,14 @@ internal sealed class SubmitVehicleCommandHandler(
 
         vehicle.OwnershipMode = command.AddLater ? VehicleOwnershipMode.AddedLater : command.OwnershipMode;
         vehicle.AddLater = command.AddLater;
-        vehicle.PlateNumber = command.PlateNumber?.Trim();
-        vehicle.Vin = command.Vin?.Trim();
-        vehicle.Make = command.Make?.Trim();
-        vehicle.Model = command.Model?.Trim();
-        vehicle.FirstRegistrationYear = command.FirstRegistrationYear;
-        vehicle.MarketplaceCarId = command.MarketplaceCarId;
+        // Datele mașinii vin din documente (OCR) — nu le ștergem când userul salvează doar
+        // răspunsurile (mod de deținere). Valorile explicite le suprascriu pe cele citite.
+        vehicle.PlateNumber = Coalesce(command.PlateNumber, vehicle.PlateNumber);
+        vehicle.Vin = Coalesce(command.Vin, vehicle.Vin);
+        vehicle.Make = Coalesce(command.Make, vehicle.Make);
+        vehicle.Model = Coalesce(command.Model, vehicle.Model);
+        vehicle.FirstRegistrationYear = command.FirstRegistrationYear ?? vehicle.FirstRegistrationYear;
+        vehicle.MarketplaceCarId = command.MarketplaceCarId ?? vehicle.MarketplaceCarId;
         vehicle.Status = command.AddLater ? PfaVehicleStatus.Draft : PfaVehicleStatus.DocumentsPending;
         vehicle.UpdatedAtUtc = nowUtc;
 
@@ -75,4 +77,7 @@ internal sealed class SubmitVehicleCommandHandler(
 
         return Result.Success(VehicleShared.ToResponse(vehicle, copyFee, badgeFee));
     }
+
+    private static string? Coalesce(string? incoming, string? existing) =>
+        string.IsNullOrWhiteSpace(incoming) ? existing : incoming.Trim();
 }

@@ -29,13 +29,15 @@ internal sealed class SubmitEligibilityProfileCommandHandler(IApplicationDbConte
             context.OnboardingEligibilityProfiles.Add(profile);
         }
 
-        profile.DateOfBirth = command.DateOfBirth;
-        profile.IdSeriesMask = command.IdSeriesMask;
-        profile.CategoryBObtainedOn = command.CategoryBObtainedOn;
-        profile.DrivingCategories = command.DrivingCategories;
-        profile.DrivingLicenceExpiresOn = command.DrivingLicenceExpiresOn;
+        // Userul răspunde DOAR la întrebări; datele de pe documente vin din OCR și nu se șterg
+        // dacă nu sunt trimise (document-first). Valorile explicite le suprascriu pe cele citite.
+        profile.DateOfBirth = command.DateOfBirth ?? profile.DateOfBirth;
+        profile.IdSeriesMask = command.IdSeriesMask ?? profile.IdSeriesMask;
+        profile.CategoryBObtainedOn = command.CategoryBObtainedOn ?? profile.CategoryBObtainedOn;
+        profile.DrivingCategories = command.DrivingCategories ?? profile.DrivingCategories;
+        profile.DrivingLicenceExpiresOn = command.DrivingLicenceExpiresOn ?? profile.DrivingLicenceExpiresOn;
         profile.HasDriverCertificate = command.HasDriverCertificate;
-        profile.DriverCertificateExpiresOn = command.DriverCertificateExpiresOn;
+        profile.DriverCertificateExpiresOn = command.DriverCertificateExpiresOn ?? profile.DriverCertificateExpiresOn;
         profile.UpdatedAtUtc = nowUtc;
 
         EligibilityEvaluation evaluation = EligibilityRules.Evaluate(

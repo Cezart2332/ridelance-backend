@@ -15,7 +15,9 @@ public sealed record CorrectExtractedFieldCommand(
     string? Value,
     string ChangeReason) : ICommand;
 
-internal sealed class CorrectExtractedFieldCommandHandler(IApplicationDbContext context)
+internal sealed class CorrectExtractedFieldCommandHandler(
+    IApplicationDbContext context,
+    IExtractedFieldApplier fieldApplier)
     : ICommandHandler<CorrectExtractedFieldCommand>
 {
     private static readonly Error FieldNotFound = Error.NotFound(
@@ -59,7 +61,7 @@ internal sealed class CorrectExtractedFieldCommandHandler(IApplicationDbContext 
 
         if (!string.IsNullOrWhiteSpace(normalized))
         {
-            await ExtractedFieldApplier.ApplyAsync(context, document, row.FieldKey, normalized, cancellationToken);
+            await fieldApplier.ApplyAsync(document, row.FieldKey, normalized, cancellationToken);
         }
 
         // Audit în jurnalul dosarului (dacă documentul e legat de un dosar PFA).

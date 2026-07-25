@@ -16,7 +16,9 @@ public sealed record ConfirmExtractedFieldsCommand(
     Guid DocumentId,
     IReadOnlyList<ConfirmedFieldInput> Fields) : ICommand<ExtractedFieldsResponse>;
 
-internal sealed class ConfirmExtractedFieldsCommandHandler(IApplicationDbContext context)
+internal sealed class ConfirmExtractedFieldsCommandHandler(
+    IApplicationDbContext context,
+    IExtractedFieldApplier fieldApplier)
     : ICommandHandler<ConfirmExtractedFieldsCommand, ExtractedFieldsResponse>
 {
     public async Task<Result<ExtractedFieldsResponse>> Handle(
@@ -61,7 +63,7 @@ internal sealed class ConfirmExtractedFieldsCommandHandler(IApplicationDbContext
 
             if (!string.IsNullOrWhiteSpace(normalized))
             {
-                await ExtractedFieldApplier.ApplyAsync(context, document, row.FieldKey, normalized, cancellationToken);
+                await fieldApplier.ApplyAsync(document, row.FieldKey, normalized, cancellationToken);
             }
         }
 

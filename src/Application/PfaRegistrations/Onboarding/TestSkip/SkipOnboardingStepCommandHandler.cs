@@ -15,10 +15,6 @@ namespace Application.PfaRegistrations.Onboarding.TestSkip;
 internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext context)
     : ICommandHandler<SkipOnboardingStepCommand>
 {
-    private static readonly Error NoRegistration = Error.Problem(
-        "Onboarding.TestSkip.NoRegistration",
-        "Completează întâi formularul PFA — abia apoi se poate sări peste pași.");
-
     private static readonly Error AlreadyComplete = Error.Problem(
         "Onboarding.TestSkip.AlreadyComplete",
         "Toți pașii sunt deja finalizați.");
@@ -37,15 +33,28 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
+        DateTime now = DateTime.UtcNow;
+
+        // Testerul nu trebuie să completeze nimic: dacă nu există dosar, îl creăm noi.
         if (registration is null)
         {
-            return Result.Failure(NoRegistration);
+            registration = new PfaRegistration
+            {
+                Id = Guid.NewGuid(),
+                UserId = command.UserId,
+                RegistrationType = RegistrationType.AmPfa,
+                PfaSource = PfaSource.Existing,
+                Status = PfaRegistrationStatus.Pending,
+                FullName = "Test Skip",
+                Cui = "RO00000000",
+                LegalName = "PFA Test Skip",
+                CreatedAtUtc = now,
+            };
+            context.PfaRegistrations.Add(registration);
         }
 
         OnboardingEligibilityProfile? eligibility = await context.OnboardingEligibilityProfiles
             .FirstOrDefaultAsync(e => e.UserId == command.UserId, cancellationToken);
-
-        DateTime now = DateTime.UtcNow;
 
         OnboardingSectionStatus pfaStatus = registration.Status switch
         {

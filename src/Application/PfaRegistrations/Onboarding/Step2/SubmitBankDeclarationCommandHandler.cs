@@ -20,8 +20,11 @@ internal sealed class SubmitBankDeclarationCommandHandler(
         SubmitBankDeclarationCommand command,
         CancellationToken cancellationToken)
     {
-        string iban = NormalizeIban(command.Iban);
-        if (!IsPlausibleIban(iban))
+        // Document-first: userul alege doar banca; IBAN-ul se citește din documentul încărcat (OCR).
+        // Dacă totuși e trimis explicit, trebuie să fie plauzibil.
+        string iban = NormalizeIban(command.Iban ?? string.Empty);
+        bool hasIban = iban.Length > 0;
+        if (hasIban && !IsPlausibleIban(iban))
         {
             return Result.Failure<Step2BankDto>(InvalidIban);
         }
@@ -37,11 +40,11 @@ internal sealed class SubmitBankDeclarationCommandHandler(
             return Result.Failure<Step2BankDto>(Step2Errors.NoRegistration);
         }
 
-        string masked = MaskIban(iban);
+        string? masked = hasIban ? MaskIban(iban) : null;
         DateTime nowUtc = DateTime.UtcNow;
 
         // Dacă userul are deja o conexiune PSD2 activă cu același IBAN, validăm automat.
-        var linkedAccount = await context.BankAccounts
+        var linkedAccount = masked is null ? null : await context.BankAccounts
             .AsNoTracking()
             .Where(a => a.UserId == command.UserId && a.IsActive && a.IbanMasked == masked)
             .Select(a => new { a.Id, a.BankConnectionId, a.OwnerName })
@@ -60,10 +63,15 @@ internal sealed class SubmitBankDeclarationCommandHandler(
         }
 
         declaration.BankName = command.BankName;
-        declaration.IbanEncrypted = secretProtector.Protect(iban);
-        declaration.IbanMasked = masked;
-        declaration.ConfirmationDocumentId = command.ConfirmationDocumentId;
+        declaration.ConfirmationDocumentId = command.ConfirmationDocumentId ?? declaration.ConfirmationDocumentId;
         declaration.UpdatedAtUtc = nowUtc;
+
+        // IBAN-ul citit din document (OCR) nu se șterge dacă userul salvează doar banca.
+        if (hasIban)
+        {
+            declaration.IbanEncrypted = secretProtector.Protect(iban);
+            declaration.IbanMasked = masked;
+        }
 
         if (linkedAccount is not null)
         {
@@ -71,7 +79,7 @@ internal sealed class SubmitBankDeclarationCommandHandler(
             declaration.Status = BankDeclarationStatus.Verified;
             declaration.BankConnectionId = linkedAccount.BankConnectionId;
         }
-        else
+        else if (declaration.Status != BankDeclarationStatus.Verified)
         {
             declaration.Source = BankDeclarationSource.Manual;
             declaration.Status = BankDeclarationStatus.Pending;
