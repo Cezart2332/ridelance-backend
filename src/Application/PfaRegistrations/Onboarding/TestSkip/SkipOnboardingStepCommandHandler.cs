@@ -35,31 +35,16 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
 
         DateTime now = DateTime.UtcNow;
 
-        // Testerul nu trebuie să completeze nimic: dacă nu există dosar, îl creăm noi.
-        if (registration is null)
-        {
-            registration = new PfaRegistration
-            {
-                Id = Guid.NewGuid(),
-                UserId = command.UserId,
-                RegistrationType = RegistrationType.AmPfa,
-                PfaSource = PfaSource.Existing,
-                Status = PfaRegistrationStatus.Pending,
-                FullName = "Test Skip",
-                Cui = "RO00000000",
-                LegalName = "PFA Test Skip",
-                CreatedAtUtc = now,
-            };
-            context.PfaRegistrations.Add(registration);
-        }
-
         OnboardingEligibilityProfile? eligibility = await context.OnboardingEligibilityProfiles
             .FirstOrDefaultAsync(e => e.UserId == command.UserId, cancellationToken);
 
-        OnboardingSectionStatus pfaStatus = registration.Status switch
+        // Aceeași derivare ca în OnboardingStateBuilder — fără dosar, pasul PFA e „în lucru",
+        // ca userul să vadă formularul, nu ecranul „în validare".
+        OnboardingSectionStatus pfaStatus = registration switch
         {
-            PfaRegistrationStatus.Approved => OnboardingSectionStatus.Validated,
-            PfaRegistrationStatus.Rejected => OnboardingSectionStatus.Rejected,
+            null => OnboardingSectionStatus.InProgress,
+            { Status: PfaRegistrationStatus.Approved } => OnboardingSectionStatus.Validated,
+            { Status: PfaRegistrationStatus.Rejected } => OnboardingSectionStatus.Rejected,
             _ => OnboardingSectionStatus.AwaitingValidation,
         };
 
@@ -71,15 +56,25 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
             return Result.Failure(AlreadyComplete);
         }
 
-        switch (next.Key)
+        if (next.Key == "eligibility")
         {
-            case "eligibility": ForceEligibility(eligibility, command.UserId, now); break;
-            case "pfa": ForcePfa(registration, now); break;
-            case "fiscal": ForceFiscal(registration, now); break;
-            case "arr": ForceArr(registration, now); break;
-            case "platforms": ForcePlatforms(registration, now); break;
-            case "vehicle": ForceVehicle(registration, now); break;
-            default: break;
+            // Pasul 0 nu are nevoie de dosar — nu creăm unul, ca pasul PFA să rămână completabil.
+            ForceEligibility(eligibility, command.UserId, now);
+        }
+        else
+        {
+            // Restul pașilor atârnă de dosar: dacă lipsește, îl creăm direct aprobat.
+            registration ??= CreateApprovedRegistration(command.UserId, now);
+
+            switch (next.Key)
+            {
+                case "pfa": ForcePfa(registration, now); break;
+                case "fiscal": ForceFiscal(registration, now); break;
+                case "arr": ForceArr(registration, now); break;
+                case "platforms": ForcePlatforms(registration, now); break;
+                case "vehicle": ForceVehicle(registration, now); break;
+                default: break;
+            }
         }
 
         await context.SaveChangesAsync(cancellationToken);
@@ -105,6 +100,25 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
         profile.HasDriverCertificate = true;
         profile.Status = EligibilityStatus.Eligible;
         profile.UpdatedAtUtc = now;
+    }
+
+    private PfaRegistration CreateApprovedRegistration(Guid userId, DateTime now)
+    {
+        var registration = new PfaRegistration
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            RegistrationType = RegistrationType.AmPfa,
+            PfaSource = PfaSource.Existing,
+            Status = PfaRegistrationStatus.Approved,
+            FullName = "Test Skip",
+            Cui = "RO00000000",
+            LegalName = "PFA Test Skip",
+            CreatedAtUtc = now,
+            ReviewedAtUtc = now,
+        };
+        context.PfaRegistrations.Add(registration);
+        return registration;
     }
 
     private static void ForcePfa(PfaRegistration registration, DateTime now)
