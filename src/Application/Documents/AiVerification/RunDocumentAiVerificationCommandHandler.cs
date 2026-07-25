@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Application.Abstractions;
 using Application.Abstractions.Ai;
+using Application.Documents.ExtractedFields;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
@@ -22,6 +23,7 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
     IWebPushService webPushService,
     IEmailService emailService,
     IMjmlRenderer mjmlRenderer,
+    IExtractedFieldApplier fieldApplier,
     IConfiguration configuration)
     : ICommandHandler<RunDocumentAiVerificationCommand>
 {
@@ -250,12 +252,17 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             row.IsSensitive = spec.Sensitive;
             row.UpdatedAtUtc = nowUtc;
 
-            // Valoarea confirmată de om câștigă întotdeauna — nu retrogradăm starea.
+            // Valoarea confirmată de om câștigă întotdeauna — nu retrogradăm starea și nu
+            // suprascriem coloana de business cu valoarea OCR.
             if (row.ConfirmedSource == ExtractedFieldSource.None)
             {
                 row.ReviewState = needsReview
                     ? ExtractedFieldReviewState.NeedsManualReview
-                    : ExtractedFieldReviewState.NeedsUserConfirmation;
+                    : ExtractedFieldReviewState.Auto;
+
+                // Userul nu confirmă nimic: precompletăm direct entitatea de business.
+                // Adminul verifică/corectează ulterior din panoul dosarului.
+                await fieldApplier.ApplyAsync(document, spec.Key, normalized, cancellationToken);
             }
         }
 

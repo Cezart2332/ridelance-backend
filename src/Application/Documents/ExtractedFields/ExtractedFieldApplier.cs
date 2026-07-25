@@ -1,4 +1,6 @@
+using System.Globalization;
 using Application.Abstractions.Data;
+using Application.Abstractions.Security;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
@@ -6,14 +8,20 @@ using Microsoft.EntityFrameworkCore;
 namespace Application.Documents.ExtractedFields;
 
 /// <summary>
-/// Propagă o valoare confirmată de om către coloana de business (sursa de adevăr).
-/// Tabelul <see cref="ExtractedField"/> rămâne stratul de proveniență; aici scriem
-/// în <c>PfaRegistration</c>/<c>PfaVehicle</c>. Valoarea confirmată câștigă întotdeauna.
+/// Propagă valorile citite prin OCR (sau corectate de admin) către coloanele de business —
+/// sursa de adevăr. Userul NU confirmă nimic: încarcă documentul, OCR-ul completează, adminul
+/// verifică/corectează ulterior. Tabelul <see cref="ExtractedField"/> rămâne stratul de proveniență.
 /// </summary>
-internal static class ExtractedFieldApplier
+public interface IExtractedFieldApplier
 {
-    public static async Task ApplyAsync(
-        IApplicationDbContext context,
+    Task ApplyAsync(Document document, string fieldKey, string normalizedValue, CancellationToken cancellationToken);
+}
+
+internal sealed class ExtractedFieldApplier(
+    IApplicationDbContext context,
+    ISecretProtector secretProtector) : IExtractedFieldApplier
+{
+    public async Task ApplyAsync(
         Document document,
         string fieldKey,
         string normalizedValue,
@@ -24,21 +32,45 @@ internal static class ExtractedFieldApplier
             return;
         }
 
-        string key = fieldKey.Trim().ToUpperInvariant();
-
-        switch (key)
+        switch (fieldKey.Trim().ToUpperInvariant())
         {
+            // Pasul 0 — eligibilitate (CI, permis, atestat)
+            case "DATE_OF_BIRTH":
+            case "CATEGORY_B_OBTAINED_ON":
+            case "DRIVING_CATEGORIES":
+            case "LICENCE_EXPIRES_ON":
+            case "ATESTAT_EXPIRES_ON":
+                await ApplyToEligibilityAsync(document, fieldKey, normalizedValue, cancellationToken);
+                break;
+
+            // Pasul 1 — dosarul PFA
             case "CUI":
             case "LEGAL_NAME":
             case "REGISTRY_NUMBER":
-                await ApplyToRegistrationAsync(context, document, key, normalizedValue, cancellationToken);
+                await ApplyToRegistrationAsync(document, fieldKey, normalizedValue, cancellationToken);
                 break;
 
+            // Pasul 2 — contul bancar
+            case "IBAN":
+                await ApplyIbanAsync(document, normalizedValue, cancellationToken);
+                break;
+
+            // Pasul 3 — autorizația ARR
+            case "AUTHORIZATION_NUMBER":
+            case "AUTHORIZATION_EXPIRES_ON":
+                await ApplyToArrAsync(document, fieldKey, normalizedValue, cancellationToken);
+                break;
+
+            // Pasul 5 — vehiculul și copia conformă
             case "PLATE_NUMBER":
             case "VIN":
             case "MAKE":
             case "MODEL":
-                await ApplyToVehicleAsync(context, document, key, normalizedValue, cancellationToken);
+                await ApplyToVehicleAsync(document, fieldKey, normalizedValue, cancellationToken);
+                break;
+            case "COPY_CONFORMA_NUMBER":
+            case "COPY_CONFORMA_EXPIRES_ON":
+                await ApplyToCopyRequestAsync(document, fieldKey, normalizedValue, cancellationToken);
                 break;
 
             default:
@@ -46,20 +78,69 @@ internal static class ExtractedFieldApplier
         }
     }
 
-    private static async Task ApplyToRegistrationAsync(
-        IApplicationDbContext context,
-        Document document,
-        string key,
-        string value,
-        CancellationToken cancellationToken)
+    private async Task ApplyToEligibilityAsync(
+        Document document, string key, string value, CancellationToken cancellationToken)
     {
-        PfaRegistration? registration = await FindRegistrationAsync(context, document, cancellationToken);
+        OnboardingEligibilityProfile? profile = await context.OnboardingEligibilityProfiles
+            .FirstOrDefaultAsync(e => e.UserId == document.UserId, cancellationToken);
+
+        if (profile is null)
+        {
+            profile = new OnboardingEligibilityProfile
+            {
+                Id = Guid.NewGuid(),
+                UserId = document.UserId,
+            };
+            context.OnboardingEligibilityProfiles.Add(profile);
+        }
+
+        switch (key.Trim().ToUpperInvariant())
+        {
+            case "DATE_OF_BIRTH":
+                profile.DateOfBirth = ParseDate(value) ?? profile.DateOfBirth;
+                break;
+            case "CATEGORY_B_OBTAINED_ON":
+                profile.CategoryBObtainedOn = ParseDate(value) ?? profile.CategoryBObtainedOn;
+                break;
+            case "DRIVING_CATEGORIES":
+                profile.DrivingCategories = value;
+                break;
+            case "LICENCE_EXPIRES_ON":
+                profile.DrivingLicenceExpiresOn = ParseDate(value) ?? profile.DrivingLicenceExpiresOn;
+                break;
+            case "ATESTAT_EXPIRES_ON":
+                profile.DriverCertificateExpiresOn = ParseDate(value) ?? profile.DriverCertificateExpiresOn;
+                profile.HasDriverCertificate = true;
+                break;
+            default:
+                break;
+        }
+
+        profile.UpdatedAtUtc = DateTime.UtcNow;
+
+        // Reevaluăm eligibilitatea cu datele proaspăt citite.
+        EligibilityEvaluation evaluation = EligibilityRules.Evaluate(
+            profile.DateOfBirth,
+            profile.CategoryBObtainedOn,
+            profile.DrivingLicenceExpiresOn,
+            profile.HasDriverCertificate,
+            profile.DriverCertificateExpiresOn,
+            DateOnly.FromDateTime(DateTime.UtcNow));
+
+        profile.Status = evaluation.Status;
+        profile.StatusReason = evaluation.Reasons.Count == 0 ? null : string.Join(" · ", evaluation.Reasons);
+    }
+
+    private async Task ApplyToRegistrationAsync(
+        Document document, string key, string value, CancellationToken cancellationToken)
+    {
+        PfaRegistration? registration = await FindRegistrationAsync(document, cancellationToken);
         if (registration is null)
         {
             return;
         }
 
-        switch (key)
+        switch (key.Trim().ToUpperInvariant())
         {
             case "CUI":
                 registration.Cui = value;
@@ -75,20 +156,82 @@ internal static class ExtractedFieldApplier
         }
     }
 
-    private static async Task ApplyToVehicleAsync(
-        IApplicationDbContext context,
-        Document document,
-        string key,
-        string value,
-        CancellationToken cancellationToken)
+    private async Task ApplyIbanAsync(Document document, string iban, CancellationToken cancellationToken)
     {
-        PfaVehicle? vehicle = await FindVehicleAsync(context, document, cancellationToken);
+        PfaRegistration? registration = await FindRegistrationAsync(document, cancellationToken);
+        if (registration is null)
+        {
+            return;
+        }
+
+        PfaBankAccountDeclaration? declaration = await context.PfaBankAccountDeclarations
+            .FirstOrDefaultAsync(b => b.PfaRegistrationId == registration.Id, cancellationToken);
+
+        if (declaration is null)
+        {
+            declaration = new PfaBankAccountDeclaration
+            {
+                Id = Guid.NewGuid(),
+                PfaRegistrationId = registration.Id,
+            };
+            context.PfaBankAccountDeclarations.Add(declaration);
+        }
+
+        string masked = iban.Length >= 8 ? $"{iban[..4]}••••{iban[^4..]}" : "••••";
+
+        // OCR-ul citit din document coincide cu ce era deja declarat? (verificare pentru admin)
+        declaration.OcrIbanMatches = declaration.IbanMasked is null || declaration.IbanMasked == masked;
+
+        // IBAN-ul complet se stochează DOAR criptat; în clar rămâne doar masca.
+        declaration.IbanEncrypted = secretProtector.Protect(iban);
+        declaration.IbanMasked = masked;
+        declaration.ConfirmationDocumentId = document.Id;
+        declaration.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    private async Task ApplyToArrAsync(
+        Document document, string key, string value, CancellationToken cancellationToken)
+    {
+        PfaRegistration? registration = await FindRegistrationAsync(document, cancellationToken);
+        if (registration is null)
+        {
+            return;
+        }
+
+        ArrAuthorizationRequest? arr = await context.ArrAuthorizationRequests
+            .FirstOrDefaultAsync(a => a.PfaRegistrationId == registration.Id, cancellationToken);
+
+        if (arr is null)
+        {
+            return;
+        }
+
+        switch (key.Trim().ToUpperInvariant())
+        {
+            case "AUTHORIZATION_NUMBER":
+                arr.AuthorizationNumber = value;
+                arr.AuthorizationDocumentId = document.Id;
+                break;
+            case "AUTHORIZATION_EXPIRES_ON":
+                arr.AuthorizationExpiresOn = ParseDate(value) ?? arr.AuthorizationExpiresOn;
+                break;
+            default:
+                break;
+        }
+
+        arr.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    private async Task ApplyToVehicleAsync(
+        Document document, string key, string value, CancellationToken cancellationToken)
+    {
+        PfaVehicle? vehicle = await FindVehicleAsync(document, cancellationToken);
         if (vehicle is null)
         {
             return;
         }
 
-        switch (key)
+        switch (key.Trim().ToUpperInvariant())
         {
             case "PLATE_NUMBER":
                 vehicle.PlateNumber = value;
@@ -109,10 +252,40 @@ internal static class ExtractedFieldApplier
         vehicle.UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    private static Task<PfaRegistration?> FindRegistrationAsync(
-        IApplicationDbContext context,
-        Document document,
-        CancellationToken cancellationToken)
+    private async Task ApplyToCopyRequestAsync(
+        Document document, string key, string value, CancellationToken cancellationToken)
+    {
+        PfaVehicle? vehicle = await FindVehicleAsync(document, cancellationToken);
+        if (vehicle is null)
+        {
+            return;
+        }
+
+        VehicleCopyRequest? copy = await context.VehicleCopyRequests
+            .FirstOrDefaultAsync(c => c.PfaVehicleId == vehicle.Id, cancellationToken);
+
+        if (copy is null)
+        {
+            return;
+        }
+
+        switch (key.Trim().ToUpperInvariant())
+        {
+            case "COPY_CONFORMA_NUMBER":
+                copy.CopyConformaNumber = value;
+                copy.CopyConformaDocumentId = document.Id;
+                break;
+            case "COPY_CONFORMA_EXPIRES_ON":
+                copy.ExpiresOn = ParseDate(value) ?? copy.ExpiresOn;
+                break;
+            default:
+                break;
+        }
+
+        copy.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    private Task<PfaRegistration?> FindRegistrationAsync(Document document, CancellationToken cancellationToken)
     {
         if (document.PfaRegistrationId is Guid regId)
         {
@@ -125,17 +298,14 @@ internal static class ExtractedFieldApplier
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    private static async Task<PfaVehicle?> FindVehicleAsync(
-        IApplicationDbContext context,
-        Document document,
-        CancellationToken cancellationToken)
+    private async Task<PfaVehicle?> FindVehicleAsync(Document document, CancellationToken cancellationToken)
     {
         if (document.PfaVehicleId is Guid vehicleId)
         {
             return await context.PfaVehicles.FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
         }
 
-        PfaRegistration? registration = await FindRegistrationAsync(context, document, cancellationToken);
+        PfaRegistration? registration = await FindRegistrationAsync(document, cancellationToken);
         if (registration is null)
         {
             return null;
@@ -146,4 +316,9 @@ internal static class ExtractedFieldApplier
             .OrderByDescending(v => v.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    private static DateOnly? ParseDate(string value) =>
+        DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly d)
+            ? d
+            : null;
 }

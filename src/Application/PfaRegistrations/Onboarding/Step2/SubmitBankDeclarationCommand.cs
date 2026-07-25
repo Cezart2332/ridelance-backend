@@ -6,5 +6,6 @@ namespace Application.PfaRegistrations.Onboarding.Step2;
 public sealed record SubmitBankDeclarationCommand(
     Guid UserId,
     string? BankName,
-    string Iban,
+    /// <summary>Opțional — în mod normal IBAN-ul se citește din documentul încărcat (OCR).</summary>
+    string? Iban,
     Guid? ConfirmationDocumentId) : ICommand<Step2BankDto>;
