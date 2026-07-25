@@ -11,8 +11,10 @@ public enum VehicleOwnershipMode
     Rented = 1,
     /// <summary>Mașina e în leasing.</summary>
     Leased = 2,
+    /// <summary>Mașina e deținută în comodat.</summary>
+    Comodat = 3,
     /// <summary>Adaug mașina mai târziu — frunza devine „nu se aplică” temporar.</summary>
-    AddedLater = 3,
+    AddedLater = 4,
 }
 
 /// <summary>Ciclul de viață al vehiculului în onboarding.</summary>

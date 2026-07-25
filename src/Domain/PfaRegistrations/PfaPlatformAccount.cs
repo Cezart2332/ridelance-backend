@@ -18,6 +18,8 @@ public sealed class PfaPlatformAccount : Entity
     public bool IsSelectedByUser { get; set; }
     /// <summary>Userul are deja cont de operator pe platformă.</summary>
     public bool HasExistingAccount { get; set; }
+    /// <summary>Răspunsul „ai deja cont?": HasOperatorAccount | None | DriverOnly | Unknown.</summary>
+    public string? ExistingAccountAnswer { get; set; }
     /// <summary>Identificatorul contului de operator (nu parolă).</summary>
     public string? OperatorAccountId { get; set; }
     /// <summary>Contractul de afiliere semnat cu platforma.</summary>

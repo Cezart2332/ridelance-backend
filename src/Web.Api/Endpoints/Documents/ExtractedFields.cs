@@ -51,6 +51,21 @@ internal sealed class ExtractedFields : IEndpoint
         .RequireAuthorization()
         .WithTags(Tags.Documents);
 
+        // Admin — vede câmpurile extrase ale oricărui document.
+        app.MapGet("admin/documents/{id:guid}/extracted-fields", async (
+            Guid id,
+            IQueryHandler<GetExtractedFieldsAdminQuery, ExtractedFieldsResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<ExtractedFieldsResponse> result =
+                await handler.Handle(new GetExtractedFieldsAdminQuery(id), cancellationToken);
+
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:view")
+        .WithTags(Tags.Documents);
+
         // Admin — corectează o valoare extrasă (motiv obligatoriu).
         app.MapPut("admin/extracted-fields/{fieldId:guid}", async (
             Guid fieldId,
