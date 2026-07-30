@@ -9,7 +9,6 @@ namespace Application.Payments.CreateCheckoutSession;
 public sealed record CreateCheckoutSessionCommand(
     Guid UserId,
     string UserEmail,
-    string PriceId,
     string Mode,          // "payment" or "subscription"
     string Plan,          // e.g. "solo", "start", "pro", "infiintare_pfa"
     long? BillingAnchorUnix, // Unix timestamp for Monday 15:00 billing anchor (subscriptions only)

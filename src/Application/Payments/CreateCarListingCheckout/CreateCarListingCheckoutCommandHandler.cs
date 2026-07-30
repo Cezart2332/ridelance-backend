@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
 using Domain.Cars;
+using Domain.Payments;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -57,21 +58,8 @@ internal sealed class CreateCarListingCheckoutCommandHandler(
                 "Anunțul are deja plata activă."));
         }
 
-        const string carListingLookupKey = "ridelance_car_listing_monthly_ron";
-
-        string priceId = await stripeService.GetOrCreateRecurringPriceAsync(
-            carListingLookupKey,
-            "Publicare masina RIDElance",
-            3000,
-            "ron",
-            "month",
-            new Dictionary<string, string>
-            {
-                ["app"] = "ridelance",
-                ["kind"] = "car_listing_subscription",
-                ["audience"] = "car_poster",
-                ["billing_unit"] = "posted_car",
-            },
+        string priceId = await stripeService.ResolvePriceIdAsync(
+            StripeCatalog.CarListingMonthly,
             cancellationToken);
 
 #pragma warning disable S1075 // URIs should not be hardcoded

@@ -3,8 +3,7 @@ using System.Text;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
-using Application.PfaRegistrations;
-using Domain.Documents;
+using Application.PfaRegistrations.MonthlyIncome;
 using Domain.PfaRegistrations;
 using Domain.Uber;
 using Microsoft.EntityFrameworkCore;
@@ -140,7 +139,14 @@ internal sealed class ImportUberCsvCommandHandler(
 
         foreach (var period in imports.Select(i => new { i.Year, i.Month }).Distinct())
         {
-            await UpdateMonthlyUberIncomeAsync(pfa.Id, period.Year, period.Month, cancellationToken);
+            await PfaMonthlyIncomeRecalculator.RecalculateAsync(
+                context,
+                pfa.Id,
+                userContext.UserId,
+                period.Year,
+                period.Month,
+                userContext.UserId,
+                cancellationToken);
         }
 
         await context.SaveChangesAsync(cancellationToken);
@@ -156,47 +162,6 @@ internal sealed class ImportUberCsvCommandHandler(
             cancellationToken);
     }
 
-    private async Task UpdateMonthlyUberIncomeAsync(Guid pfaId, int year, int month, CancellationToken ct)
-    {
-        PfaMonthlyIncome? income = await context.PfaMonthlyIncomes
-            .SingleOrDefaultAsync(i => i.PfaRegistrationId == pfaId && i.Year == year && i.Month == month, ct);
-
-        if (income is null)
-        {
-            income = new PfaMonthlyIncome
-            {
-                Id = Guid.NewGuid(),
-                PfaRegistrationId = pfaId,
-                Year = year,
-                Month = month
-            };
-            context.PfaMonthlyIncomes.Add(income);
-        }
-
-        income.VenitUber = await context.UberCsvImports
-            .Where(i => i.PfaRegistrationId == pfaId && i.Year == year && i.Month == month && i.FileType == UberCsvParser.Earnings)
-            .SumAsync(i => i.NetEarnings, ct);
-
-        decimal ytdGrossIncome = await context.PfaMonthlyIncomes
-            .Where(i => i.PfaRegistrationId == pfaId && i.Year == year && i.Month != month)
-            .SumAsync(i => i.VenitBolt + i.VenitUber, ct)
-            + income.ComputePlatformIncome();
-
-        decimal ytdExpenses = await context.DeductibleExpenses
-            .AsNoTracking()
-            .Where(e => e.PfaRegistrationId == pfaId && e.Year == year)
-            .Join(
-                context.Documents.AsNoTracking().Where(d => d.Status == DocumentStatus.Verified),
-                e => e.DocumentId,
-                d => d.Id,
-                (e, _) => e.AmountRon ?? 0m)
-            .SumAsync(ct);
-
-        PfaTaxCalculator.TaxResult tax = PfaTaxCalculator.Compute(ytdGrossIncome, ytdExpenses, year);
-        income.TaxeEstimate = tax.TotalTax;
-        income.UpdatedAtUtc = DateTime.UtcNow;
-        income.UpdatedByUserId = userContext.UserId;
-    }
 }
 
 internal static class UberDashboardProjector

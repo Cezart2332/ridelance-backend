@@ -17,31 +17,12 @@ internal sealed class CreatePublicServiceCheckoutCommandHandler(
         CreatePublicServiceCheckoutCommand command,
         CancellationToken cancellationToken)
     {
-        if (!TryResolveService(command.ServiceKey, out string? priceId, out string? title))
+        if (!StripeCatalog.TryResolvePublicService(command.ServiceKey, out StripeCatalogItem? catalogItem, out string? title))
         {
             return Result.Failure<string>(Error.Problem("Service.InvalidKey", "Serviciul selectat nu este disponibil."));
         }
 
-        if (command.ServiceKey.Equals("infiintare_pfa", StringComparison.OrdinalIgnoreCase))
-        {
-            priceId = await stripeService.GetOrCreateOneTimePriceAsync(
-                "ridelance_infiintare_pfa_public_450_ron",
-                "Infiintare PFA RIDElance - serviciu separat",
-                45000,
-                "ron",
-                new Dictionary<string, string>
-                {
-                    ["app"] = "ridelance",
-                    ["kind"] = "public_pfa_setup",
-                    ["billing_unit"] = "one_time",
-                },
-                cancellationToken);
-        }
-
-        if (string.IsNullOrWhiteSpace(priceId))
-        {
-            return Result.Failure<string>(Error.Problem("Stripe.PriceMissing", "Configurația Stripe pentru acest serviciu lipsește."));
-        }
+        string priceId = await stripeService.ResolvePriceIdAsync(catalogItem, cancellationToken);
 
 #pragma warning disable S1075
         string baseUrl = configuration["App:BaseUrl"]
@@ -55,7 +36,7 @@ internal sealed class CreatePublicServiceCheckoutCommandHandler(
         {
             Id = Guid.NewGuid(),
             ServiceKey = command.ServiceKey,
-            ServiceTitle = title!,
+            ServiceTitle = title,
             CustomerName = command.CustomerName.Trim(),
             CustomerEmail = command.CustomerEmail.Trim(),
             CustomerPhone = command.CustomerPhone.Trim(),
@@ -81,29 +62,5 @@ internal sealed class CreatePublicServiceCheckoutCommandHandler(
             cancellationToken);
 
         return sessionUrl;
-    }
-
-    private bool TryResolveService(string serviceKey, out string? priceId, out string? title)
-    {
-        priceId = null;
-        title = null;
-
-        switch (serviceKey)
-        {
-            case "infiintare_pfa":
-                priceId = configuration["Stripe:Prices:InfiintarePfa"];
-                title = "Înființare PFA";
-                return true;
-            case "sediu_social":
-                priceId = configuration["Stripe:Prices:SediuSocial"];
-                title = "Găzduire Sediu Social";
-                return true;
-            case "start_ride":
-                priceId = configuration["Stripe:Prices:StartRide"];
-                title = "Start Ride";
-                return true;
-            default:
-                return false;
-        }
     }
 }
