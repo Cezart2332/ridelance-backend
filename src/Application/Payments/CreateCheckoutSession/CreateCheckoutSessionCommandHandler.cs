@@ -1,6 +1,7 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
+using Domain.Payments;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SharedKernel;
@@ -19,12 +20,12 @@ internal sealed class CreateCheckoutSessionCommandHandler(
     {
         if (command.IsPlanChange)
         {
-            Domain.Payments.UserSubscription? subscription = await context.UserSubscriptions
+            UserSubscription? subscription = await context.UserSubscriptions
                 .Where(s => s.UserId == command.UserId)
                 .OrderByDescending(s => s.CreatedAtUtc)
                 .FirstOrDefaultAsync(cancellationToken);
 
-            if (subscription is not null && subscription.Status == Domain.Payments.SubscriptionStatus.ActivePendingBilling)
+            if (subscription is not null && subscription.Status == SubscriptionStatus.ActivePendingBilling)
             {
                 return Result.Failure<string>(Error.Problem(
                     "Subscription.PendingChange",
@@ -58,21 +59,14 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             ? new Dictionary<string, string> { ["isPlanChange"] = "true" }
             : null;
 
-        string priceId = command.Mode == "payment" &&
-            command.Plan.Equals("infiintare_pfa", StringComparison.OrdinalIgnoreCase)
-                ? await stripeService.GetOrCreateOneTimePriceAsync(
-                    "ridelance_infiintare_pfa_300_ron",
-                    "Infiintare PFA RIDElance",
-                    30000,
-                    "ron",
-                    new Dictionary<string, string>
-                    {
-                        ["app"] = "ridelance",
-                        ["kind"] = "pfa_setup",
-                        ["billing_unit"] = "one_time",
-                    },
-                    cancellationToken)
-                : command.PriceId;
+        if (!StripeCatalog.TryResolvePlan(command.Plan, command.Mode, out StripeCatalogItem? catalogItem))
+        {
+            return Result.Failure<string>(Error.Problem(
+                "Checkout.UnknownPlan",
+                "Planul selectat nu este disponibil."));
+        }
+
+        string priceId = await stripeService.ResolvePriceIdAsync(catalogItem, cancellationToken);
 
         string sessionUrl = await stripeService.CreateCheckoutSessionAsync(
             priceId,

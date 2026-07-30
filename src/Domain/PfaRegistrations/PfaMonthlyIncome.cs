@@ -22,6 +22,13 @@ public sealed class PfaMonthlyIncome
     public PfaRegistration PfaRegistration { get; set; } = null!;
     public User? ProcessedByUser { get; set; }
 
-    public decimal ComputeVenitTotal() => VenitCash + VenitCard + VenitBolt + VenitUber;
+    /// <summary>
+    /// Total income for the month. Cash and card are the payment-method split of the platform
+    /// money, not extra income, so the two views describe the same amount and are never added
+    /// together. Whichever view is filled in wins — the split is derived automatically when Bolt
+    /// or Uber data exists, and typed in by hand for months without it.
+    /// </summary>
+    public decimal ComputeVenitTotal() => Math.Max(VenitBolt + VenitUber, VenitCash + VenitCard);
+
     public decimal ComputePlatformIncome() => VenitBolt + VenitUber;
 }

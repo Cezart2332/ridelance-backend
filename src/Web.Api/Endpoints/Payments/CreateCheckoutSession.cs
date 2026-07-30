@@ -12,7 +12,6 @@ namespace Web.Api.Endpoints.Payments;
 internal sealed class CreateCheckoutSession : IEndpoint
 {
     public sealed record Request(
-        string PriceId,
         string Mode,          // "payment" or "subscription"
         string Plan,          // e.g. "solo", "start", "pro", "infiintare_pfa"
         long? BillingAnchorUnix,
@@ -38,7 +37,6 @@ internal sealed class CreateCheckoutSession : IEndpoint
             var command = new CreateCheckoutSessionCommand(
                 userContext.UserId,
                 email ?? string.Empty,
-                request.PriceId,
                 request.Mode,
                 request.Plan,
                 request.BillingAnchorUnix,

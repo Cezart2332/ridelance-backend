@@ -33,6 +33,7 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
                 Permissions.ManageCars,
                 Permissions.ViewCars,
                 Permissions.ViewServiceOrders,
+                Permissions.ManageDiscounts,
                 Permissions.ManageOfficeCalendar
             ],
             UserRole.Contabil =>
@@ -84,5 +85,6 @@ public static class Permissions
     public const string ManageOwnCars = "cars:manage_own";
     public const string ViewCars = "cars:view";
     public const string ViewServiceOrders = "payments:view_service_orders";
+    public const string ManageDiscounts = "payments:manage_discounts";
     public const string ManageOfficeCalendar = "office:manage";
 }

@@ -1,5 +1,12 @@
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using Application.Abstractions.Services;
+using Domain.Payments;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Stripe;
 using Stripe.Checkout;
 
@@ -10,10 +17,20 @@ namespace Infrastructure.Payments;
 /// </summary>
 internal sealed class StripeService : IStripeService
 {
-    private readonly string _webhookSecret;
+    /// <summary>
+    /// Resolved price IDs, shared across requests because the service itself is scoped.
+    /// Keyed by API-key fingerprint so a key swap at runtime cannot serve IDs from the old account.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, string> PriceIdCache = new(StringComparer.Ordinal);
 
-    public StripeService(IConfiguration configuration)
+    private readonly ILogger<StripeService> _logger;
+    private readonly string _webhookSecret;
+    private readonly string _apiKeyFingerprint;
+
+    public StripeService(IConfiguration configuration, IHostEnvironment environment, ILogger<StripeService> logger)
     {
+        _logger = logger;
+
         string apiKey = configuration["Stripe:SecretKey"]
             ?? Environment.GetEnvironmentVariable("Stripe__SecretKey")
             ?? throw new InvalidOperationException("Stripe SecretKey is not configured.");
@@ -21,6 +38,17 @@ internal sealed class StripeService : IStripeService
         _webhookSecret = configuration["Stripe:WebhookSecret"]
             ?? Environment.GetEnvironmentVariable("Stripe__WebhookSecret")
             ?? string.Empty;
+
+        // The webhook endpoint is anonymous, so without signature verification anyone could POST a
+        // forged checkout.session.completed and grant themselves a subscription. Only dev may skip it.
+        if (string.IsNullOrEmpty(_webhookSecret) && !environment.IsDevelopment())
+        {
+            throw new InvalidOperationException(
+                "Stripe WebhookSecret is not configured. It is required outside Development, " +
+                "otherwise webhook signatures cannot be verified.");
+        }
+
+        _apiKeyFingerprint = Fingerprint(apiKey);
 
         StripeConfiguration.ApiKey = apiKey;
     }
@@ -63,6 +91,7 @@ internal sealed class StripeService : IStripeService
             ],
             Mode = mode, // "payment" or "subscription"
             UiMode = "embedded_page",
+            AllowPromotionCodes = true, // lets customers enter a discount code in checkout
             ReturnUrl = successUrl.Replace("{{CHECKOUT_SESSION_ID}}", "{CHECKOUT_SESSION_ID}"),
             CustomerEmail = customerEmail,
             Metadata = meta,
@@ -126,112 +155,212 @@ internal sealed class StripeService : IStripeService
         return customer.Id;
     }
 
-    public async Task<string> GetOrCreateRecurringPriceAsync(
-        string lookupKey,
-        string productName,
-        long unitAmount,
-        string currency,
-        string interval,
-        IReadOnlyDictionary<string, string>? metadata = null,
+    public async Task<string> ResolvePriceIdAsync(
+        StripeCatalogItem item,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(item);
+
+        string cacheKey = $"{_apiKeyFingerprint}:{item.LookupKey}";
+        if (PriceIdCache.TryGetValue(cacheKey, out string? cachedPriceId))
+        {
+            return cachedPriceId;
+        }
+
         var priceService = new PriceService();
         StripeList<Price> existingPrices = await priceService.ListAsync(
             new PriceListOptions
             {
                 Active = true,
                 Limit = 1,
-                LookupKeys = [lookupKey],
+                LookupKeys = [item.LookupKey],
             },
             cancellationToken: cancellationToken);
 
-        Price? existingPrice = existingPrices.Data.FirstOrDefault();
-        if (existingPrice is not null)
+        Price? price = existingPrices.Data.FirstOrDefault();
+
+        if (price is null)
         {
-            return existingPrice.Id;
+            price = await CreatePriceAsync(priceService, item, cancellationToken);
+        }
+        else
+        {
+            WarnIfOutOfSync(item, price);
         }
 
-        Dictionary<string, string> priceMetadata = metadata is null
-            ? new Dictionary<string, string>()
-            : new Dictionary<string, string>(metadata);
-
-        priceMetadata["lookupKey"] = lookupKey;
-
-        Price price = await priceService.CreateAsync(
-            new PriceCreateOptions
-            {
-                Currency = currency,
-                UnitAmount = unitAmount,
-                LookupKey = lookupKey,
-                Recurring = new PriceRecurringOptions
-                {
-                    Interval = interval,
-                },
-                ProductData = new PriceProductDataOptions
-                {
-                    Name = productName,
-                    Metadata = priceMetadata,
-                },
-                Metadata = priceMetadata,
-            },
-            cancellationToken: cancellationToken);
-
+        PriceIdCache[cacheKey] = price.Id;
         return price.Id;
     }
 
-    public async Task<string> GetOrCreateOneTimePriceAsync(
-        string lookupKey,
-        string productName,
-        long unitAmount,
-        string currency,
-        IReadOnlyDictionary<string, string>? metadata = null,
+    private static Task<Price> CreatePriceAsync(
+        PriceService priceService,
+        StripeCatalogItem item,
+        CancellationToken cancellationToken)
+    {
+        var priceMetadata = new Dictionary<string, string>(item.Metadata)
+        {
+            ["lookupKey"] = item.LookupKey,
+        };
+
+        var options = new PriceCreateOptions
+        {
+            Currency = item.Currency,
+            UnitAmount = item.UnitAmountBani,
+            LookupKey = item.LookupKey,
+            ProductData = new PriceProductDataOptions
+            {
+                Name = item.ProductName,
+                Metadata = priceMetadata,
+            },
+            Metadata = priceMetadata,
+        };
+
+        if (item.Interval is not null)
+        {
+            options.Recurring = new PriceRecurringOptions { Interval = item.Interval };
+        }
+
+        return priceService.CreateAsync(options, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// The Stripe account decides what is actually charged; a price cannot be edited after creation.
+    /// If it no longer matches the catalog, the amount in code is silently not in effect —
+    /// the fix is a new lookup key, so this is worth shouting about.
+    /// </summary>
+    private void WarnIfOutOfSync(StripeCatalogItem item, Price price)
+    {
+        string? existingInterval = price.Recurring?.Interval;
+
+        bool matches = price.UnitAmount == item.UnitAmountBani
+            && string.Equals(price.Currency, item.Currency, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(existingInterval, item.Interval, StringComparison.OrdinalIgnoreCase);
+
+        if (matches)
+        {
+            return;
+        }
+
+        _logger.LogWarning(
+            "Stripe price {PriceId} for lookup key {LookupKey} does not match the catalog: " +
+            "account charges {ExistingAmount} {ExistingCurrency} ({ExistingInterval}), " +
+            "catalog says {CatalogAmount} {CatalogCurrency} ({CatalogInterval}). " +
+            "Prices are immutable — change the lookup key to apply a new amount.",
+            price.Id,
+            item.LookupKey,
+            price.UnitAmount?.ToString(CultureInfo.InvariantCulture) ?? "n/a",
+            price.Currency,
+            existingInterval ?? "one-time",
+            item.UnitAmountBani,
+            item.Currency,
+            item.Interval ?? "one-time");
+    }
+
+    /// <summary>
+    /// Short SHA-256 prefix of the secret key, used only to scope the price cache to one account.
+    /// Never logged, never returned — it must not become a way to leak the key.
+    /// </summary>
+    private static string Fingerprint(string apiKey)
+    {
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(apiKey));
+        return Convert.ToHexString(hash, 0, 8);
+    }
+
+    public async Task<DiscountCode> CreateDiscountCodeAsync(
+        NewDiscountCode code,
         CancellationToken cancellationToken = default)
     {
-        var priceService = new PriceService();
-        StripeList<Price> existingPrices = await priceService.ListAsync(
-            new PriceListOptions
-            {
-                Active = true,
-                Limit = 1,
-                LookupKeys = [lookupKey],
-            },
-            cancellationToken: cancellationToken);
+        ArgumentNullException.ThrowIfNull(code);
 
-        Price? existingPrice = existingPrices.Data.FirstOrDefault();
-        if (existingPrice is not null)
+        var couponOptions = new CouponCreateOptions
         {
-            return existingPrice.Id;
+            Name = code.Code,
+            // "once" only discounts the first invoice of a subscription; "forever" discounts every one.
+            // One-time payments are unaffected by this choice.
+            Duration = code.AppliesToAllPayments ? "forever" : "once",
+        };
+
+        if (code.PercentOff.HasValue)
+        {
+            couponOptions.PercentOff = code.PercentOff.Value;
+        }
+        else
+        {
+            couponOptions.AmountOff = code.AmountOffBani;
+            couponOptions.Currency = "ron";
         }
 
-        Dictionary<string, string> priceMetadata = metadata is null
-            ? new Dictionary<string, string>()
-            : new Dictionary<string, string>(metadata);
+        Coupon coupon = await new CouponService().CreateAsync(couponOptions, cancellationToken: cancellationToken);
 
-        priceMetadata["lookupKey"] = lookupKey;
-
-        Price price = await priceService.CreateAsync(
-            new PriceCreateOptions
+        var promotionOptions = new PromotionCodeCreateOptions
+        {
+            Promotion = new PromotionCodePromotionOptions
             {
-                Currency = currency,
-                UnitAmount = unitAmount,
-                LookupKey = lookupKey,
-                ProductData = new PriceProductDataOptions
-                {
-                    Name = productName,
-                    Metadata = priceMetadata,
-                },
-                Metadata = priceMetadata,
+                Type = "coupon",
+                Coupon = coupon.Id,
+            },
+            Code = code.Code,
+            MaxRedemptions = code.MaxRedemptions,
+            ExpiresAt = code.ExpiresAtUtc,
+        };
+
+        PromotionCode promotionCode = await new PromotionCodeService()
+            .CreateAsync(promotionOptions, cancellationToken: cancellationToken);
+
+        return ToDiscountCode(promotionCode, coupon);
+    }
+
+    public async Task<IReadOnlyList<DiscountCode>> ListDiscountCodesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        StripeList<PromotionCode> codes = await new PromotionCodeService().ListAsync(
+            new PromotionCodeListOptions
+            {
+                Limit = 100,
+                Expand = ["data.promotion.coupon"],
             },
             cancellationToken: cancellationToken);
 
-        return price.Id;
+        return [.. codes.Data.Select(promotionCode => ToDiscountCode(promotionCode, promotionCode.Promotion?.Coupon))];
     }
+
+    public async Task<DiscountCode> SetDiscountCodeActiveAsync(
+        string promotionCodeId,
+        bool active,
+        CancellationToken cancellationToken = default)
+    {
+        PromotionCode promotionCode = await new PromotionCodeService().UpdateAsync(
+            promotionCodeId,
+            new PromotionCodeUpdateOptions
+            {
+                Active = active,
+                Expand = ["promotion.coupon"],
+            },
+            cancellationToken: cancellationToken);
+
+        return ToDiscountCode(promotionCode, promotionCode.Promotion?.Coupon);
+    }
+
+    private static DiscountCode ToDiscountCode(PromotionCode promotionCode, Coupon? coupon) =>
+        new(
+            promotionCode.Id,
+            promotionCode.Code,
+            coupon?.AmountOff,
+            coupon?.PercentOff,
+            coupon?.Currency,
+            promotionCode.MaxRedemptions,
+            promotionCode.TimesRedeemed,
+            promotionCode.Active,
+            string.Equals(coupon?.Duration, "forever", StringComparison.OrdinalIgnoreCase),
+            promotionCode.ExpiresAt,
+            promotionCode.Created);
 
     public Stripe.Event? ConstructWebhookEvent(string payload, string stripeSignatureHeader)
     {
         if (string.IsNullOrEmpty(_webhookSecret))
         {
-            // No webhook secret configured — skip verification in dev
+            // Development only — the constructor refuses to start without a secret anywhere else.
+            _logger.LogWarning("Stripe webhook signature verification is skipped: no webhook secret configured.");
             return EventUtility.ParseEvent(payload, throwOnApiVersionMismatch: false);
         }
 
@@ -241,7 +370,7 @@ internal sealed class StripeService : IStripeService
         }
         catch (StripeException ex)
         {
-            Console.WriteLine($"Stripe Webhook Error: {ex.Message}");
+            _logger.LogWarning(ex, "Stripe webhook signature verification failed.");
             return null;
         }
     }

@@ -1,3 +1,5 @@
+using Domain.Payments;
+
 namespace Application.Abstractions.Services;
 
 /// <summary>
@@ -38,26 +40,32 @@ public interface IStripeService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Finds an active recurring price by lookup key or creates it in the configured Stripe account.
+    /// Returns the price ID for a catalog item in whichever Stripe account is configured,
+    /// looking it up by lookup key and creating it if the account does not have it yet.
     /// </summary>
-    Task<string> GetOrCreateRecurringPriceAsync(
-        string lookupKey,
-        string productName,
-        long unitAmount,
-        string currency,
-        string interval,
-        IReadOnlyDictionary<string, string>? metadata = null,
+    Task<string> ResolvePriceIdAsync(
+        StripeCatalogItem item,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Finds an active one-time price by lookup key or creates it in the configured Stripe account.
+    /// Creates a discount code (a Stripe coupon plus the promotion code customers type).
     /// </summary>
-    Task<string> GetOrCreateOneTimePriceAsync(
-        string lookupKey,
-        string productName,
-        long unitAmount,
-        string currency,
-        IReadOnlyDictionary<string, string>? metadata = null,
+    Task<DiscountCode> CreateDiscountCodeAsync(
+        NewDiscountCode code,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists the discount codes of the configured account, newest first.
+    /// </summary>
+    Task<IReadOnlyList<DiscountCode>> ListDiscountCodesAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Enables or disables a discount code. Stripe codes cannot be deleted, only deactivated.
+    /// </summary>
+    Task<DiscountCode> SetDiscountCodeActiveAsync(
+        string promotionCodeId,
+        bool active,
         CancellationToken cancellationToken = default);
 
     /// <summary>

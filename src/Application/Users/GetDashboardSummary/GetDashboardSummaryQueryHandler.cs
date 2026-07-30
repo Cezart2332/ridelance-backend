@@ -64,7 +64,7 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
                     i => i.PfaRegistrationId == pfa.Id && i.Year == incomeYear && i.Month == incomeMonth,
                     cancellationToken);
 
-        decimal? venitTotal = monthlyIncome?.ComputePlatformIncome();
+        decimal? venitTotal = monthlyIncome?.ComputeVenitTotal();
 
         // All monthly incomes for the revenue chart
         List<MonthlyRevenuePointDto> monthlyRevenue = [];
@@ -83,7 +83,7 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
                     PfaMonthlyIncome? row = yearIncomes.FirstOrDefault(i => i.Month == month);
                     return new MonthlyRevenuePointDto(
                         month,
-                        row?.ComputePlatformIncome() ?? 0,
+                        row?.ComputeVenitTotal() ?? 0,
                         row?.VenitCash ?? 0,
                         row?.VenitCard ?? 0,
                         row?.VenitBolt ?? 0,
@@ -99,7 +99,7 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
             monthlyIncome?.VenitCard ?? 0,
             monthlyIncome?.VenitBolt ?? 0,
             monthlyIncome?.VenitUber ?? 0,
-            monthlyIncome?.ComputePlatformIncome() ?? 0);
+            monthlyIncome?.ComputeVenitTotal() ?? 0);
 
         DashboardPeriodStatsDto yearlyStats = new(
             incomeYear,
@@ -108,7 +108,7 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
             yearIncomes.Sum(i => i.VenitCard),
             yearIncomes.Sum(i => i.VenitBolt),
             yearIncomes.Sum(i => i.VenitUber),
-            yearIncomes.Sum(i => i.ComputePlatformIncome()));
+            yearIncomes.Sum(i => i.ComputeVenitTotal()));
 
         // ── YTD Tax Computation ─────────────────────────────────────────────────
         decimal ytdTotalIncome = 0m;
