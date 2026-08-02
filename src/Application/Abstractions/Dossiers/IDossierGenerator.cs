@@ -1,5 +1,12 @@
 namespace Application.Abstractions.Dossiers;
 
+/// <summary>
+/// Un document încărcat de driver, atașat în dosar după copertă. <paramref name="Content"/> e
+/// conținutul deja decriptat, iar <paramref name="ContentType"/> decide cum e încorporat:
+/// imaginile devin o pagină nouă, PDF-urile se importă cu paginile lor cu tot.
+/// </summary>
+public sealed record DossierAttachment(string Label, string ContentType, byte[] Content);
+
 /// <summary>Datele necesare pentru dosarul de autorizație ARR (Pasul 3).</summary>
 public sealed record ArrDossierData(
     string ApplicantName,
@@ -8,7 +15,7 @@ public sealed record ArrDossierData(
     string? Address,
     string? AgencyName,
     long FeeBani,
-    IReadOnlyList<string> IncludedDocuments,
+    IReadOnlyList<DossierAttachment> IncludedDocuments,
     DateTime GeneratedAtUtc);
 
 /// <summary>O linie de ecusoane în dosarul copie conformă (Pasul 5).</summary>
@@ -27,13 +34,13 @@ public sealed record VehicleDossierData(
     long CopyTotalFeeBani,
     IReadOnlyList<VehicleBadgeLine> Badges,
     long BadgesTotalBani,
-    IReadOnlyList<string> IncludedDocuments,
+    IReadOnlyList<DossierAttachment> IncludedDocuments,
     DateTime GeneratedAtUtc);
 
 /// <summary>
-/// Generează dosarele PDF de onboarding pe backend. Implementarea folosește QuestPDF pentru layout.
-/// Formularele oficiale ARR se completează separat din template-uri Acro,
-/// aici producem coperta + sumarul + checklistul dosarului.
+/// Generează dosarele PDF de onboarding pe backend. Implementarea folosește QuestPDF pentru layout
+/// și PdfSharp pentru a lipi documentele încărcate după copertă, ca dosarul rezultat să poată fi
+/// depus ca atare. Formularele oficiale ARR se completează separat din template-uri Acro.
 /// </summary>
 public interface IDossierGenerator
 {

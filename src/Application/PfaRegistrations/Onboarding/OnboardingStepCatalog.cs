@@ -5,8 +5,12 @@ namespace Application.PfaRegistrations.Onboarding;
 /// <summary>
 /// Gruparea onboardingului în 6 pași și derivarea statusului fiecărui pas din frunzele/semnalele
 /// lui (secțiuni de documente + entitățile ghidate). Statusul unui pas NU se stochează — se derivă
-/// mereu aici, la citire. Ordinea și deblocarea secvențială (fiecare blocare explică motivul) trăiesc
+/// mereu aici, la citire. Ordinea și deblocarea (fiecare blocare explică motivul) trăiesc
 /// tot aici. Oglindește ordinea din spec „Onboarding semi-final”.
+///
+/// Deblocarea NU e strict liniară: fiecare pas își declară dependențele reale, așa că un pas rămas
+/// în verificare nu mai blochează pașii care nu atârnă de el (poți lucra la fiscal/platforme cât
+/// timp dosarul PFA e la validare).
 /// </summary>
 public static class OnboardingStepCatalog
 {
@@ -16,16 +20,28 @@ public static class OnboardingStepCatalog
     private const string AwaitingValidation = "AwaitingValidation";
     private const string Completed = "Completed";
 
-    private sealed record StepDef(int Order, string Key, string Label, string Path);
+    /// <param name="DependsOn">
+    /// Ordinele pașilor care trebuie finalizați înainte. Doar dependențe reale — mereu cu Order mai
+    /// mic, ca să fie deja rezolvate când ajungem la pasul curent.
+    /// </param>
+    private sealed record StepDef(int Order, string Key, string Label, string Path, int[] DependsOn);
 
+    // eligibility ──> pfa ──┬──> fiscal
+    //                       ├──> arr ──> vehicle
+    //                       └──> platforms
     private static readonly StepDef[] Steps =
     [
-        new(0, "eligibility", "Eligibilitate", "/onboarding/eligibility"),
-        new(1, "pfa", "PFA", "/onboarding/pfa"),
-        new(2, "fiscal", "Fiscal, bancă & semnături", "/onboarding/step2"),
-        new(3, "arr", "Autorizație transport", "/onboarding/arr"),
-        new(4, "platforms", "Uber & Bolt", "/onboarding/platforms"),
-        new(5, "vehicle", "Vehicul, copie conformă & ecusoane", "/onboarding/vehicle"),
+        new(0, "eligibility", "Eligibilitate", "/onboarding/eligibility", []),
+        // Fără eligibilitate confirmată nu are sens să deschidem dosarul.
+        new(1, "pfa", "PFA", "/onboarding/pfa", [0]),
+        // Bancă, TVA și Oblio se leagă de CUI-ul PFA-ului.
+        new(2, "fiscal", "Fiscal, bancă & semnături", "/onboarding/step2", [1]),
+        // Dosarul ARR se depune pe PFA.
+        new(3, "arr", "Autorizație transport", "/onboarding/arr", [1]),
+        // Conturile de operator se deschid pe PFA.
+        new(4, "platforms", "Uber & Bolt", "/onboarding/platforms", [1]),
+        // Copia conformă se emite pe autorizația de transport.
+        new(5, "vehicle", "Vehicul, copie conformă & ecusoane", "/onboarding/vehicle", [3]),
     ];
 
     /// <summary>Toți cei 6 pași sunt finalizați — condiția reală de înrolare.</summary>
@@ -48,25 +64,30 @@ public static class OnboardingStepCatalog
             VehicleStatusOf(registration),
         ];
 
-        // 2) Deblocare secvențială: un pas e Locked cât timp cel anterior nu e Completed.
+        // 2) Deblocare pe dependențe reale: un pas e Locked cât timp o dependență a lui nu e
+        //    finalizată. Pașii independenți rămân deschiși chiar dacă un frate e în verificare.
         var result = new List<OnboardingStepDto>(Steps.Length);
-        bool previousDone = true;
+        bool[] done = new bool[Steps.Length];
 
         foreach (StepDef def in Steps)
         {
             string status = own[def.Order];
             string? blockReason = null;
 
-            if (!previousDone && status != Completed)
+            // Dependențele au Order mai mic ⇒ statusul lor final e deja calculat.
+            int? blocker = def.DependsOn
+                .Where(order => !done[order])
+                .Select(order => (int?)order)
+                .FirstOrDefault();
+
+            if (blocker is not null && status != Completed)
             {
                 status = Locked;
-                blockReason = def.Order == 0
-                    ? null
-                    : $"Finalizează întâi pasul „{Steps[def.Order - 1].Label}”.";
+                blockReason = $"Finalizează întâi pasul „{Steps[blocker.Value].Label}”.";
             }
 
             result.Add(new OnboardingStepDto(def.Order, def.Key, def.Label, status, blockReason, def.Path));
-            previousDone = status == Completed;
+            done[def.Order] = status == Completed;
         }
 
         return result;

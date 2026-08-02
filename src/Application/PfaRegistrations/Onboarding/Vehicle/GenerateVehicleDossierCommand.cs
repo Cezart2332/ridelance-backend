@@ -49,19 +49,16 @@ internal sealed class GenerateVehicleDossierCommandHandler(
         VehicleCopyRequest copy = vehicle.CopyRequest;
         DateTime nowUtc = DateTime.UtcNow;
 
-        List<DocumentCategory> uploaded = await context.Documents
-            .Where(d => d.UserId == command.UserId && d.Status != DocumentStatus.Rejected)
-            .Select(d => d.Category)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        var included = OnboardingSectionCatalog
+        // Cerințele celor două secțiuni, deduplicate pe etichetă (Talon/ITP și contractul apar în
+        // ambele), cu documentele încărcate atașate efectiv în dosar.
+        var requirements = OnboardingSectionCatalog
             .RequirementsFor(OnboardingSectionKey.CopieConforma)
             .Concat(OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.Vehicul))
-            .Where(req => req.AcceptedCategories.Any(uploaded.Contains))
-            .Select(req => req.Label)
-            .Distinct()
+            .DistinctBy(req => req.Label)
             .ToList();
+
+        IReadOnlyList<DossierAttachment> included = await DossierAttachments.CollectAsync(
+            context, fileEncryptionService, command.UserId, requirements, cancellationToken);
 
         var badgeLines = vehicle.Badges
             .OrderBy(b => b.Provider)

@@ -28,7 +28,8 @@ internal sealed class GetDocumentsByUserQueryHandler(IApplicationDbContext conte
                 d.AiStatus.ToString(),
                 d.AiSummary,
                 d.AiDetectedType,
-                d.AiExtractedExpiresAtUtc))
+                d.AiExtractedExpiresAtUtc,
+                d.AiRequiresManualReview))
             .ToListAsync(cancellationToken);
 
         return documents;

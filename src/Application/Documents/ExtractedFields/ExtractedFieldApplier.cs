@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Application.Abstractions.Data;
 using Application.Abstractions.Security;
 using Domain.Documents;
@@ -47,6 +48,7 @@ internal sealed class ExtractedFieldApplier(
             case "CUI":
             case "LEGAL_NAME":
             case "REGISTRY_NUMBER":
+            case "CAEN_CODES":
                 await ApplyToRegistrationAsync(document, fieldKey, normalizedValue, cancellationToken);
                 break;
 
@@ -150,6 +152,11 @@ internal sealed class ExtractedFieldApplier(
                 break;
             case "REGISTRY_NUMBER":
                 registration.RegistryNumber = value;
+                break;
+            case "CAEN_CODES":
+                // Coloana e un array JSON; valoarea normalizată vine ca „4939,5610".
+                registration.CaenCodes = JsonSerializer.Serialize(
+                    value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
                 break;
             default:
                 break;

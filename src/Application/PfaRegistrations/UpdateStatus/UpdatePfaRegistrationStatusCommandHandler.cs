@@ -53,17 +53,23 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(
                 return Result.Failure(Error.Failure("PfaRegistration.InvalidCui", message));
             }
 
-            if (command.DocumentId == null)
-            {
-                return Result.Failure(Error.Failure("PfaRegistration.DocumentRequired", "Certificatul de înregistrare este obligatoriu pentru aprobare."));
-            }
-
-            Domain.Documents.Document? document = await context.Documents
-                .SingleOrDefaultAsync(d => d.Id == command.DocumentId, cancellationToken);
+            // La „Am PFA" certificatul e deja încărcat de user în pasul 1, deci adminul nu mai
+            // trebuie să-l urce încă o dată; îl cere doar când chiar lipsește (cazul „Nu am PFA").
+            Domain.Documents.Document? document = command.DocumentId is not null
+                ? await context.Documents
+                    .SingleOrDefaultAsync(d => d.Id == command.DocumentId, cancellationToken)
+                : await context.Documents
+                    .Where(d => d.UserId == registration.UserId
+                        && d.Category == Domain.Documents.DocumentCategory.CertificatInregistrare
+                        && d.Status != Domain.Documents.DocumentStatus.Rejected)
+                    .OrderByDescending(d => d.UploadedAtUtc)
+                    .FirstOrDefaultAsync(cancellationToken);
 
             if (document == null)
             {
-                return Result.Failure(Error.NotFound("Documents.NotFound", "Documentul specificat nu a fost găsit."));
+                return command.DocumentId is null
+                    ? Result.Failure(Error.Failure("PfaRegistration.DocumentRequired", "Certificatul de înregistrare este obligatoriu pentru aprobare."))
+                    : Result.Failure(Error.NotFound("Documents.NotFound", "Documentul specificat nu a fost găsit."));
             }
 
             // Link document and update its metadata

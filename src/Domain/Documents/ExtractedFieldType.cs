@@ -12,4 +12,5 @@ public enum ExtractedFieldType
     Vin = 3,
     Plate = 4,
     Date = 5,
+    Caen = 6,
 }

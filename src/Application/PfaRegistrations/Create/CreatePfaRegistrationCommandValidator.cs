@@ -12,7 +12,8 @@ internal sealed class CreatePfaRegistrationCommandValidator
         {
             RuleFor(x => x.FullName).NotEmpty().WithMessage("Full name is required.");
             RuleFor(x => x.Phone).NotEmpty().WithMessage("Phone number is required.");
-            RuleFor(x => x.Cui).NotEmpty().WithMessage("CUI is required for existing PFAs.");
+            // CUI-ul nu se mai tastează: userul încarcă certificatul de înregistrare, iar OCR-ul
+            // completează `Cui`. Validarea de checksum rămâne la aprobarea adminului.
         });
 
         When(x => x.RegistrationType == RegistrationType.NuAmPfa, () =>
