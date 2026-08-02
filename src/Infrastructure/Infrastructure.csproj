@@ -16,6 +16,7 @@
     <PackageReference Include="OpenCvSharp4.runtime.win" Condition="'$(OS)' == 'Windows_NT'" />
     <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64.slim" />
     <PackageReference Include="QuestPDF" />
+    <PackageReference Include="PdfSharp" />
   </ItemGroup>
 
   <ItemGroup>

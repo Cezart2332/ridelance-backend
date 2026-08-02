@@ -27,6 +27,8 @@ public sealed record PfaRegistrationSummary(
     string? City,
     string? County,
     bool IsOwner,
+    /// <summary>Completat de OCR din certificatul de înregistrare; adminul îl confirmă la aprobare.</summary>
+    string? Cui,
     int DocumentCount,
     DateTime CreatedAtUtc,
     DateTime? LastActivityAtUtc);

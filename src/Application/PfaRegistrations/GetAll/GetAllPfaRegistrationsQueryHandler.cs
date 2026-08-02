@@ -52,6 +52,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                 r.City,
                 r.County,
                 r.IsOwner,
+                r.Cui,
                 DocumentCount = r.Documents.Count,
                 r.CreatedAtUtc,
                 UserLastActivityAtUtc = r.User.LastActivityAtUtc,
@@ -110,6 +111,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     x.City,
                     x.County,
                     x.IsOwner,
+                    x.Cui,
                     x.DocumentCount,
                     x.CreatedAtUtc,
                     GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc));

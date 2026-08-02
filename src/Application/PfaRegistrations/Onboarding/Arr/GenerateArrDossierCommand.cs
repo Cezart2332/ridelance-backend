@@ -36,18 +36,14 @@ internal sealed class GenerateArrDossierCommandHandler(
 
         ArrAuthorizationRequest request = registration.ArrAuthorizationRequest;
 
-        // Documentele deja încărcate (non-respinse) care satisfac cerințele pasului ARR.
-        List<DocumentCategory> uploaded = await context.Documents
-            .Where(d => d.UserId == command.UserId && d.Status != DocumentStatus.Rejected)
-            .Select(d => d.Category)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        var included = OnboardingSectionCatalog
-            .RequirementsFor(OnboardingSectionKey.AutorizatieTransport)
-            .Where(req => req.AcceptedCategories.Any(uploaded.Contains))
-            .Select(req => req.Label)
-            .ToList();
+        // Documentele deja încărcate (non-respinse) care satisfac cerințele pasului ARR. Sunt
+        // atașate în dosar, nu doar bifate — de asta le încărcăm întregi, nu doar categoria.
+        IReadOnlyList<DossierAttachment> included = await DossierAttachments.CollectAsync(
+            context,
+            fileEncryptionService,
+            command.UserId,
+            OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport),
+            cancellationToken);
 
         string applicantName = $"{registration.User.FirstName} {registration.User.LastName}".Trim();
         string? address = BuildAddress(registration);

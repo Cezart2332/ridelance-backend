@@ -21,6 +21,17 @@ public static class ExtractedFieldValidators
     private static readonly Regex PlateRegex = new(
         "^(?:[A-Z]{1,2})(?:[0-9]{2,3})(?:[A-Z]{3})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    /// <summary>
+    /// Codul CAEN al transportului alternativ — „Alte servicii de transport terestru de călători
+    /// n.c.a.". Fără el, PFA-ul nu poate factura curse pe Uber/Bolt.
+    /// </summary>
+    public const string RequiredCaen = "4939";
+
+    // Modelul întoarce des codul lipit de denumire („4939 - Alte transporturi terestre de
+    // călători n.c.a."), uneori mai multe coduri într-un singur text. Luăm grupurile de 4 cifre.
+    private static readonly Regex CaenRegex = new(
+        @"(?<!\d)\d{4}(?!\d)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     /// <summary>Normalizează valoarea brută în funcție de tip (trim, uppercase, fără spații etc.).</summary>
     public static string? Normalize(ExtractedFieldType type, string? raw)
     {
@@ -35,8 +46,20 @@ public static class ExtractedFieldValidators
         {
             ExtractedFieldType.Iban or ExtractedFieldType.Vin or ExtractedFieldType.Plate or ExtractedFieldType.Cui =>
                 trimmed.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant(),
+            ExtractedFieldType.Caen => NormalizeCaen(trimmed),
             _ => trimmed,
         };
+    }
+
+    /// <summary>Codurile CAEN găsite în text, deduplicate, separate prin virgulă.</summary>
+    private static string? NormalizeCaen(string raw)
+    {
+        string[] codes = CaenRegex.Matches(raw)
+            .Select(m => m.Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        return codes.Length == 0 ? null : string.Join(",", codes);
     }
 
     /// <summary>Rulează validatorul determinist pentru tipul câmpului pe valoarea deja normalizată.</summary>
@@ -54,6 +77,8 @@ public static class ExtractedFieldValidators
             ExtractedFieldType.Vin => VinRegex.IsMatch(normalized),
             ExtractedFieldType.Plate => PlateRegex.IsMatch(normalized),
             ExtractedFieldType.Date => IsSaneDate(normalized),
+            // Certificatul poate lista mai multe coduri; ne interesează doar să apară cel cerut.
+            ExtractedFieldType.Caen => normalized.Split(',').Contains(RequiredCaen, StringComparer.Ordinal),
             _ => true,
         };
     }

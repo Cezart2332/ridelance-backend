@@ -107,6 +107,7 @@ public static class DocumentAiCatalog
             [
                 new("cui", "Codul unic de înregistrare (CUI/CIF), fără prefixul RO", ExtractedFieldType.Cui, Required: true),
                 new("legal_name", "Denumirea completă a PFA-ului/entității", ExtractedFieldType.Text, Required: false),
+                new("caen_codes", "Toate codurile CAEN ale obiectului de activitate, separate prin virgulă, cel principal primul (ex. 4939)", ExtractedFieldType.Caen, Required: true),
             ]),
         [DocumentCategory.CertificatConstatator] = new(
             "Certificat constatator",
@@ -115,6 +116,7 @@ public static class DocumentAiCatalog
             [
                 new("cui", "Codul unic de înregistrare (CUI/CIF), fără prefixul RO", ExtractedFieldType.Cui, Required: false),
                 new("registry_number", "Numărul de ordine în registrul comerțului (ex. F40/…/2024)", ExtractedFieldType.Text, Required: false),
+                new("caen_codes", "Toate codurile CAEN ale obiectului de activitate, separate prin virgulă, cel principal primul (ex. 4939)", ExtractedFieldType.Caen, Required: true),
             ]),
         [DocumentCategory.DovadaPlataArr] = new(
             "Dovadă plată ARR",

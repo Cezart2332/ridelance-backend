@@ -8,8 +8,9 @@ namespace Infrastructure.Dossiers;
 
 /// <summary>
 /// Generatorul dosarului ARR cu QuestPDF (licență Community). Produce coperta + datele
-/// solicitantului + checklistul documentelor incluse. Formularele oficiale ARR se completează
-/// separat din template-uri, ca să poată fi înlocuite fără deploy.
+/// solicitantului + cuprinsul documentelor, după care <see cref="DossierAssembler"/> lipește
+/// documentele încărcate de driver. Formularele oficiale ARR se completează separat din
+/// template-uri, ca să poată fi înlocuite fără deploy.
 /// </summary>
 internal sealed class ArrDossierGenerator : IDossierGenerator
 {
@@ -17,7 +18,7 @@ internal sealed class ArrDossierGenerator : IDossierGenerator
 
     public byte[] GenerateArrDossier(ArrDossierData data)
     {
-        return Document.Create(container =>
+        byte[] cover = Document.Create(container =>
         {
             container.Page(page =>
             {
@@ -59,23 +60,7 @@ internal sealed class ArrDossierGenerator : IDossierGenerator
                         Row(info, "Taxă ARR", $"{(data.FeeBani / 100m).ToString("N2", Ro)} lei");
                     });
 
-                    col.Item().PaddingTop(8).Text("Documente incluse în dosar").SemiBold().FontSize(12);
-
-                    col.Item().Column(list =>
-                    {
-                        list.Spacing(3);
-                        if (data.IncludedDocuments.Count == 0)
-                        {
-                            list.Item().Text("— niciun document atașat —").Italic().FontColor(Colors.Grey.Medium);
-                        }
-                        else
-                        {
-                            foreach (string doc in data.IncludedDocuments)
-                            {
-                                list.Item().Text($"☑  {doc}");
-                            }
-                        }
-                    });
+                    Checklist(col, data.IncludedDocuments);
                 });
 
                 page.Footer().AlignRight().Text(
@@ -83,11 +68,13 @@ internal sealed class ArrDossierGenerator : IDossierGenerator
                     .FontSize(9).FontColor(Colors.Grey.Medium);
             });
         }).GeneratePdf();
+
+        return DossierAssembler.Assemble(cover, data.IncludedDocuments);
     }
 
     public byte[] GenerateVehicleDossier(VehicleDossierData data)
     {
-        return Document.Create(container =>
+        byte[] cover = Document.Create(container =>
         {
             container.Page(page =>
             {
@@ -159,22 +146,7 @@ internal sealed class ArrDossierGenerator : IDossierGenerator
                         }
                     });
 
-                    col.Item().PaddingTop(8).Text("Documente incluse în dosar").SemiBold().FontSize(12);
-                    col.Item().Column(list =>
-                    {
-                        list.Spacing(3);
-                        if (data.IncludedDocuments.Count == 0)
-                        {
-                            list.Item().Text("— niciun document atașat —").Italic().FontColor(Colors.Grey.Medium);
-                        }
-                        else
-                        {
-                            foreach (string doc in data.IncludedDocuments)
-                            {
-                                list.Item().Text($"☑  {doc}");
-                            }
-                        }
-                    });
+                    Checklist(col, data.IncludedDocuments);
                 });
 
                 page.Footer().AlignRight().Text(
@@ -182,6 +154,28 @@ internal sealed class ArrDossierGenerator : IDossierGenerator
                     .FontSize(9).FontColor(Colors.Grey.Medium);
             });
         }).GeneratePdf();
+
+        return DossierAssembler.Assemble(cover, data.IncludedDocuments);
+    }
+
+    /// <summary>Cuprinsul de pe copertă: ce documente urmează, în ordinea în care sunt atașate.</summary>
+    private static void Checklist(ColumnDescriptor col, IReadOnlyList<DossierAttachment> attachments)
+    {
+        col.Item().PaddingTop(8).Text("Documente incluse în dosar").SemiBold().FontSize(12);
+        col.Item().Column(list =>
+        {
+            list.Spacing(3);
+            if (attachments.Count == 0)
+            {
+                list.Item().Text("— niciun document atașat —").Italic().FontColor(Colors.Grey.Medium);
+                return;
+            }
+
+            foreach (DossierAttachment attachment in attachments)
+            {
+                list.Item().Text($"☑  {attachment.Label}");
+            }
+        });
     }
 
     private static string Lei(long bani) => (bani / 100m).ToString("N2", Ro);
