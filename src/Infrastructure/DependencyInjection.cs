@@ -66,6 +66,10 @@ public static class DependencyInjection
         // Parametri comerciali/operaționali configurabili (cache 60s peste app_settings)
         services.AddScoped<IAppSettings, AppSettingsService>();
 
+        // Cotele fiscale afișate pe dashboard vin din configurare, nu din codul frontend.
+        services.Configure<Application.PfaDashboard.FiscalPolicyOptions>(
+            configuration.GetSection(Application.PfaDashboard.FiscalPolicyOptions.SectionName));
+
         // Generarea dosarelor PDF (QuestPDF — licență Community, venit anual < 1M USD)
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         services.AddScoped<IDossierGenerator, ArrDossierGenerator>();
