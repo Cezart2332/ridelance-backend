@@ -23,3 +23,14 @@
 **/values.dev.yaml
 LICENSE
 README.md
+
+# Ieșiri de publish locale (~334 MB) — ajungeau în contextul de build și erau copiate în /src
+# de `COPY . .`, fără să fie folosite de nimic.
+_publish-*
+**/publish
+
+# Documentele criptate ale userilor (FileStorageSettings.BasePath). N-au ce căuta într-o imagine.
+**/uploads
+
+# Proiectele de test nu se compilează în imagine — `dotnet publish` țintește doar Web.Api.
+tests
