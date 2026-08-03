@@ -13,11 +13,6 @@ namespace Application.Uber;
 
 public sealed record UberCsvUpload(string FileName, string Content);
 
-public sealed record ImportUberCsvCommand(
-    IReadOnlyList<UberCsvUpload> Files,
-    int? Year,
-    int? Month) : ICommand<UberDashboardResponse>;
-
 public sealed record UberImportDto(
     Guid Id,
     int Year,
@@ -51,39 +46,36 @@ public sealed record UberDashboardResponse(
     UberStatsDto Stats,
     IReadOnlyList<UberImportDto> Imports);
 
-internal sealed class ImportUberCsvCommandHandler(
-    IApplicationDbContext context,
-    IUserContext userContext) : ICommandHandler<ImportUberCsvCommand, UberDashboardResponse>
+/// <summary>
+/// Importul propriu-zis, comun pentru ruta self-service și cea de admin. PFA-ul țintă
+/// e mereu decis de apelant, niciodată citit din payload — altfel un client ar putea
+/// scrie în contul altcuiva.
+/// </summary>
+internal static class UberCsvImporter
 {
-    public async Task<Result<UberDashboardResponse>> Handle(
-        ImportUberCsvCommand command,
+    public static async Task<Result<UberDashboardResponse>> ImportAsync(
+        IApplicationDbContext context,
+        PfaRegistration pfa,
+        IReadOnlyList<UberCsvUpload> files,
+        int? commandYear,
+        int? commandMonth,
+        Guid actorUserId,
         CancellationToken cancellationToken)
     {
-        if (command.Files.Count is < 1 or > 3)
+        if (files.Count is < 1 or > 3)
         {
             return Result.Failure<UberDashboardResponse>(
                 Error.Problem("Uber.InvalidFileCount", "Încarcă între 1 și 3 fișiere CSV Uber."));
         }
 
-        if (command.Month is < 1 or > 12)
+        if (commandMonth is < 1 or > 12)
         {
             return Result.Failure<UberDashboardResponse>(
                 Error.Problem("Uber.InvalidMonth", "Luna importului trebuie să fie între 1 și 12."));
         }
 
-        PfaRegistration? pfa = await context.PfaRegistrations
-            .Where(p => p.UserId == userContext.UserId)
-            .OrderByDescending(p => p.CreatedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (pfa is null)
-        {
-            return Result.Failure<UberDashboardResponse>(
-                Error.NotFound("Pfa.NotFound", "Nu există o înregistrare PFA pentru acest cont."));
-        }
-
         List<UberCsvImport> imports = [];
-        foreach (UberCsvUpload file in command.Files)
+        foreach (UberCsvUpload file in files)
         {
             Result<ParsedUberCsv> parsedResult = UberCsvParser.Parse(file.FileName, file.Content);
             if (parsedResult.IsFailure)
@@ -92,8 +84,8 @@ internal sealed class ImportUberCsvCommandHandler(
             }
 
             ParsedUberCsv parsed = parsedResult.Value;
-            int year = command.Year ?? parsed.Year ?? DateTime.UtcNow.Year;
-            int month = command.Month ?? parsed.Month ?? DateTime.UtcNow.Month;
+            int year = commandYear ?? parsed.Year ?? DateTime.UtcNow.Year;
+            int month = commandMonth ?? parsed.Month ?? DateTime.UtcNow.Month;
 
             bool duplicate = await context.UberCsvImports.AnyAsync(
                 i => i.PfaRegistrationId == pfa.Id
@@ -112,7 +104,7 @@ internal sealed class ImportUberCsvCommandHandler(
             imports.Add(new UberCsvImport
             {
                 Id = Guid.NewGuid(),
-                UserId = userContext.UserId,
+                UserId = pfa.UserId,
                 PfaRegistrationId = pfa.Id,
                 Year = year,
                 Month = month,
@@ -142,17 +134,17 @@ internal sealed class ImportUberCsvCommandHandler(
             await PfaMonthlyIncomeRecalculator.RecalculateAsync(
                 context,
                 pfa.Id,
-                userContext.UserId,
+                pfa.UserId,
                 period.Year,
                 period.Month,
-                userContext.UserId,
+                actorUserId,
                 cancellationToken);
         }
 
         await context.SaveChangesAsync(cancellationToken);
 
-        int responseYear = command.Year ?? imports[0].Year;
-        int responseMonth = command.Month ?? imports[0].Month;
+        int responseYear = commandYear ?? imports[0].Year;
+        int responseMonth = commandMonth ?? imports[0].Month;
         return await UberDashboardProjector.GetDashboardAsync(
             context,
             pfa.Id,
