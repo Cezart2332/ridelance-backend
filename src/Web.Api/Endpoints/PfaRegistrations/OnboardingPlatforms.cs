@@ -63,6 +63,13 @@ internal sealed class OnboardingPlatforms : IEndpoint
                 return Results.BadRequest("Invalid platform provider.");
             }
 
+            // „Nu știu ce tip de cont am” nu mai e un răspuns acceptat: lăsa dosarul într-o stare
+            // pe care nici clientul, nici operatorul nu o puteau duce mai departe.
+            if (request.ExistingAccountAnswer is not (null or "HasOperatorAccount" or "DriverOnly" or "None"))
+            {
+                return Results.BadRequest("Invalid existing account answer.");
+            }
+
             Result<PlatformOnboardingResponse> result = await handler.Handle(
                 new SubmitPlatformAccountCommand(
                     userContext.UserId, provider, request.HasExistingAccount,

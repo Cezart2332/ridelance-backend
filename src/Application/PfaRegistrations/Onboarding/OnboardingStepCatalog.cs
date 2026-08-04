@@ -115,7 +115,9 @@ public static class OnboardingStepCatalog
 
         bool bankOk = r.BankAccountDeclaration?.Status == BankDeclarationStatus.Verified;
         bool oblioOk = r.OblioAccount?.AllConsentsAccepted == true;
-        bool vatOk = r.FiscalProfile?.VatAnswer is not null and not VatAnswer.Unknown;
+        // Doar un răspuns ferm închide pasul. „DontKnow” e o valoare istorică: dosarele vechi
+        // rămân deschise până când clientul răspunde Da/Nu.
+        bool vatOk = r.FiscalProfile?.VatAnswer is VatAnswer.Yes or VatAnswer.No;
 
         return bankOk && oblioOk && vatOk ? Completed : InProgress;
     }

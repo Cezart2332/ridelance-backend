@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Domain.Documents;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -22,6 +23,25 @@ internal sealed class SubmitFiscalVatCommandHandler(IApplicationDbContext contex
             return Result.Failure(Step2Errors.NoRegistration);
         }
 
+        // „Da” fără dovadă nu e o declarație, e o presupunere. Cerem certificatul/decizia ANAF
+        // înainte să scriem codul special în profilul fiscal.
+        Guid? proofDocumentId = null;
+        if (command.VatAnswer == VatAnswer.Yes)
+        {
+            proofDocumentId = await context.Documents
+                .Where(d => d.UserId == command.UserId
+                    && d.Category == DocumentCategory.CertificatTvaIntracomunitar
+                    && d.Status != DocumentStatus.Rejected)
+                .OrderByDescending(d => d.UploadedAtUtc)
+                .Select(d => (Guid?)d.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (proofDocumentId is null)
+            {
+                return Result.Failure(Step2Errors.VatProofMissing);
+            }
+        }
+
         DateTime nowUtc = DateTime.UtcNow;
 
         PfaFiscalProfile profile = registration.FiscalProfile ?? new PfaFiscalProfile
@@ -36,9 +56,19 @@ internal sealed class SubmitFiscalVatCommandHandler(IApplicationDbContext contex
             context.PfaFiscalProfiles.Add(profile);
         }
 
+        bool hasIntraCommunityCode = command.VatAnswer == VatAnswer.Yes;
+
         profile.VatAnswer = command.VatAnswer;
-        profile.VatRegistrationKind = command.VatRegistrationKind;
-        profile.IsVatPayer = command.VatRegistrationKind is VatRegistrationKind.StandardVat;
+        profile.VatRegistrationKind = hasIntraCommunityCode
+            ? VatRegistrationKind.SpecialArticle317
+            : VatRegistrationKind.None;
+        // Codul special art. 317 nu face PFA-ul plătitor de TVA în țară.
+        profile.IsVatPayer = false;
+        // Aceeași declarație alimentează și panoul fiscal din admin, ca cele două să nu diverge.
+        profile.SpecialVatCodeStatus = hasIntraCommunityCode
+            ? PfaSpecialVatCodeStatus.Yes
+            : PfaSpecialVatCodeStatus.No;
+        profile.SpecialVatCodeDocumentId = proofDocumentId ?? profile.SpecialVatCodeDocumentId;
         profile.UpdatedAtUtc = nowUtc;
 
         await context.SaveChangesAsync(cancellationToken);

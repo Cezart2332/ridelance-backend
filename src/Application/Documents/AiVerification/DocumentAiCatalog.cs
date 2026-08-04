@@ -173,6 +173,12 @@ public static class DocumentAiCatalog
             "Acord leasing",
             "Acordul societății de leasing pentru utilizarea vehiculului în activitatea de transport alternativ.",
             false),
+        [DocumentCategory.CertificatTvaIntracomunitar] = new(
+            "Certificat de TVA intracomunitar / decizie ANAF",
+            "Certificatul de înregistrare în scopuri de TVA pentru operațiuni intracomunitare (cod special art. 317) sau decizia ANAF de atribuire a codului, emisă pe numele PFA-ului.",
+            false,
+            // Codul special e un CUI prefixat cu RO — nu-l extragem, îl verifică un om față de dosar.
+            AutoRejectOnFailure: false),
         [DocumentCategory.DovadaPlataCopieConformaEcusoane] = new(
             "Dovadă plată copie conformă & ecusoane",
             "Dovadă de plată (ordin de plată, chitanță, confirmare) pentru copia conformă și/sau ecusoane.",

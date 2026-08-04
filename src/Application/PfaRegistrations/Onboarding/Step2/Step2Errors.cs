@@ -19,4 +19,8 @@ internal static class Step2Errors
     public static readonly Error SignaturePacketNotFound = Error.NotFound(
         "Onboarding.Step2.SignatureNotFound",
         "Nu există un pachet de semnături pentru acest dosar.");
+
+    public static readonly Error VatProofMissing = Error.Problem(
+        "Onboarding.Step2.VatProofMissing",
+        "Încarcă întâi certificatul de TVA intracomunitar sau decizia ANAF.");
 }

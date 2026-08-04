@@ -131,7 +131,10 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
     private void ForceFiscal(PfaRegistration registration, DateTime now)
     {
         PfaFiscalProfile fiscal = registration.FiscalProfile ?? AddFiscal(registration);
-        fiscal.VatAnswer = VatAnswer.Yes;
+        // „Nu”, nu „Da”: un „Da” ar cere certificatul de TVA intracomunitar, pe care skip-ul nu-l are.
+        fiscal.VatAnswer = VatAnswer.No;
+        fiscal.VatRegistrationKind = VatRegistrationKind.None;
+        fiscal.SpecialVatCodeStatus = PfaSpecialVatCodeStatus.No;
 
         PfaBankAccountDeclaration bank = registration.BankAccountDeclaration ?? AddBank(registration, now);
         bank.Status = BankDeclarationStatus.Verified;
