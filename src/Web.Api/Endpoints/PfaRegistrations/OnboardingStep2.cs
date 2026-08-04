@@ -11,7 +11,7 @@ namespace Web.Api.Endpoints.PfaRegistrations;
 /// <summary>Pasul 2 — TVA, semnături, cont bancar, cont Oblio.</summary>
 internal sealed class OnboardingStep2 : IEndpoint
 {
-    public sealed record VatRequest(string VatAnswer, string VatRegistrationKind);
+    public sealed record VatRequest(string VatAnswer);
 
     public sealed record BankRequest(string? BankName, string Iban, Guid? ConfirmationDocumentId);
 
@@ -53,14 +53,16 @@ internal sealed class OnboardingStep2 : IEndpoint
             ICommandHandler<SubmitFiscalVatCommand> handler,
             CancellationToken cancellationToken) =>
         {
-            if (!Enum.TryParse(request.VatAnswer, ignoreCase: true, out VatAnswer answer) || !Enum.IsDefined(answer) ||
-                !Enum.TryParse(request.VatRegistrationKind, ignoreCase: true, out VatRegistrationKind kind) || !Enum.IsDefined(kind))
+            // Doar Da/Nu: „nu știu” nu mai e un răspuns acceptat, iar Unknown înseamnă
+            // „încă nu a răspuns” — nu poate fi trimis ca declarație.
+            if (!Enum.TryParse(request.VatAnswer, ignoreCase: true, out VatAnswer answer) ||
+                answer is not (VatAnswer.Yes or VatAnswer.No))
             {
                 return Results.BadRequest("Invalid VAT values.");
             }
 
             Result result = await handler.Handle(
-                new SubmitFiscalVatCommand(userContext.UserId, answer, kind), cancellationToken);
+                new SubmitFiscalVatCommand(userContext.UserId, answer), cancellationToken);
 
             return result.Match(Results.NoContent, CustomResults.Problem);
         })
