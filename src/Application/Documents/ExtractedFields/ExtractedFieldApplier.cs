@@ -70,6 +70,11 @@ internal sealed class ExtractedFieldApplier(
             case "LEGAL_NAME":
             case "REGISTRY_NUMBER":
             case "CAEN_CODES":
+            case "HOLDER_NAME":
+            case "PROFESSIONAL_OFFICE":
+            case "AUTHORIZED_ACTIVITIES":
+            case "ACTIVITY_LOCATION":
+            case "WORK_POINTS":
                 await ApplyToRegistrationAsync(document, fieldKey, normalizedValue, cancellationToken);
                 break;
 
@@ -277,6 +282,21 @@ internal sealed class ExtractedFieldApplier(
                 break;
             case "REGISTRY_NUMBER":
                 registration.RegistryNumber = value;
+                break;
+            case "HOLDER_NAME":
+                registration.HolderName = value;
+                break;
+            case "PROFESSIONAL_OFFICE":
+                registration.ProfessionalOffice = value;
+                break;
+            case "AUTHORIZED_ACTIVITIES":
+                registration.AuthorizedActivities = value;
+                break;
+            case "ACTIVITY_LOCATION":
+                registration.ActivityLocation = value;
+                break;
+            case "WORK_POINTS":
+                registration.WorkPoints = value;
                 break;
             case "CAEN_CODES":
                 // Coloana e un array JSON; valoarea normalizată vine ca „4939,5610".

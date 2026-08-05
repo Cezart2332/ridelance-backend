@@ -132,6 +132,10 @@ internal sealed class SignCompanyFormationCommandHandler(
         // deci hash-ul lor nu mai corespunde.
         context.CompanyFormationConsents.RemoveRange(request.Consents);
         request.Consents.Clear();
+
+        // Prin DbSet, nu doar prin colecția de navigație: entitățile noi au deja Id setat, iar
+        // EF le-ar considera existente și ar emite UPDATE în loc de INSERT.
+        context.CompanyFormationConsents.AddRange(consents);
         request.Consents.AddRange(consents);
 
         Guid? imageDocumentId = await StoreSignatureImageAsync(request, command.UserId, image.Value, cancellationToken);

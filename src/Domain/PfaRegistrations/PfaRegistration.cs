@@ -23,6 +23,23 @@ public sealed class PfaRegistration : Entity
     /// <summary>Coduri CAEN (JSON array), completate la validarea dosarului PFA.</summary>
     public string? CaenCodes { get; set; }
 
+    // --- Citite din actele de la ONRC, pentru ramura „Am PFA" ---
+
+    /// <summary>Titularul PFA-ului, așa cum apare pe certificatul de înregistrare.</summary>
+    public string? HolderName { get; set; }
+
+    /// <summary>Sediul profesional, ca text — așa cum apare în acte. Nu se procesează structurat.</summary>
+    public string? ProfessionalOffice { get; set; }
+
+    /// <summary>Activitățile autorizate din certificatul constatator.</summary>
+    public string? AuthorizedActivities { get; set; }
+
+    /// <summary>Unde se desfășoară activitatea: la sediu, la terți sau ambele.</summary>
+    public string? ActivityLocation { get; set; }
+
+    /// <summary>Punctele de lucru declarate, dacă există.</summary>
+    public string? WorkPoints { get; set; }
+
     // "Nu am PFA" fields
     public int? ContractDuration { get; set; }
     public string? Street { get; set; }
