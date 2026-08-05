@@ -40,7 +40,7 @@ public static class OnboardingStepCatalog
         // Dosarul ARR se depune pe PFA.
         new(3, "arr", "Autorizație transport", "/onboarding/arr", [1]),
         // Conturile de operator se deschid pe PFA.
-        new(4, "platforms", "Uber & Bolt", "/onboarding/platforms", [1]),
+        new(4, "platforms", "Uber Fleet & Bolt Fleet", "/onboarding/platforms", [1]),
         // Copia conformă se emite pe autorizația de transport.
         new(5, "vehicle", "Vehicul, copie conformă & ecusoane", "/onboarding/vehicle", [3]),
     ];

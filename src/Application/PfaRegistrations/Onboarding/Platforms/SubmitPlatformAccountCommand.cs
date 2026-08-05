@@ -1,21 +1,33 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Security;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.Platforms;
 
-/// <summary>Pasul 4 — userul completează detaliile contului de operator pe o platformă (fără parolă).</summary>
+/// <summary>
+/// Pasul 4 — datele contului de flotă al șoferului pe o platformă.
+///
+/// <paramref name="Password"/> e parola contului de flotă: cea existentă, dacă are deja cont, sau
+/// cea dorită, dacă i-l deschidem noi. Se stochează criptată și nu se întoarce niciodată clientului.
+/// Null înseamnă „las-o pe cea salvată" — un formular retrimis fără parolă nu o șterge.
+/// </summary>
 public sealed record SubmitPlatformAccountCommand(
     Guid UserId,
     PfaPlatformProvider Provider,
     bool HasExistingAccount,
     string? OperatorAccountId,
     Guid? AffiliationContractDocumentId,
-    string? ExistingAccountAnswer = null) : ICommand<PlatformOnboardingResponse>;
+    string? ExistingAccountAnswer = null,
+    string? Email = null,
+    string? Phone = null,
+    string? Password = null) : ICommand<PlatformOnboardingResponse>;
 
-internal sealed class SubmitPlatformAccountCommandHandler(IApplicationDbContext context)
+internal sealed class SubmitPlatformAccountCommandHandler(
+    IApplicationDbContext context,
+    ISecretProtector secretProtector)
     : ICommandHandler<SubmitPlatformAccountCommand, PlatformOnboardingResponse>
 {
     public async Task<Result<PlatformOnboardingResponse>> Handle(
@@ -56,6 +68,18 @@ internal sealed class SubmitPlatformAccountCommandHandler(IApplicationDbContext 
             : command.ExistingAccountAnswer.Trim();
         account.OperatorAccountId = string.IsNullOrWhiteSpace(command.OperatorAccountId) ? null : command.OperatorAccountId.Trim();
         account.AffiliationContractDocumentId = command.AffiliationContractDocumentId;
+
+        account.Email = string.IsNullOrWhiteSpace(command.Email) ? null : command.Email.Trim();
+        account.Phone = string.IsNullOrWhiteSpace(command.Phone) ? null : command.Phone.Trim();
+
+        // Parola nu se șterge la o retrimitere fără ea: formularul nu o primește înapoi de la
+        // server, deci ar veni goală la fiecare salvare ulterioară.
+        if (!string.IsNullOrWhiteSpace(command.Password))
+        {
+            account.PasswordProtected = secretProtector.Protect(command.Password);
+            account.PasswordUpdatedAtUtc = DateTime.UtcNow;
+        }
+
         account.UpdatedAtUtc = DateTime.UtcNow;
 
         // Avans automat până la nivelul suportat de datele completate; restul rămâne manual.

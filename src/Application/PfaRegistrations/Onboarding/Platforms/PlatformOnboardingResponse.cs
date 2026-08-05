@@ -3,6 +3,10 @@ using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.Platforms;
 
+/// <param name="HasPassword">
+/// Doar dacă există o parolă salvată. Valoarea nu iese niciodată din server — formularul o
+/// re-cere doar dacă utilizatorul vrea s-o schimbe.
+/// </param>
 public sealed record PlatformAccountDto(
     string Provider,
     bool IsSelectedByUser,
@@ -10,7 +14,10 @@ public sealed record PlatformAccountDto(
     string? OperatorAccountId,
     bool HasAffiliationContract,
     string OnboardingStatus,
-    string? ExistingAccountAnswer);
+    string? ExistingAccountAnswer,
+    string? Email,
+    string? Phone,
+    bool HasPassword);
 
 public sealed record PlatformOnboardingResponse(
     Guid? PfaRegistrationId,
@@ -38,7 +45,10 @@ internal static class PlatformShared
         a.OperatorAccountId,
         a.AffiliationContractDocumentId is not null,
         a.OnboardingStatus.ToString(),
-        a.ExistingAccountAnswer);
+        a.ExistingAccountAnswer,
+        a.Email,
+        a.Phone,
+        !string.IsNullOrWhiteSpace(a.PasswordProtected));
 
     public static PlatformOnboardingResponse ToResponse(PfaRegistration registration)
     {
