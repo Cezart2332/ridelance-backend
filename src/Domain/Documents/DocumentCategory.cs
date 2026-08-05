@@ -35,5 +35,7 @@ public enum DocumentCategory
     CertificatTvaIntracomunitar = 30,
     DosarAutorizatieArr = 31,
     DosarCopieConformaEcusoane = 32,
+    /// <summary>Specimenul de semnătură desenat la finalul dosarului de înființare.</summary>
+    SpecimenSemnatura = 33,
     Other = 99
 }

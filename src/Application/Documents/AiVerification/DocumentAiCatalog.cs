@@ -28,24 +28,51 @@ public sealed record DocumentAiExpectation(
 /// </summary>
 public static class DocumentAiCatalog
 {
+    /// <summary>
+    /// Cartea de identitate e singurul document din care se citesc date de identitate complete:
+    /// dosarul de înființare a societății (ramura „Nu am PFA") le cere pe toate, iar șoferul nu
+    /// trebuie să le mai tasteze. CNP-ul și seria/numărul actului sunt marcate <c>Sensitive</c> —
+    /// se stochează criptate și nu apar niciodată în clar în răspunsuri sau în loguri.
+    /// </summary>
+    private const string IdentityCardDetails =
+        "Carte de identitate românească a unei persoane fizice: conține fotografie, nume, prenume, " +
+        "CNP, seria și numărul actului, autoritatea emitentă, datele de emitere și expirare și " +
+        "adresa de domiciliu.";
+
+    private static readonly ExtractedFieldSpec[] IdentityCardFields =
+    [
+        new("date_of_birth", "Data nașterii titularului", ExtractedFieldType.Date, Required: false, Sensitive: true),
+        new("full_name", "Numele și prenumele titularului, împreună", ExtractedFieldType.Text, Required: false),
+        new("nume", "Numele de familie, separat", ExtractedFieldType.Text, Required: false),
+        new("prenume", "Prenumele, separat", ExtractedFieldType.Text, Required: false),
+        new("cnp", "CNP-ul titularului, 13 cifre", ExtractedFieldType.Cnp, Required: false, Sensitive: true),
+        new("serie_act", "Seria actului, 2 litere (câmpul SERIA)", ExtractedFieldType.Text, Required: false, Sensitive: true),
+        new("numar_act", "Numărul actului, 6 cifre (câmpul NR)", ExtractedFieldType.Text, Required: false, Sensitive: true),
+        new("autoritate_emitenta", "Autoritatea emitentă (câmpul „emisă de” / SPCLEP)", ExtractedFieldType.Text, Required: false),
+        new("data_emiterii", "Data emiterii actului", ExtractedFieldType.Date, Required: false),
+        new("data_expirarii", "Data expirării actului", ExtractedFieldType.Date, Required: false),
+        new("domiciliu_judet", "Județul din adresa de domiciliu (fără prefixul „jud.”)", ExtractedFieldType.Text, Required: false),
+        new("domiciliu_localitate", "Localitatea din adresa de domiciliu (municipiu, oraș sau comună/sat)", ExtractedFieldType.Text, Required: false),
+        new("domiciliu_strada", "Strada din adresa de domiciliu (fără prefixul „str.”)", ExtractedFieldType.Text, Required: false),
+        new("domiciliu_numar", "Numărul poștal din adresa de domiciliu (poate fi „12A” sau „FN”)", ExtractedFieldType.Text, Required: false),
+        new("domiciliu_bloc", "Blocul, dacă apare", ExtractedFieldType.Text, Required: false),
+        new("domiciliu_scara", "Scara, dacă apare", ExtractedFieldType.Text, Required: false),
+        new("domiciliu_etaj", "Etajul, dacă apare", ExtractedFieldType.Text, Required: false),
+        new("domiciliu_apartament", "Apartamentul, dacă apare", ExtractedFieldType.Text, Required: false),
+    ];
+
     private static readonly Dictionary<DocumentCategory, DocumentAiExpectation> Expectations = new()
     {
         [DocumentCategory.Buletin] = new(
             "Buletin (Carte de identitate)",
-            "Carte de identitate românească a unei persoane fizice: conține fotografie, nume, prenume și dată de expirare. NU extrage CNP-ul sau seria/numărul actului.",
+            IdentityCardDetails,
             true,
-            [
-                new("date_of_birth", "Data nașterii titularului (o poți deduce din CNP fără a returna CNP-ul)", ExtractedFieldType.Date, Required: false, Sensitive: true),
-                new("full_name", "Numele și prenumele titularului", ExtractedFieldType.Text, Required: false),
-            ]),
+            IdentityCardFields),
         [DocumentCategory.CarteIdentitate] = new(
             "Carte de identitate",
-            "Carte de identitate românească a unei persoane fizice: conține fotografie, nume, prenume și dată de expirare. NU extrage CNP-ul sau seria/numărul actului.",
+            IdentityCardDetails,
             true,
-            [
-                new("date_of_birth", "Data nașterii titularului (o poți deduce din CNP fără a returna CNP-ul)", ExtractedFieldType.Date, Required: false, Sensitive: true),
-                new("full_name", "Numele și prenumele titularului", ExtractedFieldType.Text, Required: false),
-            ]),
+            IdentityCardFields),
         [DocumentCategory.PermisConducere] = new(
             "Permis de conducere",
             "Permis de conducere românesc/UE: conține fotografie, categorii de vehicule și date (4b = expirare per categorie, 10 = data obținerii categoriei). NU extrage numărul actului.",

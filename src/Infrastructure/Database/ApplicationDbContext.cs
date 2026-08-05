@@ -10,6 +10,7 @@ using Domain.Notifications;
 using Domain.Office;
 using Domain.Payments;
 using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.CompanyFormation;
 using Domain.Uber;
 using Domain.Users;
 using Infrastructure.DomainEvents;
@@ -34,6 +35,13 @@ public sealed class ApplicationDbContext(
     public DbSet<OnboardingSectionApproval> OnboardingSectionApprovals { get; set; }
     public DbSet<OnboardingEligibilityProfile> OnboardingEligibilityProfiles { get; set; }
     public DbSet<PfaPartnerLead> PfaPartnerLeads { get; set; }
+    public DbSet<CompanyFormationRequest> CompanyFormationRequests { get; set; }
+    public DbSet<CompanyFormationOwner> CompanyFormationOwners { get; set; }
+    public DbSet<CompanyFormationConsent> CompanyFormationConsents { get; set; }
+    public DbSet<CompanyFormationSignature> CompanyFormationSignatures { get; set; }
+    public DbSet<ConsultoOffice> ConsultoOffices { get; set; }
+    public DbSet<LegalConsentFlow> LegalConsentFlows { get; set; }
+    public DbSet<LegalConsentStep> LegalConsentSteps { get; set; }
     public DbSet<OnboardingSignaturePacket> OnboardingSignaturePackets { get; set; }
     public DbSet<OnboardingSignatureDocument> OnboardingSignatureDocuments { get; set; }
     public DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; set; }

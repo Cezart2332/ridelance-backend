@@ -25,6 +25,8 @@ internal sealed class GetOnboardingStateForRegistrationQueryHandler(IApplication
             .Include(r => r.ArrAuthorizationRequest)
             .Include(r => r.PlatformAccounts)
             .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
+            // Ramura „Nu am PFA”: pasul PFA se închide pe dosarul semnat, nu pe plată.
+            .Include(r => r.CompanyFormationRequest)
             .SingleOrDefaultAsync(r => r.Id == query.RegistrationId, cancellationToken);
 
         if (registration is null)

@@ -4,6 +4,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Security;
 using Domain.Documents;
 using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.CompanyFormation;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Documents.ExtractedFields;
@@ -42,6 +43,26 @@ internal sealed class ExtractedFieldApplier(
             case "LICENCE_EXPIRES_ON":
             case "ATESTAT_EXPIRES_ON":
                 await ApplyToEligibilityAsync(document, fieldKey, normalizedValue, cancellationToken);
+                break;
+
+            // Pasul 1, ramura „Nu am PFA" — datele de identitate citite din cartea de identitate.
+            case "NUME":
+            case "PRENUME":
+            case "CNP":
+            case "SERIE_ACT":
+            case "NUMAR_ACT":
+            case "AUTORITATE_EMITENTA":
+            case "DATA_EMITERII":
+            case "DATA_EXPIRARII":
+            case "DOMICILIU_JUDET":
+            case "DOMICILIU_LOCALITATE":
+            case "DOMICILIU_STRADA":
+            case "DOMICILIU_NUMAR":
+            case "DOMICILIU_BLOC":
+            case "DOMICILIU_SCARA":
+            case "DOMICILIU_ETAJ":
+            case "DOMICILIU_APARTAMENT":
+                await ApplyToCompanyFormationAsync(document, fieldKey, normalizedValue, cancellationToken);
                 break;
 
             // Pasul 1 — dosarul PFA
@@ -131,6 +152,110 @@ internal sealed class ExtractedFieldApplier(
 
         profile.Status = evaluation.Status;
         profile.StatusReason = evaluation.Reasons.Count == 0 ? null : string.Join(" · ", evaluation.Reasons);
+    }
+
+    /// <summary>
+    /// Precompletează dosarul de înființare din cartea de identitate. Se aplică doar pe ramura
+    /// „Nu am PFA" și doar peste câmpurile pe care userul nu le-a atins: o valoare editată manual
+    /// nu se suprascrie la o reîncărcare de document.
+    /// </summary>
+    private async Task ApplyToCompanyFormationAsync(
+        Document document, string key, string value, CancellationToken cancellationToken)
+    {
+        PfaRegistration? registration = await FindRegistrationAsync(document, cancellationToken);
+        if (registration is null || registration.RegistrationType != RegistrationType.NuAmPfa)
+        {
+            return;
+        }
+
+        CompanyFormationRequest? request = await context.CompanyFormationRequests
+            .FirstOrDefaultAsync(r => r.PfaRegistrationId == registration.Id, cancellationToken);
+
+        if (request is null)
+        {
+            request = new CompanyFormationRequest
+            {
+                Id = Guid.NewGuid(),
+                PfaRegistrationId = registration.Id,
+            };
+            context.CompanyFormationRequests.Add(request);
+        }
+
+        // Dosarul semnat nu se mai rescrie de OCR — semnătura e legată de datele de atunci.
+        if (request.IsLocked)
+        {
+            return;
+        }
+
+        var prefilled = PrefilledFieldMap.Parse(request.PrefilledFields);
+        string fieldName = key.Trim().ToUpperInvariant();
+
+        if (prefilled.IsManuallyEdited(fieldName))
+        {
+            return;
+        }
+
+        PersoanaFizica p = request.Solicitant;
+
+        switch (fieldName)
+        {
+            case "NUME":
+                p.Nume = value;
+                break;
+            case "PRENUME":
+                p.Prenume = value;
+                break;
+            case "CNP":
+                // Ca la IBAN: în clar nu rămâne decât masca.
+                p.CnpEncrypted = secretProtector.Protect(value);
+                p.CnpMasked = CnpValidator.Mask(value);
+                break;
+            case "SERIE_ACT":
+                p.SerieAct = value.ToUpperInvariant();
+                break;
+            case "NUMAR_ACT":
+                p.NumarAct = value;
+                break;
+            case "AUTORITATE_EMITENTA":
+                p.AutoritateEmitenta = value;
+                break;
+            case "DATA_EMITERII":
+                p.DataEmiterii = ParseDate(value) ?? p.DataEmiterii;
+                break;
+            case "DATA_EXPIRARII":
+                p.DataExpirarii = ParseDate(value) ?? p.DataExpirarii;
+                break;
+            case "DOMICILIU_JUDET":
+                p.Domiciliu.Judet = value;
+                break;
+            case "DOMICILIU_LOCALITATE":
+                p.Domiciliu.Localitate = value;
+                break;
+            case "DOMICILIU_STRADA":
+                p.Domiciliu.Strada = value;
+                break;
+            case "DOMICILIU_NUMAR":
+                p.Domiciliu.Numar = value;
+                break;
+            case "DOMICILIU_BLOC":
+                p.Domiciliu.Bloc = value;
+                break;
+            case "DOMICILIU_SCARA":
+                p.Domiciliu.Scara = value;
+                break;
+            case "DOMICILIU_ETAJ":
+                p.Domiciliu.Etaj = value;
+                break;
+            case "DOMICILIU_APARTAMENT":
+                p.Domiciliu.Apartament = value;
+                break;
+            default:
+                return;
+        }
+
+        prefilled.MarkPrefilled(fieldName);
+        request.PrefilledFields = prefilled.Serialize();
+        request.UpdatedAtUtc = DateTime.UtcNow;
     }
 
     private async Task ApplyToRegistrationAsync(

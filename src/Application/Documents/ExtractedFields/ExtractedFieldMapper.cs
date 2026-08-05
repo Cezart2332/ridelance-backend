@@ -6,10 +6,12 @@ internal static class ExtractedFieldMapper
 {
     public static ExtractedFieldDto ToDto(ExtractedField f)
     {
-        // Valorile sensibile nu se întorc în clar (nici OCR, nici confirmate).
-        string? aiValue = f.IsSensitive ? Mask(f.AiNormalizedValue ?? f.AiValue) : (f.AiNormalizedValue ?? f.AiValue);
+        // Câmpurile sensibile sunt deja stocate mascat (vezi SensitiveFieldProtection); valoarea
+        // reală trăiește criptată în EncryptedValue și nu iese niciodată prin acest DTO.
+        // `Mask` rămâne ca plasă de siguranță pentru rândurile scrise înainte de această regulă.
+        string? aiValue = f.IsSensitive ? Mask(f.AiNormalizedValue ?? f.AiValue) : f.AiNormalizedValue ?? f.AiValue;
         string? confirmed = f.IsSensitive ? Mask(f.ConfirmedValue) : f.ConfirmedValue;
-        string? effective = f.IsSensitive ? Mask(f.ConfirmedValue ?? f.AiNormalizedValue) : (f.ConfirmedValue ?? f.AiNormalizedValue);
+        string? effective = f.IsSensitive ? Mask(f.ConfirmedValue ?? f.AiNormalizedValue) : f.ConfirmedValue ?? f.AiNormalizedValue;
 
         return new ExtractedFieldDto(
             f.Id,
@@ -32,6 +34,13 @@ internal static class ExtractedFieldMapper
         }
 
         string trimmed = value.Trim();
+
+        // Deja mascat la scriere — a doua mascare ar strica formatul (ex. „1******123456").
+        if (trimmed.Contains('•', StringComparison.Ordinal) || trimmed.Contains('*', StringComparison.Ordinal))
+        {
+            return trimmed;
+        }
+
         return trimmed.Length <= 4 ? "••••" : $"••••{trimmed[^4..]}";
     }
 }

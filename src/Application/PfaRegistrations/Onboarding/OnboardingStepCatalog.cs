@@ -1,4 +1,5 @@
 using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.CompanyFormation;
 
 namespace Application.PfaRegistrations.Onboarding;
 
@@ -57,7 +58,7 @@ public static class OnboardingStepCatalog
         string[] own =
         [
             EligibilityStatusOf(eligibility),
-            PfaStatusOf(pfaStatus),
+            PfaStatusOf(registration, pfaStatus),
             FiscalStatusOf(registration),
             ArrStatusOf(registration),
             PlatformsStatusOf(registration),
@@ -99,12 +100,29 @@ public static class OnboardingStepCatalog
         _ => InProgress,
     };
 
-    private static string PfaStatusOf(OnboardingSectionStatus pfaStatus) => pfaStatus switch
+    private static string PfaStatusOf(PfaRegistration? registration, OnboardingSectionStatus pfaStatus)
     {
-        OnboardingSectionStatus.Validated => Completed,
-        OnboardingSectionStatus.AwaitingValidation => AwaitingValidation,
-        _ => InProgress,
-    };
+        string status = pfaStatus switch
+        {
+            OnboardingSectionStatus.Validated => Completed,
+            OnboardingSectionStatus.AwaitingValidation => AwaitingValidation,
+            _ => InProgress,
+        };
+
+        if (registration?.RegistrationType != RegistrationType.NuAmPfa)
+        {
+            return status;
+        }
+
+        // Pe ramura „Nu am PFA” pasul rămâne al șoferului până semnează dosarul de înființare:
+        // plata singură nu înseamnă că avem datele cu care se depune la ONRC.
+        CompanyFormationStatus? formation = registration.CompanyFormationRequest?.Status;
+        bool signed = formation is not null
+            and not CompanyFormationStatus.Draft
+            and not CompanyFormationStatus.InfoRequested;
+
+        return signed ? status : InProgress;
+    }
 
     private static string FiscalStatusOf(PfaRegistration? r)
     {
