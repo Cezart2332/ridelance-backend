@@ -18,7 +18,11 @@ internal sealed class OnboardingPlatforms : IEndpoint
         bool HasExistingAccount,
         string? OperatorAccountId,
         Guid? AffiliationContractDocumentId,
-        string? ExistingAccountAnswer);
+        string? ExistingAccountAnswer,
+        string? Email,
+        string? Phone,
+        // Parola contului de flotă: se stochează criptată și nu se mai întoarce niciodată.
+        string? Password);
 
     public sealed record AdvanceRequest(string Provider, string OnboardingStatus);
 
@@ -74,7 +78,8 @@ internal sealed class OnboardingPlatforms : IEndpoint
                 new SubmitPlatformAccountCommand(
                     userContext.UserId, provider, request.HasExistingAccount,
                     request.OperatorAccountId, request.AffiliationContractDocumentId,
-                    request.ExistingAccountAnswer),
+                    request.ExistingAccountAnswer,
+                    request.Email, request.Phone, request.Password),
                 cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);

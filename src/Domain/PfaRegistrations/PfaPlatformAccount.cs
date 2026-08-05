@@ -22,6 +22,15 @@ public sealed class PfaPlatformAccount : Entity
     public string? ExistingAccountAnswer { get; set; }
     /// <summary>Identificatorul contului de operator (nu parolă).</summary>
     public string? OperatorAccountId { get; set; }
+
+    /// <summary>
+    /// Parola contului de flotă, criptată cu <c>ISecretProtector</c> — ca IBAN-ul și CNP-ul.
+    /// Nu iese niciodată înapoi spre client și nu apare în loguri: API-ul raportează doar
+    /// <c>HasPassword</c>. Când șoferul nu are încă cont, e parola pe care o vrea la creare.
+    /// </summary>
+    public string? PasswordProtected { get; set; }
+
+    public DateTime? PasswordUpdatedAtUtc { get; set; }
     /// <summary>Contractul de afiliere semnat cu platforma.</summary>
     public Guid? AffiliationContractDocumentId { get; set; }
     public PfaPlatformOnboardingStatus OnboardingStatus { get; set; } = PfaPlatformOnboardingStatus.NotStarted;
