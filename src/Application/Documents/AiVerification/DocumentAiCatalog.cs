@@ -10,6 +10,10 @@ public sealed record ExtractedFieldSpec(
     bool Required,
     bool Sensitive = false);
 
+/// <param name="IssueDateOnly">
+/// Documentul nu expiră: data de pe el este a eliberării. Certificatele ONRC intră aici — o dată
+/// veche pe ele nu înseamnă nimic, singurul lucru imposibil e să fi fost eliberate în viitor.
+/// </param>
 public sealed record DocumentAiExpectation(
     string Label,
     string Details,
@@ -17,7 +21,11 @@ public sealed record DocumentAiExpectation(
     IReadOnlyList<ExtractedFieldSpec>? Fields = null,
     // Auto-respingerea la verdict negativ e opțională per categorie — la ~20 de categorii
     // auto-respingerea în lanț ar produce respingeri false. Rămâne activă pentru „tip greșit/ilizibil”.
-    bool AutoRejectOnFailure = true)
+    bool AutoRejectOnFailure = true,
+    bool IssueDateOnly = false,
+    // Documente valabile un număr fix de luni de la eliberare (cazierul: 6). Calculul se face
+    // în C#, nu de model — un LLM nu are ce căuta în aritmetica pe date.
+    int? ValidMonthsFromIssue = null)
 {
     public IReadOnlyList<ExtractedFieldSpec> FieldSpecs => Fields ?? [];
 }
@@ -102,8 +110,10 @@ public static class DocumentAiCatalog
             true),
         [DocumentCategory.CazierJudiciar] = new(
             "Cazier judiciar",
-            "Certificat de cazier judiciar emis de Poliția Română. Este valabil 6 luni de la data emiterii — dacă găsești doar data emiterii, calculează expirarea la 6 luni după aceasta.",
-            true),
+            "Certificat de cazier judiciar emis de Poliția Română. Raportează data emiterii și, dacă apare explicit, data de valabilitate.",
+            true,
+            // Valabil 6 luni de la eliberare; termenul îl calculează serverul, nu modelul.
+            ValidMonthsFromIssue: 6),
         [DocumentCategory.ITP] = new(
             "ITP (Inspecția Tehnică Periodică)",
             "Dovada ITP a unui vehicul: anexa/talonul cu viza ITP sau raportul de inspecție tehnică, cu data următoarei inspecții (data expirării).",
@@ -134,17 +144,36 @@ public static class DocumentAiCatalog
             [
                 new("cui", "Codul unic de înregistrare (CUI/CIF), fără prefixul RO", ExtractedFieldType.Cui, Required: true),
                 new("legal_name", "Denumirea completă a PFA-ului/entității", ExtractedFieldType.Text, Required: false),
+                new("registry_number", "Numărul de ordine în registrul comerțului (ex. F40/…/2024)", ExtractedFieldType.Text, Required: false),
+                new("holder_name", "Titularul PFA-ului (persoana fizică), nume și prenume", ExtractedFieldType.Text, Required: false),
+                new("professional_office", "Sediul profesional, ca text, exact cum apare pe certificat", ExtractedFieldType.Text, Required: false),
                 new("caen_codes", "Toate codurile CAEN ale obiectului de activitate, separate prin virgulă, cel principal primul (ex. 4939)", ExtractedFieldType.Caen, Required: true),
-            ]),
+            ],
+            // Data de pe certificat e a eliberării: un certificat de înregistrare nu expiră.
+            IssueDateOnly: true),
         [DocumentCategory.CertificatConstatator] = new(
             "Certificat constatator",
-            "Certificat constatator emis de ONRC pentru un PFA/firmă, cu date despre activitate (coduri CAEN).",
+            "Certificat constatator emis de ONRC pentru un PFA/firmă, cu activitățile autorizate, sediul profesional și eventualele puncte de lucru.",
             false,
             [
                 new("cui", "Codul unic de înregistrare (CUI/CIF), fără prefixul RO", ExtractedFieldType.Cui, Required: false),
                 new("registry_number", "Numărul de ordine în registrul comerțului (ex. F40/…/2024)", ExtractedFieldType.Text, Required: false),
                 new("caen_codes", "Toate codurile CAEN ale obiectului de activitate, separate prin virgulă, cel principal primul (ex. 4939)", ExtractedFieldType.Caen, Required: true),
-            ]),
+                new("authorized_activities", "Activitățile autorizate, cu denumirea lor, separate prin punct și virgulă", ExtractedFieldType.Text, Required: false),
+                new("professional_office", "Sediul profesional, ca text, exact cum apare pe certificat", ExtractedFieldType.Text, Required: false),
+                new("activity_location", "Unde se desfășoară activitatea: „la sediu”, „la terți” sau ambele, cum e menționat", ExtractedFieldType.Text, Required: false),
+                new("work_points", "Punctele de lucru declarate, separate prin punct și virgulă; gol dacă nu există", ExtractedFieldType.Text, Required: false),
+            ],
+            IssueDateOnly: true),
+        [DocumentCategory.RezolutieOnrc] = new(
+            "Rezoluție / încheiere ONRC",
+            "Rezoluția sau încheierea emisă de ONRC la înființarea PFA-ului. Se păstrează pentru arhivă — datele utile vin din cele două certificate.",
+            false,
+            [
+                new("cui", "Codul unic de înregistrare (CUI/CIF), fără prefixul RO", ExtractedFieldType.Cui, Required: false),
+                new("registry_number", "Numărul de ordine în registrul comerțului (ex. F40/…/2024)", ExtractedFieldType.Text, Required: false),
+            ],
+            IssueDateOnly: true),
         [DocumentCategory.DovadaPlataArr] = new(
             "Dovadă plată ARR",
             "Dovadă de plată către ARR (ordin de plată, chitanță, confirmare de plată) pentru autorizația de transport alternativ.",

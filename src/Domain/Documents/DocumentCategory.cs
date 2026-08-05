@@ -37,5 +37,9 @@ public enum DocumentCategory
     DosarCopieConformaEcusoane = 32,
     /// <summary>Specimenul de semnătură desenat la finalul dosarului de înființare.</summary>
     SpecimenSemnatura = 33,
+    /// <summary>Rezoluția/încheierea ONRC de la înființare — opțională, pentru arhivă.</summary>
+    RezolutieOnrc = 34,
+    /// <summary>Orice alt act primit la înființarea PFA-ului — opțional, pentru arhivă.</summary>
+    AlteDocumenteInfiintare = 35,
     Other = 99
 }

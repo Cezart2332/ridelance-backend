@@ -18,6 +18,11 @@ internal sealed class PfaRegistrationConfiguration : IEntityTypeConfiguration<Pf
         builder.Property(r => r.LegalName).HasMaxLength(256);
         builder.Property(r => r.RegistryNumber).HasMaxLength(64);
         builder.Property(r => r.CaenCodes).HasColumnType("jsonb");
+        builder.Property(r => r.HolderName).HasMaxLength(256);
+        builder.Property(r => r.ProfessionalOffice).HasMaxLength(512);
+        builder.Property(r => r.AuthorizedActivities).HasMaxLength(2048);
+        builder.Property(r => r.ActivityLocation).HasMaxLength(256);
+        builder.Property(r => r.WorkPoints).HasMaxLength(1024);
         builder.Property(r => r.FullName).HasMaxLength(256);
         builder.Property(r => r.Phone).HasMaxLength(32);
         builder.Property(r => r.Cui).HasMaxLength(32);

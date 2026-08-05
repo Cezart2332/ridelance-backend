@@ -1,9 +1,9 @@
-using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Application.Abstractions.Ai;
+using Application.Documents.AiVerification;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SharedKernel;
@@ -126,26 +126,38 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         }
     }
 
+    /// <summary>
+    /// Promptul cere <b>doar extragere</b>. Modelul nu primește data curentă și nu decide dacă
+    /// documentul e valabil sau expirat: nu are ceas, iar când îl puneam să judece respingea acte
+    /// bune pentru că „data eliberării e în viitor". Comparațiile temporale se fac în C#
+    /// (<c>DocumentDateValidator</c>), unde sunt deterministe și testabile.
+    /// </summary>
     private static string BuildSystemPrompt() =>
-        "Ești un verificator de documente pentru RIDElance, o platformă pentru șoferi de ridesharing din România. " +
-        "Primești un document încărcat de un client în procesul de onboarding, împreună cu tipul de document așteptat. " +
-        "Analizează vizual documentul (folosește capacitățile tale native de citire a textului din imagine/PDF) și stabilește: " +
+        "Ești un extractor de date din documente pentru RIDElance, o platformă pentru șoferi de ridesharing din România. " +
+        "Primești un document încărcat de un client, împreună cu tipul de document așteptat. " +
+        "Sarcina ta este STRICT de citire și extragere. Analizează vizual documentul (folosește capacitățile tale " +
+        "native de citire a textului din imagine/PDF) și raportează: " +
         "1) dacă documentul corespunde tipului așteptat (nu alt tip de document, nu o poză goală sau fără legătură); " +
-        "2) dacă este lizibil și complet (nu tăiat, nu prea neclar pentru a fi verificat); " +
-        "3) dacă nu este expirat, raportat la data de azi " +
-        DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) +
-        "; 4) data de expirare/valabilitate, dacă există. " +
+        "2) dacă este lizibil și complet (nu tăiat, nu prea neclar pentru a fi citit); " +
+        "3) data eliberării/emiterii, dacă apare pe document; " +
+        "4) data expirării/valabilității, dacă apare pe document. " +
+        "NU evalua dacă documentul este expirat, valabil, recent sau vechi. NU compara datele de pe document cu " +
+        "prezentul — nu cunoști data curentă, iar acest lucru se verifică ulterior, în afara ta. " +
+        "Raportează datele exact cum apar pe document, fără să le corectezi și fără să le respingi ca improbabile. " +
+        "Toate datele se normalizează în format ISO 8601, adică YYYY-MM-DD (exemplu: 15.09.2025 devine 2025-09-15). " +
+        "Dacă o dată nu apare pe document sau nu poate fi citită cu certitudine, întoarce null pentru ea — nu ghici. " +
         "NU include în răspuns date personale sensibile (CNP, serie și număr de act). " +
         "Răspunde STRICT cu un obiect JSON valid, fără niciun alt text, în exact acest format: " +
-        "{\"matches_expected_type\": boolean, \"readable\": boolean, \"expired\": boolean sau null dacă nu se aplică, " +
-        "\"expires_at\": \"YYYY-MM-DD\" sau null, \"detected_type\": \"ce document este de fapt, pe scurt\", " +
-        "\"valid\": boolean, \"reason\": \"explicație scurtă în română, max 200 de caractere, pe înțelesul clientului\", " +
+        "{\"matches_expected_type\": boolean, \"readable\": boolean, " +
+        "\"issued_on\": \"YYYY-MM-DD\" sau null, \"expires_at\": \"YYYY-MM-DD\" sau null, " +
+        "\"detected_type\": \"ce document este de fapt, pe scurt\", " +
+        "\"reason\": \"explicație scurtă în română, max 200 de caractere, pe înțelesul clientului\", " +
         "\"overall_confidence\": number între 0 și 1, " +
         "\"fields\": { \"cheie_camp\": {\"value\": \"text sau null\", \"confidence\": number între 0 și 1}, ... }}. " +
         "Extrage în \"fields\" DOAR câmpurile cerute în mesajul utilizatorului; dacă nu sunt cerute câmpuri, întoarce \"fields\": {}. " +
         "NU pune NICIODATĂ în \"fields\" CNP, serie sau număr de act de identitate. " +
-        "Câmpul \"valid\" este true doar dacă documentul corespunde tipului așteptat, este lizibil și nu este expirat. " +
-        "Dacă ai dubii rezonabile, preferă \"valid\": true și explică în \"reason\" — verificarea finală o face un om.";
+        "Dacă ai dubii rezonabile despre tip sau lizibilitate, preferă valorile permisive și explică în " +
+        "\"reason\" — verificarea finală o face un om.";
 
     private Result<DocumentAiAnalysisResult> ParseResponse(string body)
     {
@@ -172,24 +184,19 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
 
             bool matches = GetBool(root, "matches_expected_type") ?? false;
             bool readable = GetBool(root, "readable") ?? false;
-            bool valid = GetBool(root, "valid") ?? false;
-            bool? expired = GetBool(root, "expired");
             string detectedType = GetString(root, "detected_type") ?? string.Empty;
             string reason = GetString(root, "reason") ?? string.Empty;
 
-            DateOnly? expiresAt = null;
-            string? expiresRaw = GetString(root, "expires_at");
-            if (!string.IsNullOrWhiteSpace(expiresRaw) &&
-                DateOnly.TryParseExact(expiresRaw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly parsed))
-            {
-                expiresAt = parsed;
-            }
+            // Parsarea e tolerantă la format: cerem ISO, dar modelul mai întoarce și forma de pe
+            // document. Ce nu e o dată reală rămâne null și se tratează ca „nu s-a putut citi".
+            DateOnly? issuedOn = DocumentDateValidator.Parse(GetString(root, "issued_on"));
+            DateOnly? expiresAt = DocumentDateValidator.Parse(GetString(root, "expires_at"));
 
             double overallConfidence = GetDouble(root, "overall_confidence") ?? 0d;
             IReadOnlyList<AiFieldResult> fields = ParseFields(root);
 
             return new DocumentAiAnalysisResult(
-                matches, readable, valid, expired, expiresAt, detectedType, reason, fields, overallConfidence);
+                matches, readable, issuedOn, expiresAt, detectedType, reason, fields, overallConfidence);
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
         {

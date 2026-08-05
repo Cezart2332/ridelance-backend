@@ -124,10 +124,22 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
 
         await PopulateExtractedFieldsAsync(document, expectation, result, cancellationToken);
 
-        bool isValid = result.IsValid &&
-                       result.MatchesExpectedType &&
-                       result.IsReadable &&
-                       result.IsExpired != true;
+        // Verificarea temporală se face aici, pe ceasul serverului. Modelul doar citește datele:
+        // nu are ceas, iar când îl lăsam să judece respingea acte bune ca „eliberate în viitor".
+        DocumentDateVerdict dates = DocumentDateValidator.Evaluate(
+            result.IssuedOn,
+            result.ExpiresAt,
+            expectation.ExpectsExpiryDate,
+            expectation.IssueDateOnly,
+            DocumentDateValidator.TodayInRomania(),
+            expectation.ValidMonthsFromIssue);
+
+        if (dates.NeedsManualReview)
+        {
+            document.AiRequiresManualReview = true;
+        }
+
+        bool isValid = result.MatchesExpectedType && result.IsReadable && !dates.IsRejected;
 
         if (isValid)
         {
@@ -137,6 +149,12 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         }
 
         document.AiStatus = DocumentAiStatus.Failed;
+
+        // Motivul temporal e mai precis decât explicația modelului, care nu mai judecă asta.
+        if (dates.IsRejected)
+        {
+            document.AiSummary = Truncate(dates.Reason, 1024);
+        }
 
         // Auto-respingerea e opțională per categorie: OCR-ul nu trebuie să blocheze fluxul.
         // Când e dezactivată, documentul rămâne în coada adminului (AiRequiresManualReview).
@@ -152,9 +170,11 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             document.Status = DocumentStatus.Rejected;
         }
 
-        string reason = string.IsNullOrWhiteSpace(result.Reason)
+        string modelReason = string.IsNullOrWhiteSpace(result.Reason)
             ? "Documentul nu a trecut verificarea automată."
             : result.Reason.Trim();
+
+        string reason = dates.IsRejected ? dates.Reason : modelReason;
         string text =
             $"Documentul „{expectation.Label}” a fost respins la verificarea automată: {reason} Încarcă o variantă corectă.";
 

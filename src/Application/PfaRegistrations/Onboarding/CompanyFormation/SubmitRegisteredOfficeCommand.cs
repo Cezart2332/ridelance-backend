@@ -130,6 +130,10 @@ internal sealed class SubmitRegisteredOfficeCommandHandler(
                     Id = incoming.Id ?? Guid.NewGuid(),
                     CompanyFormationRequestId = request.Id,
                 };
+
+                // Prin DbSet, nu doar prin colecția de navigație: cu Id-ul deja setat, EF ar
+                // marca entitatea Modified și ar emite UPDATE pe un rând care nu există.
+                context.CompanyFormationOwners.Add(owner);
                 request.Owners.Add(owner);
             }
 
