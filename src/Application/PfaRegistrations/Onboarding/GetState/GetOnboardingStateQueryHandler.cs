@@ -26,6 +26,8 @@ internal sealed class GetOnboardingStateQueryHandler(
             .Include(r => r.ArrAuthorizationRequest)
             .Include(r => r.PlatformAccounts)
             .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
+            // Ramura „Nu am PFA”: pasul PFA se închide pe dosarul semnat, nu pe plată.
+            .Include(r => r.CompanyFormationRequest)
             .Where(r => r.UserId == query.UserId)
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);

@@ -16,6 +16,7 @@ internal sealed class ExtractedFieldConfiguration : IEntityTypeConfiguration<Ext
         builder.Property(f => f.AiValue).HasMaxLength(1024);
         builder.Property(f => f.AiNormalizedValue).HasMaxLength(1024);
         builder.Property(f => f.ConfirmedValue).HasMaxLength(1024);
+        builder.Property(f => f.EncryptedValue).HasMaxLength(2048);
         builder.Property(f => f.ChangeReason).HasMaxLength(512);
         builder.Property(f => f.ConfirmedSource).HasConversion<string>().HasMaxLength(16);
         builder.Property(f => f.ReviewState).HasConversion<string>().HasMaxLength(32);

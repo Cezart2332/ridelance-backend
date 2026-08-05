@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.CompanyFormation;
 
 namespace Domain.Documents;
 
@@ -46,6 +47,8 @@ public static class ExtractedFieldValidators
         {
             ExtractedFieldType.Iban or ExtractedFieldType.Vin or ExtractedFieldType.Plate or ExtractedFieldType.Cui =>
                 trimmed.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant(),
+            // Modelul întoarce des CNP-ul cu spații sau puncte între grupuri.
+            ExtractedFieldType.Cnp => new string(trimmed.Where(char.IsAsciiDigit).ToArray()),
             ExtractedFieldType.Caen => NormalizeCaen(trimmed),
             _ => trimmed,
         };
@@ -77,6 +80,7 @@ public static class ExtractedFieldValidators
             ExtractedFieldType.Vin => VinRegex.IsMatch(normalized),
             ExtractedFieldType.Plate => PlateRegex.IsMatch(normalized),
             ExtractedFieldType.Date => IsSaneDate(normalized),
+            ExtractedFieldType.Cnp => CnpValidator.IsValid(normalized),
             // Certificatul poate lista mai multe coduri; ne interesează doar să apară cel cerut.
             ExtractedFieldType.Caen => normalized.Split(',').Contains(RequiredCaen, StringComparer.Ordinal),
             _ => true,

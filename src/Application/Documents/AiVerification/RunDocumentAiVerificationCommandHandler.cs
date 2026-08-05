@@ -5,6 +5,7 @@ using Application.Documents.ExtractedFields;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
+using Application.Abstractions.Security;
 using Application.Abstractions.Services;
 using Application.Notifications;
 using Domain.Documents;
@@ -24,6 +25,7 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
     IEmailService emailService,
     IMjmlRenderer mjmlRenderer,
     IExtractedFieldApplier fieldApplier,
+    ISecretProtector secretProtector,
     IConfiguration configuration)
     : ICommandHandler<RunDocumentAiVerificationCommand>
 {
@@ -236,7 +238,10 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
                     Id = Guid.NewGuid(),
                     DocumentId = document.Id,
                     FieldKey = spec.Key,
-                    AiValue = field?.Value?.Trim(),
+                    // Pentru câmpurile sensibile nici măcar valoarea brută nu se păstrează în clar.
+                    AiValue = spec.Sensitive
+                        ? SensitiveFieldProtection.Mask(spec.Type, normalized)
+                        : field?.Value?.Trim(),
                     IsSensitive = spec.Sensitive,
                     CreatedAtUtc = nowUtc,
                 };
@@ -245,7 +250,11 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             }
 
             // AiValue rămâne imutabil (dovada primei extrageri); reîmprospătăm doar derivatele.
-            row.AiNormalizedValue = normalized;
+            row.AiNormalizedValue = SensitiveFieldProtection.StoreOcrValue(
+                row,
+                new ExtractedFieldSpecSensitivity(spec.Sensitive, spec.Type),
+                normalized,
+                secretProtector);
             row.AiConfidence = aiConfidence;
             row.ValidatorPassed = validatorPassed;
             row.EffectiveConfidence = effective;

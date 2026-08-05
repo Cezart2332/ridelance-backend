@@ -51,6 +51,7 @@ public sealed class PfaRegistration : Entity
     public PfaFiscalProfile? FiscalProfile { get; set; }
     public PfaFleetConsent? FleetConsent { get; set; }
     public PfaPartnerLead? PartnerLead { get; set; }
+    public CompanyFormation.CompanyFormationRequest? CompanyFormationRequest { get; set; }
     public OnboardingSignaturePacket? SignaturePacket { get; set; }
     public PfaBankAccountDeclaration? BankAccountDeclaration { get; set; }
     public PfaOblioAccount? OblioAccount { get; set; }

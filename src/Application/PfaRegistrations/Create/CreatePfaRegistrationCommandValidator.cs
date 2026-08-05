@@ -16,13 +16,9 @@ internal sealed class CreatePfaRegistrationCommandValidator
             // completează `Cui`. Validarea de checksum rămâne la aprobarea adminului.
         });
 
-        When(x => x.RegistrationType == RegistrationType.NuAmPfa, () =>
-        {
-            RuleFor(x => x.ContractDuration).NotNull().GreaterThan(0).WithMessage("Contract duration must be specified.");
-            RuleFor(x => x.Street).NotEmpty().WithMessage("Street is required.");
-            RuleFor(x => x.Number).NotEmpty().WithMessage("Number is required.");
-            RuleFor(x => x.City).NotEmpty().WithMessage("City is required.");
-            RuleFor(x => x.County).NotEmpty().WithMessage("County is required.");
-        });
+        // „Nu am PFA" nu mai cere nimic la creare: adresa sediului, proprietarul și restul
+        // datelor se colectează în dosarul de înființare (CompanyFormationRequest), care e
+        // sursa de adevăr. Câmpurile de adresă de pe PfaRegistration rămân doar pentru
+        // dosarele create înainte de fluxul nou.
     }
 }

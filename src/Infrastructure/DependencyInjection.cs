@@ -73,6 +73,7 @@ public static class DependencyInjection
         // Generarea dosarelor PDF (QuestPDF — licență Community, venit anual < 1M USD)
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         services.AddScoped<IDossierGenerator, ArrDossierGenerator>();
+        services.AddScoped<ICompanyFormationPdfGenerator, CompanyFormationPdfGenerator>();
 
         // Email Service
         services.AddHttpClient<IResend, ResendClient>();
@@ -136,6 +137,7 @@ public static class DependencyInjection
         services.AddHostedService<BoltSyncJob>();
         services.AddHostedService<BankSyncJob>();
         services.AddHostedService<DocumentAiVerificationJob>();
+        services.AddHostedService<CompanyFormationDraftPurgeJob>();
 
         return services;
     }

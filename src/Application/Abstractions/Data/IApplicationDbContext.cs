@@ -9,6 +9,7 @@ using Domain.Notifications;
 using Domain.Office;
 using Domain.Payments;
 using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.CompanyFormation;
 using Domain.Uber;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +29,13 @@ public interface IApplicationDbContext
     DbSet<OnboardingSectionApproval> OnboardingSectionApprovals { get; }
     DbSet<OnboardingEligibilityProfile> OnboardingEligibilityProfiles { get; }
     DbSet<PfaPartnerLead> PfaPartnerLeads { get; }
+    DbSet<CompanyFormationRequest> CompanyFormationRequests { get; }
+    DbSet<CompanyFormationOwner> CompanyFormationOwners { get; }
+    DbSet<CompanyFormationConsent> CompanyFormationConsents { get; }
+    DbSet<CompanyFormationSignature> CompanyFormationSignatures { get; }
+    DbSet<ConsultoOffice> ConsultoOffices { get; }
+    DbSet<LegalConsentFlow> LegalConsentFlows { get; }
+    DbSet<LegalConsentStep> LegalConsentSteps { get; }
     DbSet<OnboardingSignaturePacket> OnboardingSignaturePackets { get; }
     DbSet<OnboardingSignatureDocument> OnboardingSignatureDocuments { get; }
     DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; }

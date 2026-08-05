@@ -28,6 +28,10 @@ public sealed record OnboardingStateResponse(
     bool AllSectionsValidated,
     // Proiecția pe 6 pași (grupare în cod, status derivat — niciodată stocat).
     List<OnboardingStepDto> Steps,
+    // Ramura „Nu am PFA": unde a rămas dosarul de înființare, ca pasul PFA să trimită direct
+    // în etapa potrivită. Null pentru „Am PFA".
+    string? CompanyFormationStatus = null,
+    string? CompanyFormationStage = null,
     // DOAR PENTRU TESTARE — de șters odată cu SkipOnboardingStepCommand.
     bool TestSkipEnabled = false);
 
@@ -97,6 +101,8 @@ internal static class OnboardingStateBuilder
             hasPaidInfiintare,
             sections,
             allStepsCompleted,
-            steps);
+            steps,
+            registration?.CompanyFormationRequest?.Status.ToString(),
+            registration?.CompanyFormationRequest?.CurrentStage.ToString());
     }
 }

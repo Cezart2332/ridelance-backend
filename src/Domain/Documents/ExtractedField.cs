@@ -48,6 +48,14 @@ public sealed class ExtractedField : Entity
     /// <summary>Câmp sensibil (nu se loghează / nu se întoarce în clar în răspunsuri AI).</summary>
     public bool IsSensitive { get; set; }
 
+    /// <summary>
+    /// Valoarea în clar a unui câmp sensibil, criptată cu ISecretProtector. Pentru câmpurile
+    /// sensibile, <see cref="AiValue"/>, <see cref="AiNormalizedValue"/> și
+    /// <see cref="ConfirmedValue"/> conțin DOAR masca de afișare — valoarea reală trăiește
+    /// exclusiv aici, ca un CNP să nu ajungă niciodată în clar în baza de date sau în loguri.
+    /// </summary>
+    public string? EncryptedValue { get; set; }
+
     public ExtractedFieldReviewState ReviewState { get; set; } = ExtractedFieldReviewState.Auto;
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

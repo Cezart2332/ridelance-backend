@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Security;
 using Application.Documents.AiVerification;
 using Domain.Documents;
 using Domain.PfaRegistrations;
@@ -17,7 +18,8 @@ public sealed record CorrectExtractedFieldCommand(
 
 internal sealed class CorrectExtractedFieldCommandHandler(
     IApplicationDbContext context,
-    IExtractedFieldApplier fieldApplier)
+    IExtractedFieldApplier fieldApplier,
+    ISecretProtector secretProtector)
     : ICommandHandler<CorrectExtractedFieldCommand>
 {
     private static readonly Error FieldNotFound = Error.NotFound(
@@ -51,7 +53,16 @@ internal sealed class CorrectExtractedFieldCommandHandler(
             : ExtractedFieldValidators.Normalize(spec.Type, command.Value);
 
         DateTime nowUtc = DateTime.UtcNow;
-        row.ConfirmedValue = normalized;
+
+        // Un CNP corectat manual e la fel de sensibil ca unul citit de OCR: în coloană intră
+        // masca, valoarea reală rămâne criptată.
+        row.ConfirmedValue = string.IsNullOrWhiteSpace(normalized)
+            ? normalized
+            : SensitiveFieldProtection.StoreOcrValue(
+                row,
+                new ExtractedFieldSpecSensitivity(row.IsSensitive, spec?.Type ?? ExtractedFieldType.Text),
+                normalized,
+                secretProtector);
         row.ConfirmedSource = ExtractedFieldSource.Admin;
         row.ConfirmedByUserId = command.AdminUserId;
         row.ConfirmedAtUtc = nowUtc;
