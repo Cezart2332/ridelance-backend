@@ -37,6 +37,8 @@ public interface IApplicationDbContext
     DbSet<LegalConsentFlow> LegalConsentFlows { get; }
     DbSet<LegalConsentStep> LegalConsentSteps { get; }
     DbSet<OnboardingSignaturePacket> OnboardingSignaturePackets { get; }
+
+    DbSet<OnboardingStepAudit> OnboardingStepAudits { get; }
     DbSet<OnboardingSignatureDocument> OnboardingSignatureDocuments { get; }
     DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; }
     DbSet<PfaOblioAccount> PfaOblioAccounts { get; }

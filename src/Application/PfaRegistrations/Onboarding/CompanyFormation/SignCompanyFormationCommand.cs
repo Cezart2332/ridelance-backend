@@ -42,7 +42,8 @@ public sealed record SignCompanyFormationCommand(
 internal sealed class SignCompanyFormationCommandHandler(
     IApplicationDbContext context,
     ISecretProtector secretProtector,
-    IFileEncryptionService fileEncryptionService)
+    IFileEncryptionService fileEncryptionService,
+    OnboardingStateService stateService)
     : ICommandHandler<SignCompanyFormationCommand, CompanyFormationResponse>
 {
     private const string ConsentContext = "infiintare-societate";
@@ -52,6 +53,16 @@ internal sealed class SignCompanyFormationCommandHandler(
         SignCompanyFormationCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Pfa, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<CompanyFormationResponse>(guard.Error);
+        }
+
         // Retrimiterea aceleiași chei întoarce rezultatul original — un dublu-click pe
         // „Confirmă semnătura" nu are voie să creeze a doua cerere.
         if (!string.IsNullOrWhiteSpace(command.Context.IdempotencyKey))

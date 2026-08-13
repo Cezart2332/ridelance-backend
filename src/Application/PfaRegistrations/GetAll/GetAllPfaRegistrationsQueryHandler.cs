@@ -54,6 +54,15 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                 r.IsOwner,
                 r.Cui,
                 DocumentCount = r.Documents.Count,
+                // „Mingea e la noi”: dosar PFA nereviewuit, o secțiune trimisă la validare, sau
+                // pasul fiscal trimis spre alocarea pachetului de semnături (RL-02). Calculat în
+                // SQL, ca filtrul rapid din admin să nu ceară încărcarea grafului per dosar.
+                AwaitingAdminAction =
+                    r.Status == PfaRegistrationStatus.Pending
+                    || r.OnboardingSections.Any(s => s.Status == OnboardingSectionStatus.AwaitingValidation)
+                    || r.SignaturePacket != null
+                        && r.SignaturePacket.SubmittedForReviewAtUtc != null
+                        && r.SignaturePacket.Status == SignaturePacketStatus.Draft,
                 r.CreatedAtUtc,
                 UserLastActivityAtUtc = r.User.LastActivityAtUtc,
                 ChatActivityAtUtc = context.ChatRooms
@@ -113,6 +122,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     x.IsOwner,
                     x.Cui,
                     x.DocumentCount,
+                    x.AwaitingAdminAction,
                     x.CreatedAtUtc,
                     GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc));
             })

@@ -6,7 +6,9 @@ using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.PartnerLead;
 
-internal sealed class SubmitPfaPartnerLeadCommandHandler(IApplicationDbContext context)
+internal sealed class SubmitPfaPartnerLeadCommandHandler(
+    IApplicationDbContext context,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitPfaPartnerLeadCommand, PfaPartnerLeadResponse>
 {
     private static readonly Error ConsentRequired = Error.Failure(
@@ -21,6 +23,16 @@ internal sealed class SubmitPfaPartnerLeadCommandHandler(IApplicationDbContext c
         SubmitPfaPartnerLeadCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Pfa, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<PfaPartnerLeadResponse>(guard.Error);
+        }
+
         if (!command.DataSharingConsent)
         {
             return Result.Failure<PfaPartnerLeadResponse>(ConsentRequired);

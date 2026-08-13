@@ -27,4 +27,13 @@ public static class OnboardingErrors
     public static readonly Error NotAwaitingValidation = Error.Problem(
         "Onboarding.NotAwaitingValidation",
         "Secțiunea nu se află în validare.");
+
+    /// <summary>
+    /// Scriere pe un pas care nu e cel activ. Conflict (409), nu Problem (400): cererea e validă în
+    /// sine, doar starea dosarului nu o permite — un client care reîncearcă după ce pasul se
+    /// deblochează va reuși cu exact același payload.
+    /// </summary>
+    public static Error StepNotActive(string label) => Error.Conflict(
+        "Onboarding.StepNotActive",
+        $"Pasul „{label}” nu este activ acum. Finalizează pasul curent înainte să continui.");
 }

@@ -6,13 +6,25 @@ using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.Eligibility;
 
-internal sealed class SubmitEligibilityProfileCommandHandler(IApplicationDbContext context)
+internal sealed class SubmitEligibilityProfileCommandHandler(
+    IApplicationDbContext context,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitEligibilityProfileCommand, EligibilityProfileResponse>
 {
     public async Task<Result<EligibilityProfileResponse>> Handle(
         SubmitEligibilityProfileCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Eligibility, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<EligibilityProfileResponse>(guard.Error);
+        }
+
         OnboardingEligibilityProfile? profile = await context.OnboardingEligibilityProfiles
             .SingleOrDefaultAsync(p => p.UserId == command.UserId, cancellationToken);
 

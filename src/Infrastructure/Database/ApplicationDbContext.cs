@@ -43,6 +43,8 @@ public sealed class ApplicationDbContext(
     public DbSet<LegalConsentFlow> LegalConsentFlows { get; set; }
     public DbSet<LegalConsentStep> LegalConsentSteps { get; set; }
     public DbSet<OnboardingSignaturePacket> OnboardingSignaturePackets { get; set; }
+
+    public DbSet<OnboardingStepAudit> OnboardingStepAudits { get; set; }
     public DbSet<OnboardingSignatureDocument> OnboardingSignatureDocuments { get; set; }
     public DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; set; }
     public DbSet<PfaOblioAccount> PfaOblioAccounts { get; set; }

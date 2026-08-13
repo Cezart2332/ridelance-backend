@@ -6,13 +6,25 @@ using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.Step2;
 
-internal sealed class AcceptOblioConsentsCommandHandler(IApplicationDbContext context)
+internal sealed class AcceptOblioConsentsCommandHandler(
+    IApplicationDbContext context,
+    OnboardingStateService stateService)
     : ICommandHandler<AcceptOblioConsentsCommand, Step2OblioDto>
 {
     public async Task<Result<Step2OblioDto>> Handle(
         AcceptOblioConsentsCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Fiscal, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<Step2OblioDto>(guard.Error);
+        }
+
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.OblioAccount)
             .Where(r => r.UserId == command.UserId)

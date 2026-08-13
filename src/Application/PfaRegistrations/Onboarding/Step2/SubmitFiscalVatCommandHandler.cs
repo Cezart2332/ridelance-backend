@@ -7,11 +7,23 @@ using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.Step2;
 
-internal sealed class SubmitFiscalVatCommandHandler(IApplicationDbContext context)
+internal sealed class SubmitFiscalVatCommandHandler(
+    IApplicationDbContext context,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitFiscalVatCommand>
 {
     public async Task<Result> Handle(SubmitFiscalVatCommand command, CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Fiscal, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure(guard.Error);
+        }
+
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.FiscalProfile)
             .Where(r => r.UserId == command.UserId)

@@ -19,7 +19,8 @@ public sealed record SubmitPersonalDataCommand(Guid UserId, PersoanaFizicaPayloa
 
 internal sealed class SubmitPersonalDataCommandHandler(
     IApplicationDbContext context,
-    ISecretProtector secretProtector)
+    ISecretProtector secretProtector,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitPersonalDataCommand, CompanyFormationResponse>
 {
     /// <summary>Actul trebuie să fie valabil destul cât să se poată depune dosarul.</summary>
@@ -29,6 +30,16 @@ internal sealed class SubmitPersonalDataCommandHandler(
         SubmitPersonalDataCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Pfa, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<CompanyFormationResponse>(guard.Error);
+        }
+
         Result<CompanyFormationRequest> loaded = await CompanyFormationLoader.ForUserAsync(
             context, command.UserId, cancellationToken);
 

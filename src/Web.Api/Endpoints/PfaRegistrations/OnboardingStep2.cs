@@ -30,6 +30,17 @@ internal sealed class OnboardingStep2 : IEndpoint
 
     public sealed record SignatureRequest(string Provider, string Status, string? ProviderReference, string? AdminNote);
 
+    /// <summary>RL-02 — pachetul alocat de admin la finalizarea pasului fiscal.</summary>
+    public sealed record SignatureCompleteRequest(
+        string Provider,
+        string? PackageName,
+        int? SignatureCount,
+        DateTime? ExpiresAtUtc,
+        string? ProviderReference,
+        string? AdminNote);
+
+    public sealed record SignatureRejectRequest(string Reason, string? AdminNote);
+
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         // Starea Pasului 2 pentru userul curent
@@ -110,6 +121,20 @@ internal sealed class OnboardingStep2 : IEndpoint
         .RequireAuthorization()
         .WithTags(Tags.PfaRegistrations);
 
+        // 2.5 — șoferul își declară partea terminată; de aici pasul e al adminului (RL-02).
+        app.MapPost("onboarding/step2/submit-for-review", async (
+            IUserContext userContext,
+            ICommandHandler<SubmitFiscalForReviewCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(
+                new SubmitFiscalForReviewCommand(userContext.UserId), cancellationToken);
+
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.PfaRegistrations);
+
         // --- Admin: avans manual ---
         app.MapPut("pfa-registrations/{id:guid}/step2/bank", async (
             Guid id,
@@ -165,6 +190,55 @@ internal sealed class OnboardingStep2 : IEndpoint
 
             Result result = await handler.Handle(
                 new UpdateSignaturePacketCommand(id, provider, status, request.ProviderReference, request.AdminNote),
+                cancellationToken);
+
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:manage")
+        .WithTags(Tags.PfaRegistrations);
+
+        // RL-02 — adminul alocă pachetul și închide pasul fiscal. Abia acum se deblochează ARR.
+        app.MapPost("admin/onboarding/{id:guid}/steps/signatures/complete", async (
+            Guid id,
+            SignatureCompleteRequest request,
+            IUserContext userContext,
+            ICommandHandler<CompleteSignaturePacketCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            if (!Enum.TryParse(request.Provider, ignoreCase: true, out SignatureProvider provider) ||
+                !Enum.IsDefined(provider))
+            {
+                return Results.BadRequest("Invalid signature provider.");
+            }
+
+            Result result = await handler.Handle(
+                new CompleteSignaturePacketCommand(
+                    id,
+                    userContext.UserId,
+                    provider,
+                    request.PackageName,
+                    request.SignatureCount,
+                    request.ExpiresAtUtc,
+                    request.ProviderReference,
+                    request.AdminNote),
+                cancellationToken);
+
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:manage")
+        .WithTags(Tags.PfaRegistrations);
+
+        app.MapPost("admin/onboarding/{id:guid}/steps/signatures/reject", async (
+            Guid id,
+            SignatureRejectRequest request,
+            IUserContext userContext,
+            ICommandHandler<RejectSignaturePacketCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(
+                new RejectSignaturePacketCommand(id, userContext.UserId, request.Reason, request.AdminNote),
                 cancellationToken);
 
             return result.Match(Results.NoContent, CustomResults.Problem);

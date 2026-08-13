@@ -15,13 +15,24 @@ public sealed record GenerateArrDossierCommand(Guid UserId) : ICommand<ArrStateR
 internal sealed class GenerateArrDossierCommandHandler(
     IApplicationDbContext context,
     IDossierGenerator dossierGenerator,
-    IFileEncryptionService fileEncryptionService)
+    IFileEncryptionService fileEncryptionService,
+    OnboardingStateService stateService)
     : ICommandHandler<GenerateArrDossierCommand, ArrStateResponse>
 {
     public async Task<Result<ArrStateResponse>> Handle(
         GenerateArrDossierCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Arr, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<ArrStateResponse>(guard.Error);
+        }
+
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.ArrAuthorizationRequest)
             .Include(r => r.User)

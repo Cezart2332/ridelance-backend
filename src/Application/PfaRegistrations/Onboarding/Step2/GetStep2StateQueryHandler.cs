@@ -62,9 +62,22 @@ internal sealed class GetStep2StateQueryHandler(IApplicationDbContext context)
                 sp.Status.ToString(),
                 sp.Documents
                     .Select(d => new Step2SignatureDocDto(d.Type.ToString(), d.Label, d.IsSigned))
-                    .ToList())
+                    .ToList(),
+                sp.SubmittedForReviewAtUtc,
+                sp.PackageName,
+                sp.SignatureCount,
+                sp.ExpiresAtUtc,
+                sp.RejectionReason)
             : null;
 
-        return Result.Success(new Step2StateResponse(registration.Id, fiscal, bank, oblio, signature));
+        // Butonul de trimitere apare doar când partea șoferului chiar e completă și pasul nu e
+        // deja la noi — altfel ar putea trimite același dosar de două ori.
+        bool canSubmitForReview =
+            OnboardingStepCatalog.FiscalUserPartComplete(registration)
+            && registration.SignaturePacket?.SubmittedForReviewAtUtc is null
+            && registration.SignaturePacket?.Status != SignaturePacketStatus.Completed;
+
+        return Result.Success(
+            new Step2StateResponse(registration.Id, fiscal, bank, oblio, signature, canSubmitForReview));
     }
 }

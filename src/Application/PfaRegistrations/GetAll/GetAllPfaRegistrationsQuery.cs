@@ -30,5 +30,7 @@ public sealed record PfaRegistrationSummary(
     /// <summary>Completat de OCR din certificatul de înregistrare; adminul îl confirmă la aprobare.</summary>
     string? Cui,
     int DocumentCount,
+    /// <summary>Dosarul așteaptă o acțiune de admin (dosar PFA, secțiune sau pachet de semnături).</summary>
+    bool AwaitingAdminAction,
     DateTime CreatedAtUtc,
     DateTime? LastActivityAtUtc);

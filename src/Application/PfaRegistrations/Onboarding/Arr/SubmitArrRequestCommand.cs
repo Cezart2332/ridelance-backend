@@ -15,13 +15,24 @@ public sealed record SubmitArrRequestCommand(
 
 internal sealed class SubmitArrRequestCommandHandler(
     IApplicationDbContext context,
-    IAppSettings appSettings)
+    IAppSettings appSettings,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitArrRequestCommand, ArrStateResponse>
 {
     public async Task<Result<ArrStateResponse>> Handle(
         SubmitArrRequestCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Arr, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<ArrStateResponse>(guard.Error);
+        }
+
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.ArrAuthorizationRequest)
             .Where(r => r.UserId == command.UserId)

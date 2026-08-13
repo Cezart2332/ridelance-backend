@@ -9,7 +9,8 @@ namespace Application.PfaRegistrations.Onboarding.Step2;
 
 internal sealed class SubmitBankDeclarationCommandHandler(
     IApplicationDbContext context,
-    ISecretProtector secretProtector)
+    ISecretProtector secretProtector,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitBankDeclarationCommand, Step2BankDto>
 {
     private static readonly Error InvalidIban = Error.Failure(
@@ -20,6 +21,16 @@ internal sealed class SubmitBankDeclarationCommandHandler(
         SubmitBankDeclarationCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Fiscal, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<Step2BankDto>(guard.Error);
+        }
+
         // Document-first: userul alege doar banca; IBAN-ul se citește din documentul încărcat (OCR).
         // Dacă totuși e trimis explicit, trebuie să fie plauzibil.
         string iban = NormalizeIban(command.Iban ?? string.Empty);

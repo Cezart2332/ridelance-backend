@@ -21,13 +21,24 @@ public sealed record SubmitVehicleCommand(
 
 internal sealed class SubmitVehicleCommandHandler(
     IApplicationDbContext context,
-    IAppSettings appSettings)
+    IAppSettings appSettings,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitVehicleCommand, VehicleStateResponse>
 {
     public async Task<Result<VehicleStateResponse>> Handle(
         SubmitVehicleCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Vehicle, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<VehicleStateResponse>(guard.Error);
+        }
+
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
             .Include(r => r.Vehicles).ThenInclude(v => v.Badges)
