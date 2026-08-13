@@ -17,13 +17,24 @@ public sealed record SubmitRegisteredOfficeCommand(Guid UserId, RegisteredOffice
 
 internal sealed class SubmitRegisteredOfficeCommandHandler(
     IApplicationDbContext context,
-    ISecretProtector secretProtector)
+    ISecretProtector secretProtector,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitRegisteredOfficeCommand, CompanyFormationResponse>
 {
     public async Task<Result<CompanyFormationResponse>> Handle(
         SubmitRegisteredOfficeCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Pfa, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<CompanyFormationResponse>(guard.Error);
+        }
+
         Result<CompanyFormationRequest> loaded = await CompanyFormationLoader.ForUserAsync(
             context, command.UserId, cancellationToken);
 

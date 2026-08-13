@@ -38,6 +38,8 @@ public static class DependencyInjection
         services.AddScoped<Documents.ExtractedFields.IExtractedFieldApplier,
             Documents.ExtractedFields.ExtractedFieldApplier>();
 
+        services.AddScoped<PfaRegistrations.Onboarding.OnboardingStateService>();
+
         services.AddScoped<Banking.BankAccountSyncService>();
         services.AddScoped<Banking.BankConnectionFinalizer>();
 

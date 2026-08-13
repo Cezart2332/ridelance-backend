@@ -8,6 +8,8 @@ public static class NotificationTypes
     public const string PfaStatusUpdate = "PfaStatusUpdate";
     public const string OnboardingStarted = "OnboardingStarted";
     public const string OnboardingSectionUpdate = "OnboardingSectionUpdate";
+    public const string OnboardingStepAwaitingAdmin = "OnboardingStepAwaitingAdmin";
+    public const string OnboardingStepUpdate = "OnboardingStepUpdate";
     public const string DocumentUploaded = "DocumentUploaded";
     public const string DocumentAiCheck = "DocumentAiCheck";
     public const string DocumentStatusUpdate = "DocumentStatusUpdate";

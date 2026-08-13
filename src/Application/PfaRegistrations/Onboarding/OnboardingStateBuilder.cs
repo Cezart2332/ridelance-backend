@@ -9,14 +9,25 @@ public sealed record OnboardingSectionDto(
     DateTime? SubmittedAtUtc,
     DateTime? ValidatedAtUtc);
 
-/// <summary>Un pas al onboardingului (6 pași), cu status derivat din frunzele/semnalele lui.</summary>
+/// <summary>
+/// Un pas al onboardingului (6 pași), cu status derivat din frunzele/semnalele lui.
+///
+/// <c>Status</c> și <c>State</c> descriu același lucru în două vocabulare. <c>Status</c> e cel
+/// istoric, păstrat cât timp mai există consumatori pe el; <c>State</c> e cel din specul v3, care
+/// separă „disponibil” de „în lucru” și scoate respingerea din frontend pe server. Ambele se derivă
+/// din aceeași sursă, deci nu pot diverge.
+/// </summary>
 public sealed record OnboardingStepDto(
     int Order,
     string Key,
     string Label,
     string Status,
     string? BlockReason,
-    string Path);
+    string Path,
+    // locked | available | in_progress | pending_admin | completed | rejected
+    string State = "locked",
+    // user | admin — cine face tranziția finală a pasului.
+    string OwnedBy = "user");
 
 public sealed record OnboardingStateResponse(
     Guid? PfaRegistrationId,
@@ -28,6 +39,9 @@ public sealed record OnboardingStateResponse(
     bool AllSectionsValidated,
     // Proiecția pe 6 pași (grupare în cod, status derivat — niciodată stocat).
     List<OnboardingStepDto> Steps,
+    // Cheia pasului la care e oprit șoferul acum — singurul pe care se poate scrie. Null când
+    // onboardingul e complet. Frontendul nu mai calculează asta singur.
+    string? CurrentStep = null,
     // Ramura „Nu am PFA": unde a rămas dosarul de înființare, ca pasul PFA să trimită direct
     // în etapa potrivită. Null pentru „Am PFA".
     string? CompanyFormationStatus = null,
@@ -102,6 +116,7 @@ internal static class OnboardingStateBuilder
             sections,
             allStepsCompleted,
             steps,
+            OnboardingStepCatalog.CurrentStepKey(steps),
             registration?.CompanyFormationRequest?.Status.ToString(),
             registration?.CompanyFormationRequest?.CurrentStage.ToString());
     }

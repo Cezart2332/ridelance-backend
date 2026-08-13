@@ -10,13 +10,25 @@ namespace Application.PfaRegistrations.Onboarding.Platforms;
 public sealed record SelectPlatformsCommand(Guid UserId, bool UberSelected, bool BoltSelected)
     : ICommand<PlatformOnboardingResponse>;
 
-internal sealed class SelectPlatformsCommandHandler(IApplicationDbContext context)
+internal sealed class SelectPlatformsCommandHandler(
+    IApplicationDbContext context,
+    OnboardingStateService stateService)
     : ICommandHandler<SelectPlatformsCommand, PlatformOnboardingResponse>
 {
     public async Task<Result<PlatformOnboardingResponse>> Handle(
         SelectPlatformsCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Platforms, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<PlatformOnboardingResponse>(guard.Error);
+        }
+
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.PlatformAccounts)
             .Where(r => r.UserId == command.UserId)

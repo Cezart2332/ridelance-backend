@@ -27,13 +27,24 @@ public sealed record SubmitPlatformAccountCommand(
 
 internal sealed class SubmitPlatformAccountCommandHandler(
     IApplicationDbContext context,
-    ISecretProtector secretProtector)
+    ISecretProtector secretProtector,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitPlatformAccountCommand, PlatformOnboardingResponse>
 {
     public async Task<Result<PlatformOnboardingResponse>> Handle(
         SubmitPlatformAccountCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Platforms, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<PlatformOnboardingResponse>(guard.Error);
+        }
+
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.PlatformAccounts)
             .Where(r => r.UserId == command.UserId)

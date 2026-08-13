@@ -21,13 +21,24 @@ public sealed record SubmitCopyRequestCommand(
 
 internal sealed class SubmitCopyRequestCommandHandler(
     IApplicationDbContext context,
-    IAppSettings appSettings)
+    IAppSettings appSettings,
+    OnboardingStateService stateService)
     : ICommandHandler<SubmitCopyRequestCommand, VehicleStateResponse>
 {
     public async Task<Result<VehicleStateResponse>> Handle(
         SubmitCopyRequestCommand command,
         CancellationToken cancellationToken)
     {
+        // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
+        // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        Result guard = await stateService.EnsureWritableAsync(
+            command.UserId, OnboardingStepKey.Vehicle, cancellationToken);
+
+        if (guard.IsFailure)
+        {
+            return Result.Failure<VehicleStateResponse>(guard.Error);
+        }
+
         if (!CopyConformaRules.IsValidPeriod(command.Years))
         {
             return Result.Failure<VehicleStateResponse>(VehicleShared.InvalidPeriod);

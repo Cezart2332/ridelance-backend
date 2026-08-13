@@ -20,6 +20,14 @@ internal static class Step2Errors
         "Onboarding.Step2.SignatureNotFound",
         "Nu există un pachet de semnături pentru acest dosar.");
 
+    public static readonly Error FiscalIncomplete = Error.Problem(
+        "Onboarding.Step2.FiscalIncomplete",
+        "Completează întâi răspunsul la TVA, contul bancar și consimțămintele Oblio.");
+
+    public static readonly Error RejectionReasonRequired = Error.Problem(
+        "Onboarding.Step2.RejectionReasonRequired",
+        "Respingerea are nevoie de un motiv, care se afișează clientului.");
+
     public static readonly Error VatProofMissing = Error.Problem(
         "Onboarding.Step2.VatProofMissing",
         "Încarcă întâi certificatul de TVA intracomunitar sau decizia ANAF.");
