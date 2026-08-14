@@ -26,6 +26,13 @@ public sealed class PaymentRecord : Entity
     /// <summary>Stripe Checkout Session ID</summary>
     public string? StripeSessionId { get; set; }
 
+    /// <summary>
+    /// Dosarul PFA pentru care s-a plătit, când plata e legată de unul (taxa de înființare).
+    /// Înainte legătura se ghicea din <see cref="Description"/> și <see cref="AmountBani"/>, ceea
+    /// ce însemna că o schimbare de text sau de preț rupea în tăcere poarta de plată.
+    /// </summary>
+    public Guid? PfaRegistrationId { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     // Navigation

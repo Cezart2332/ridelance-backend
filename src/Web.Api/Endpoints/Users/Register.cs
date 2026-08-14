@@ -9,11 +9,15 @@ namespace Web.Api.Endpoints.Users;
 
 internal sealed class Register : IEndpoint
 {
+    /// <summary>
+    /// <c>FirstName</c>/<c>LastName</c> rămân în contract, dar opționale (RL-05): consumatorii
+    /// existenți care încă le trimit nu se sparg.
+    /// </summary>
     public sealed record Request(
         string Email,
-        string FirstName,
-        string LastName,
         string Password,
+        string? FirstName = null,
+        string? LastName = null,
         string? PhoneNumber = null,
         string Role = "Client");
 
@@ -32,9 +36,9 @@ internal sealed class Register : IEndpoint
 
             var command = new RegisterUserCommand(
                 request.Email,
+                request.Password,
                 request.FirstName,
                 request.LastName,
-                request.Password,
                 role,
                 request.PhoneNumber);
 

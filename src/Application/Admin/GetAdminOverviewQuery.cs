@@ -4,6 +4,7 @@ using Domain.Cars;
 using Domain.Documents;
 using Domain.Payments;
 using Domain.PfaRegistrations;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -273,10 +274,10 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
     internal static string CompanyName(PfaRegistration pfa) =>
         !string.IsNullOrWhiteSpace(pfa.FullName)
             ? pfa.FullName
-            : $"{pfa.User.FirstName} {pfa.User.LastName}".Trim();
+            : UserDisplayName.Of(pfa.User);
 
     internal static string HolderName(PfaRegistration pfa) =>
-        $"{pfa.User.FirstName} {pfa.User.LastName}".Trim();
+        UserDisplayName.Of(pfa.User);
 
     internal static string AccountStatus(PfaRegistrationStatus pfaStatus, SubscriptionStatus? subscriptionStatus)
     {

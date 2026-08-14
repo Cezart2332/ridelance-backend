@@ -106,7 +106,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     x.Id,
                     x.UserId,
                     x.UserEmail,
-                    $"{x.UserFirstName} {x.UserLastName}",
+                    UserDisplayName.Of(x.UserFirstName, x.UserLastName, x.UserEmail),
                     x.RegistrationType.ToString(),
                     x.Status.ToString(),
                     accountStatus,

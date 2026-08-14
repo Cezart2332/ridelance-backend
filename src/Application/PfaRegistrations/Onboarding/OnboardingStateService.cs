@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Application.Payments;
+using Domain.Documents;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -88,7 +89,16 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.UserId == userId, cancellationToken);
 
+        // Documentele alimentează checklistul pasului curent (rail-ul dreapta). Le citim o dată,
+        // aici, ca frontendul să nu mai numere singur ce lipsește.
+        List<Document> documents = await context.Documents
+            .AsNoTracking()
+            .Where(d => d.UserId == userId)
+            .ToListAsync(cancellationToken);
+
         bool hasPaidInfiintare = await InfiintarePaymentCheck.HasPaidAsync(context, userId, cancellationToken);
+        bool hasFailedPayment = !hasPaidInfiintare
+            && await InfiintarePaymentCheck.HasFailedAttemptAsync(context, userId, cancellationToken);
 
         if (registration is not null &&
             OnboardingProgress.TryMarkCompleted(registration, eligibility, DateTime.UtcNow))
@@ -96,6 +106,7 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        return OnboardingStateBuilder.Build(registration, hasPaidInfiintare, eligibility);
+        return OnboardingStateBuilder.Build(
+            registration, hasPaidInfiintare, eligibility, hasFailedPayment, documents);
     }
 }

@@ -17,6 +17,9 @@ internal sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.ContentType).HasMaxLength(128).IsRequired();
         builder.Property(d => d.Category).HasConversion<string>().HasMaxLength(64);
         builder.Property(d => d.Status).HasConversion<string>().HasMaxLength(32);
+        builder.Property(d => d.Origin).HasConversion<string>().HasMaxLength(32);
+        // Câmp calculat pe entitate, nu coloană — se derivă din Origin la fiecare citire.
+        builder.Ignore(d => d.IsUserFacing);
         builder.Property(d => d.EncryptedFilePath).HasMaxLength(1024).IsRequired();
         builder.Property(d => d.EncryptionIv).HasMaxLength(64).IsRequired();
         builder.Property(d => d.AiStatus).HasConversion<string>().HasMaxLength(32);

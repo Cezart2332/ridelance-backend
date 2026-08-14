@@ -1,4 +1,6 @@
 using Application.Abstractions.Dossiers;
+using PdfSharp;
+using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using QuestPDF.Fluent;
@@ -26,6 +28,15 @@ internal static class DossierAssembler
     private const long MaxAttachmentBytes = 40L * 1024 * 1024;
 
     private static readonly string[] ImageContentTypes = ["image/jpeg", "image/jpg", "image/png"];
+
+    /// <summary>Marginea paginilor normalizate, în puncte (~15mm). Aceeași pe tot dosarul.</summary>
+    private const double NormalizedMarginPt = 42;
+
+    /// <summary>
+    /// Înălțimea maximă a casetei de imagine, ca o poză portret să nu împingă conținutul peste
+    /// pagină. Lățimea o dă containerul; înălțimea trebuie declarată explicit.
+    /// </summary>
+    private const float ImageBoxHeightMm = 240;
 
     /// <summary>
     /// Întoarce coperta cu atașamentele lipite după ea. Un atașament ilizibil NU pică dosarul —
@@ -84,14 +95,54 @@ internal static class DossierAssembler
         // Deschidem sursa ÎNAINTE de separator: dacă PDF-ul e corupt, aruncă aici și nu rămâne
         // un separator orfan urmat de pagina de eroare.
         using var source = new MemoryStream(attachment.Content);
-        using PdfDocument imported = PdfReader.Open(source, PdfDocumentOpenMode.Import);
+        using var form = XPdfForm.FromStream(source);
+        int pageCount = form.PageCount;
 
         // Separator cu titlul cerinței, ca să se vadă unde începe fiecare document original.
         AppendPdf(output, SeparatorPage(attachment.Label));
-        for (int i = 0; i < imported.PageCount; i++)
+        for (int i = 1; i <= pageCount; i++)
         {
-            output.AddPage(imported.Pages[i]);
+            form.PageNumber = i;
+            AppendNormalizedToA4(output, form);
         }
+    }
+
+    /// <summary>
+    /// Redesenează o pagină străină pe o pagină A4 a dosarului, scalată să încapă și centrată.
+    ///
+    /// Fără asta, pagina intra în dosar cu dimensiunea ei originală — iar sursele reale nu sunt
+    /// A4: scanurile vin în Letter sau la DPI-ul scannerului, iar PDF-urile compuse de aplicație
+    /// din poze aveau, până la fixul din <c>src/utils/imagesToPdf.ts</c>, pagini de câteva sute de
+    /// milimetri. Asta era cauza reală a „pozelor care ies din pagină", nu modul de încadrare al
+    /// imaginii: QuestPDF folosea deja <c>FitArea</c>.
+    ///
+    /// Se desenează ca formă vectorială (<see cref="XPdfForm"/>), nu ca imagine rasterizată, ca
+    /// textul documentelor scanate digital să rămână selectabil și fișierul să nu se umfle.
+    /// </summary>
+    private static void AppendNormalizedToA4(PdfDocument output, XPdfForm form)
+    {
+        PdfPage page = output.AddPage();
+        page.Size = PdfSharp.PageSize.A4;
+        // O pagină lată intră tot pe A4, dar în landscape: altfel s-ar micșora până la ilizibil.
+        page.Orientation = form.PointWidth > form.PointHeight
+            ? PageOrientation.Landscape
+            : PageOrientation.Portrait;
+
+        using var gfx = XGraphics.FromPdfPage(page);
+
+        double boxWidth = page.Width.Point - NormalizedMarginPt * 2;
+        double boxHeight = page.Height.Point - NormalizedMarginPt * 2;
+        double scale = Math.Min(boxWidth / form.PointWidth, boxHeight / form.PointHeight);
+
+        double width = form.PointWidth * scale;
+        double height = form.PointHeight * scale;
+
+        gfx.DrawImage(
+            form,
+            NormalizedMarginPt + (boxWidth - width) / 2,
+            NormalizedMarginPt + (boxHeight - height) / 2,
+            width,
+            height);
     }
 
     private static void AppendPdf(PdfDocument output, byte[] pdf)
@@ -104,8 +155,22 @@ internal static class DossierAssembler
         }
     }
 
+    /// <summary>
+    /// Singurul loc din care se randează o imagine în dosar. Caseta are aceeași lățime și aceeași
+    /// înălțime maximă indiferent de poză: o landscape lasă spațiu sus/jos, una portret lasă
+    /// spațiu stânga/dreapta, iar paginile arată uniform chiar dacă rapoartele diferă.
+    ///
+    /// <c>FitArea</c> peste tot. <c>FitWidth</c>/<c>FitHeight</c> sunt interzise: fiecare din ele
+    /// garantează depășirea pe cealaltă axă.
+    /// </summary>
     private static byte[] ImagePage(DossierAttachment attachment) =>
-        Page(attachment.Label, content => content.Image(attachment.Content).FitArea());
+        Page(attachment.Label, content => content
+            .Border(1).BorderColor(Colors.Grey.Lighten2)
+            .Padding(4)
+            .AlignCenter().AlignMiddle()
+            .MaxHeight(ImageBoxHeightMm, Unit.Millimetre)
+            .Image(attachment.Content)
+            .FitArea());
 
     private static byte[] SeparatorPage(string label) =>
         Page(label, content => content.Text("Documentul original urmează pe paginile următoare.")
@@ -126,5 +191,13 @@ internal static class DossierAssembler
                 page.Header().PaddingBottom(10).Text(label).SemiBold().FontSize(13);
                 body(page.Content());
             });
-        }).GeneratePdf();
+        })
+        // 150 DPI e pragul de la care un act scanat rămâne lizibil la print fără să umfle
+        // dosarul. Fixat explicit, ca ieșirea să nu depindă de valorile implicite ale bibliotecii.
+        .WithSettings(new DocumentSettings
+        {
+            ImageRasterDpi = 150,
+            ImageCompressionQuality = ImageCompressionQuality.High,
+        })
+        .GeneratePdf();
 }

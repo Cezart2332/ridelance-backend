@@ -4,6 +4,7 @@ using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
 using Domain.Documents;
 using Domain.PfaRegistrations;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -56,7 +57,12 @@ internal sealed class GenerateArrDossierCommandHandler(
             OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport),
             cancellationToken);
 
-        string applicantName = $"{registration.User.FirstName} {registration.User.LastName}".Trim();
+        if (UserDisplayName.IsMissing(registration.User))
+        {
+            return Result.Failure<ArrStateResponse>(ArrShared.ApplicantNameMissing);
+        }
+
+        string applicantName = UserDisplayName.Of(registration.User);
         string? address = BuildAddress(registration);
         DateTime nowUtc = DateTime.UtcNow;
 
@@ -89,6 +95,8 @@ internal sealed class GenerateArrDossierCommandHandler(
             StoredFileName = storedFileName,
             ContentType = "application/pdf",
             Category = DocumentCategory.DosarAutorizatieArr,
+            // RL-07 — dosarul îl producem noi, deci nu apare în lista șoferului.
+            Origin = DocumentOrigin.SystemGenerated,
             Status = DocumentStatus.Verified,
             EncryptedFilePath = encrypted.FilePath,
             EncryptionIv = encrypted.Iv,

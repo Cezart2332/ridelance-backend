@@ -1,7 +1,10 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
+using Application.PfaRegistrations.Onboarding;
 using Domain.Payments;
+using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.CompanyFormation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SharedKernel;
@@ -66,6 +69,32 @@ internal sealed class CreateCheckoutSessionCommandHandler(
                 "Planul selectat nu este disponibil."));
         }
 
+        // RL-03 — taxa de înființare se încasează doar pe un dosar care poate fi depus. Poarta stă
+        // aici, nu doar în UI: altfel un apel direct la API ar crea un intent pe date incomplete.
+        Guid? pfaRegistrationId = null;
+
+        if (IsInfiintareOnboarding(command))
+        {
+            Result<Guid> gate = await EnsurePayableAsync(command.UserId, cancellationToken);
+
+            if (gate.IsFailure)
+            {
+                return Result.Failure<string>(gate.Error);
+            }
+
+            pfaRegistrationId = gate.Value;
+        }
+
+        if (pfaRegistrationId is not null)
+        {
+            var withPfa = new Dictionary<string, string>(sessionMetadata ?? new Dictionary<string, string>())
+            {
+                // Webhookul leagă plata de dosar din asta, în loc să ghicească din descriere.
+                ["pfaRegistrationId"] = pfaRegistrationId.Value.ToString(),
+            };
+            sessionMetadata = withPfa;
+        }
+
         string priceId = await stripeService.ResolvePriceIdAsync(catalogItem, cancellationToken);
 
         string sessionUrl = await stripeService.CreateCheckoutSessionAsync(
@@ -77,8 +106,69 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             command.UserId.ToString(),
             metadata,
             sessionMetadata,
+            // Dublu-click pe „Plătește” nu are voie să producă două sesiuni. Cheia e stabilă cât
+            // timp dosarul și planul sunt aceleași, deci reîncercarea reia aceeași plată.
+            pfaRegistrationId is null ? null : $"infiintare:{pfaRegistrationId}:{command.Plan}",
             cancellationToken);
 
         return sessionUrl;
+    }
+
+    private static bool IsInfiintareOnboarding(CreateCheckoutSessionCommand command) =>
+        command.Mode == "payment"
+        && command.Plan.Equals("infiintare_pfa", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Întoarce dosarul plătibil, sau 422 cu ce mai lipsește. Mesajul e cel arătat clientului,
+    /// deci enumeră etapele, nu numele câmpurilor din DB.
+    /// </summary>
+    private async Task<Result<Guid>> EnsurePayableAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        PfaRegistration? registration = await context.PfaRegistrations
+            .AsNoTracking()
+            .Include(r => r.CompanyFormationRequest)
+            .Where(r => r.UserId == userId)
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (registration is null)
+        {
+            return Result.Failure<Guid>(Error.Unprocessable(
+                "Checkout.NoRegistration",
+                "Deschide întâi dosarul de înființare."));
+        }
+
+        bool hasPaid = await InfiintarePaymentCheck.HasPaidAsync(context, userId, cancellationToken);
+
+        if (hasPaid)
+        {
+            return Result.Failure<Guid>(Error.Unprocessable(
+                "Checkout.AlreadyPaid",
+                "Înființarea este deja achitată."));
+        }
+
+        if (OnboardingStateBuilder.CanPayInfiintare(registration, hasPaid))
+        {
+            return Result.Success(registration.Id);
+        }
+
+        CompanyFormationRequest? formation = registration.CompanyFormationRequest;
+        var missing = new List<string>();
+
+        if (formation is null || !formation.PersonalDataComplete)
+        {
+            missing.Add("datele personale");
+        }
+
+        if (formation is null || !formation.RegisteredOfficeComplete)
+        {
+            missing.Add("sediul profesional");
+        }
+
+        missing.Add("semnarea dosarului");
+
+        return Result.Failure<Guid>(Error.Unprocessable(
+            "Checkout.FormationIncomplete",
+            $"Dosarul nu poate fi depus încă. Mai lipsește: {string.Join(", ", missing)}."));
     }
 }

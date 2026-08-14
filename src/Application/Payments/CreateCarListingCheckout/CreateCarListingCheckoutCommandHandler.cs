@@ -60,7 +60,7 @@ internal sealed class CreateCarListingCheckoutCommandHandler(
 
         string priceId = await stripeService.ResolvePriceIdAsync(
             StripeCatalog.CarListingMonthly,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
 #pragma warning disable S1075 // URIs should not be hardcoded
         string baseUrl = configuration["App:BaseUrl"]
@@ -88,7 +88,7 @@ internal sealed class CreateCarListingCheckoutCommandHandler(
             user.Id.ToString(),
             $"kind:car_listing|carId:{car.Id}",
             sessionMetadata,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         car.PaymentStatus = CarListingPaymentStatus.Pending;
         car.Active = false;

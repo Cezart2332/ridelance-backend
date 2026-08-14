@@ -47,6 +47,7 @@ public static class CustomResults
                 ErrorType.Problem => "https://tools.ietf.org/html/rfc7231#section-6.5.1",
                 ErrorType.NotFound => "https://tools.ietf.org/html/rfc7231#section-6.5.4",
                 ErrorType.Conflict => "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                ErrorType.Unprocessable => "https://tools.ietf.org/html/rfc4918#section-11.2",
                 ErrorType.Failure => "https://tools.ietf.org/html/rfc7231#section-6.5.1",
                 _ => "https://tools.ietf.org/html/rfc7231#section-6.6.1"
             };
@@ -57,6 +58,7 @@ public static class CustomResults
                 ErrorType.Validation or ErrorType.Problem or ErrorType.Failure => StatusCodes.Status400BadRequest,
                 ErrorType.NotFound => StatusCodes.Status404NotFound,
                 ErrorType.Conflict => StatusCodes.Status409Conflict,
+                ErrorType.Unprocessable => StatusCodes.Status422UnprocessableEntity,
                 _ => StatusCodes.Status500InternalServerError
             };
 

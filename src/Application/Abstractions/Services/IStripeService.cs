@@ -21,6 +21,11 @@ public interface IStripeService
         string? userId,
         string? metadata,
         IReadOnlyDictionary<string, string>? sessionMetadata = null,
+        /// <summary>
+        /// Cheie de idempotență trimisă la Stripe: două cereri cu aceeași cheie întorc aceeași
+        /// sesiune, deci un dublu-click nu produce două plăți.
+        /// </summary>
+        string? idempotencyKey = null,
         CancellationToken cancellationToken = default);
 #pragma warning restore CA1054
 
