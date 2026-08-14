@@ -6,6 +6,7 @@ public sealed record GetAllCarsQuery(bool AdminMode = false, Guid? PosterUserId 
 
 public sealed record CarDto(
     Guid Id,
+    string Slug,
     string Brand,
     string Model,
     int Year,
@@ -36,4 +37,4 @@ public sealed record CarDto(
 public sealed record CarImageDto(Guid Id, string ImageUrl, int DisplayOrder);
 #pragma warning restore CA1054
 
-public sealed record CarStatsDto(int Views, int Clicks, int Forms);
+public sealed record CarStatsDto(int Views, int UniqueViews, int ViewsLast7Days, int Clicks, int Forms);

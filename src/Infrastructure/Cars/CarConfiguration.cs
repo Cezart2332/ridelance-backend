@@ -13,6 +13,7 @@ internal sealed class CarConfiguration : IEntityTypeConfiguration<Car>
 
         builder.Property(c => c.Brand).HasMaxLength(128).IsRequired();
         builder.Property(c => c.Model).HasMaxLength(256).IsRequired();
+        builder.Property(c => c.Slug).HasMaxLength(160).IsRequired();
         builder.Property(c => c.Engine).HasMaxLength(64).IsRequired();
         builder.Property(c => c.Transmission).HasMaxLength(32).IsRequired();
         builder.Property(c => c.Location).HasMaxLength(512).IsRequired();
@@ -29,6 +30,7 @@ internal sealed class CarConfiguration : IEntityTypeConfiguration<Car>
         builder.Property(c => c.StripeSubscriptionId).HasMaxLength(128);
         builder.Property(c => c.PostedByUserId);
 
+        builder.HasIndex(c => c.Slug).IsUnique();
         builder.HasIndex(c => c.StripeCheckoutSessionId);
         builder.HasIndex(c => c.StripeSubscriptionId);
 

@@ -1,6 +1,8 @@
 using Application.Abstractions.Messaging;
-using Application.Cars.Commands.RecordCarAnalytics;
-using Domain.Cars;
+using Application.Cars;
+using Application.Cars.Commands.RecordCarClick;
+using Application.Cars.Commands.RecordCarView;
+using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
 using Web.Api.Infrastructure;
 
@@ -8,26 +10,44 @@ namespace Web.Api.Endpoints.Cars;
 
 internal sealed class RecordAnalytics : IEndpoint
 {
+    /// <summary>Folosit dacă nu e configurat `Cars:ViewSalt`. Schimbă hash-urile, nu le slăbește.</summary>
+    private const string FallbackSalt = "ridelance-car-views";
+
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("cars/{id:guid}/analytics/view", (Guid id, ICommandHandler<RecordCarAnalyticsCommand> handler, CancellationToken ct) =>
-            Record(id, CarAnalyticsEventType.View, handler, ct))
-            .AllowAnonymous()
-            .WithTags(Tags.Cars);
+        // Ruta rămâne cea veche: serviciul din frontend și dashboardurile o folosesc deja.
+        app.MapPost("cars/{id:guid}/analytics/view", async (
+            Guid id,
+            [FromBody] RecordViewRequest? request,
+            HttpContext httpContext,
+            IConfiguration configuration,
+            ICommandHandler<RecordCarViewCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            string visitorHash = VisitorFingerprint.Compute(
+                httpContext.Connection.RemoteIpAddress?.ToString(),
+                httpContext.Request.Headers.UserAgent.ToString(),
+                configuration["Cars:ViewSalt"] ?? FallbackSalt);
 
-        app.MapPost("cars/{id:guid}/analytics/click", (Guid id, ICommandHandler<RecordCarAnalyticsCommand> handler, CancellationToken ct) =>
-            Record(id, CarAnalyticsEventType.Click, handler, ct))
-            .AllowAnonymous()
-            .WithTags(Tags.Cars);
-    }
+            var command = new RecordCarViewCommand(id, visitorHash, request?.Source ?? "vdp");
+            Result result = await handler.Handle(command, cancellationToken);
 
-    private static async Task<IResult> Record(
-        Guid carId,
-        CarAnalyticsEventType eventType,
-        ICommandHandler<RecordCarAnalyticsCommand> handler,
-        CancellationToken cancellationToken)
-    {
-        Result result = await handler.Handle(new RecordCarAnalyticsCommand(carId, eventType), cancellationToken);
-        return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+            return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+        })
+        .AllowAnonymous()
+        .WithTags(Tags.Cars);
+
+        app.MapPost("cars/{id:guid}/analytics/click", async (
+            Guid id,
+            ICommandHandler<RecordCarClickCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(new RecordCarClickCommand(id), cancellationToken);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+        })
+        .AllowAnonymous()
+        .WithTags(Tags.Cars);
     }
 }
+
+internal sealed record RecordViewRequest(string? Source);

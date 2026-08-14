@@ -63,12 +63,14 @@ internal sealed class CreateCarCommandHandler(
 
         bool isAdmin = user.Role == UserRole.Admin;
         bool requiresPayment = user.Role == UserRole.CarPoster;
+        var carId = Guid.NewGuid();
         var car = new Car
         {
-            Id = Guid.NewGuid(),
+            Id = carId,
             Brand = command.Brand,
             Model = command.Model,
             Year = command.Year,
+            Slug = CarSlug.Generate(command.Brand, command.Model, command.Year, carId),
             Engine = command.Engine,
             Transmission = command.Transmission,
             Location = command.Location,

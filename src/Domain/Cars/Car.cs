@@ -9,6 +9,9 @@ public sealed class Car : Entity
     public string Model { get; set; } = string.Empty;
     public int Year { get; set; }
 
+    /// <summary>Identitatea din URL-ul public (<see cref="CarSlug"/>). Unică pe tot tabelul.</summary>
+    public string Slug { get; set; } = string.Empty;
+
     // Specs
     public string Engine { get; set; } = string.Empty;       // Electric, Hybrid, GPL, Benzină, Diesel
     public string Transmission { get; set; } = string.Empty; // Automată, Manuală
@@ -52,6 +55,9 @@ public sealed class Car : Entity
 
     // Analytics (forms = Leads.Count)
     public int ViewCount { get; set; }
+
+    /// <summary>Vizitatori distincți, după hash. Un refresh nu îl mai mișcă.</summary>
+    public int UniqueViewCount { get; set; }
     public int ClickCount { get; set; }
 
     // Navigation

@@ -6,12 +6,17 @@ namespace Application.Cars;
 
 internal static class CarDtoMapper
 {
-    public static CarStatsDto MapStats(Car car) =>
-        new(car.ViewCount, car.ClickCount, car.Leads.Count);
+    public static CarStatsDto MapStats(Car car, int viewsLast7Days) =>
+        new(car.ViewCount, car.UniqueViewCount, viewsLast7Days, car.ClickCount, car.Leads.Count);
 
-    public static CarDto ToDto(Car car, bool postedByAdmin) =>
+    /// <param name="viewsLast7Days">
+    /// Se numără din <c>car_views</c>, deci îl aduce apelantul: pentru o listă e o singură grupare,
+    /// nu un query per mașină.
+    /// </param>
+    public static CarDto ToDto(Car car, bool postedByAdmin, int viewsLast7Days = 0) =>
         new(
             car.Id,
+            car.Slug,
             car.Brand,
             car.Model,
             car.Year,
@@ -38,7 +43,7 @@ internal static class CarDtoMapper
                 .Select(i => new CarImageDto(i.Id, i.Url, i.DisplayOrder))
                 .ToList(),
             car.CreatedAtUtc,
-            MapStats(car));
+            MapStats(car, viewsLast7Days));
 
     public static bool IsPostedByAdmin(Car car, IReadOnlyDictionary<Guid, UserRole> posterRoles) =>
         car.PostedByUserId is null

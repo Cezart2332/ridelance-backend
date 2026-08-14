@@ -72,6 +72,15 @@ internal sealed class UpdateCarCommandHandler(
         car.Brand = command.Brand;
         car.Model = command.Model;
         car.Year = command.Year;
+
+        // Slug-ul urmează denumirea, altfel linkul ar contrazice pagina. Cel vechi nu se păstrează:
+        // intrarea prin URL-ul depășit pică pe Id și e redirectată către cel canonic.
+        string slug = CarSlug.Generate(command.Brand, command.Model, command.Year, car.Id);
+        if (!string.Equals(car.Slug, slug, StringComparison.Ordinal))
+        {
+            car.Slug = slug;
+        }
+
         car.Engine = command.Engine;
         car.Transmission = command.Transmission;
         car.Location = command.Location;
