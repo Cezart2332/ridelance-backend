@@ -63,6 +63,7 @@ public sealed class ApplicationDbContext(
     public DbSet<Car> Cars { get; set; }
     public DbSet<CarImage> CarImages { get; set; }
     public DbSet<CarLead> CarLeads { get; set; }
+    public DbSet<CarView> CarViews { get; set; }
     public DbSet<UserSubscription> UserSubscriptions { get; set; }
     public DbSet<PaymentRecord> PaymentRecords { get; set; }
     public DbSet<ServiceOrder> ServiceOrders { get; set; }

@@ -43,8 +43,24 @@ internal sealed class GetAllCarsQueryHandler(IApplicationDbContext context)
                 .Where(u => posterIds.Contains(u.Id))
                 .ToDictionaryAsync(u => u.Id, u => u.Role, cancellationToken);
 
+        // O singură grupare pentru toată lista: un `count` per mașină ar fi zeci de query-uri.
+        var carIds = cars.Select(c => c.Id).ToList();
+        DateTime since = DateTime.UtcNow.AddDays(-7);
+
+        Dictionary<Guid, int> recentViews = carIds.Count == 0
+            ? []
+            : await context.CarViews
+                .AsNoTracking()
+                .Where(v => carIds.Contains(v.CarId) && v.CreatedAtUtc >= since)
+                .GroupBy(v => v.CarId)
+                .Select(g => new { CarId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.CarId, x => x.Count, cancellationToken);
+
         var dtos = cars
-            .Select(c => CarDtoMapper.ToDto(c, CarDtoMapper.IsPostedByAdmin(c, posterRoles)))
+            .Select(c => CarDtoMapper.ToDto(
+                c,
+                CarDtoMapper.IsPostedByAdmin(c, posterRoles),
+                recentViews.GetValueOrDefault(c.Id)))
             .ToList();
 
         return dtos;

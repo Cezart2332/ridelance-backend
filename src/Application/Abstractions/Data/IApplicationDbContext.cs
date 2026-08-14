@@ -57,6 +57,7 @@ public interface IApplicationDbContext
     DbSet<Car> Cars { get; }
     DbSet<CarImage> CarImages { get; }
     DbSet<CarLead> CarLeads { get; }
+    DbSet<CarView> CarViews { get; }
     DbSet<UserSubscription> UserSubscriptions { get; }
     DbSet<PaymentRecord> PaymentRecords { get; }
     DbSet<ServiceOrder> ServiceOrders { get; }

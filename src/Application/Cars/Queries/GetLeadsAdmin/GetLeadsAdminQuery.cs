@@ -19,6 +19,11 @@ public sealed record CarLeadDto(
     string UserPhone,
     string City,
     string InterestType,
+    string Intent,
+    DateOnly? PreferredStartDate,
+    int? Weeks,
+    bool? HasPlatformAccount,
+    string? Message,
     string Status,
     string? AdminNote,
     DateTime CreatedAtUtc);
@@ -66,6 +71,8 @@ internal sealed class GetLeadsAdminQueryHandler(
                 l.UserName, l.UserEmail, l.UserPhone,
                 l.City,
                 l.InterestType,
+                l.Intent.ToString(),
+                l.PreferredStartDate, l.Weeks, l.HasPlatformAccount, l.Message,
                 l.Status.ToString(), l.AdminNote,
                 l.CreatedAtUtc))
             .ToListAsync(cancellationToken);
