@@ -26,6 +26,10 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
             .Include(r => r.FiscalProfile)
             .Include(r => r.BankAccountDeclaration)
             .Include(r => r.OblioAccount)
+            // Fără pachetul de semnături și cererea de înființare, BuildSteps de mai jos derivă
+            // pașii „fiscal" și „pfa" din navigații null: skipul ar recalcula mereu același pas.
+            .Include(r => r.SignaturePacket)
+            .Include(r => r.CompanyFormationRequest)
             .Include(r => r.ArrAuthorizationRequest)
             .Include(r => r.PlatformAccounts)
             .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
@@ -150,6 +154,18 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
         oblio.TermsAcceptedConsent = true;
         oblio.IntegrationStatus = OblioIntegrationStatus.Active;
         oblio.UpdatedAtUtc = now;
+
+        // Pasul se închide doar cu pachetul de semnături finalizat (vezi FiscalStatusOf). Partea
+        // asta o face adminul în realitate, deci skipul trebuie să o forțeze explicit — altfel
+        // pasul rămâne InProgress și fiecare apel îl alege din nou.
+        OnboardingSignaturePacket packet = registration.SignaturePacket ?? AddSignaturePacket(registration, now);
+        packet.Status = SignaturePacketStatus.Completed;
+        packet.SubmittedForReviewAtUtc ??= now;
+        packet.SignedAtUtc ??= now;
+        packet.PackageName ??= "Test Skip";
+        packet.SignatureCount ??= 1;
+        packet.RejectionReason = null;
+        packet.UpdatedAtUtc = now;
     }
 
     private void ForceArr(PfaRegistration registration, DateTime now)
@@ -253,6 +269,19 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
         context.PfaOblioAccounts.Add(oblio);
         registration.OblioAccount = oblio;
         return oblio;
+    }
+
+    private OnboardingSignaturePacket AddSignaturePacket(PfaRegistration registration, DateTime now)
+    {
+        var packet = new OnboardingSignaturePacket
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = registration.Id,
+            CreatedAtUtc = now,
+        };
+        context.OnboardingSignaturePackets.Add(packet);
+        registration.SignaturePacket = packet;
+        return packet;
     }
 
     private ArrAuthorizationRequest AddArr(PfaRegistration registration, DateTime now)
