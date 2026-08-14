@@ -235,6 +235,59 @@ internal sealed class ReactivateAdminPfaCommandHandler(
     }
 }
 
+/// <summary>
+/// RL-05 — numele nu se mai cere la înregistrare, iar OCR-ul îl completează abia după uploadul
+/// buletinului. Adminul are nevoie de o cale manuală pentru conturile care rămân fără el.
+/// </summary>
+public sealed record UpdateAdminPfaClientNameCommand(
+    Guid PfaRegistrationId,
+    string? FirstName,
+    string? LastName) : ICommand<AdminPfaDetailResponse>;
+
+internal sealed class UpdateAdminPfaClientNameCommandHandler(
+    IApplicationDbContext context,
+    IUserContext userContext)
+    : ICommandHandler<UpdateAdminPfaClientNameCommand, AdminPfaDetailResponse>
+{
+    public async Task<Result<AdminPfaDetailResponse>> Handle(
+        UpdateAdminPfaClientNameCommand command,
+        CancellationToken cancellationToken)
+    {
+        Result<PfaRegistration> pfaResult = await AdminPfaActionHelpers.GetPfaForAdminAsync(
+            context,
+            userContext.UserId,
+            command.PfaRegistrationId,
+            cancellationToken);
+
+        if (pfaResult.IsFailure)
+        {
+            return Result.Failure<AdminPfaDetailResponse>(pfaResult.Error);
+        }
+
+        User? client = await context.Users
+            .SingleOrDefaultAsync(u => u.Id == pfaResult.Value.UserId, cancellationToken);
+
+        if (client is null)
+        {
+            return Result.Failure<AdminPfaDetailResponse>(UserErrors.NotFound(pfaResult.Value.UserId));
+        }
+
+        client.FirstName = command.FirstName?.Trim() ?? string.Empty;
+        client.LastName = command.LastName?.Trim() ?? string.Empty;
+
+        await AdminPfaActionHelpers.AddLogAsync(
+            context,
+            pfaResult.Value.Id,
+            userContext.UserId,
+            "ClientNameUpdated",
+            $"Nume client actualizat manual: {UserDisplayName.Of(client)}.",
+            cancellationToken);
+
+        await context.SaveChangesAsync(cancellationToken);
+        return await AdminPfaActionHelpers.LoadDetailAsync(context, pfaResult.Value.Id, cancellationToken);
+    }
+}
+
 internal sealed class UpdateAdminPfaInternalNoteCommandHandler(
     IApplicationDbContext context,
     IUserContext userContext)

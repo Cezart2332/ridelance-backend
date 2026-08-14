@@ -13,6 +13,14 @@ internal static class ArrShared
         "Onboarding.Arr.NoRegistration",
         "Nu există un dosar PFA pentru utilizatorul curent.");
 
+    /// <summary>
+    /// Numele solicitantului se tipărește pe dosarul depus la ARR. De la RL-05 contul poate exista
+    /// fără nume (vine din buletin), așa că aici NU se cade pe email — se cere completarea.
+    /// </summary>
+    public static readonly Error ApplicantNameMissing = Error.Problem(
+        "Onboarding.Arr.ApplicantNameMissing",
+        "Completează numele și prenumele înainte de a genera dosarul — apar pe cererea depusă la ARR.");
+
     public static readonly Error NotFound = Error.NotFound(
         "Onboarding.Arr.NotFound",
         "Nu există o cerere de autorizație ARR pentru acest dosar.");

@@ -137,7 +137,7 @@ internal sealed class InvoiceGenerator(
             return pfa.FullName;
         }
 
-        return user is null ? "Client RIDElance" : $"{user.FirstName} {user.LastName}";
+        return user is null ? "Client RIDElance" : UserDisplayName.Of(user);
     }
 
     private async Task IssueAsync(

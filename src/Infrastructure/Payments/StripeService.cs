@@ -62,6 +62,7 @@ internal sealed class StripeService : IStripeService
         string? userId,
         string? metadata,
         IReadOnlyDictionary<string, string>? sessionMetadata = null,
+        string? idempotencyKey = null,
         CancellationToken cancellationToken = default)
     {
         var meta = new Dictionary<string, string>
@@ -112,7 +113,11 @@ internal sealed class StripeService : IStripeService
         }
 
         var service = new SessionService();
-        Session session = await service.CreateAsync(options, cancellationToken: cancellationToken);
+        RequestOptions? requestOptions = string.IsNullOrWhiteSpace(idempotencyKey)
+            ? null
+            : new RequestOptions { IdempotencyKey = idempotencyKey };
+
+        Session session = await service.CreateAsync(options, requestOptions, cancellationToken);
 
         return session.ClientSecret;
     }

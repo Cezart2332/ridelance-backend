@@ -13,6 +13,18 @@ public sealed class Document : Entity
     public string ContentType { get; set; } = string.Empty;
     public DocumentCategory Category { get; set; }
     public DocumentStatus Status { get; set; } = DocumentStatus.Pending;
+
+    /// <summary>
+    /// Cine a produs documentul. Implicit <see cref="DocumentOrigin.UserUpload"/>: tot ce vine
+    /// prin endpointul de upload e al userului.
+    /// </summary>
+    public DocumentOrigin Origin { get; set; } = DocumentOrigin.UserUpload;
+
+    /// <summary>
+    /// Se arată în onboarding? Câmp calculat, ca frontendul să nu-și inventeze propria regulă —
+    /// altfel două ecrane ar filtra diferit aceeași listă.
+    /// </summary>
+    public bool IsUserFacing => Origin == DocumentOrigin.UserUpload;
     public string EncryptedFilePath { get; set; } = string.Empty;
     public string EncryptionIv { get; set; } = string.Empty;
     public long FileSize { get; set; }

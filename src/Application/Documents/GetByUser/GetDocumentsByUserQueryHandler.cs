@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Domain.Documents;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -29,7 +30,9 @@ internal sealed class GetDocumentsByUserQueryHandler(IApplicationDbContext conte
                 d.AiSummary,
                 d.AiDetectedType,
                 d.AiExtractedExpiresAtUtc,
-                d.AiRequiresManualReview))
+                d.AiRequiresManualReview,
+                d.Origin.ToString(),
+                d.Origin == DocumentOrigin.UserUpload))
             .ToListAsync(cancellationToken);
 
         return documents;

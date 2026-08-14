@@ -119,8 +119,10 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(
 
         // Send styled MJML Email
         string mjml = command.NewStatus == PfaRegistrationStatus.Approved
-            ? ClientRegistrationStatusEmail.BuildApprovedMjml(registration.User.FirstName, registration.Cui ?? "")
-            : ClientRegistrationStatusEmail.BuildRejectedMjml(registration.User.FirstName, command.ReviewNote ?? "");
+            ? ClientRegistrationStatusEmail.BuildApprovedMjml(
+                UserDisplayName.GreetingFor(registration.User), registration.Cui ?? "")
+            : ClientRegistrationStatusEmail.BuildRejectedMjml(
+                UserDisplayName.GreetingFor(registration.User), command.ReviewNote ?? "");
 
         string htmlBody = mjmlRenderer.Render(mjml);
         string subject = command.NewStatus == PfaRegistrationStatus.Approved

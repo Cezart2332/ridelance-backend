@@ -17,6 +17,14 @@ internal static class VehicleShared
         "Onboarding.Vehicle.NoRegistration",
         "Nu există un dosar PFA pentru utilizatorul curent.");
 
+    /// <summary>
+    /// Numele solicitantului apare pe cererea de copie conformă. Ca la ARR: fără nume nu se
+    /// generează dosarul, nu se completează cu un fallback.
+    /// </summary>
+    public static readonly Error ApplicantNameMissing = Error.Problem(
+        "Onboarding.Vehicle.ApplicantNameMissing",
+        "Completează numele și prenumele înainte de a genera dosarul — apar pe cererea depusă.");
+
     public static readonly Error VehicleNotFound = Error.NotFound(
         "Onboarding.Vehicle.NotFound",
         "Nu există un vehicul declarat pentru acest dosar.");

@@ -109,6 +109,13 @@ internal sealed class HandleStripeWebhookCommandHandler(
             };
 
 
+            // Legătura cu dosarul vine din metadata sesiunii (RL-03). Fără ea, „a plătit?” ar
+            // rămâne o ghicitoare pe textul descrierii.
+            Guid? pfaRegistrationId =
+                Guid.TryParse(session.Metadata?.GetValueOrDefault("pfaRegistrationId"), out Guid parsedPfaId)
+                    ? parsedPfaId
+                    : null;
+
             var record = new Domain.Payments.PaymentRecord
             {
                 Id = Guid.NewGuid(),
@@ -119,6 +126,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 Description = description,
                 StripePaymentId = session.PaymentIntentId,
                 StripeSessionId = session.Id,
+                PfaRegistrationId = pfaRegistrationId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
             context.PaymentRecords.Add(record);

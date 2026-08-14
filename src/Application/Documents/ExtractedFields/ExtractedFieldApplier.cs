@@ -5,6 +5,7 @@ using Application.Abstractions.Security;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.PfaRegistrations.CompanyFormation;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Documents.ExtractedFields;
@@ -45,9 +46,16 @@ internal sealed class ExtractedFieldApplier(
                 await ApplyToEligibilityAsync(document, fieldKey, normalizedValue, cancellationToken);
                 break;
 
-            // Pasul 1, ramura „Nu am PFA" — datele de identitate citite din cartea de identitate.
+            // RL-04 — numele merge pe cont indiferent de ramură: de la RL-05 încoace contul se
+            // creează fără el, deci buletinul e singura sursă. Dosarul de înființare îl primește
+            // în plus, doar pe ramura „Nu am PFA".
             case "NUME":
             case "PRENUME":
+                await ApplyToUserAsync(document, fieldKey, normalizedValue, cancellationToken);
+                await ApplyToCompanyFormationAsync(document, fieldKey, normalizedValue, cancellationToken);
+                break;
+
+            // Pasul 1, ramura „Nu am PFA" — datele de identitate citite din cartea de identitate.
             case "CNP":
             case "SERIE_ACT":
             case "NUMAR_ACT":
@@ -157,6 +165,36 @@ internal sealed class ExtractedFieldApplier(
 
         profile.Status = evaluation.Status;
         profile.StatusReason = evaluation.Reasons.Count == 0 ? null : string.Join(" · ", evaluation.Reasons);
+    }
+
+    /// <summary>
+    /// RL-04 — completează numele contului din buletin, pe ambele ramuri.
+    ///
+    /// Doar peste gol: un nume pus de user sau corectat de admin nu se suprascrie la re-upload.
+    /// Fără regula asta, o a doua încărcare a buletinului ar șterge tăcut o corecție manuală.
+    /// </summary>
+    private async Task ApplyToUserAsync(
+        Document document, string key, string value, CancellationToken cancellationToken)
+    {
+        User? user = await context.Users
+            .SingleOrDefaultAsync(u => u.Id == document.UserId, cancellationToken);
+
+        if (user is null)
+        {
+            return;
+        }
+
+        switch (key.Trim().ToUpperInvariant())
+        {
+            case "NUME" when string.IsNullOrWhiteSpace(user.LastName):
+                user.LastName = value;
+                break;
+            case "PRENUME" when string.IsNullOrWhiteSpace(user.FirstName):
+                user.FirstName = value;
+                break;
+            default:
+                return;
+        }
     }
 
     /// <summary>

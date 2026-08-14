@@ -59,7 +59,7 @@ internal sealed class CreatePublicServiceCheckoutCommandHandler(
             {
                 ["serviceOrderId"] = order.Id.ToString(),
             },
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         return sessionUrl;
     }

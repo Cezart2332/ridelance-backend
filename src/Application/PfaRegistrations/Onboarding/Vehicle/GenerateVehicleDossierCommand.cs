@@ -4,6 +4,7 @@ using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
 using Domain.Documents;
 using Domain.PfaRegistrations;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -77,7 +78,12 @@ internal sealed class GenerateVehicleDossierCommandHandler(
             .ToList();
         long badgesTotal = vehicle.Badges.Sum(b => b.TotalFeeSnapshotBani);
 
-        string applicantName = $"{registration.User.FirstName} {registration.User.LastName}".Trim();
+        if (UserDisplayName.IsMissing(registration.User))
+        {
+            return Result.Failure<VehicleStateResponse>(VehicleShared.ApplicantNameMissing);
+        }
+
+        string applicantName = UserDisplayName.Of(registration.User);
         string? vehicleDescription = BuildVehicleDescription(vehicle);
 
         var data = new VehicleDossierData(
@@ -116,6 +122,8 @@ internal sealed class GenerateVehicleDossierCommandHandler(
             StoredFileName = storedFileName,
             ContentType = "application/pdf",
             Category = DocumentCategory.DosarCopieConformaEcusoane,
+            // RL-07 — dosarul îl producem noi, deci nu apare în lista șoferului.
+            Origin = DocumentOrigin.SystemGenerated,
             Status = DocumentStatus.Verified,
             EncryptedFilePath = encrypted.FilePath,
             EncryptionIv = encrypted.Iv,

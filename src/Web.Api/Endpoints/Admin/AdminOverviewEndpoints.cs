@@ -15,6 +15,7 @@ internal sealed class AdminOverviewEndpoints : IEndpoint
     public sealed record AdminNoteRequest(string? Note);
     public sealed record SuspendRequest(string? Reason);
     public sealed record UpdateInternalNoteRequest(string Content);
+    public sealed record UpdateClientNameRequest(string? FirstName, string? LastName);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -133,6 +134,22 @@ internal sealed class AdminOverviewEndpoints : IEndpoint
         {
             Result<AdminPfaDetailResponse> result = await handler.Handle(
                 new UpdateAdminPfaInternalNoteCommand(id, request.Content),
+                cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(Permissions.ManagePfaRegistrations)
+        .WithTags(Tags.Admin);
+
+        // RL-05 — completarea manuală a numelui, pentru conturile la care OCR-ul nu a ajuns încă.
+        app.MapPut("admin/pfas/{id:guid}/client-name", async (
+            Guid id,
+            UpdateClientNameRequest request,
+            ICommandHandler<UpdateAdminPfaClientNameCommand, AdminPfaDetailResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<AdminPfaDetailResponse> result = await handler.Handle(
+                new UpdateAdminPfaClientNameCommand(id, request.FirstName, request.LastName),
                 cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         })
