@@ -40,7 +40,7 @@ internal sealed class DisconnectBankConnectionCommandHandler(
         {
             try
             {
-                await provider.DeleteRequisitionAsync(
+                await provider.DeleteConnectionAsync(
                     secretProtector.Unprotect(connection.ProviderRequisitionId),
                     cancellationToken);
             }

@@ -41,7 +41,7 @@ public static class DependencyInjection
         services.AddScoped<PfaRegistrations.Onboarding.OnboardingStateService>();
 
         services.AddScoped<Banking.BankAccountSyncService>();
-        services.AddScoped<Banking.BankConnectionFinalizer>();
+        services.AddScoped<Banking.BankConnectionClaimService>();
 
         return services;
     }

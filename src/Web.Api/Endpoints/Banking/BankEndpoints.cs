@@ -11,8 +11,10 @@ namespace Web.Api.Endpoints.Banking;
 
 internal sealed class BankEndpoints : IEndpoint
 {
-    public sealed record InitiateConnectionRequest(string InstitutionId);
-    public sealed record FinalizeConnectionRequest(string Reference, string? Code = null);
+    /// <param name="InstitutionId">Null lasă alegerea băncii în ecranul providerului.</param>
+    public sealed record InitiateConnectionRequest(string? InstitutionId);
+
+    public sealed record ChooseConnectionRequest(string ProviderConnectionId);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -49,14 +51,16 @@ internal sealed class BankEndpoints : IEndpoint
             return result.Match(Results.Ok, CustomResults.Problem);
         });
 
-        group.MapPost("connection/finalize", async (
-            FinalizeConnectionRequest request,
-            ICommandHandler<FinalizeBankConnectionCommand, BankConnectionResponse> handler,
+        // Cazul ambiguu al revendicării: utilizatorul spune care conexiune e a lui.
+        group.MapPost("connection/choose", async (
+            ChooseConnectionRequest request,
+            ICommandHandler<ChooseBankConnectionCommand, BankConnectionResponse> handler,
             CancellationToken cancellationToken) =>
         {
             Result<BankConnectionResponse> result = await handler.Handle(
-                new FinalizeBankConnectionCommand(request.Reference, request.Code),
+                new ChooseBankConnectionCommand(request.ProviderConnectionId),
                 cancellationToken);
+
             return result.Match(Results.Ok, CustomResults.Problem);
         });
 

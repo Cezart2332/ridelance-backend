@@ -78,6 +78,8 @@ public sealed class ApplicationDbContext(
     public DbSet<BankConnection> BankConnections { get; set; }
     public DbSet<BankAccount> BankAccounts { get; set; }
     public DbSet<BankTransaction> BankTransactions { get; set; }
+
+    public DbSet<BankConnectionClaim> BankConnectionClaims { get; set; }
     public DbSet<UberCsvImport> UberCsvImports { get; set; }
     public DbSet<OfficeAppointment> OfficeAppointments { get; set; }
     public DbSet<OfficeScheduleDay> OfficeScheduleDays { get; set; }

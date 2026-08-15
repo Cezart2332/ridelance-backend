@@ -8,7 +8,10 @@ public sealed class BankConnection : Entity
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
 
-    /// <summary>Data provider identifier (e.g. "GoCardless") — allows swapping providers later.</summary>
+    /// <summary>
+    /// Providerul care deține conexiunea (ex. „Fintable"). Rândurile rămase de la un provider
+    /// anterior se recunosc după el — nu se convertesc, pentru că nu au echivalent.
+    /// </summary>
     public string Provider { get; set; } = string.Empty;
 
     public string InstitutionId { get; set; } = string.Empty;
@@ -21,8 +24,21 @@ public sealed class BankConnection : Entity
     /// <summary>Provider end-user agreement id, encrypted at rest via ISecretProtector.</summary>
     public string? ProviderAgreementId { get; set; }
 
-    /// <summary>Our own reference passed to the provider; comes back in the redirect (?ref=).</summary>
+    /// <summary>
+    /// Referință internă a conexiunii. La providerii cu redirect se întorcea prin `?ref=`;
+    /// la unul care nu redirecționează rămâne doar cheia noastră de corelare.
+    /// </summary>
     public string Reference { get; set; } = string.Empty;
+
+    /// <summary>Când expiră linkul de conectare mintat. După el, o conexiune nerevendicată e pierdută.</summary>
+    public DateTime? LinkExpiresAtUtc { get; set; }
+
+    /// <summary>
+    /// Conexiunile care existau deja la provider în momentul mintării linkului, ca listă JSON.
+    /// Diferența față de lista curentă dă candidații la revendicare — singurul mecanism
+    /// disponibil, de vreme ce linkul nu poate purta o referință de-a noastră.
+    /// </summary>
+    public string? KnownConnectionIdsJson { get; set; }
 
     public BankConnectionStatus Status { get; set; }
     public DateTime? ConsentExpiresAtUtc { get; set; }

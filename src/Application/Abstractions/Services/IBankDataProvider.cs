@@ -1,10 +1,11 @@
 namespace Application.Abstractions.Services;
 
 /// <summary>
-/// Provider-agnostic open-banking (PSD2 AIS) data provider.
-/// Current implementation: GoCardless Bank Account Data. The rest of the system
-/// must depend only on this interface so the provider can be swapped
-/// (e.g. Enable Banking, Salt Edge) without touching handlers, jobs or endpoints.
+/// Partea de date a unui provider de open banking: ce conturi există și ce s-a întâmplat în ele.
+///
+/// Interfața e modelată pe ce poate face efectiv un provider, nu pe un flux anume de autorizare.
+/// Partea de autorizare cu redirect stă separat, în <see cref="IBankRedirectAuthorization"/>,
+/// tocmai ca un provider care nu are așa ceva să nu fie obligat să întoarcă valori inventate.
 /// </summary>
 public interface IBankDataProvider
 {
@@ -16,25 +17,32 @@ public interface IBankDataProvider
         string countryCode,
         CancellationToken cancellationToken = default);
 
-    Task<BankRequisitionCreated> CreateRequisitionAsync(
-        string institutionId,
-        string redirectAddress,
-        string reference,
-        int maxHistoricalDays,
-        int accessValidForDays,
-        CancellationToken cancellationToken = default);
-
-    /// <param name="authorizationCode">
-    /// Codul one-time întors de provider la redirect (ex. Enable Banking ?code=);
-    /// null pentru providerii care nu folosesc schimb de cod (GoCardless).
+    /// <summary>
+    /// Creează linkul din browser prin care utilizatorul își conectează banca.
+    /// </summary>
+    /// <param name="institutionId">
+    /// Banca preselectată, dacă utilizatorul a ales una. Null lasă alegerea în ecranul providerului.
     /// </param>
-    Task<BankRequisitionDetails> GetRequisitionAsync(
-        string requisitionId,
-        string? authorizationCode = null,
+    Task<BankLinkCreated> MintConnectionLinkAsync(
+        string? institutionId,
         CancellationToken cancellationToken = default);
 
-    Task DeleteRequisitionAsync(
-        string requisitionId,
+    /// <summary>Reia autorizarea unei conexiuni existente, păstrându-i identitatea.</summary>
+    Task<BankLinkCreated> MintReconnectLinkAsync(
+        string providerConnectionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Toate conexiunile vizibile cu credențialele configurate.
+    ///
+    /// Cu un token de cont, lista le conține pe ale tuturor utilizatorilor. Cine o consumă e
+    /// responsabil să nu scurgă din ea nimic care nu aparține celui care întreabă.
+    /// </summary>
+    Task<IReadOnlyList<BankProviderConnection>> ListConnectionsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> ListAccountsAsync(
+        string providerConnectionId,
         CancellationToken cancellationToken = default);
 
     Task<BankAccountDetailsInfo> GetAccountDetailsAsync(
@@ -46,39 +54,36 @@ public interface IBankDataProvider
         DateOnly? dateFrom,
         DateOnly? dateTo,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Cere providerului o sincronizare imediată. Best-effort: eșecul nu e fatal.</summary>
+    Task TriggerSyncAsync(
+        string providerConnectionId,
+        CancellationToken cancellationToken = default);
+
+    Task DeleteConnectionAsync(
+        string providerConnectionId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record BankInstitutionInfo(
     string Id,
     string Name,
-    string? Logo,
-    int MaxHistoricalDays);
+    string? Logo);
 
-public sealed record BankRequisitionCreated(
-    string RequisitionId,
-    string? AgreementId,
-    string AuthorizationLink);
+/// <param name="Address">Linkul de browser pe care îl deschide utilizatorul.</param>
+/// <param name="ExpiresAtUtc">Linkul e de unică folosință și expiră; null când providerul nu spune când.</param>
+public sealed record BankLinkCreated(
+    string Address,
+    DateTime? ExpiresAtUtc);
 
-public enum BankRequisitionStatus
-{
-    Created,
-    GivingConsent,
-    UndergoingAuthentication,
-    Linked,
-    Expired,
-    Rejected,
-    Suspended,
-}
-
-/// <param name="UpdatedRequisitionId">
-/// Setat când providerul schimbă identificatorul în timpul finalizării
-/// (ex. Enable Banking: authorization_id devine session_id); se persistă în locul celui vechi.
-/// </param>
-public sealed record BankRequisitionDetails(
-    BankRequisitionStatus Status,
-    IReadOnlyList<string> AccountIds,
-    DateTime? ConsentExpiresAtUtc,
-    string? UpdatedRequisitionId = null);
+/// <summary>O conexiune așa cum o vede providerul, înainte să știm al cui e.</summary>
+public sealed record BankProviderConnection(
+    string Id,
+    string? InstitutionId,
+    string? InstitutionName,
+    string? InstitutionLogo,
+    string? Status,
+    DateTime? CreatedAtUtc);
 
 public sealed record BankAccountDetailsInfo(
     string? Iban,
@@ -120,6 +125,6 @@ public sealed class BankDataRateLimitException(string message, TimeSpan? retryAf
     public TimeSpan? RetryAfter { get; } = retryAfter;
 }
 
-/// <summary>PSD2 consent expired or was revoked — the user must re-authorize.</summary>
+/// <summary>Consimțământul a expirat sau a fost revocat — utilizatorul trebuie să reautorizeze.</summary>
 public sealed class BankDataConsentExpiredException(string message)
     : BankDataProviderException(message);
