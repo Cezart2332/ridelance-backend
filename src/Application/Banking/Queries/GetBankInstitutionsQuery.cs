@@ -7,8 +7,7 @@ namespace Application.Banking.Queries;
 public sealed record BankInstitutionResponse(
     string Id,
     string Name,
-    string? Logo,
-    int MaxHistoricalDays);
+    string? Logo);
 
 public sealed record GetBankInstitutionsQuery : IQuery<List<BankInstitutionResponse>>;
 
@@ -32,7 +31,7 @@ internal sealed class GetBankInstitutionsQueryHandler(IBankDataProvider provider
                 await provider.ListInstitutionsAsync("ro", cancellationToken);
 
             return institutions
-                .Select(i => new BankInstitutionResponse(i.Id, i.Name, i.Logo, i.MaxHistoricalDays))
+                .Select(i => new BankInstitutionResponse(i.Id, i.Name, i.Logo))
                 .ToList();
         }
         catch (BankDataProviderException ex)

@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Application\Application.csproj" />
+    <!-- Maparea răspunsurilor Fintable trăiește în Infrastructure și merită testată direct:
+         e singurul loc unde o sumă citită greșit devine o cifră greșită în dashboard. -->
+    <ProjectReference Include="..\..\src\Infrastructure\Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -72,6 +72,8 @@ public interface IApplicationDbContext
     DbSet<BankConnection> BankConnections { get; }
     DbSet<BankAccount> BankAccounts { get; }
     DbSet<BankTransaction> BankTransactions { get; }
+
+    DbSet<BankConnectionClaim> BankConnectionClaims { get; }
     DbSet<UberCsvImport> UberCsvImports { get; }
     DbSet<OfficeAppointment> OfficeAppointments { get; }
     DbSet<OfficeScheduleDay> OfficeScheduleDays { get; }

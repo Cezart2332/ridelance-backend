@@ -109,25 +109,10 @@ public static class DependencyInjection
         services.AddHttpClient<IDocumentAiAnalyzer, OpenRouterDocumentAiAnalyzer>(client =>
             client.Timeout = TimeSpan.FromMinutes(3));
 
-        // Open banking (PSD2 AIS) — providerul activ e ales din config:
-        // Banking:Provider explicit, altfel Enable Banking dacă are credențiale, altfel GoCardless.
-        services.Configure<GoCardlessOptions>(configuration.GetSection(GoCardlessOptions.SectionName));
-        services.Configure<EnableBankingOptions>(configuration.GetSection(EnableBankingOptions.SectionName));
-
-        string? configuredBankProvider = configuration["Banking:Provider"];
-        bool useEnableBanking = string.IsNullOrWhiteSpace(configuredBankProvider)
-            ? !string.IsNullOrWhiteSpace(configuration["EnableBanking:ApplicationId"]) ||
-              EnableBankingKeyFile.Find() is not null
-            : string.Equals(configuredBankProvider, "EnableBanking", StringComparison.OrdinalIgnoreCase);
-
-        if (useEnableBanking)
-        {
-            services.AddHttpClient<IBankDataProvider, EnableBankingBankDataProvider>();
-        }
-        else
-        {
-            services.AddHttpClient<IBankDataProvider, GoCardlessBankDataProvider>();
-        }
+        // Un singur provider de open banking. Alegerea prin config a dispărut odată cu
+        // Enable Banking și GoCardless — cine vrea altul îl înregistrează aici.
+        services.Configure<FintableOptions>(configuration.GetSection(FintableOptions.SectionName));
+        services.AddHttpClient<IBankDataProvider, FintableBankDataProvider>();
 
         // Background Jobs
         services.AddHostedService<MondayAccessGrantJob>();
