@@ -37,6 +37,10 @@ public enum DocumentCategory
     DosarCopieConformaEcusoane = 32,
     /// <summary>Specimenul de semnătură desenat la finalul dosarului de înființare.</summary>
     SpecimenSemnatura = 33,
+    /// <summary>Avizul psihologic, separat de cel medical: se eliberează de altcineva și expiră altfel.</summary>
+    AvizPsihologic = 36,
+    /// <summary>CASCO — opțional, dar cerut explicit în lista documentelor de mașină.</summary>
+    Casco = 37,
     /// <summary>Rezoluția/încheierea ONRC de la înființare — opțională, pentru arhivă.</summary>
     RezolutieOnrc = 34,
     /// <summary>Orice alt act primit la înființarea PFA-ului — opțional, pentru arhivă.</summary>
