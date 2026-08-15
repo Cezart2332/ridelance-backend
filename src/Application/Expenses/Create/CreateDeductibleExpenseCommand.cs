@@ -2,6 +2,7 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Documents.Upload;
+using Application.Expenses.Ocr;
 using Domain.Documents;
 using Domain.Expenses;
 using Domain.PfaRegistrations;
@@ -23,7 +24,11 @@ public sealed record CreateDeductibleExpenseCommand(
     string FileName,
     string ContentType,
     Stream FileStream,
-    long FileSize) : ICommand<DeductibleExpenseResponse>;
+    long FileSize,
+    DateOnly? ExpenseDate = null,
+    string? SupplierName = null,
+    decimal? VatAmount = null,
+    string? DocumentTypeLabel = null) : ICommand<DeductibleExpenseResponse>;
 
 internal sealed class CreateDeductibleExpenseCommandValidator : AbstractValidator<CreateDeductibleExpenseCommand>
 {
@@ -36,6 +41,13 @@ internal sealed class CreateDeductibleExpenseCommandValidator : AbstractValidato
         RuleFor(c => c.Year).InclusiveBetween(2000, 2100);
         RuleFor(c => c.Month).InclusiveBetween(1, 12);
         RuleFor(c => c.AmountRon).GreaterThanOrEqualTo(0).When(c => c.AmountRon.HasValue);
+        RuleFor(c => c.VatAmount).GreaterThanOrEqualTo(0).When(c => c.VatAmount.HasValue);
+        RuleFor(c => c.SupplierName).MaximumLength(300);
+        RuleFor(c => c.DocumentTypeLabel).MaximumLength(100);
+        // TVA-ul nu poate depăși totalul; o extragere care spune altfel a citit greșit ceva.
+        RuleFor(c => c)
+            .Must(c => MoneyParser.IsVatPlausible(c.AmountRon, c.VatAmount))
+            .WithMessage("TVA-ul nu poate depăși suma totală.");
         RuleFor(c => c.FileName).NotEmpty();
         RuleFor(c => c.FileSize).GreaterThan(0);
     }
@@ -122,7 +134,15 @@ internal sealed class CreateDeductibleExpenseCommandHandler(
             AmountRon = command.AmountRon,
             Year = command.Year,
             Month = command.Month,
+            ExpenseDate = command.ExpenseDate,
+            SupplierName = string.IsNullOrWhiteSpace(command.SupplierName) ? null : command.SupplierName.Trim(),
+            VatAmount = command.VatAmount,
+            DocumentTypeLabel = string.IsNullOrWhiteSpace(command.DocumentTypeLabel) ? null : command.DocumentTypeLabel.Trim(),
+            // Fără sumă nu există cheltuială de calculat: rândul rămâne ciornă până când omul
+            // completează ce n-a putut citi OCR-ul.
+            Status = command.AmountRon.HasValue ? ExpenseStatus.Confirmed : ExpenseStatus.Draft,
             CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow,
             CreatedByUserId = userContext.UserId,
         };
 
@@ -173,5 +193,12 @@ internal sealed class CreateDeductibleExpenseCommandHandler(
             document.FileSize,
             document.UploadedAtUtc,
             expense.CreatedAtUtc,
-            expense.CreatedByUserId);
+            expense.CreatedByUserId,
+            expense.ExpenseDate,
+            expense.SupplierName,
+            expense.VatAmount,
+            expense.Currency,
+            expense.DocumentTypeLabel,
+            expense.Source.ToString(),
+            expense.Status.ToString());
 }

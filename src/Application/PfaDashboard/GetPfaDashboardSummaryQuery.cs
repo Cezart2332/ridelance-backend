@@ -5,6 +5,7 @@ using Application.Abstractions.Messaging;
 using Application.PfaRegistrations;
 using Domain.Bolt;
 using Domain.Documents;
+using Domain.Expenses;
 using Domain.PfaRegistrations;
 using Domain.Uber;
 using Microsoft.EntityFrameworkCore;
@@ -48,12 +49,18 @@ public sealed record PfaTaxReserveResponse(
     List<PfaTaxComponentResponse> Components,
     PfaFiscalMonthReferenceResponse FiscalMonth);
 
+/// <param name="ExpensesAwaitingReview">
+/// Cât din cheltuielile perioadei a intrat în calcul, dar are documentul încă neverificat de
+/// RIDElance. Zero înseamnă că totul e validat. Cifra există ca profitul să nu pară mai sigur
+/// decât e: suma contează deja, dar nu a trecut încă pe la un om.
+/// </param>
 public sealed record PfaRealProfitResponse(
     decimal NetEarnings,
     decimal DeductibleExpenses,
     decimal EstimatedTaxes,
     decimal Value,
-    decimal? RetentionRatio);
+    decimal? RetentionRatio,
+    decimal ExpensesAwaitingReview);
 
 public sealed record PfaPlatformSplitResponse(
     string Platform,
@@ -79,10 +86,18 @@ public sealed record PfaFeesAndTaxesPointResponse(
     decimal VatIntracom,
     decimal BoltNonResident);
 
+/// <summary>
+/// Un bucket din seria financiară. Cheltuielile și taxele nu au dată proprie, deci se
+/// repartizează proporțional cu încasările — repartizarea se face aici, o singură dată, și
+/// se trimite gata calculată. Frontendul nu are voie să o refacă: dacă regula se schimbă,
+/// un grafic care și-o deduce singur ar diverge tăcut de linia de profit de lângă el.
+/// </summary>
 public sealed record PfaRealProfitPointResponse(
     string Bucket,
     string Label,
     decimal NetEarnings,
+    decimal DeductibleExpenses,
+    decimal EstimatedTaxes,
     decimal Value);
 
 public sealed record PfaDashboardSeriesResponse(
@@ -189,21 +204,25 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
                 .Where(i => i.PfaRegistrationId == pfa.Id)
                 .ToListAsync(cancellationToken);
 
-        // Doar cheltuielile cu document verificat scad baza impozabilă — aceeași regulă
-        // ca în /users/dashboard-summary.
-        List<(int Year, int Month, decimal Amount)> verifiedExpenses = pfa is null
+        // Confirmarea utilizatorului decide ce intră în calcul: cheltuiala are efect imediat,
+        // cum cere spec-ul §7.2. Verificarea documentului de către admin rămâne un semnal
+        // separat — se numără mai jos și se afișează ca „în verificare", ca userul să vadă și
+        // efectul, și faptul că suma nu e încă validată.
+        var confirmedExpenses = pfa is null
             ? []
-            : (await context.DeductibleExpenses
+            : await context.DeductibleExpenses
                 .AsNoTracking()
-                .Where(e => e.PfaRegistrationId == pfa.Id)
+                .Where(e => e.PfaRegistrationId == pfa.Id && e.Status == ExpenseStatus.Confirmed)
                 .Join(
-                    context.Documents.AsNoTracking().Where(d => d.Status == DocumentStatus.Verified),
+                    context.Documents.AsNoTracking(),
                     e => e.DocumentId,
                     d => d.Id,
-                    (e, _) => new { e.Year, e.Month, e.AmountRon })
-                .ToListAsync(cancellationToken))
-                .Select(e => (e.Year, e.Month, e.AmountRon ?? 0m))
-                .ToList();
+                    (e, d) => new { e.Year, e.Month, e.AmountRon, DocumentStatus = d.Status })
+                .ToListAsync(cancellationToken);
+
+        List<(int Year, int Month, decimal Amount)> verifiedExpenses = confirmedExpenses
+            .Select(e => (e.Year, e.Month, e.AmountRon ?? 0m))
+            .ToList();
 
         int fiscalYear = period.To.Year;
         List<PfaMonthlyIncome> yearIncomes = pfa is null
@@ -217,7 +236,14 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
         decimal annualExpenses = verifiedExpenses.Where(e => e.Year == fiscalYear).Sum(e => e.Amount);
         PfaTaxCalculator.TaxResult annualTaxes = PfaTaxCalculator.Compute(annualIncome, annualExpenses, fiscalYear);
 
+        // Aceleași luni ca intervalul afișat, dar doar partea cu documentul încă neverificat.
+        List<(int Year, int Month, decimal Amount)> awaitingReview = confirmedExpenses
+            .Where(e => e.DocumentStatus != DocumentStatus.Verified)
+            .Select(e => (e.Year, e.Month, e.AmountRon ?? 0m))
+            .ToList();
+
         var aggregation = new AggregationContext(boltOrders, uberImports, verifiedExpenses, timeZone, platform, payment);
+        var awaitingAggregation = new AggregationContext(boltOrders, uberImports, awaitingReview, timeZone, platform, payment);
 
         PeriodTotals current = Aggregate(aggregation, period);
         PeriodTotals previous = Aggregate(aggregation, previousPeriod);
@@ -225,15 +251,18 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
             ? current
             : Aggregate(aggregation, fiscalMonth);
 
-        TaxReserve currentReserve = BuildReserve(current, annualIncome, annualTaxes);
-        TaxReserve fiscalMonthReserve = period.IsWholeCalendarMonth()
+        TaxReserveResult currentReserve = BuildReserve(current, annualIncome, annualTaxes);
+        TaxReserveResult fiscalMonthReserve = period.IsWholeCalendarMonth()
             ? currentReserve
             : BuildReserve(fiscalMonthTotals, annualIncome, annualTaxes);
 
         string granularity = period.DayCount <= MaxDaysForDailyBuckets ? "day" : "month";
         PfaDashboardSeriesResponse series = BuildSeries(aggregation, period, granularity, current, currentReserve);
 
-        decimal realProfit = current.Net - current.DeductibleExpenses - currentReserve.Total;
+        decimal realProfit = TaxReserveCalculator.RealProfit(
+            current.Net,
+            current.DeductibleExpenses,
+            currentReserve.Total);
 
         return new PfaDashboardSummaryResponse(
             new PfaDashboardPeriodResponse(period.From, period.To, granularity),
@@ -250,7 +279,8 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
                 Round(current.DeductibleExpenses),
                 Round(currentReserve.Total),
                 Round(realProfit),
-                current.Net > 0 ? Math.Round(realProfit / current.Net, 4) : null),
+                current.Net > 0 ? Math.Round(realProfit / current.Net, 4) : null,
+                Round(Aggregate(awaitingAggregation, period).DeductibleExpenses)),
             BuildPlatformSplit(current, platform),
             series,
             new PfaDashboardSourcesResponse(
@@ -392,59 +422,21 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
 
     /* ── Taxe ─────────────────────────────────────────────────────────────── */
 
-    private sealed record TaxReserve(decimal Total, List<PfaTaxComponentResponse> Components);
-
     /// <summary>
-    /// Componentele legate direct de comisioane se calculează exact pe perioadă. CAS/CASS și
-    /// impozitul sunt anuale prin natura lor: se estimează pe tot anul și se alocă perioadei
-    /// proporțional cu ponderea ei în venitul anual.
+    /// Rezerva fiscală a perioadei. Aritmetica trăiește în <see cref="TaxReserveCalculator"/>,
+    /// unde poate fi testată fără bază de date; aici rămâne doar despachetarea totalurilor.
     /// </summary>
-    private TaxReserve BuildReserve(
+    private TaxReserveResult BuildReserve(
         PeriodTotals totals,
         decimal annualIncome,
-        PfaTaxCalculator.TaxResult annualTaxes)
-    {
-        decimal platformFees = totals.Fees;
-        decimal vatIntracom = _fiscal.VatIntracomRate * platformFees;
-        decimal boltNonResident = _fiscal.BoltNonResidentRate * totals.Bolt.Fees;
-
-        decimal share = annualIncome > 0
-            ? Math.Min(1m, totals.Net / annualIncome)
-            : 0m;
-
-        decimal incomeTax = annualTaxes.IncomeTax * share;
-        decimal casCass = (annualTaxes.Cas + annualTaxes.Cass) * share;
-
-        List<PfaTaxComponentResponse> components =
-        [
-            new("vatIntracom",
-                "TVA intracomunitar estimat",
-                Round(vatIntracom),
-                _fiscal.VatIntracomRate,
-                Round(platformFees),
-                $"{_fiscal.VatIntracomRate:P0} din comisionul reținut de platforme"),
-            new("boltNonResident",
-                "Taxă nerezident Bolt",
-                Round(boltNonResident),
-                _fiscal.BoltNonResidentRate,
-                Round(totals.Bolt.Fees),
-                $"{_fiscal.BoltNonResidentRate:P0} din comisionul Bolt"),
-            new("incomeTax",
-                "Impozit pe venit estimat",
-                Round(incomeTax),
-                null,
-                Round(annualTaxes.Profit),
-                "Cota anuală estimată, alocată perioadei după ponderea ei în venitul anual"),
-            new("casCass",
-                "CAS/CASS estimat",
-                Round(casCass),
-                null,
-                Round(annualTaxes.Profit),
-                "Din pragurile fiscale ale anului, alocate perioadei după ponderea ei în venitul anual")
-        ];
-
-        return new TaxReserve(components.Sum(c => c.Amount), components);
-    }
+        PfaTaxCalculator.TaxResult annualTaxes) =>
+        TaxReserveCalculator.Compute(
+            totals.Fees,
+            totals.Bolt.Fees,
+            totals.Net,
+            annualIncome,
+            annualTaxes,
+            _fiscal);
 
     /* ── KPI ──────────────────────────────────────────────────────────────── */
 
@@ -510,7 +502,7 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
         PfaDashboardPeriod period,
         string granularity,
         PeriodTotals totals,
-        TaxReserve reserve)
+        TaxReserveResult reserve)
     {
         List<PfaDashboardPeriod> buckets = granularity == "day"
             ? Enumerable.Range(0, period.DayCount)
@@ -565,11 +557,16 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
                 Round(vat),
                 Round(nonResident)));
 
+            decimal bucketExpenses = totals.DeductibleExpenses * share;
+            decimal bucketTaxes = reserve.Total * share;
+
             profitSeries.Add(new PfaRealProfitPointResponse(
                 key,
                 label,
                 Round(bucketTotals.Net),
-                Round(bucketTotals.Net - totals.DeductibleExpenses * share - reserve.Total * share)));
+                Round(bucketExpenses),
+                Round(bucketTaxes),
+                Round(bucketTotals.Net - bucketExpenses - bucketTaxes)));
         }
 
         return new PfaDashboardSeriesResponse(netSeries, feeSeries, profitSeries);

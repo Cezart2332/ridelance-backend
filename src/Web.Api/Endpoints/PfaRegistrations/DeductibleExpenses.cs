@@ -3,6 +3,7 @@ using Application.Abstractions.Messaging;
 using Application.Expenses;
 using Application.Expenses.Create;
 using Application.Expenses.GetByPfa;
+using Application.Expenses.Update;
 using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -37,6 +38,10 @@ internal sealed class DeductibleExpenses : IEndpoint
             [FromForm] decimal? amountRon,
             [FromForm] int year,
             [FromForm] int month,
+            [FromForm] DateOnly? expenseDate,
+            [FromForm] string? supplierName,
+            [FromForm] decimal? vatAmount,
+            [FromForm] string? documentTypeLabel,
             ICommandHandler<CreateDeductibleExpenseCommand, DeductibleExpenseResponse> handler,
             CancellationToken cancellationToken) =>
         {
@@ -53,7 +58,11 @@ internal sealed class DeductibleExpenses : IEndpoint
                 file.FileName,
                 file.ContentType,
                 stream,
-                file.Length);
+                file.Length,
+                expenseDate,
+                supplierName,
+                vatAmount,
+                documentTypeLabel);
 
             Result<DeductibleExpenseResponse> result = await handler.Handle(command, cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
@@ -61,5 +70,48 @@ internal sealed class DeductibleExpenses : IEndpoint
         .RequireAuthorization()
         .DisableAntiforgery()
         .WithTags(Tags.PfaRegistrations);
+
+        // Confirmarea de după OCR: omul corectează ce s-a citit greșit și decide dacă intră
+        // în calcul. JSON, nu form — aici nu se mai încarcă niciun fișier.
+        app.MapPut("pfa-registrations/{id:guid}/deductible-expenses/{expenseId:guid}", async (
+            Guid id,
+            Guid expenseId,
+            UpdateDeductibleExpenseRequest request,
+            ICommandHandler<UpdateDeductibleExpenseCommand, DeductibleExpenseResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            var command = new UpdateDeductibleExpenseCommand(
+                id,
+                expenseId,
+                request.CatalogCategory,
+                request.ItemName,
+                request.DeductibleLabel,
+                request.AmountRon,
+                request.Year,
+                request.Month,
+                request.ExpenseDate,
+                request.SupplierName,
+                request.VatAmount,
+                request.DocumentTypeLabel,
+                request.Confirm);
+
+            Result<DeductibleExpenseResponse> result = await handler.Handle(command, cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.PfaRegistrations);
     }
+
+    internal sealed record UpdateDeductibleExpenseRequest(
+        string CatalogCategory,
+        string ItemName,
+        string DeductibleLabel,
+        decimal? AmountRon,
+        int Year,
+        int Month,
+        DateOnly? ExpenseDate,
+        string? SupplierName,
+        decimal? VatAmount,
+        string? DocumentTypeLabel,
+        bool Confirm);
 }

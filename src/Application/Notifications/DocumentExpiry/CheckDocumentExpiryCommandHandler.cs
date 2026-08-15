@@ -1,6 +1,7 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
+using Application.Documents.Expiry;
 using Domain.Documents;
 using Domain.Notifications;
 using Domain.Users;
@@ -24,21 +25,10 @@ internal sealed class CheckDocumentExpiryCommandHandler(
     ILogger<CheckDocumentExpiryCommandHandler> logger)
     : ICommandHandler<CheckDocumentExpiryCommand>
 {
-    // Which document categories can expire
-    private static readonly HashSet<DocumentCategory> ExpirableCategories =
-    [
-        DocumentCategory.Buletin,
-        DocumentCategory.CarteIdentitate,
-        DocumentCategory.AsigurareCalatori,
-        DocumentCategory.ITP,
-        DocumentCategory.Talon,
-        DocumentCategory.RCA,
-        DocumentCategory.PermisConducere,
-        DocumentCategory.CopieConforma,
-        DocumentCategory.EcusonUber,
-        DocumentCategory.EcusonBolt,
-        DocumentCategory.ContractVehicul,
-    ];
+    // Ce categorii expiră: o singură listă, în DocumentExpiryPolicy. Copia de aici a fost
+    // ștearsă — două liste care trebuie ținute sincron sunt două liste care se desincronizează.
+    private static readonly IReadOnlySet<DocumentCategory> ExpirableCategories =
+        DocumentExpiryPolicy.ExpirableCategories;
 
     // Notify at these days-before-expiry windows
     private static readonly int[] NotifyAtDaysBefore = [30, 7];
@@ -114,7 +104,12 @@ internal sealed class CheckDocumentExpiryCommandHandler(
                 ? $"Documentul tău \"{categoryLabel}\" a expirat astăzi! [{notifTag}]"
                 : $"Documentul tău \"{categoryLabel}\" expiră în {daysUntilExpiry} zile ({expiryRomania:dd.MM.yyyy}). [{notifTag}]";
 
-            await CreateNotificationAsync(ownerId, ownerText, NotificationTypes.DocumentExpiringSoon);
+            // Preferința titularului se respectă doar pentru el: contabila primește oricum
+            // anunțul, pentru că e o obligație de serviciu, nu o notificare de confort.
+            if (await OwnerWantsAsync(ownerId, NotificationTypes.DocumentExpiringSoon, cancellationToken))
+            {
+                await CreateNotificationAsync(ownerId, ownerText, NotificationTypes.DocumentExpiringSoon);
+            }
 
             if (contabilId.HasValue)
             {
@@ -154,6 +149,25 @@ internal sealed class CheckDocumentExpiryCommandHandler(
 
         logger.LogInformation("Document expiry check complete. Notifications sent: {Count}", notifsSent);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Absența unui rând înseamnă „activ": cine nu s-a atins de setări primește tot. Doar un
+    /// „oprit" explicit taie notificarea.
+    /// </summary>
+    private async Task<bool> OwnerWantsAsync(Guid userId, string notificationType, CancellationToken cancellationToken)
+    {
+        NotificationCategory? category = NotificationPreference.CategoryForType(notificationType);
+        if (category is null)
+        {
+            return true;
+        }
+
+        NotificationPreference? preference = await context.NotificationPreferences
+            .AsNoTracking()
+            .SingleOrDefaultAsync(p => p.UserId == userId && p.Category == category, cancellationToken);
+
+        return preference?.Enabled ?? true;
     }
 
     private async Task CreateNotificationAsync(Guid userId, string text, string type)

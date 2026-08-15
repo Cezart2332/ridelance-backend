@@ -229,6 +229,29 @@ public static class DocumentAiCatalog
             "Acord leasing",
             "Acordul societății de leasing pentru utilizarea vehiculului în activitatea de transport alternativ.",
             false),
+        // Bonul de cheltuială: singura categorie unde extragerea e scopul, nu o prevalidare.
+        // Sumele vin ca text brut, exact cum apar pe hârtie — MoneyParser le transformă în
+        // numere, în C#. Modelul nu calculează TVA, nu convertește monede și nu decide dacă
+        // data e plauzibilă; toate astea sunt aritmetică, iar el n-are ce căuta în ea.
+        [DocumentCategory.Cheltuiala] = new(
+            "Bon fiscal sau factură de cheltuială",
+            "Un bon fiscal, o factură sau o chitanță pentru o cheltuială a PFA-ului: combustibil, " +
+            "încărcare electrică, service, piese, spălătorie, asigurare, telefon, software sau altele. " +
+            "Conține denumirea comerciantului, data, suma totală și, de obicei, TVA-ul.",
+            ExpectsExpiryDate: false,
+            [
+                new("supplier_name", "Denumirea comerciantului sau a furnizorului, așa cum apare pe document", ExtractedFieldType.Text, Required: false),
+                new("supplier_cui", "CUI-ul furnizorului, dacă apare", ExtractedFieldType.Cui, Required: false),
+                new("document_date", "Data documentului", ExtractedFieldType.Date, Required: false),
+                new("total_amount", "Suma totală de plată, exact cum e scrisă pe document, fără să o recalculezi", ExtractedFieldType.Text, Required: false),
+                new("vat_amount", "Valoarea TVA, exact cum e scrisă pe document; lasă gol dacă nu apare explicit", ExtractedFieldType.Text, Required: false),
+                new("currency", "Moneda documentului (RON, EUR)", ExtractedFieldType.Text, Required: false),
+                new("document_type", "Tipul documentului: bon fiscal, factură sau chitanță", ExtractedFieldType.Text, Required: false),
+            ],
+            // Un bon nu se respinge pentru că modelul nu-i recunoaște „tipul”: extragerea
+            // eșuată lasă formularul editabil manual, nu blochează adăugarea cheltuielii.
+            AutoRejectOnFailure: false,
+            IssueDateOnly: true),
         [DocumentCategory.CertificatTvaIntracomunitar] = new(
             "Certificat de TVA intracomunitar / decizie ANAF",
             "Certificatul de înregistrare în scopuri de TVA pentru operațiuni intracomunitare (cod special art. 317) sau decizia ANAF de atribuire a codului, emisă pe numele PFA-ului.",

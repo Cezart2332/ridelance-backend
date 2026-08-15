@@ -14,6 +14,12 @@ internal sealed class DeductibleExpenseConfiguration : IEntityTypeConfiguration<
         builder.Property(e => e.ItemName).HasMaxLength(500).IsRequired();
         builder.Property(e => e.DeductibleLabel).HasMaxLength(100).IsRequired();
         builder.Property(e => e.AmountRon).HasPrecision(18, 2);
+        builder.Property(e => e.VatAmount).HasPrecision(18, 2);
+        builder.Property(e => e.SupplierName).HasMaxLength(300);
+        builder.Property(e => e.Currency).HasMaxLength(3).IsRequired();
+        builder.Property(e => e.DocumentTypeLabel).HasMaxLength(100);
+        builder.Property(e => e.Source).HasConversion<string>().HasMaxLength(16);
+        builder.Property(e => e.Status).HasConversion<string>().HasMaxLength(16);
 
         builder.HasIndex(e => new { e.PfaRegistrationId, e.Year, e.Month });
 

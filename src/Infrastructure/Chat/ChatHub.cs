@@ -168,7 +168,7 @@ public sealed class ChatHub(
                 Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
                 string relativePath = recipient.Role switch
                 {
-                    Domain.Users.UserRole.Client => "/app/dashboard?section=support",
+                    Domain.Users.UserRole.Client => "/app/dashboard/suport",
                     Domain.Users.UserRole.Contabil => "/contabil/dashboard",
                     Domain.Users.UserRole.Admin => "/admin/dashboard",
                     _ => "/app/dashboard"

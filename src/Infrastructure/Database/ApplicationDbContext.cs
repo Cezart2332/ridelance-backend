@@ -6,6 +6,7 @@ using Domain.Cars;
 using Domain.Chat;
 using Domain.Documents;
 using Domain.Expenses;
+using Domain.Taxes;
 using Domain.Notifications;
 using Domain.Office;
 using Domain.Payments;
@@ -56,6 +57,10 @@ public sealed class ApplicationDbContext(
     public DbSet<ExtractedField> ExtractedFields { get; set; }
     public DbSet<AppSetting> AppSettings { get; set; }
     public DbSet<DeductibleExpense> DeductibleExpenses { get; set; }
+
+    public DbSet<TaxObligation> TaxObligations { get; set; }
+
+    public DbSet<NotificationPreference> NotificationPreferences { get; set; }
     public DbSet<ChatRoom> ChatRooms { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
     public DbSet<Notification> Notifications { get; set; }

@@ -5,6 +5,7 @@ using Domain.Cars;
 using Domain.Chat;
 using Domain.Documents;
 using Domain.Expenses;
+using Domain.Taxes;
 using Domain.Notifications;
 using Domain.Office;
 using Domain.Payments;
@@ -50,6 +51,10 @@ public interface IApplicationDbContext
     DbSet<ExtractedField> ExtractedFields { get; }
     DbSet<AppSetting> AppSettings { get; }
     DbSet<DeductibleExpense> DeductibleExpenses { get; }
+
+    DbSet<TaxObligation> TaxObligations { get; }
+
+    DbSet<NotificationPreference> NotificationPreferences { get; }
     DbSet<ChatRoom> ChatRooms { get; }
     DbSet<ChatMessage> ChatMessages { get; }
     DbSet<Notification> Notifications { get; }

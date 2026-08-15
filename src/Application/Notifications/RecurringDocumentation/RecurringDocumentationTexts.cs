@@ -31,7 +31,7 @@ public static class RecurringDocumentationTexts
 
     public static string BuildDeepLink(Uri? appBaseUri)
     {
-        const string path = "/app/dashboard?section=doc_recurring";
+        const string path = "/app/dashboard/documente/recurente";
         return appBaseUri is null ? path : new Uri(appBaseUri, path).ToString();
     }
 

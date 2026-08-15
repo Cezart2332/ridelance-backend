@@ -16,7 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+	<!-- „Application.UnitTests" nu există ca proiect; asamblarea de teste se numește „UnitTests",
+	     deci declarația de mai jos e cea care are efect. Cea veche rămâne, inofensivă, în caz că
+	     se adaugă vreodată un proiect cu numele acela. -->
 	<InternalsVisibleTo Include="Application.UnitTests" />
+	<InternalsVisibleTo Include="UnitTests" />
   </ItemGroup>
 
 </Project>

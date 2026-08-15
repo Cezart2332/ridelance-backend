@@ -82,7 +82,14 @@ internal sealed class GetDeductibleExpensesByPfaQueryHandler(
                 e.Document.FileSize,
                 e.Document.UploadedAtUtc,
                 e.CreatedAtUtc,
-                e.CreatedByUserId))
+                e.CreatedByUserId,
+                e.ExpenseDate,
+                e.SupplierName,
+                e.VatAmount,
+                e.Currency,
+                e.DocumentTypeLabel,
+                e.Source.ToString(),
+                e.Status.ToString()))
             .ToListAsync(cancellationToken);
 
         return items;
