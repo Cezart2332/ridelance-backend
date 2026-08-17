@@ -44,6 +44,7 @@ public interface IApplicationDbContext
     DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; }
     DbSet<PfaOblioAccount> PfaOblioAccounts { get; }
     DbSet<ArrAuthorizationRequest> ArrAuthorizationRequests { get; }
+    DbSet<ArrAccount> ArrAccounts { get; }
     DbSet<PfaVehicle> PfaVehicles { get; }
     DbSet<VehicleCopyRequest> VehicleCopyRequests { get; }
     DbSet<VehicleBadge> VehicleBadges { get; }

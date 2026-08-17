@@ -1,4 +1,5 @@
 using Domain.Documents;
+using Domain.Payments;
 using Domain.PfaRegistrations;
 using Domain.PfaRegistrations.CompanyFormation;
 
@@ -66,7 +67,26 @@ public sealed record OnboardingStateResponse(
     string? CompanyFormationStatus = null,
     string? CompanyFormationStage = null,
     // DOAR PENTRU TESTARE — de șters odată cu SkipOnboardingStepCommand.
-    bool TestSkipEnabled = false);
+    bool TestSkipEnabled = false,
+    // ── Sursa unică pentru precompletări (spec fix-uri §5, §8.1, §10.2) ──
+    // Emailul contului. Toate câmpurile de email din onboarding (Oblio, Uber Fleet, Bolt Fleet)
+    // se precompletează de aici; niciunul nu-și mai citește valoarea din alt loc.
+    string? ContactEmail = null,
+    // Județul sediului social, cu adresa din buletin ca rezervă. Precompletează selectul ARR.
+    string? PrimaryCounty = null,
+    // Avansul RIDElance Start, în bani. Vine din `Pricing`, deci UI-ul nu are sume scrise în el.
+    long OnboardingAdvanceBani = 0,
+    bool OnboardingAdvanceIsRefundable = false,
+    // OCR-ul n-a putut citi cu încredere datele de identitate: dosarul cere ochi de om.
+    bool RequiresManualIdentityReview = false,
+    // ── Unelte de dezvoltare (spec fix-uri §13) ──
+    // Dosarul a fost atins de unelte: sesiunea e în sandbox, iar UI-ul arată bannerul de mod dev.
+    bool IsDevSession = false,
+    // Uneltele sunt disponibile pentru utilizatorul curent. Fals în producție, mereu.
+    bool DevToolsEnabled = false,
+    // Cheile pașilor care au fost săriți sau completați cu fixtures. Stepper-ul îi marchează
+    // distinct, ca un pas sărit să nu poată fi confundat cu unul parcurs corect (§13.6).
+    IReadOnlyList<string>? DevSkippedSteps = null);
 
 /// <summary>
 /// Public, nu internal: <see cref="CanPayInfiintare"/> e poarta de plată folosită și din afara
@@ -127,7 +147,8 @@ public static class OnboardingStateBuilder
         bool hasPaidInfiintare,
         OnboardingEligibilityProfile? eligibility = null,
         bool hasFailedPayment = false,
-        IReadOnlyList<Document>? documents = null)
+        IReadOnlyList<Document>? documents = null,
+        IReadOnlyList<string>? devSkippedSteps = null)
     {
         OnboardingSectionStatus pfaStatus = registration switch
         {
@@ -194,6 +215,33 @@ public static class OnboardingStateBuilder
             CanPayInfiintare(registration, hasPaidInfiintare),
             PaymentStatusOf(registration, hasPaidInfiintare, hasFailedPayment),
             registration?.CompanyFormationRequest?.Status.ToString(),
-            registration?.CompanyFormationRequest?.CurrentStage.ToString());
+            registration?.CompanyFormationRequest?.CurrentStage.ToString(),
+            TestSkipEnabled: false,
+            ContactEmail: registration?.User?.Email,
+            PrimaryCounty: PrimaryCountyOf(registration),
+            OnboardingAdvanceBani: Pricing.RidelanceStart.OnboardingAdvanceBani,
+            OnboardingAdvanceIsRefundable: Pricing.RidelanceStart.OnboardingAdvanceIsRefundable,
+            RequiresManualIdentityReview: registration?.RequiresManualIdentityReview ?? false,
+            IsDevSession: registration?.IsDevSession ?? false,
+            DevSkippedSteps: devSkippedSteps);
+    }
+
+    /// <summary>
+    /// Județul cu care se precompletează selectul ARR (spec fix-uri §8.1), în ordinea de
+    /// prioritate din spec: sediul social, apoi adresa de pe buletin (domiciliul citit prin OCR),
+    /// apoi ce s-a salvat pe dosarul PFA. Null când niciuna nu există — selectul rămâne gol.
+    /// </summary>
+    private static string? PrimaryCountyOf(PfaRegistration? registration)
+    {
+        CompanyFormationRequest? formation = registration?.CompanyFormationRequest;
+
+        string?[] candidates =
+        [
+            formation?.OfficeAddress.Judet,
+            formation?.Solicitant.Domiciliu.Judet,
+            registration?.County,
+        ];
+
+        return candidates.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
     }
 }

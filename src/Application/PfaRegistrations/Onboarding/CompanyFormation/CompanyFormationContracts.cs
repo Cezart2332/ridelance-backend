@@ -9,7 +9,9 @@ public sealed record AdresaDto(
     string? Bloc,
     string? Scara,
     string? Etaj,
-    string? Apartament);
+    string? Apartament,
+    /// <summary>Șase cifre. Obligatoriu pentru sediul social, opțional în rest.</summary>
+    string? CodPostal);
 
 /// <summary>
 /// Datele de identitate ale unei persoane din dosar. CNP-ul circulă în clar doar către
@@ -76,7 +78,8 @@ public sealed record AdresaPayload(
     string? Bloc,
     string? Scara,
     string? Etaj,
-    string? Apartament);
+    string? Apartament,
+    string? CodPostal);
 
 public sealed record PersoanaFizicaPayload(
     string? Nume,

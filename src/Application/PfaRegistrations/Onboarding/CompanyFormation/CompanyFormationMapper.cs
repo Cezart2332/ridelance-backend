@@ -12,7 +12,7 @@ namespace Application.PfaRegistrations.Onboarding.CompanyFormation;
 internal static class CompanyFormationMapper
 {
     public static AdresaDto ToDto(Adresa a) =>
-        new(a.Judet, a.Localitate, a.Strada, a.Numar, a.Bloc, a.Scara, a.Etaj, a.Apartament);
+        new(a.Judet, a.Localitate, a.Strada, a.Numar, a.Bloc, a.Scara, a.Etaj, a.Apartament, a.CodPostal);
 
     public static void Apply(Adresa target, AdresaPayload? payload)
     {
@@ -29,6 +29,7 @@ internal static class CompanyFormationMapper
         target.Scara = Trim(payload.Scara);
         target.Etaj = Trim(payload.Etaj);
         target.Apartament = Trim(payload.Apartament);
+        target.CodPostal = Trim(payload.CodPostal);
     }
 
     public static PersoanaFizicaDto ToDto(PersoanaFizica p, ISecretProtector protector, bool revealCnp)
@@ -127,6 +128,7 @@ internal static class CompanyFormationMapper
         Set("SCARA", target.Scara, Trim(payload.Scara), v => target.Scara = v);
         Set("ETAJ", target.Etaj, Trim(payload.Etaj), v => target.Etaj = v);
         Set("APARTAMENT", target.Apartament, Trim(payload.Apartament), v => target.Apartament = v);
+        Set("COD_POSTAL", target.CodPostal, Trim(payload.CodPostal), v => target.CodPostal = v);
 
         void Set(string field, string? current, string? next, Action<string?> assign)
         {

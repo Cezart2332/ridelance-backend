@@ -72,6 +72,9 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
     {
         // Tracked: aceeași citire e cea care stampilează înrolarea când se închide ultimul pas.
         PfaRegistration? registration = await filter(context.PfaRegistrations
+                // Emailul contului e sursa unică pentru precompletările din onboarding
+                // (Oblio, Uber Fleet, Bolt Fleet) — vezi specul de fix-uri §5.
+                .Include(r => r.User)
                 .Include(r => r.OnboardingSections)
                 .Include(r => r.FiscalProfile)
                 .Include(r => r.BankAccountDeclaration)
@@ -106,7 +109,18 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
             await context.SaveChangesAsync(cancellationToken);
         }
 
+        // Pașii atinși de uneltele de dezvoltare. Se citesc doar pentru sesiunile marcate:
+        // pentru restul e o interogare fără rost pe fiecare încărcare de pagină.
+        List<string>? devSkippedSteps = registration?.IsDevSession == true
+            ? await context.OnboardingStepAudits
+                .AsNoTracking()
+                .Where(a => a.PfaRegistrationId == registration.Id && a.FromStatus == "DevTools")
+                .Select(a => a.StepKey)
+                .Distinct()
+                .ToListAsync(cancellationToken)
+            : null;
+
         return OnboardingStateBuilder.Build(
-            registration, hasPaidInfiintare, eligibility, hasFailedPayment, documents);
+            registration, hasPaidInfiintare, eligibility, hasFailedPayment, documents, devSkippedSteps);
     }
 }

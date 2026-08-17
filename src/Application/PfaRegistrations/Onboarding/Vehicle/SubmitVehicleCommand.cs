@@ -66,8 +66,14 @@ internal sealed class SubmitVehicleCommandHandler(
             registration.Vehicles.Add(vehicle);
         }
 
-        vehicle.OwnershipMode = command.AddLater ? VehicleOwnershipMode.AddedLater : command.OwnershipMode;
-        vehicle.AddLater = command.AddLater;
+        // „Adaug mașina mai târziu" nu mai există: fără vehicul nu există copie conformă, deci
+        // nici înrolare completă. Opțiunea a fost scoasă din UI, iar aici se ignoră — altfel ar
+        // rămâne o portiță prin care un client vechi (sau un apel direct) sare peste pas.
+        // Vezi specul de fix-uri §11.1.
+        vehicle.OwnershipMode = command.OwnershipMode == VehicleOwnershipMode.AddedLater
+            ? VehicleOwnershipMode.Owned
+            : command.OwnershipMode;
+        vehicle.AddLater = false;
         // Datele mașinii vin din documente (OCR) — nu le ștergem când userul salvează doar
         // răspunsurile (mod de deținere). Valorile explicite le suprascriu pe cele citite.
         vehicle.PlateNumber = Coalesce(command.PlateNumber, vehicle.PlateNumber);
@@ -76,7 +82,7 @@ internal sealed class SubmitVehicleCommandHandler(
         vehicle.Model = Coalesce(command.Model, vehicle.Model);
         vehicle.FirstRegistrationYear = command.FirstRegistrationYear ?? vehicle.FirstRegistrationYear;
         vehicle.MarketplaceCarId = command.MarketplaceCarId ?? vehicle.MarketplaceCarId;
-        vehicle.Status = command.AddLater ? PfaVehicleStatus.Draft : PfaVehicleStatus.DocumentsPending;
+        vehicle.Status = PfaVehicleStatus.DocumentsPending;
         vehicle.UpdatedAtUtc = nowUtc;
 
         await context.SaveChangesAsync(cancellationToken);

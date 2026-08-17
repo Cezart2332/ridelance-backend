@@ -21,6 +21,7 @@ internal static class CompanyFormationMapping
         builder.Property(a => a.Scara).HasMaxLength(32);
         builder.Property(a => a.Etaj).HasMaxLength(32);
         builder.Property(a => a.Apartament).HasMaxLength(32);
+        builder.Property(a => a.CodPostal).HasMaxLength(6);
     }
 
     public static void ConfigurePersoana<TOwner>(OwnedNavigationBuilder<TOwner, PersoanaFizica> builder)

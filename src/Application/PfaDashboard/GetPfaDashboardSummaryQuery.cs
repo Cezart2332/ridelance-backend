@@ -105,16 +105,23 @@ public sealed record PfaDashboardSeriesResponse(
     List<PfaFeesAndTaxesPointResponse> FeesAndTaxes,
     List<PfaRealProfitPointResponse> RealProfit);
 
+/// <remarks>
+/// <c>OnboardingPending</c>: contul de flotă a fost configurat în onboarding, dar platforma nu
+/// l-a activat încă. Dashboardul arată atunci un card informativ, nu un CTA de conectare — cine
+/// tocmai a completat pasul nu trebuie trimis să-l facă din nou (spec fix-uri §12).
+/// </remarks>
 public sealed record PfaBoltSourceResponse(
     bool Configured,
     bool Connected,
     DateTime? LastSyncAt,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    bool OnboardingPending = false);
 
 public sealed record PfaUberSourceResponse(
     bool Connected,
     DateOnly? LastReportAt,
-    string? DetectedRange);
+    string? DetectedRange,
+    bool OnboardingPending = false);
 
 public sealed record PfaDashboardSourcesResponse(PfaBoltSourceResponse Bolt, PfaUberSourceResponse Uber);
 
@@ -178,6 +185,18 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
         BoltIntegration? integration = await context.BoltIntegrations
             .AsNoTracking()
             .FirstOrDefaultAsync(bi => bi.UserId == userId, cancellationToken);
+
+        // Ce s-a configurat în onboarding pentru fiecare platformă. Fără asta, dashboardul unui
+        // cont proaspăt înrolat îi cerea utilizatorului să conecteze exact ce tocmai completase.
+        List<PfaPlatformAccount> platformAccounts = pfa is null
+            ? []
+            : await context.PfaPlatformAccounts
+                .AsNoTracking()
+                .Where(a => a.PfaRegistrationId == pfa.Id && a.IsSelectedByUser)
+                .ToListAsync(cancellationToken);
+
+        bool BoltOnboarded() => IsAwaitingActivation(platformAccounts, PfaPlatformProvider.Bolt);
+        bool UberOnboarded() => IsAwaitingActivation(platformAccounts, PfaPlatformProvider.Uber);
 
         // Un singur tur la bază pentru ambele perioade: se citește intervalul lărgit,
         // apoi se filtrează în memorie pe perioada curentă și pe cea de comparație.
@@ -288,8 +307,9 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
                     integration is not null,
                     integration?.IsConnected ?? false,
                     integration?.LastFetchedAtUtc,
-                    integration?.ErrorMessage),
-                BuildUberSource(uberImports)),
+                    integration?.ErrorMessage,
+                    BoltOnboarded()),
+                BuildUberSource(uberImports) with { OnboardingPending = UberOnboarded() }),
             uberImports.Count > 0);
     }
 
@@ -570,6 +590,21 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
         }
 
         return new PfaDashboardSeriesResponse(netSeries, feeSeries, profitSeries);
+    }
+
+    /// <summary>
+    /// Contul de flotă a fost configurat în onboarding, dar platforma nu l-a activat încă. Nu e
+    /// nici „conectat", nici „lipsă" — e în procesare, iar UI-ul trebuie să spună asta.
+    /// </summary>
+    private static bool IsAwaitingActivation(
+        List<PfaPlatformAccount> accounts,
+        PfaPlatformProvider provider)
+    {
+        PfaPlatformAccount? account = accounts.FirstOrDefault(a => a.Provider == provider);
+
+        return account is not null
+            && account.OnboardingStatus is not (PfaPlatformOnboardingStatus.NotStarted
+                or PfaPlatformOnboardingStatus.Skipped);
     }
 
     private static PfaUberSourceResponse BuildUberSource(List<UberCsvImport> imports)

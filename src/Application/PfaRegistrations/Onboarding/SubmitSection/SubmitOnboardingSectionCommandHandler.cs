@@ -21,6 +21,8 @@ internal sealed class SubmitOnboardingSectionCommandHandler(IApplicationDbContex
 
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.OnboardingSections)
+            // Modul de deținere decide ce contracte cere secțiunea Vehicul (spec fix-uri §11.2).
+            .Include(r => r.Vehicles)
             .Where(r => r.UserId == command.UserId)
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -49,7 +51,12 @@ internal sealed class SubmitOnboardingSectionCommandHandler(IApplicationDbContex
             .Distinct()
             .ToListAsync(cancellationToken);
 
-        var missing = OnboardingSectionCatalog.RequirementsFor(command.SectionKey)
+        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> required =
+            command.SectionKey == OnboardingSectionKey.Vehicul
+                ? OnboardingSectionCatalog.RequirementsForVehicle(OwnershipModeOf(registration))
+                : OnboardingSectionCatalog.RequirementsFor(command.SectionKey);
+
+        var missing = required
             .Where(req => !req.AcceptedCategories.Any(uploadedCategories.Contains))
             .Select(req => req.Label)
             .ToList();
@@ -67,4 +74,13 @@ internal sealed class SubmitOnboardingSectionCommandHandler(IApplicationDbContex
 
         return Result.Success();
     }
+
+    /// <summary>
+    /// Modul de deținere al mașinii principale. Fără vehicul declarat rămâne `Owned` — lista
+    /// comună, fără contracte, exact ce se cerea și înainte.
+    /// </summary>
+    private static VehicleOwnershipMode OwnershipModeOf(PfaRegistration registration) =>
+        registration.Vehicles
+            .OrderBy(v => v.CreatedAtUtc)
+            .FirstOrDefault()?.OwnershipMode ?? VehicleOwnershipMode.Owned;
 }

@@ -50,6 +50,7 @@ public sealed class ApplicationDbContext(
     public DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; set; }
     public DbSet<PfaOblioAccount> PfaOblioAccounts { get; set; }
     public DbSet<ArrAuthorizationRequest> ArrAuthorizationRequests { get; set; }
+    public DbSet<ArrAccount> ArrAccounts { get; set; }
     public DbSet<PfaVehicle> PfaVehicles { get; set; }
     public DbSet<VehicleCopyRequest> VehicleCopyRequests { get; set; }
     public DbSet<VehicleBadge> VehicleBadges { get; set; }

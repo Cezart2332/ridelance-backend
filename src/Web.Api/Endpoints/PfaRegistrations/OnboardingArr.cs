@@ -35,6 +35,20 @@ internal sealed class OnboardingArr : IEndpoint
         .RequireAuthorization()
         .WithTags(Tags.PfaRegistrations);
 
+        // Conturile de trezorerie ale agențiilor ARR. Aceeași listă pe toate ramurile —
+        // cardul de plată se randează identic, altfel fix-urile prind doar o ramură.
+        app.MapGet("onboarding/arr/accounts", async (
+            IQueryHandler<GetArrAccountsQuery, IReadOnlyList<ArrAccountResponse>> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<IReadOnlyList<ArrAccountResponse>> result =
+                await handler.Handle(new GetArrAccountsQuery(), cancellationToken);
+
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.PfaRegistrations);
+
         app.MapPost("onboarding/arr", async (
             SubmitRequest request,
             IUserContext userContext,

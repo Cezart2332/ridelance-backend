@@ -74,7 +74,9 @@ internal sealed class GenerateArrDossierCommandHandler(
             request.AgencyName,
             request.FeeSnapshotBani,
             included,
-            nowUtc);
+            nowUtc,
+            // Dosarele produse într-o sesiune de test poartă filigran, ca să nu ajungă la ghișeu.
+            registration.IsDevSession);
 
         byte[] pdf = dossierGenerator.GenerateArrDossier(data);
 

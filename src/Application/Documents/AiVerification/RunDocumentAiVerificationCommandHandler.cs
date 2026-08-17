@@ -214,6 +214,9 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
 
         DateTime nowUtc = DateTime.UtcNow;
         bool requiresManualReview = false;
+        // §1 — datele de identitate citite nesigur nu blochează pe nimeni, dar dosarul trebuie
+        // să ajungă sub ochii unui om. Se marchează la finalul buclei, o singură dată.
+        bool identityUnreliable = false;
         var redacted = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
         foreach (ExtractedFieldSpec spec in expectation.FieldSpecs)
@@ -231,6 +234,11 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
                     requiresManualReview = true;
                 }
 
+                if (IdentityConfidence.IsIdentityField(spec.Key))
+                {
+                    identityUnreliable = true;
+                }
+
                 continue;
             }
 
@@ -242,6 +250,11 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             if (needsReview)
             {
                 requiresManualReview = true;
+            }
+
+            if (IdentityConfidence.IsIdentityField(spec.Key) && !IdentityConfidence.IsTrustworthy(effective))
+            {
+                identityUnreliable = true;
             }
 
             redacted[spec.Key] = spec.Sensitive
@@ -297,6 +310,29 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
 
         document.AiExtractedJson = JsonSerializer.Serialize(redacted);
         document.AiRequiresManualReview = requiresManualReview;
+
+        if (identityUnreliable)
+        {
+            await FlagManualIdentityReviewAsync(document, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// §1 — ridică steagul de verificare manuală pe dosarul PFA. Nu se coboară niciodată de
+    /// aici: o a doua încărcare reușită nu șterge faptul că prima a fost citită prost, iar
+    /// adminul decide când e rezolvat.
+    /// </summary>
+    private async Task FlagManualIdentityReviewAsync(Document document, CancellationToken cancellationToken)
+    {
+        Domain.PfaRegistrations.PfaRegistration? registration = await context.PfaRegistrations
+            .Where(r => r.UserId == document.UserId)
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (registration is { } found)
+        {
+            found.RequiresManualIdentityReview = true;
+        }
     }
 
     private async Task NotifyUserAsync(
