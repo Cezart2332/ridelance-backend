@@ -55,9 +55,7 @@ public static class OnboardingSectionCatalog
     /// <summary>
     /// Ce contract cere fiecare mod de deținere, peste documentele comune ale mașinii.
     ///
-    /// Leasingul cere DOUĂ acte: contractul propriu-zis și acordul finanțatorului pentru
-    /// folosirea vehiculului în transport alternativ. Al doilea lipsea cu totul, deși fără el
-    /// dosarul nu trece — vezi specul de fix-uri §11.2.
+    /// Leasingul cere doar acordul finanțatorului pentru folosirea vehiculului în transport alternativ.
     /// </summary>
     private static readonly Dictionary<VehicleOwnershipMode, DocumentRequirement[]> OwnershipRequirements = new()
     {
@@ -68,7 +66,6 @@ public static class OnboardingSectionCatalog
         ],
         [VehicleOwnershipMode.Leased] =
         [
-            new("Contract de leasing", [DocumentCategory.ContractVehicul]),
             new("Acord de leasing", [DocumentCategory.AcordLeasing]),
         ],
         [VehicleOwnershipMode.Comodat] =

@@ -42,16 +42,17 @@ public sealed class OnboardingFixesTests
         requirements.ShouldContain(r => r.Label == "Aviz psihologic");
     }
 
-    /* §11.2 — leasingul cere contract ȘI acordul finanțatorului. */
+    /* §11.2 — leasingul cere doar acordul finanțatorului. */
 
     [Fact]
-    public void LeasedVehicle_RequiresBothContractAndFinancierAgreement()
+    public void LeasedVehicle_RequiresFinancierAgreementOnly()
     {
         IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements =
             OnboardingSectionCatalog.RequirementsForVehicle(VehicleOwnershipMode.Leased);
 
-        requirements.ShouldContain(r => r.Label == "Contract de leasing");
         requirements.ShouldContain(r => r.Label == "Acord de leasing");
+        requirements.ShouldNotContain(r => r.Label == "Contract de leasing");
+        requirements.ShouldNotContain(r => r.AcceptedCategories.Contains(DocumentCategory.ContractVehicul));
     }
 
     [Fact]

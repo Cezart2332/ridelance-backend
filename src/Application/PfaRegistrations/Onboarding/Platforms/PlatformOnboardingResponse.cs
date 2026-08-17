@@ -60,4 +60,13 @@ internal static class PlatformShared
 
         return new PlatformOnboardingResponse(registration.Id, dtos);
     }
+
+    /// <summary>
+    /// Partea pe care o poate face șoferul: a răspuns la „ai cont?" și a lăsat email, telefon și parolă.
+    /// </summary>
+    public static bool UserPartComplete(PfaPlatformAccount account) =>
+        !string.IsNullOrWhiteSpace(account.Email)
+        && !string.IsNullOrWhiteSpace(account.Phone)
+        && !string.IsNullOrWhiteSpace(account.PasswordProtected)
+        && !string.IsNullOrWhiteSpace(account.ExistingAccountAnswer);
 }
