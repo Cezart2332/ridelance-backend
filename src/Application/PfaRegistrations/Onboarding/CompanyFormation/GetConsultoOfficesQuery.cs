@@ -25,7 +25,13 @@ internal sealed class GetConsultoOfficesQueryHandler(IApplicationDbContext conte
             .ToListAsync(cancellationToken);
 
         IReadOnlyList<ConsultoOfficeDto> result = offices
-            .Select(o => new ConsultoOfficeDto(o.Id, o.ToDisplayString(), o.MonthlyFeeBani, o.YearlyFeeBani))
+            .Select(o => new ConsultoOfficeDto(
+                o.Id,
+                o.ToDisplayString(),
+                o.Adresa.Localitate ?? string.Empty,
+                o.Adresa.Judet ?? string.Empty,
+                o.MonthlyFeeBani,
+                o.YearlyFeeBani))
             .ToList();
 
         return Result.Success(result);
