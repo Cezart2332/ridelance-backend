@@ -1,3 +1,4 @@
+using Application.PfaRegistrations.Onboarding.Platforms;
 using Domain.PfaRegistrations;
 using Domain.PfaRegistrations.CompanyFormation;
 
@@ -286,6 +287,13 @@ public static class OnboardingStepCatalog
         if (selected.Count == 0)
         {
             return StatusInProgress;
+        }
+
+        // Șoferul a terminat partea lui când toate platformele alese au credențialele complete.
+        // Activarea în Uber/Bolt rămâne treaba adminului, dar nu ține userul pe loc.
+        if (selected.All(PlatformShared.UserPartComplete))
+        {
+            return StatusCompleted;
         }
 
         return selected.All(p => p.OnboardingStatus == PfaPlatformOnboardingStatus.Active)
