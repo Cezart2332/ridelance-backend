@@ -148,7 +148,8 @@ public static class OnboardingStateBuilder
         OnboardingEligibilityProfile? eligibility = null,
         bool hasFailedPayment = false,
         IReadOnlyList<Document>? documents = null,
-        IReadOnlyList<string>? devSkippedSteps = null)
+        IReadOnlyList<string>? devSkippedSteps = null,
+        string? countyFromIdCard = null)
     {
         OnboardingSectionStatus pfaStatus = registration switch
         {
@@ -218,7 +219,7 @@ public static class OnboardingStateBuilder
             registration?.CompanyFormationRequest?.CurrentStage.ToString(),
             TestSkipEnabled: false,
             ContactEmail: registration?.User?.Email,
-            PrimaryCounty: PrimaryCountyOf(registration),
+            PrimaryCounty: PrimaryCountyOf(registration, countyFromIdCard),
             OnboardingAdvanceBani: Pricing.RidelanceStart.OnboardingAdvanceBani,
             OnboardingAdvanceIsRefundable: Pricing.RidelanceStart.OnboardingAdvanceIsRefundable,
             RequiresManualIdentityReview: registration?.RequiresManualIdentityReview ?? false,
@@ -228,10 +229,19 @@ public static class OnboardingStateBuilder
 
     /// <summary>
     /// Județul cu care se precompletează selectul ARR (spec fix-uri §8.1), în ordinea de
-    /// prioritate din spec: sediul social, apoi adresa de pe buletin (domiciliul citit prin OCR),
-    /// apoi ce s-a salvat pe dosarul PFA. Null când niciuna nu există — selectul rămâne gol.
+    /// prioritate din spec: sediul social, apoi adresa de pe buletin, apoi ce s-a salvat pe
+    /// dosarul PFA. Null când niciuna nu există — selectul rămâne gol, nu ghicește.
     /// </summary>
-    private static string? PrimaryCountyOf(PfaRegistration? registration)
+    /// <param name="countyFromIdCard">
+    /// Județul citit direct din buletin (câmpul <c>domiciliu_judet</c> extras prin OCR),
+    /// furnizat de <c>OnboardingStateService</c>.
+    ///
+    /// De ce nu e de ajuns <c>Solicitant.Domiciliu.Judet</c>: coloana aceea se populează doar pe
+    /// ramura „Nu am PFA", fiindcă doar acolo există un dosar de înființare. Pe ramura „Am PFA"
+    /// rămânea mereu goală, iar utilizatorul trebuia să aleagă manual un județ pe care sistemul
+    /// îl citise deja de pe buletinul lui.
+    /// </param>
+    private static string? PrimaryCountyOf(PfaRegistration? registration, string? countyFromIdCard)
     {
         CompanyFormationRequest? formation = registration?.CompanyFormationRequest;
 
@@ -239,6 +249,7 @@ public static class OnboardingStateBuilder
         [
             formation?.OfficeAddress.Judet,
             formation?.Solicitant.Domiciliu.Judet,
+            countyFromIdCard,
             registration?.County,
         ];
 
