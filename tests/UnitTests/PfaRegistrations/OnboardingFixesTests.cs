@@ -93,6 +93,55 @@ public sealed class OnboardingFixesTests
         StripeCatalog.RidelanceStartAdvance.LookupKey.ShouldContain("399");
     }
 
+    /* §8.1 — județul ARR se precompletează, nu se cere de la utilizator. */
+
+    [Fact]
+    public void PrimaryCounty_FallsBackToTheCountyReadFromTheIdCard()
+    {
+        // Ramura „Am PFA": nu există dosar de înființare, deci nici `Solicitant.Domiciliu`.
+        // Singura sursă e buletinul citit prin OCR — exact cazul în care selectul rămânea gol.
+        var registration = new PfaRegistration
+        {
+            Id = Guid.NewGuid(),
+            RegistrationType = RegistrationType.AmPfa,
+        };
+
+        OnboardingStateResponse state = OnboardingStateBuilder.Build(
+            registration, hasPaidInfiintare: false, countyFromIdCard: "Cluj");
+
+        state.PrimaryCounty.ShouldBe("Cluj");
+    }
+
+    [Fact]
+    public void PrimaryCounty_PrefersTheRegisteredOfficeOverTheIdCard()
+    {
+        var registration = new PfaRegistration
+        {
+            Id = Guid.NewGuid(),
+            RegistrationType = RegistrationType.NuAmPfa,
+            CompanyFormationRequest = new CompanyFormationRequest
+            {
+                Id = Guid.NewGuid(),
+                OfficeAddress = new Adresa { Judet = "Ilfov" },
+            },
+        };
+
+        OnboardingStateResponse state = OnboardingStateBuilder.Build(
+            registration, hasPaidInfiintare: false, countyFromIdCard: "Cluj");
+
+        state.PrimaryCounty.ShouldBe("Ilfov");
+    }
+
+    [Fact]
+    public void PrimaryCounty_StaysEmptyWhenNothingIsKnown()
+    {
+        OnboardingStateResponse state = OnboardingStateBuilder.Build(
+            new PfaRegistration { Id = Guid.NewGuid() }, hasPaidInfiintare: false);
+
+        // Gol, nu ghicit: specul cere explicit să nu inventăm un județ.
+        state.PrimaryCounty.ShouldBeNull();
+    }
+
     /* §2 — sediul social nu se poate închide fără cod poștal valid. */
 
     [Fact]

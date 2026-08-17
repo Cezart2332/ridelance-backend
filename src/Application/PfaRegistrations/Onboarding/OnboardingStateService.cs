@@ -121,6 +121,58 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
             : null;
 
         return OnboardingStateBuilder.Build(
-            registration, hasPaidInfiintare, eligibility, hasFailedPayment, documents, devSkippedSteps);
+            registration,
+            hasPaidInfiintare,
+            eligibility,
+            hasFailedPayment,
+            documents,
+            devSkippedSteps,
+            await CountyFromIdCardAsync(documents, cancellationToken));
+    }
+
+    /// <summary>
+    /// Județul de domiciliu citit din buletin. E aceeași valoare pe care OCR-ul o scrie în dosarul
+    /// de înființare, dar luată de la sursă: tabelul de câmpuri extrase.
+    ///
+    /// Trebuie citită de aici pentru că dosarul de înființare există doar pe ramura „Nu am PFA",
+    /// iar buletinul se încarcă la eligibilitate — adică înainte ca dosarul să existe. Pe ramura
+    /// „Am PFA" nu se creează niciodată un dosar, deci județul n-avea de unde să vină, iar
+    /// selectul ARR rămânea gol deși informația era deja în sistem.
+    /// </summary>
+    private async Task<string?> CountyFromIdCardAsync(
+        List<Document> documents,
+        CancellationToken cancellationToken)
+    {
+        Guid[] identityDocumentIds = documents
+            .Where(d => d.Status != DocumentStatus.Rejected
+                && d.Category is DocumentCategory.CarteIdentitate or DocumentCategory.Buletin)
+            .OrderByDescending(d => d.UploadedAtUtc)
+            .Select(d => d.Id)
+            .ToArray();
+
+        if (identityDocumentIds.Length == 0)
+        {
+            return null;
+        }
+
+        List<ExtractedField> fields = await context.ExtractedFields
+            .AsNoTracking()
+            .Where(f => identityDocumentIds.Contains(f.DocumentId))
+            .ToListAsync(cancellationToken);
+
+        // Cel mai recent buletin întâi; în cadrul lui, valoarea confirmată de om bate OCR-ul.
+        foreach (Guid documentId in identityDocumentIds)
+        {
+            ExtractedField? county = fields.Find(f => f.DocumentId == documentId
+                && string.Equals(f.FieldKey, "domiciliu_judet", StringComparison.OrdinalIgnoreCase));
+
+            string? value = county?.ConfirmedValue ?? county?.AiNormalizedValue;
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return null;
     }
 }
