@@ -32,6 +32,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
     IMjmlRenderer mjmlRenderer,
     IWebPushService webPushService,
     IInvoiceGenerator invoiceGenerator,
+    PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier opsNotifier,
     IConfiguration configuration,
     ILogger<HandleStripeWebhookCommandHandler> logger)
     : ICommandHandler<HandleStripeWebhookCommand>
@@ -252,6 +253,15 @@ internal sealed class HandleStripeWebhookCommandHandler(
             {
                 // Ignore email failure
             }
+
+            // Anunț intern: plata a intrat. Separat de confirmarea către client — aia îi spune
+            // lui că a plătit, asta ne spune nouă că avem de lucru.
+            await opsNotifier.PaymentReceivedAsync(
+                description,
+                session.AmountTotal ?? 0,
+                user.Email,
+                session.PaymentIntentId ?? session.Id,
+                ct);
 
             // Send in-app and push notifications
             string descriptionForNotification = mode == "payment"

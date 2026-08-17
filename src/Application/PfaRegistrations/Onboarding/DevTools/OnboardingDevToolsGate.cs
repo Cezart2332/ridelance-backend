@@ -1,76 +1,46 @@
-using Application.Abstractions.Data;
-using Domain.Users;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
 namespace Application.PfaRegistrations.Onboarding.DevTools;
 
 /// <summary>
-/// Poarta uneltelor de dezvoltare pentru onboarding (spec fix-uri §13.1).
+/// Poarta uneltelor de dezvoltare pentru onboarding.
 ///
-/// State machine-ul e server-side, deci saltul între pași trebuie autorizat AICI. Ascunderea
-/// butonului din UI n-ar însemna nimic: endpoint-urile ar rămâne apelabile.
+/// State machine-ul e server-side, deci saltul între pași trebuie autorizat AICI — ascunderea
+/// butonului din UI n-ar însemna nimic, endpoint-urile ar rămâne apelabile.
 ///
-/// Trei condiții, toate necesare:
+/// Uneltele sunt <b>pornite implicit</b>: nu cer nicio variabilă de mediu, niciun flag de build
+/// și nicio listă de utilizatori. Singurul comutator e <c>Onboarding:DevTools:Enabled</c>, iar
+/// el trebuie setat explicit pe <c>false</c> ca să le stingă.
 ///
-/// 1. <c>Onboarding:DevTools:Enabled</c> pe true în configurație;
-/// 2. mediul NU e Production — indiferent ce zice configurația;
-/// 3. utilizatorul e în allowlist: lista explicită de id-uri din
-///    <c>Onboarding:DevTools:UserIds</c>, sau un cont de Admin.
-///
-/// Specul cerea un rol dedicat (<c>OnboardingDevTester</c>). Modelul de roluri de aici e un
-/// singur enum pe utilizator, nu o colecție: un rol nou i-ar lua testerului rolul de
-/// <c>Client</c>, adică exact fluxul pe care vrea să-l testeze. De aceea allowlist-ul e pe
-/// id-uri — la fel de explicit, fără efect asupra parcursului testat.
+/// Consecința, asumată la cererea proprietarului produsului: pe orice mediu unde nu e stins,
+/// <b>orice utilizator autentificat</b> poate sări peste pași. Un dosar atins de unelte devine
+/// sesiune de test (fără plăți reale, dosare cu filigran „TEST"), deci nu poate fi confundat cu
+/// unul real — dar nici nu mai poate fi dus la capăt ca dosar valid.
 ///
 /// Când poarta nu trece, endpoint-urile răspund <b>404</b>, nu 403: un 403 ar confirma că ruta
 /// există.
 /// </summary>
-public sealed class OnboardingDevToolsGate(
-    IApplicationDbContext context,
-    IConfiguration configuration)
+public sealed class OnboardingDevToolsGate(IConfiguration configuration)
 {
     private const string EnabledKey = "Onboarding:DevTools:Enabled";
-    private const string UserIdsKey = "Onboarding:DevTools:UserIds";
-    private const string EnvironmentKey = "ASPNETCORE_ENVIRONMENT";
 
     /// <summary>
-    /// Mediul, citit din configurație pentru că stratul Application nu cunoaște hostingul.
-    /// Necunoscut înseamnă Production: poarta se închide, nu se deschide, când nu știm unde
-    /// rulăm.
-    /// </summary>
-    private bool IsProduction =>
-        !string.Equals(configuration[EnvironmentKey], "Development", StringComparison.OrdinalIgnoreCase)
-        && !string.Equals(configuration[EnvironmentKey], "Staging", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Nivelurile 1 și 2, fără atingerea bazei. Se poate evalua și fără un utilizator — de
-    /// exemplu ca să știm dacă are rost să interogăm allowlist-ul.
+    /// Uneltele sunt disponibile. Implicit da; se sting punând <c>Onboarding:DevTools:Enabled</c>
+    /// pe <c>false</c> (sau <c>Onboarding__DevTools__Enabled=false</c> în mediu).
     /// </summary>
     public bool IsAvailable =>
-        !IsProduction
-        && bool.TryParse(configuration[EnabledKey], out bool enabled)
-        && enabled;
+        !bool.TryParse(configuration[EnabledKey], out bool configured) || configured;
 
-    /// <summary>Toate cele trei niveluri, pentru un utilizator anume.</summary>
-    public async Task<bool> IsAllowedAsync(Guid userId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Pentru un utilizator anume. Nu mai există allowlist — rămâne doar comutatorul global.
+    /// <paramref name="userId"/> stă în semnătură fiindcă auditul îl scrie oricum, iar
+    /// reintroducerea unei restricții pe utilizator nu trebuie să schimbe apelanții.
+    /// </summary>
+    public Task<bool> IsAllowedAsync(Guid userId, CancellationToken cancellationToken)
     {
-        if (!IsAvailable)
-        {
-            return false;
-        }
+        _ = userId;
+        _ = cancellationToken;
 
-        bool allowlisted = configuration.GetSection(UserIdsKey)
-            .GetChildren()
-            .Any(entry => string.Equals(entry.Value, userId.ToString(), StringComparison.OrdinalIgnoreCase));
-
-        if (allowlisted)
-        {
-            return true;
-        }
-
-        return await context.Users
-            .AsNoTracking()
-            .AnyAsync(u => u.Id == userId && u.Role == UserRole.Admin, cancellationToken);
+        return Task.FromResult(IsAvailable);
     }
 }

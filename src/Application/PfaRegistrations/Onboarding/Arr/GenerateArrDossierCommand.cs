@@ -17,6 +17,7 @@ internal sealed class GenerateArrDossierCommandHandler(
     IApplicationDbContext context,
     IDossierGenerator dossierGenerator,
     IFileEncryptionService fileEncryptionService,
+    Notifications.OnboardingOpsNotifier opsNotifier,
     OnboardingStateService stateService)
     : ICommandHandler<GenerateArrDossierCommand, ArrStateResponse>
 {
@@ -118,6 +119,14 @@ internal sealed class GenerateArrDossierCommandHandler(
         request.UpdatedAtUtc = nowUtc;
 
         await context.SaveChangesAsync(cancellationToken);
+
+        await opsNotifier.DossierGeneratedAsync(
+            "Autorizație transport alternativ (ARR)",
+            applicantName,
+            registration.Cui,
+            fileName,
+            registration.IsDevSession,
+            cancellationToken);
 
         return Result.Success(ArrShared.ToResponse(request));
     }
