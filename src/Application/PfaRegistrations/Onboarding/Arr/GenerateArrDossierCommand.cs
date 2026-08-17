@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Dossiers;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
+using Application.Abstractions.Settings;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.Users;
@@ -17,6 +18,7 @@ internal sealed class GenerateArrDossierCommandHandler(
     IApplicationDbContext context,
     IDossierGenerator dossierGenerator,
     IFileEncryptionService fileEncryptionService,
+    IAppSettings appSettings,
     OnboardingStateService stateService)
     : ICommandHandler<GenerateArrDossierCommand, ArrStateResponse>
 {
@@ -41,12 +43,13 @@ internal sealed class GenerateArrDossierCommandHandler(
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (registration?.ArrAuthorizationRequest is null)
+        if (registration is null)
         {
-            return Result.Failure<ArrStateResponse>(ArrShared.NotFound);
+            return Result.Failure<ArrStateResponse>(ArrShared.NoRegistration);
         }
 
-        ArrAuthorizationRequest request = registration.ArrAuthorizationRequest;
+        ArrAuthorizationRequest request = await ArrShared.EnsureRequestAsync(
+            context, appSettings, registration, cancellationToken);
 
         // Documentele deja încărcate (non-respinse) care satisfac cerințele pasului ARR. Sunt
         // atașate în dosar, nu doar bifate — de asta le încărcăm întregi, nu doar categoria.
