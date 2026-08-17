@@ -32,9 +32,18 @@ public sealed record PersoanaFizicaDto(
 
 public sealed record CompanyFormationOwnerDto(Guid Id, int Position, PersoanaFizicaDto Persoana);
 
+/// <summary>
+/// O locație de sediu social pusă la dispoziție de Consulto.
+///
+/// <paramref name="Zona"/> și <paramref name="Judet"/> circulă separat de adresa compusă:
+/// selectorul din onboarding e o grilă de carduri („Sectorul 1" cu „București" dedesubt), nu o
+/// listă derulantă, iar din adresa concatenată nu se poate reconstrui titlul.
+/// </summary>
 public sealed record ConsultoOfficeDto(
     Guid Id,
     string Adresa,
+    string Zona,
+    string Judet,
     int MonthlyFeeBani,
     int YearlyFeeBani);
 
