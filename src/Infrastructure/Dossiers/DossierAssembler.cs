@@ -138,15 +138,20 @@ internal static class DossierAssembler
         using var source = new MemoryStream(attachment.Content);
         using var form = XPdfForm.FromStream(source);
 
-        for (int i = 1; i <= form.PageCount; i++)
+        // Scanerele și convertoarele lasă frecvent pagini goale LA FINAL. Alea se taie — specul
+        // cere exact asta. O pagină goală din INTERIORUL documentului rămâne: acolo poate fi
+        // versoul nescris al unui act, iar la ghișeu se numără paginile.
+        //
+        // Dacă tot documentul e gol, păstrăm prima pagină: mai bine o filă albă în dosar decât
+        // un document care dispare fără urmă.
+        int lastPage = form.PageCount;
+        while (lastPage > 1 && IsBlank(reader.Pages[lastPage - 1]))
         {
-            // Scanerele și convertoarele lasă frecvent o ultimă pagină goală. Nu are ce căuta în
-            // dosar și e jumătate din motivul pentru care numărul de pagini nu dădea.
-            if (IsBlank(reader.Pages[i - 1]))
-            {
-                continue;
-            }
+            lastPage--;
+        }
 
+        for (int i = 1; i <= lastPage; i++)
+        {
             form.PageNumber = i;
             AppendNormalizedToA4(output, form);
         }

@@ -17,7 +17,6 @@ internal sealed class GenerateVehicleDossierCommandHandler(
     IApplicationDbContext context,
     IDossierGenerator dossierGenerator,
     IFileEncryptionService fileEncryptionService,
-    Notifications.OnboardingOpsNotifier opsNotifier,
     OnboardingStateService stateService)
     : ICommandHandler<GenerateVehicleDossierCommand, VehicleStateResponse>
 {
@@ -149,14 +148,6 @@ internal sealed class GenerateVehicleDossierCommandHandler(
         copy.UpdatedAtUtc = nowUtc;
 
         await context.SaveChangesAsync(cancellationToken);
-
-        await opsNotifier.DossierGeneratedAsync(
-            "Copie conformă & ecusoane",
-            applicantName,
-            registration.Cui,
-            fileName,
-            registration.IsDevSession,
-            cancellationToken);
 
         return Result.Success(VehicleShared.ToResponse(vehicle, copy.FeePerYearSnapshotBani,
             vehicle.Badges.Count > 0 ? vehicle.Badges[0].FeePerSetSnapshotBani : VehicleShared.DefaultBadgeFeePerSetBani));

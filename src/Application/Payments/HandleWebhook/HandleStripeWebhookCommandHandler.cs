@@ -3,7 +3,9 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
 using Application.Abstractions.Services;
+using Application.PfaRegistrations.Onboarding.CompanyFormation;
 using Domain.Cars;
+using Domain.PfaRegistrations.CompanyFormation;
 using Domain.Notifications;
 using Domain.Payments;
 using Domain.Users;
@@ -33,6 +35,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
     IWebPushService webPushService,
     IInvoiceGenerator invoiceGenerator,
     PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier opsNotifier,
+    IQueryHandler<ExportCompanyFormationQuery, CompanyFormationExport> companyFormationExport,
     IConfiguration configuration,
     ILogger<HandleStripeWebhookCommandHandler> logger)
     : ICommandHandler<HandleStripeWebhookCommand>
@@ -96,6 +99,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
         }
 
         Guid? paymentRecordIdForInvoice = null;
+        // Dosarul de înființare tocmai achitat. Semnat + plătit = gata de trimis la Consulto.
+        Guid? paidCompanyFormationId = null;
 
         if (mode == "payment")
         {
@@ -132,6 +137,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
             };
             context.PaymentRecords.Add(record);
             paymentRecordIdForInvoice = record.Id;
+            paidCompanyFormationId = pfaRegistrationId;
         }
 
         else if (mode == "subscription")
@@ -262,6 +268,15 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 user.Email,
                 session.PaymentIntentId ?? session.Id,
                 ct);
+
+            // Dosarul de înființare e semnat înainte de plată (RL-03), deci plata e ultimul
+            // eveniment: aici arhiva pentru Consulto e completă. O generăm și o trimitem, ca
+            // să nu depindă de cineva care ține minte să intre în admin și s-o descarce.
+            if (paidCompanyFormationId is Guid formationId)
+            {
+                await SendCompanyFormationArchiveAsync(
+                    formationId, user, session.AmountTotal ?? 0, ct);
+            }
 
             // Send in-app and push notifications
             string descriptionForNotification = mode == "payment"
@@ -694,6 +709,70 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return SubscriptionPlan.Pro;
         }
         return SubscriptionPlan.Start; // default
+    }
+
+    /// <summary>
+    /// Produce arhiva dosarului de înființare și o trimite pe adresa de operațiuni.
+    ///
+    /// Nu aruncă niciodată: un webhook Stripe care pică din cauza unui email ar fi reîncercat de
+    /// Stripe și ar dubla înregistrarea plății. Dacă arhiva nu se poate produce (dosar nesemnat,
+    /// fișier lipsă din storage), rămâne descărcabilă manual din admin.
+    /// </summary>
+    private async Task SendCompanyFormationArchiveAsync(
+        Guid pfaRegistrationId,
+        User user,
+        long amountBani,
+        CancellationToken ct)
+    {
+        try
+        {
+            CompanyFormationRequest? request = await context.CompanyFormationRequests
+                .AsNoTracking()
+                .Include(r => r.Signature)
+                .FirstOrDefaultAsync(r => r.PfaRegistrationId == pfaRegistrationId, ct);
+
+            if (request?.Signature is null)
+            {
+                logger.LogInformation(
+                    "Dosarul {PfaRegistrationId} nu e semnat; arhiva nu se trimite acum.",
+                    pfaRegistrationId);
+                return;
+            }
+
+            Result<CompanyFormationExport> export = await companyFormationExport.Handle(
+                new ExportCompanyFormationQuery(pfaRegistrationId), ct);
+
+            if (export.IsFailure)
+            {
+                logger.LogWarning(
+                    "Arhiva dosarului {PfaRegistrationId} nu a putut fi generată: {Error}.",
+                    pfaRegistrationId,
+                    export.Error.Description);
+                return;
+            }
+
+            string applicant = $"{request.Solicitant.Nume} {request.Solicitant.Prenume}".Trim();
+            if (string.IsNullOrWhiteSpace(applicant))
+            {
+                applicant = $"{user.FirstName} {user.LastName}".Trim();
+            }
+
+            await opsNotifier.PfaDossierReadyAsync(
+                applicant,
+                user.Email,
+                request.Signature.SignedAtUtc,
+                amountBani,
+                new EmailAttachmentContent(
+                    export.Value.FileName, "application/zip", export.Value.Content),
+                ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                exception,
+                "Trimiterea arhivei pentru dosarul {PfaRegistrationId} a eșuat.",
+                pfaRegistrationId);
+        }
     }
 
     private static string BuildDescriptionFromSession(Session session)

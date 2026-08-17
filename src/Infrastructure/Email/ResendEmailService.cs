@@ -2,7 +2,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Application.Abstractions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Resend;
 using SharedKernel;
 
@@ -12,20 +11,46 @@ public class ResendEmailService(
     IResend resend,
     ILogger<ResendEmailService> logger) : IEmailService
 {
-    public async Task<Result> SendEmailAsync(string to, string subject, string htmlBody, CancellationToken cancellationToken = default)
+    /// <summary>Expeditorul, același pentru tot ce pleacă din sistem.</summary>
+    private const string From = "contact@ridelance.ro";
+
+    public Task<Result> SendEmailAsync(
+        string to,
+        string subject,
+        string htmlBody,
+        CancellationToken cancellationToken = default) =>
+        SendEmailWithAttachmentsAsync(to, subject, htmlBody, [], cancellationToken);
+
+    public async Task<Result> SendEmailWithAttachmentsAsync(
+        string to,
+        string subject,
+        string htmlBody,
+        IReadOnlyList<EmailAttachmentContent> attachments,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var message = new EmailMessage
             {
-                From = "contact@ridelance.ro",
+                From = From,
                 To = { to },
                 Subject = subject,
-                HtmlBody = htmlBody
+                HtmlBody = htmlBody,
             };
 
+            foreach (EmailAttachmentContent attachment in attachments)
+            {
+                message.Attachments ??= [];
+                message.Attachments.Add(new EmailAttachment
+                {
+                    Filename = attachment.FileName,
+                    Content = attachment.Content,
+                    ContentType = attachment.ContentType,
+                });
+            }
+
             ResendResponse<Guid> response = await resend.EmailSendAsync(message, cancellationToken);
-            
+
             if (response.Content != Guid.Empty)
             {
                 logger.LogInformation("Email sent successfully to {To} with ID: {EmailId}", to, response.Content);
