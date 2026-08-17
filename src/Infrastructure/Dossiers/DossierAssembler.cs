@@ -2,6 +2,7 @@ using Application.Abstractions.Dossiers;
 using PdfSharp;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
+using PdfSharp.Pdf.Advanced;
 using PdfSharp.Pdf.IO;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -42,9 +43,12 @@ internal static class DossierAssembler
     /// Întoarce coperta cu atașamentele lipite după ea. Un atașament ilizibil NU pică dosarul —
     /// primește în loc o pagină care spune că trebuie anexat manual.
     /// </summary>
-    public static byte[] Assemble(byte[] coverPdf, IReadOnlyList<DossierAttachment> attachments)
+    public static byte[] Assemble(
+        byte[] coverPdf,
+        IReadOnlyList<DossierAttachment> attachments,
+        bool watermarkAsTest = false)
     {
-        if (attachments.Count == 0)
+        if (attachments.Count == 0 && !watermarkAsTest)
         {
             return coverPdf;
         }
@@ -79,31 +83,100 @@ internal static class DossierAssembler
             }
         }
 
+        if (watermarkAsTest)
+        {
+            StampTestWatermark(output);
+        }
+
         using var stream = new MemoryStream();
         output.Save(stream);
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// Filigran „TEST" pe fiecare pagină, în diagonală. Se aplică la final, peste tot ce s-a
+    /// asamblat: un dosar de test nu are voie să treacă drept unul depozabil, indiferent pe ce
+    /// pagină se uită cineva (spec fix-uri §13.5).
+    /// </summary>
+    private static void StampTestWatermark(PdfDocument document)
+    {
+        var font = new XFont("Helvetica", 72, XFontStyleEx.Bold);
+        XBrush brush = new XSolidBrush(XColor.FromArgb(48, 200, 0, 0));
+
+        foreach (PdfPage page in document.Pages)
+        {
+            using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Append);
+
+            gfx.TranslateTransform(page.Width.Point / 2, page.Height.Point / 2);
+            gfx.RotateTransform(-35);
+            gfx.DrawString("TEST", font, brush, new XPoint(0, 0), XStringFormats.Center);
+        }
+    }
+
+    /// <summary>
+    /// Regula dosarului, din specul de fix-uri §9: <b>un document sursă = exact numărul lui de
+    /// pagini</b>. Fără pagini separator, fără copertă per document, fără pagini albe.
+    ///
+    /// Singurele pagini care nu vin dintr-o sursă sunt opisul (una, la început, generat de
+    /// <c>ArrDossierGenerator</c>) și pagina de „nu s-a putut atașa", care înlocuiește un
+    /// document — deci nu se adaugă peste el.
+    /// </summary>
     private static void AppendAttachment(PdfDocument output, DossierAttachment attachment)
     {
         if (ImageContentTypes.Contains(attachment.ContentType, StringComparer.OrdinalIgnoreCase))
         {
+            // O poză = o pagină. Eticheta stă în antetul aceleiași pagini, nu pe una separată.
             AppendPdf(output, ImagePage(attachment));
             return;
         }
 
-        // Deschidem sursa ÎNAINTE de separator: dacă PDF-ul e corupt, aruncă aici și nu rămâne
-        // un separator orfan urmat de pagina de eroare.
+        // Două fluxuri peste același conținut: PdfSharp consumă poziția, iar cele două API-uri
+        // (citirea paginilor și forma desenabilă) n-au voie să și-o fure una alteia.
+        using var inspected = new MemoryStream(attachment.Content);
+        using PdfDocument reader = PdfReader.Open(inspected, PdfDocumentOpenMode.Import);
+
         using var source = new MemoryStream(attachment.Content);
         using var form = XPdfForm.FromStream(source);
-        int pageCount = form.PageCount;
 
-        // Separator cu titlul cerinței, ca să se vadă unde începe fiecare document original.
-        AppendPdf(output, SeparatorPage(attachment.Label));
-        for (int i = 1; i <= pageCount; i++)
+        for (int i = 1; i <= form.PageCount; i++)
         {
+            // Scanerele și convertoarele lasă frecvent o ultimă pagină goală. Nu are ce căuta în
+            // dosar și e jumătate din motivul pentru care numărul de pagini nu dădea.
+            if (IsBlank(reader.Pages[i - 1]))
+            {
+                continue;
+            }
+
             form.PageNumber = i;
             AppendNormalizedToA4(output, form);
+        }
+    }
+
+    /// <summary>
+    /// Pagina n-are nimic de desenat: fluxul de conținut e gol (sau doar spații) și nu există
+    /// resurse XObject de plasat.
+    ///
+    /// Conservator intenționat: la orice îndoială (flux necitibil, resurse prezente) răspunde
+    /// „nu e goală". O pagină în plus e o problemă de cosmetică; una lipsă din dosar e o
+    /// respingere la ghișeu.
+    /// </summary>
+    private static bool IsBlank(PdfPage page)
+    {
+        try
+        {
+            if (page.Resources.Elements.ContainsKey("/XObject"))
+            {
+                return false;
+            }
+
+            PdfContent content = page.Contents.CreateSingleContent();
+            byte[] stream = content.Stream?.UnfilteredValue ?? [];
+
+            return stream.All(b => b is (byte)' ' or (byte)'\r' or (byte)'\n' or (byte)'\t' or 0);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return false;
         }
     }
 
@@ -171,10 +244,6 @@ internal static class DossierAssembler
             .MaxHeight(ImageBoxHeightMm, Unit.Millimetre)
             .Image(attachment.Content)
             .FitArea());
-
-    private static byte[] SeparatorPage(string label) =>
-        Page(label, content => content.Text("Documentul original urmează pe paginile următoare.")
-            .FontColor(Colors.Grey.Medium));
 
     private static byte[] SkippedPage(string label, string reason) =>
         Page(label, content => content.Text(reason).FontColor(Colors.Red.Darken2));

@@ -16,7 +16,12 @@ public sealed record ArrDossierData(
     string? AgencyName,
     long FeeBani,
     IReadOnlyList<DossierAttachment> IncludedDocuments,
-    DateTime GeneratedAtUtc);
+    DateTime GeneratedAtUtc,
+    /// <summary>
+    /// Dosarul provine dintr-o sesiune de test: primește filigran vizibil „TEST", ca să nu poată
+    /// fi confundat cu unul depozabil la ghișeu (spec fix-uri §13.5).
+    /// </summary>
+    bool IsTest = false);
 
 /// <summary>O linie de ecusoane în dosarul copie conformă (Pasul 5).</summary>
 public sealed record VehicleBadgeLine(string Provider, int SetCount, long TotalBani);
@@ -35,7 +40,9 @@ public sealed record VehicleDossierData(
     IReadOnlyList<VehicleBadgeLine> Badges,
     long BadgesTotalBani,
     IReadOnlyList<DossierAttachment> IncludedDocuments,
-    DateTime GeneratedAtUtc);
+    DateTime GeneratedAtUtc,
+    /// <summary>Dosar produs într-o sesiune de test — primește filigran „TEST".</summary>
+    bool IsTest = false);
 
 /// <summary>
 /// Generează dosarele PDF de onboarding pe backend. Implementarea folosește QuestPDF pentru layout

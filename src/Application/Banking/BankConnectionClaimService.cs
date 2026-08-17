@@ -43,6 +43,24 @@ public sealed class BankConnectionClaimService(
             return new BankClaimOutcome(connection.Status, []);
         }
 
+        // Rând rămas de la un provider care nu mai există. Nu e o conectare în curs și nu are
+        // cum să devină una — altfel ecranul ar aștepta la nesfârșit o confirmare imposibilă.
+        if (!string.Equals(connection.Provider, provider.ProviderName, StringComparison.OrdinalIgnoreCase))
+        {
+            connection.Status = BankConnectionStatus.Revoked;
+            connection.ErrorMessage = null;
+            await context.SaveChangesAsync(cancellationToken);
+            return new BankClaimOutcome(connection.Status, []);
+        }
+
+        // Un rând fără termen de link e dinaintea acestei versiuni: nu poate fi revendicat.
+        if (connection.LinkExpiresAtUtc is null)
+        {
+            connection.Status = BankConnectionStatus.Revoked;
+            await context.SaveChangesAsync(cancellationToken);
+            return new BankClaimOutcome(connection.Status, []);
+        }
+
         // Linkul expirat nu mai poate produce o conexiune: ce apare după el aparține altcuiva.
         if (connection.LinkExpiresAtUtc is { } expiry && expiry < DateTime.UtcNow)
         {
@@ -61,10 +79,13 @@ public sealed class BankConnectionClaimService(
 
         // Câte linkuri sunt deschise în tot sistemul, nu doar al acestui utilizator: două
         // conectări simultane fac diferența ambiguă chiar dacă fiecare vede un singur candidat.
+        // Rândurile fără termen sunt retrase mai sus, deci un link deschis are întotdeauna
+        // un termen încă valabil.
         int pendingLinks = await context.BankConnections
             .CountAsync(
                 c => (c.Status == BankConnectionStatus.Created || c.Status == BankConnectionStatus.Pending) &&
-                     (c.LinkExpiresAtUtc == null || c.LinkExpiresAtUtc > DateTime.UtcNow),
+                     c.LinkExpiresAtUtc != null &&
+                     c.LinkExpiresAtUtc > DateTime.UtcNow,
                 cancellationToken);
 
         if (candidates.Count > 1 || pendingLinks > 1)

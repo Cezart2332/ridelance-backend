@@ -88,7 +88,10 @@ internal sealed class InitiateBankConnectionCommandHandler(
         connection.InstitutionName = string.Empty;
         connection.Reference = Guid.NewGuid().ToString("N");
         connection.Status = BankConnectionStatus.Created;
-        connection.LinkExpiresAtUtc = link.ExpiresAtUtc;
+        // Linkurile sunt de unică folosință și trăiesc 30 de minute. Când providerul nu ne
+        // spune termenul, îl presupunem: fără el, o conectare abandonată ar lăsa pagina în
+        // „se așteaptă confirmarea" pentru totdeauna.
+        connection.LinkExpiresAtUtc = link.ExpiresAtUtc ?? DateTime.UtcNow.AddMinutes(30);
         connection.KnownConnectionIdsJson = BankConnectionClaimService.SerializeKnown(before.Select(c => c.Id));
         connection.MaxHistoricalDays = historyDays;
         connection.ErrorMessage = null;

@@ -138,6 +138,15 @@ internal sealed class CreateCheckoutSessionCommandHandler(
                 "Deschide întâi dosarul de înființare."));
         }
 
+        // §13.5 — o sesiune atinsă de uneltele de dezvoltare nu are voie să genereze o plată
+        // reală. Poarta e aici, nu în UI: butonul se poate ascunde, endpoint-ul nu.
+        if (registration.IsDevSession)
+        {
+            return Result.Failure<Guid>(Error.Unprocessable(
+                "Checkout.DevSession",
+                "Sesiune de test: plățile reale sunt dezactivate. Folosește Stripe în test mode."));
+        }
+
         bool hasPaid = await InfiintarePaymentCheck.HasPaidAsync(context, userId, cancellationToken);
 
         if (hasPaid)

@@ -40,6 +40,10 @@ public static class DependencyInjection
 
         services.AddScoped<PfaRegistrations.Onboarding.OnboardingStateService>();
 
+        // Poarta uneltelor de dezvoltare. Se înregistrează mereu: ea însăși e cea care răspunde
+        // „nu" în producție, deci nu depinde de o decizie luată la pornire.
+        services.AddScoped<PfaRegistrations.Onboarding.DevTools.OnboardingDevToolsGate>();
+
         services.AddScoped<Banking.BankAccountSyncService>();
         services.AddScoped<Banking.BankConnectionClaimService>();
 

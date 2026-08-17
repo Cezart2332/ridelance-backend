@@ -70,6 +70,7 @@ internal sealed class ExtractedFieldApplier(
             case "DOMICILIU_SCARA":
             case "DOMICILIU_ETAJ":
             case "DOMICILIU_APARTAMENT":
+            case "DOMICILIU_COD_POSTAL":
                 await ApplyToCompanyFormationAsync(document, fieldKey, normalizedValue, cancellationToken);
                 break;
 
@@ -292,13 +293,45 @@ internal sealed class ExtractedFieldApplier(
             case "DOMICILIU_APARTAMENT":
                 p.Domiciliu.Apartament = value;
                 break;
+            case "DOMICILIU_COD_POSTAL":
+                p.Domiciliu.CodPostal = value;
+                break;
             default:
                 return;
+        }
+
+        // Sediul social e, în marea majoritate a cazurilor, adresa din buletin. Când OCR-ul a
+        // citit domiciliul și sediul e încă gol, îl oglindim: bifa „sediul social este la adresa
+        // din buletin" apare atunci bifată singură, iar cine face excepție o debifează.
+        // Doar peste gol — o adresă de sediu deja completată nu se rescrie (spec fix-uri §2).
+        if (fieldName.StartsWith("DOMICILIU_", StringComparison.Ordinal) && !request.OfficeAddress.IsComplete)
+        {
+            MirrorHomeAddressToOffice(request);
         }
 
         prefilled.MarkPrefilled(fieldName);
         request.PrefilledFields = prefilled.Serialize();
         request.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Copiază domiciliul citit din buletin peste adresa sediului social. Codul poștal se ia și
+    /// el, când există: fără el sediul rămâne incomplet și pasul nu se poate închide.
+    /// </summary>
+    private static void MirrorHomeAddressToOffice(CompanyFormationRequest request)
+    {
+        Adresa home = request.Solicitant.Domiciliu;
+        Adresa office = request.OfficeAddress;
+
+        office.Judet = home.Judet;
+        office.Localitate = home.Localitate;
+        office.Strada = home.Strada;
+        office.Numar = home.Numar;
+        office.Bloc = home.Bloc;
+        office.Scara = home.Scara;
+        office.Etaj = home.Etaj;
+        office.Apartament = home.Apartament;
+        office.CodPostal = home.CodPostal;
     }
 
     private async Task ApplyToRegistrationAsync(

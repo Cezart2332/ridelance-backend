@@ -75,18 +75,23 @@ public static class StripeCatalog
             ["billing_unit"] = "week",
         });
 
-    /// <summary>Preferential PFA setup fee, bought during onboarding.</summary>
-    public static StripeCatalogItem InfiintarePfaOnboarding { get; } = new(
-        "ridelance_infiintare_pfa_300_ron",
-        "Infiintare PFA RIDElance",
-        30000,
+    /// <summary>
+    /// The RIDElance Start advance paid during onboarding, before the file reaches the accounting
+    /// partner. Amount lives in <see cref="Pricing.RidelanceStart.OnboardingAdvanceBani"/>; the
+    /// lookup key carries it because a Stripe price cannot be re-priced in place.
+    /// </summary>
+    public static StripeCatalogItem RidelanceStartAdvance { get; } = new(
+        "ridelance_start_avans_399_ron",
+        "Abonament RIDElance Start - avans",
+        Pricing.RidelanceStart.OnboardingAdvanceBani,
         Ron,
         null,
         new Dictionary<string, string>
         {
             ["app"] = "ridelance",
-            ["kind"] = "pfa_setup",
+            ["kind"] = "start_advance",
             ["billing_unit"] = "one_time",
+            ["refundable"] = Pricing.RidelanceStart.OnboardingAdvanceIsRefundable ? "yes" : "no",
         });
 
     /// <summary>Standalone PFA setup, bought from the public services page without a subscription.</summary>
@@ -150,7 +155,7 @@ public static class StripeCatalog
         Solo,
         Start,
         Pro,
-        InfiintarePfaOnboarding,
+        RidelanceStartAdvance,
         InfiintarePfaPublic,
         SediuSocial,
         StartRide,
@@ -168,7 +173,7 @@ public static class StripeCatalog
     private static readonly Dictionary<string, StripeCatalogItem> DashboardServices =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["infiintare_pfa"] = InfiintarePfaOnboarding,
+            ["infiintare_pfa"] = RidelanceStartAdvance,
             ["sediu_social"] = SediuSocial,
             ["start_ride"] = StartRide,
         };

@@ -24,10 +24,26 @@ public sealed class Adresa
     /// </summary>
     public string? Apartament { get; set; }
 
+    /// <summary>
+    /// Codul poștal, șase cifre. Obligatoriu pentru sediul social (dosarul ONRC îl cere),
+    /// opțional pentru domiciliu — de aceea nu intră în <see cref="IsComplete"/>.
+    /// </summary>
+    public string? CodPostal { get; set; }
+
     /// <summary>Adresa are completate toate câmpurile obligatorii.</summary>
     public bool IsComplete =>
         !string.IsNullOrWhiteSpace(Judet)
         && !string.IsNullOrWhiteSpace(Localitate)
         && !string.IsNullOrWhiteSpace(Strada)
         && !string.IsNullOrWhiteSpace(Numar);
+
+    /// <summary>Codul poștal e prezent și are exact șase cifre.</summary>
+    public bool HasValidPostalCode =>
+        CodPostal is { Length: 6 } code && code.All(char.IsAsciiDigit);
+
+    /// <summary>
+    /// Ce cere sediul social peste o adresă obișnuită: codul poștal. Fără el dosarul nu poate
+    /// fi depus la ONRC, deci pasul nu are voie să se închidă.
+    /// </summary>
+    public bool IsCompleteForRegisteredOffice => IsComplete && HasValidPostalCode;
 }

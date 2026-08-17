@@ -75,7 +75,7 @@ public sealed class CompanyFormationRequest : Entity
     {
         RegisteredOfficeType.ConsultoProvided => ConsultoOfficeId is not null,
         RegisteredOfficeType.Own =>
-            OfficeAddress.IsComplete
+            OfficeAddress.IsCompleteForRegisteredOffice
             && IsOwner is not null
             && AcknowledgedOwnershipDocs
             && AcknowledgedSubmitLater

@@ -57,6 +57,24 @@ public sealed class PfaRegistration : Entity
     /// pentru „PFA înrolat". Vezi <see cref="OnboardingProgress"/>.
     /// </summary>
     public DateTime? OnboardingCompletedAtUtc { get; set; }
+
+    /// <summary>
+    /// OCR-ul n-a putut citi cu încredere datele de identitate din buletin (CNP lipsă sau sub
+    /// pragul de confidence). Nu blochează șoferul — marchează dosarul pentru verificare umană.
+    /// Vezi <c>IdentityCheck</c> și specul de fix-uri §1.
+    /// </summary>
+    public bool RequiresManualIdentityReview { get; set; }
+
+    /// <summary>
+    /// Dosarul a fost atins de uneltele de dezvoltare: cel puțin un pas sărit sau completat cu
+    /// date de test. Din acel moment sesiunea e în sandbox — nicio plată reală, niciun email
+    /// către parteneri, dosarele generate poartă filigran „TEST".
+    ///
+    /// Se persistă tocmai ca înregistrările de test să fie filtrabile și ștergibile în bloc.
+    /// Vezi <c>OnboardingDevToolsGate</c> și specul de fix-uri §13.5.
+    /// </summary>
+    public bool IsDevSession { get; set; }
+
     public string? ReviewNote { get; set; }
     public Guid? ReviewedByUserId { get; set; }
     public Guid? AssignedContabilId { get; set; }

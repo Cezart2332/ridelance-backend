@@ -21,7 +21,11 @@ public static class OnboardingSectionCatalog
             new("Certificat constatator", [DocumentCategory.CertificatConstatator]),
             new("Atestat transport", [DocumentCategory.AtestatTransport, DocumentCategory.AtestatSofer]),
             new("Cazier judiciar", [DocumentCategory.CazierJudiciar]),
-            new("Adeverință medicală", [DocumentCategory.AdeverintaMedicala]),
+            // Două avize, nu unul: le emit instituții diferite (medicina muncii / cabinet de
+            // psihologie) și expiră la date diferite, deci se cer, se validează și se urmăresc
+            // separat. Vezi specul de fix-uri §7.
+            new("Aviz medical", [DocumentCategory.AdeverintaMedicala]),
+            new("Aviz psihologic", [DocumentCategory.AvizPsihologic]),
             new("Dovadă plată ARR", [DocumentCategory.DovadaPlataArr]),
         ],
         [OnboardingSectionKey.CopieConforma] =
@@ -47,6 +51,54 @@ public static class OnboardingSectionCatalog
 
     public static IReadOnlyList<DocumentRequirement> RequirementsFor(OnboardingSectionKey key) =>
         Requirements.TryGetValue(key, out DocumentRequirement[]? reqs) ? reqs : [];
+
+    /// <summary>
+    /// Ce contract cere fiecare mod de deținere, peste documentele comune ale mașinii.
+    ///
+    /// Leasingul cere DOUĂ acte: contractul propriu-zis și acordul finanțatorului pentru
+    /// folosirea vehiculului în transport alternativ. Al doilea lipsea cu totul, deși fără el
+    /// dosarul nu trece — vezi specul de fix-uri §11.2.
+    /// </summary>
+    private static readonly Dictionary<VehicleOwnershipMode, DocumentRequirement[]> OwnershipRequirements = new()
+    {
+        [VehicleOwnershipMode.Owned] = [],
+        [VehicleOwnershipMode.Rented] =
+        [
+            new("Contract de închiriere", [DocumentCategory.ContractVehicul]),
+        ],
+        [VehicleOwnershipMode.Leased] =
+        [
+            new("Contract de leasing", [DocumentCategory.ContractVehicul]),
+            new("Acord de leasing", [DocumentCategory.AcordLeasing]),
+        ],
+        [VehicleOwnershipMode.Comodat] =
+        [
+            new("Contract de comodat", [DocumentCategory.ContractVehicul]),
+            // Acordul proprietarului se încarcă în aceeași categorie ca acordul finanțatorului:
+            // pentru ARR e același tip de act — acordul celui care deține mașina.
+            new("Acordul proprietarului", [DocumentCategory.AcordLeasing]),
+        ],
+        [VehicleOwnershipMode.AddedLater] = [],
+    };
+
+    /// <summary>
+    /// Documentele obligatorii pentru mașină, în funcție de modul de deținere. Sursa unică:
+    /// validarea secțiunii, checklistul și generatorul de dosar citesc toate de aici.
+    /// </summary>
+    public static IReadOnlyList<DocumentRequirement> RequirementsForVehicle(VehicleOwnershipMode mode)
+    {
+        DocumentRequirement[] ownership = OwnershipRequirements.TryGetValue(mode, out DocumentRequirement[]? own)
+            ? own
+            : [];
+
+        return
+        [
+            .. ownership,
+            .. RequirementsFor(OnboardingSectionKey.Vehicul)
+                // Contractul vine din tabelul de mai sus, cu eticheta corectă pentru mod.
+                .Where(r => !r.AcceptedCategories.Contains(DocumentCategory.ContractVehicul)),
+        ];
+    }
 
     public static OnboardingSectionKey? NextSection(OnboardingSectionKey key) => key switch
     {

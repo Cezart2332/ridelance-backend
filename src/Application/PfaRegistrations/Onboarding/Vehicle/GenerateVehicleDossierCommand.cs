@@ -63,9 +63,12 @@ internal sealed class GenerateVehicleDossierCommandHandler(
 
         // Cerințele celor două secțiuni, deduplicate pe etichetă (Talon/ITP și contractul apar în
         // ambele), cu documentele încărcate atașate efectiv în dosar.
+        //
+        // Partea de mașină vine prin `RequirementsForVehicle`, ca ramura de leasing să-și aducă
+        // în dosar și acordul finanțatorului, nu doar contractul (spec fix-uri §11.2/§11.3).
         var requirements = OnboardingSectionCatalog
             .RequirementsFor(OnboardingSectionKey.CopieConforma)
-            .Concat(OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.Vehicul))
+            .Concat(OnboardingSectionCatalog.RequirementsForVehicle(vehicle.OwnershipMode))
             .DistinctBy(req => req.Label)
             .ToList();
 
@@ -99,7 +102,9 @@ internal sealed class GenerateVehicleDossierCommandHandler(
             badgeLines,
             badgesTotal,
             included,
-            nowUtc);
+            nowUtc,
+            // Dosarele produse într-o sesiune de test poartă filigran, ca să nu ajungă la ghișeu.
+            registration.IsDevSession);
 
         byte[] pdf = dossierGenerator.GenerateVehicleDossier(data);
 

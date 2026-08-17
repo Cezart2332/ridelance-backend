@@ -69,7 +69,7 @@ internal sealed class ArrDossierGenerator : IDossierGenerator
             });
         }).GeneratePdf();
 
-        return DossierAssembler.Assemble(cover, data.IncludedDocuments);
+        return DossierAssembler.Assemble(cover, data.IncludedDocuments, data.IsTest);
     }
 
     public byte[] GenerateVehicleDossier(VehicleDossierData data)
@@ -155,7 +155,7 @@ internal sealed class ArrDossierGenerator : IDossierGenerator
             });
         }).GeneratePdf();
 
-        return DossierAssembler.Assemble(cover, data.IncludedDocuments);
+        return DossierAssembler.Assemble(cover, data.IncludedDocuments, data.IsTest);
     }
 
     /// <summary>Cuprinsul de pe copertă: ce documente urmează, în ordinea în care sunt atașate.</summary>
