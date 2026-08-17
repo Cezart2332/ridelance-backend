@@ -44,7 +44,7 @@ public sealed class OnboardingOpsNotifier(
         EmailAttachmentContent archive,
         CancellationToken cancellationToken) =>
         SendAsync(
-            $"Dosar PFA gata de trimis — {applicantName}",
+            $"Dosar PFA - {applicantName}",
             "Dosarul de înființare e semnat și plătit. Arhiva pentru Consulto e atașată.",
             [
                 ("Solicitant", applicantName),
@@ -54,6 +54,9 @@ public sealed class OnboardingOpsNotifier(
                 ("Arhivă", archive.FileName),
             ],
             [archive],
+            // Marcat important: e singurul email din care rezultă o obligație — dosarul trebuie
+            // trimis mai departe la Consulto.
+            highPriority: true,
             cancellationToken);
 
     /// <summary>O plată a fost încasată.</summary>
@@ -72,6 +75,7 @@ public sealed class OnboardingOpsNotifier(
                 ("Referință Stripe", string.IsNullOrWhiteSpace(stripeReference) ? "—" : stripeReference),
             ],
             [],
+            highPriority: false,
             cancellationToken);
 
     private async Task SendAsync(
@@ -79,13 +83,14 @@ public sealed class OnboardingOpsNotifier(
         string headline,
         IReadOnlyList<(string Label, string Value)> rows,
         IReadOnlyList<EmailAttachmentContent> attachments,
+        bool highPriority,
         CancellationToken cancellationToken)
     {
         try
         {
             string html = mjmlRenderer.Render(BuildMjml(subject, headline, rows));
             await emailService.SendEmailWithAttachmentsAsync(
-                Recipient, subject, html, attachments, cancellationToken);
+                Recipient, subject, html, attachments, highPriority, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
