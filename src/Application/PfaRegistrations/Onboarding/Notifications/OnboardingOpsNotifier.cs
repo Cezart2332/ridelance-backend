@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using Application.Abstractions;
 using Microsoft.Extensions.Configuration;
@@ -21,6 +22,8 @@ public sealed class OnboardingOpsNotifier(
     IConfiguration configuration,
     ILogger<OnboardingOpsNotifier> logger)
 {
+    private static readonly CultureInfo Ro = CultureInfo.GetCultureInfo("ro-RO");
+
     private const string RecipientKey = "Notifications:OpsEmail";
     private const string DefaultRecipient = "cezarturliu25@gmail.com";
 
@@ -28,23 +31,29 @@ public sealed class OnboardingOpsNotifier(
         ? configured
         : DefaultRecipient;
 
-    /// <summary>Un dosar a fost generat și e gata de descărcat.</summary>
-    public Task DossierGeneratedAsync(
-        string dossierLabel,
+    /// <summary>
+    /// Dosarul de înființare PFA e complet — semnat ȘI plătit — iar arhiva pentru Consulto e
+    /// gata. Arhiva vine atașată: ea circulă oricum prin email, deci un anunț fără ea ar
+    /// însemna doar „intră în admin și descarc-o".
+    /// </summary>
+    public Task PfaDossierReadyAsync(
         string applicantName,
-        string? cui,
-        string fileName,
-        bool isTestSession,
+        string customerEmail,
+        DateTime? signedAtUtc,
+        long amountBani,
+        EmailAttachmentContent archive,
         CancellationToken cancellationToken) =>
         SendAsync(
-            $"Dosar generat: {dossierLabel}{(isTestSession ? " [TEST]" : string.Empty)}",
-            $"S-a generat un dosar nou: {dossierLabel}.",
+            $"Dosar PFA gata de trimis — {applicantName}",
+            "Dosarul de înființare e semnat și plătit. Arhiva pentru Consulto e atașată.",
             [
                 ("Solicitant", applicantName),
-                ("CUI", string.IsNullOrWhiteSpace(cui) ? "—" : cui),
-                ("Fișier", fileName),
-                ("Sesiune de test", isTestSession ? "DA — dosarul are filigran TEST" : "nu"),
+                ("Email client", customerEmail),
+                ("Semnat la", signedAtUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm", Ro) ?? "—"),
+                ("Plată", (amountBani / 100m).ToString("N2", Ro) + " lei"),
+                ("Arhivă", archive.FileName),
             ],
+            [archive],
             cancellationToken);
 
     /// <summary>O plată a fost încasată.</summary>
@@ -58,22 +67,25 @@ public sealed class OnboardingOpsNotifier(
             $"Plată încasată: {description}",
             $"A intrat o plată nouă: {description}.",
             [
-                ("Sumă", $"{amountBani / 100m:N2} lei"),
+                ("Sumă", (amountBani / 100m).ToString("N2", Ro) + " lei"),
                 ("Client", customerEmail),
                 ("Referință Stripe", string.IsNullOrWhiteSpace(stripeReference) ? "—" : stripeReference),
             ],
+            [],
             cancellationToken);
 
     private async Task SendAsync(
         string subject,
         string headline,
         IReadOnlyList<(string Label, string Value)> rows,
+        IReadOnlyList<EmailAttachmentContent> attachments,
         CancellationToken cancellationToken)
     {
         try
         {
             string html = mjmlRenderer.Render(BuildMjml(subject, headline, rows));
-            await emailService.SendEmailAsync(Recipient, subject, html, cancellationToken);
+            await emailService.SendEmailWithAttachmentsAsync(
+                Recipient, subject, html, attachments, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

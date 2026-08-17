@@ -45,15 +45,51 @@ public sealed class DossierAssemblerTests
     [Fact]
     public void Assemble_NormalizesForeignScansAndKeepsEveryPage()
     {
-        // Un scan Letter de 3 pagini: copertă + separator + 3 pagini normalizate.
+        // Un scan Letter de 3 pagini: opis + 3 pagini normalizate.
+        //
+        // Erau 5 înainte, pentru că fiecare document primea și o pagină separator. Regula nouă
+        // (spec fix-uri §9) e „un document sursă = exact numărul lui de pagini", deci separatorul
+        // a dispărut și numărul scade la 4.
         byte[] letterScan = PdfWithPages(widthPt: 612, heightPt: 792, pages: 3);
 
         byte[] dossier = DossierAssembler.Assemble(
             Cover(),
             [new DossierAttachment("Cazier", "application/pdf", letterScan)]);
 
-        PagesOf(dossier).Count.ShouldBe(5);
+        PagesOf(dossier).Count.ShouldBe(4);
         AllPagesShouldBeA4(dossier);
+    }
+
+    [Fact]
+    public void Assemble_TrimsBlankPagesLeftAtTheEndOfAScan()
+    {
+        // Două pagini scrise, două lăsate goale de scanner la final.
+        byte[] scan = PdfWithPages(widthPt: 612, heightPt: 792, pages: 2, blankTrailingPages: 2);
+
+        byte[] dossier = DossierAssembler.Assemble(
+            Cover(),
+            [new DossierAttachment("Cazier", "application/pdf", scan)]);
+
+        PagesOf(dossier).Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public void Assemble_KeepsBlankPagesInsideADocument()
+    {
+        // Versoul nescris al unui act rămâne în dosar: la ghișeu se numără paginile.
+        using var document = new PdfDocument();
+        AddPage(document, 612, 792, withContent: true);
+        AddPage(document, 612, 792, withContent: false);
+        AddPage(document, 612, 792, withContent: true);
+
+        using var stream = new MemoryStream();
+        document.Save(stream);
+
+        byte[] dossier = DossierAssembler.Assemble(
+            Cover(),
+            [new DossierAttachment("Contract", "application/pdf", stream.ToArray())]);
+
+        PagesOf(dossier).Count.ShouldBe(4);
     }
 
     [Fact]
@@ -66,7 +102,9 @@ public sealed class DossierAssemblerTests
             Cover(),
             [new DossierAttachment("Contract", "application/pdf", wide)]);
 
-        (double Width, double Height) attachmentPage = PagesOf(dossier)[2];
+        // Indexul 1: opisul e pe 0, iar pagina atașamentului vine imediat după — nu mai există
+        // separator între ele.
+        (double Width, double Height) attachmentPage = PagesOf(dossier)[1];
         attachmentPage.Width.ShouldBeGreaterThan(attachmentPage.Height);
         AllPagesShouldBeA4(dossier);
     }
@@ -124,20 +162,44 @@ public sealed class DossierAssemblerTests
             page.Content().Text("Dosar de test");
         })).GeneratePdf();
 
-    /// <summary>Un PDF cu pagini de dimensiunea cerută — sursele reale nu sunt A4.</summary>
-    private static byte[] PdfWithPages(double widthPt, double heightPt, int pages)
+    /// <summary>
+    /// Un PDF cu pagini de dimensiunea cerută — sursele reale nu sunt A4.
+    ///
+    /// Paginile de conținut chiar au ceva desenat pe ele: un scan are conținut, iar assemblerul
+    /// taie paginile goale rămase la final. Fără desen, fixture-ul ar descrie un document alb,
+    /// nu un scan.
+    /// </summary>
+    private static byte[] PdfWithPages(double widthPt, double heightPt, int pages, int blankTrailingPages = 0)
     {
         using var document = new PdfDocument();
 
         for (int i = 0; i < pages; i++)
         {
-            PdfPage page = document.AddPage();
-            page.Width = PdfSharp.Drawing.XUnit.FromPoint(widthPt);
-            page.Height = PdfSharp.Drawing.XUnit.FromPoint(heightPt);
+            AddPage(document, widthPt, heightPt, withContent: true);
+        }
+
+        for (int i = 0; i < blankTrailingPages; i++)
+        {
+            AddPage(document, widthPt, heightPt, withContent: false);
         }
 
         using var stream = new MemoryStream();
         document.Save(stream);
         return stream.ToArray();
+    }
+
+    private static void AddPage(PdfDocument document, double widthPt, double heightPt, bool withContent)
+    {
+        PdfPage page = document.AddPage();
+        page.Width = PdfSharp.Drawing.XUnit.FromPoint(widthPt);
+        page.Height = PdfSharp.Drawing.XUnit.FromPoint(heightPt);
+
+        if (!withContent)
+        {
+            return;
+        }
+
+        using var gfx = PdfSharp.Drawing.XGraphics.FromPdfPage(page);
+        gfx.DrawLine(PdfSharp.Drawing.XPens.Black, 40, 40, 200, 200);
     }
 }
