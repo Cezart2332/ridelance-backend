@@ -40,6 +40,12 @@ public static class DependencyInjection
 
         services.AddScoped<PfaRegistrations.Onboarding.OnboardingStateService>();
 
+        // Reia în dosarul de înființare datele citite din buletin la pasul de eligibilitate.
+        services.AddScoped<PfaRegistrations.Onboarding.CompanyFormation.CompanyFormationPrefillService>();
+
+        // Anunțurile interne: dosar generat, plată încasată.
+        services.AddScoped<PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier>();
+
         // Poarta uneltelor de dezvoltare. Se înregistrează mereu: ea însăși e cea care răspunde
         // „nu" în producție, deci nu depinde de o decizie luată la pornire.
         services.AddScoped<PfaRegistrations.Onboarding.DevTools.OnboardingDevToolsGate>();

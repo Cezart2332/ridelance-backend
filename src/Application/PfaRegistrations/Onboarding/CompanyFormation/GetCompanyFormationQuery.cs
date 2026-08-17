@@ -13,6 +13,7 @@ public sealed record GetCompanyFormationQuery(Guid UserId) : IQuery<CompanyForma
 
 internal sealed class GetCompanyFormationQueryHandler(
     IApplicationDbContext context,
+    CompanyFormationPrefillService prefill,
     ISecretProtector secretProtector)
     : IQueryHandler<GetCompanyFormationQuery, CompanyFormationResponse>
 {
@@ -20,6 +21,11 @@ internal sealed class GetCompanyFormationQueryHandler(
         GetCompanyFormationQuery query,
         CancellationToken cancellationToken)
     {
+        // Buletinul se încarcă înainte să existe dosarul, deci datele citite din el n-au unde
+        // ateriza la momentul OCR-ului. Le reluăm aici, la prima deschidere a formularului —
+        // altfel utilizatorul vede câmpuri goale deși documentul a fost citit corect.
+        await prefill.BackfillFromIdentityDocumentAsync(query.UserId, cancellationToken);
+
         PfaRegistration? registration = await context.PfaRegistrations
             .AsNoTracking()
             .Where(r => r.UserId == query.UserId)
