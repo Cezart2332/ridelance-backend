@@ -18,10 +18,16 @@ public interface IEmailService
     /// Același email, cu fișiere atașate. Există pentru pachetele care se trimit prin email ca
     /// atare — dosarul de înființare PFA, care ajunge la Consulto ca arhivă.
     /// </summary>
+    /// <param name="highPriority">
+    /// Marchează mesajul ca important. Clienții de email nu au un standard unic, deci se trimit
+    /// toate cele trei antete uzuale (<c>X-Priority</c>, <c>Importance</c>,
+    /// <c>X-MSMail-Priority</c>); Gmail se uită la <c>Importance</c>.
+    /// </param>
     Task<Result> SendEmailWithAttachmentsAsync(
         string to,
         string subject,
         string htmlBody,
         IReadOnlyList<EmailAttachmentContent> attachments,
+        bool highPriority = false,
         CancellationToken cancellationToken = default);
 }

@@ -19,13 +19,14 @@ public class ResendEmailService(
         string subject,
         string htmlBody,
         CancellationToken cancellationToken = default) =>
-        SendEmailWithAttachmentsAsync(to, subject, htmlBody, [], cancellationToken);
+        SendEmailWithAttachmentsAsync(to, subject, htmlBody, [], false, cancellationToken);
 
     public async Task<Result> SendEmailWithAttachmentsAsync(
         string to,
         string subject,
         string htmlBody,
         IReadOnlyList<EmailAttachmentContent> attachments,
+        bool highPriority = false,
         CancellationToken cancellationToken = default)
     {
         try
@@ -37,6 +38,16 @@ public class ResendEmailService(
                 Subject = subject,
                 HtmlBody = htmlBody,
             };
+
+            if (highPriority)
+            {
+                // Trei antete pentru că nu există unul singur care să meargă peste tot:
+                // Outlook citește `X-Priority` și `X-MSMail-Priority`, Gmail `Importance`.
+                message.Headers ??= [];
+                message.Headers["X-Priority"] = "1 (Highest)";
+                message.Headers["X-MSMail-Priority"] = "High";
+                message.Headers["Importance"] = "high";
+            }
 
             foreach (EmailAttachmentContent attachment in attachments)
             {
