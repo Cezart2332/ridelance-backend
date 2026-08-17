@@ -44,26 +44,12 @@ internal sealed class SubmitArrRequestCommandHandler(
             return Result.Failure<ArrStateResponse>(ArrShared.NoRegistration);
         }
 
-        DateTime nowUtc = DateTime.UtcNow;
-
-        ArrAuthorizationRequest request = registration.ArrAuthorizationRequest ?? new ArrAuthorizationRequest
-        {
-            Id = Guid.NewGuid(),
-            PfaRegistrationId = registration.Id,
-            CreatedAtUtc = nowUtc,
-        };
-
-        if (registration.ArrAuthorizationRequest is null)
-        {
-            context.ArrAuthorizationRequests.Add(request);
-            // Snapshot-ul taxei se face o singură dată, la inițiere.
-            request.FeeSnapshotBani = await appSettings.GetAsync(
-                ArrShared.FeeSettingKey, ArrShared.DefaultFeeBani, cancellationToken);
-        }
+        ArrAuthorizationRequest request = await ArrShared.EnsureRequestAsync(
+            context, appSettings, registration, cancellationToken);
 
         request.AgencyName = command.AgencyName;
         request.SubmissionMethod = command.SubmissionMethod;
-        request.UpdatedAtUtc = nowUtc;
+        request.UpdatedAtUtc = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
 

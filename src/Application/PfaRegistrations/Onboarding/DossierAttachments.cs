@@ -13,9 +13,11 @@ namespace Application.PfaRegistrations.Onboarding;
 internal static class DossierAttachments
 {
     /// <summary>
-    /// Pentru fiecare cerință, cel mai recent document non-respins din categoriile acceptate.
+    /// Pentru fiecare cerință, cel mai recent document din categoriile acceptate — inclusiv
+    /// respins de AI sau de admin. Dosarul e pentru depunere la ghișeu; validarea automată nu
+    /// trebuie să blocheze generarea.
     /// Ordinea rezultatului urmează ordinea cerințelor — așa iese dosarul cum îl vrea ARR-ul.
-    /// Cerințele fără document încărcat sunt sărite, la fel ca înainte.
+    /// Cerințele fără document încărcat sunt sărite.
     /// </summary>
     public static async Task<IReadOnlyList<DossierAttachment>> CollectAsync(
         IApplicationDbContext context,
@@ -31,9 +33,7 @@ internal static class DossierAttachments
 
         List<Document> documents = await context.Documents
             .AsNoTracking()
-            .Where(d => d.UserId == userId
-                && d.Status != DocumentStatus.Rejected
-                && wanted.Contains(d.Category))
+            .Where(d => d.UserId == userId && wanted.Contains(d.Category))
             .OrderByDescending(d => d.UploadedAtUtc)
             .ToListAsync(cancellationToken);
 
