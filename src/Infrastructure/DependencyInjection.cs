@@ -70,6 +70,10 @@ public static class DependencyInjection
         services.Configure<Application.PfaDashboard.FiscalPolicyOptions>(
             configuration.GetSection(Application.PfaDashboard.FiscalPolicyOptions.SectionName));
 
+        // Ponderile sortării „Recomandate" se reglează din configurare, fără deploy (spec §5.2).
+        services.Configure<Application.Cars.Scoring.RecommendationScoringOptions>(
+            configuration.GetSection(Application.Cars.Scoring.RecommendationScoringOptions.SectionName));
+
         // Generarea dosarelor PDF (QuestPDF — licență Community, venit anual < 1M USD)
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         services.AddScoped<IDossierGenerator, ArrDossierGenerator>();
