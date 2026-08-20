@@ -50,6 +50,10 @@ public static class DependencyInjection
         // „nu" în producție, deci nu depinde de o decizie luată la pornire.
         services.AddScoped<PfaRegistrations.Onboarding.DevTools.OnboardingDevToolsGate>();
 
+        // Scorul „Recomandate": pur și fără stare, deci un singleton ajunge.
+        services.AddSingleton<Cars.Scoring.IRecommendationScoreCalculator,
+            Cars.Scoring.RecommendationScoreCalculator>();
+
         services.AddScoped<Banking.BankAccountSyncService>();
         services.AddScoped<Banking.BankConnectionClaimService>();
 
