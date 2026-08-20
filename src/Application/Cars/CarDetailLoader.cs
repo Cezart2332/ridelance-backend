@@ -48,6 +48,24 @@ internal static class CarDetailLoader
             .AsNoTracking()
             .CountAsync(v => v.CarId == car.Id && v.CreatedAtUtc >= since, cancellationToken);
 
-        return CarDtoMapper.ToDto(car, postedByAdmin, viewsLast7Days);
+        // Pagina de detaliu arată același bloc de proprietar ca lista (spec §4.1); dacă ar lipsi
+        // doar aici, cardul și pagina în care duce s-ar contrazice.
+        CarOwnerDto? owner = null;
+        if (car.PostedByUserId.HasValue && !postedByAdmin)
+        {
+            owner = await context.CompanyProfiles
+                .AsNoTracking()
+                .Where(p => p.UserId == car.PostedByUserId.Value)
+                .Select(p => new CarOwnerDto(
+                    p.UserId,
+                    p.OwnerType.ToString(),
+                    p.LegalName,
+                    p.LogoUrl,
+                    p.Slug,
+                    p.IsVerified))
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        return CarDtoMapper.ToDto(car, postedByAdmin, viewsLast7Days, owner);
     }
 }

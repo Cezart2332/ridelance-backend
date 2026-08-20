@@ -3,6 +3,7 @@ using Domain.AppSettings;
 using Domain.Banking;
 using Domain.Bolt;
 using Domain.Cars;
+using Domain.Companies;
 using Domain.Chat;
 using Domain.Documents;
 using Domain.Expenses;
@@ -26,6 +27,7 @@ public sealed class ApplicationDbContext(
     : DbContext(options), IApplicationDbContext
 {
     public DbSet<User> Users { get; set; }
+    public DbSet<CompanyProfile> CompanyProfiles { get; set; }
     public DbSet<PfaRegistration> PfaRegistrations { get; set; }
     public DbSet<PfaFiscalProfile> PfaFiscalProfiles { get; set; }
     public DbSet<PfaPlatformAccount> PfaPlatformAccounts { get; set; }

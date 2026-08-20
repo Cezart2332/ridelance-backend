@@ -2,6 +2,7 @@ using Domain.AppSettings;
 using Domain.Banking;
 using Domain.Bolt;
 using Domain.Cars;
+using Domain.Companies;
 using Domain.Chat;
 using Domain.Documents;
 using Domain.Expenses;
@@ -20,6 +21,7 @@ namespace Application.Abstractions.Data;
 public interface IApplicationDbContext
 {
     DbSet<User> Users { get; }
+    DbSet<CompanyProfile> CompanyProfiles { get; }
     DbSet<PfaRegistration> PfaRegistrations { get; }
     DbSet<PfaFiscalProfile> PfaFiscalProfiles { get; }
     DbSet<PfaPlatformAccount> PfaPlatformAccounts { get; }
