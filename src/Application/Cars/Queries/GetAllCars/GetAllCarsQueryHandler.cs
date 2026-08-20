@@ -56,11 +56,15 @@ internal sealed class GetAllCarsQueryHandler(IApplicationDbContext context)
                 .Select(g => new { CarId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.CarId, x => x.Count, cancellationToken);
 
+        Dictionary<Guid, CarOwnerDto> owners =
+            await CarDtoMapper.LoadOwnersAsync(context, cars, posterRoles, cancellationToken);
+
         var dtos = cars
             .Select(c => CarDtoMapper.ToDto(
                 c,
                 CarDtoMapper.IsPostedByAdmin(c, posterRoles),
-                recentViews.GetValueOrDefault(c.Id)))
+                recentViews.GetValueOrDefault(c.Id),
+                c.PostedByUserId.HasValue ? owners.GetValueOrDefault(c.PostedByUserId.Value) : null))
             .ToList();
 
         return dtos;
