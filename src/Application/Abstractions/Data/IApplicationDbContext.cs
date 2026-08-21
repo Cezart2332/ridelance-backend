@@ -12,6 +12,7 @@ using Domain.Notifications;
 using Domain.Office;
 using Domain.Payments;
 using Domain.PfaRegistrations;
+using Domain.Rentals;
 using Domain.PfaRegistrations.CompanyFormation;
 using Domain.Uber;
 using Domain.Users;
@@ -24,6 +25,7 @@ public interface IApplicationDbContext
     DbSet<User> Users { get; }
     DbSet<CompanyProfile> CompanyProfiles { get; }
     DbSet<MaintenanceEntry> MaintenanceEntries { get; }
+    DbSet<Rental> Rentals { get; }
     DbSet<PfaRegistration> PfaRegistrations { get; }
     DbSet<PfaFiscalProfile> PfaFiscalProfiles { get; }
     DbSet<PfaPlatformAccount> PfaPlatformAccounts { get; }
