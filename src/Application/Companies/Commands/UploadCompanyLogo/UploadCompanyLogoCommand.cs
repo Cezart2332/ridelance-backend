@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Cars.Scoring;
 using Domain.Companies;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -16,7 +17,8 @@ public sealed record UploadCompanyLogoCommand(string FileName, Stream FileStream
 
 internal sealed class UploadCompanyLogoCommandHandler(
     IApplicationDbContext context,
-    IUserContext userContext)
+    IUserContext userContext,
+    ListingScoreService scoreService)
     : ICommandHandler<UploadCompanyLogoCommand, string>
 {
     /// <summary>
@@ -77,8 +79,18 @@ internal sealed class UploadCompanyLogoCommandHandler(
         // profilul rămâne cu un logo valid, nu cu o referință moartă.
         string? previous = profile.LogoUrl;
 
+        bool hadLogo = !string.IsNullOrWhiteSpace(previous);
+
         profile.LogoUrl = $"/uploads/companies/{safeFileName}";
         profile.UpdatedAtUtc = DateTime.UtcNow;
+
+        // „Logo setat" e un criteriu de scor pe fiecare anunț al proprietarului (spec §5.2).
+        // Doar primul logo schimbă scorul; înlocuirea lui nu.
+        if (!hadLogo)
+        {
+            await scoreService.RecalculateForOwnerAsync(userContext.UserId, cancellationToken);
+        }
+
         await context.SaveChangesAsync(cancellationToken);
 
         DeletePreviousLogo(previous);

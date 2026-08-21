@@ -10,10 +10,14 @@ internal sealed class GetAll : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("cars", async (
+            string? sort,
             IQueryHandler<GetAllCarsQuery, List<CarDto>> handler,
             CancellationToken cancellationToken) =>
         {
-            Result<List<CarDto>> result = await handler.Handle(new GetAllCarsQuery(AdminMode: false), cancellationToken);
+            // Fără `?sort=`, lista se deschide pe „Recomandate" (spec §5.1).
+            Result<List<CarDto>> result = await handler.Handle(
+                new GetAllCarsQuery(AdminMode: false, Sort: sort),
+                cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
         })
         .AllowAnonymous()

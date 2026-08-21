@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Cars.Scoring;
 using Domain.Cars;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,8 @@ public sealed record DeleteCarImageCommand(Guid CarId, Guid ImageId) : ICommand;
 
 internal sealed class DeleteCarImageCommandHandler(
     IApplicationDbContext context,
-    IUserContext userContext)
+    IUserContext userContext,
+    ListingScoreService scoreService)
     : ICommandHandler<DeleteCarImageCommand>
 {
     public async Task<Result> Handle(DeleteCarImageCommand command, CancellationToken cancellationToken)
@@ -45,6 +47,11 @@ internal sealed class DeleteCarImageCommandHandler(
         }
 
         context.CarImages.Remove(image);
+
+        // Numărul de poze e un criteriu de scor, iar `car.Images` încă îl conține pe cel șters:
+        // recalculăm după salvare, pe entitatea reîncărcată.
+        await context.SaveChangesAsync(cancellationToken);
+        await scoreService.RecalculateAsync(image.CarId, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }

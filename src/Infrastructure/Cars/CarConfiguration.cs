@@ -31,6 +31,14 @@ internal sealed class CarConfiguration : IEntityTypeConfiguration<Car>
         builder.Property(c => c.PostedByUserId);
 
         builder.HasIndex(c => c.Slug).IsUnique();
+
+        // Indexul sortării „Recomandate" (spec §7.1). Ordinea coloanelor urmează exact ordinea
+        // din `ORDER BY`, altfel Postgres l-ar folosi doar pentru filtrare, nu și pentru sortare.
+        builder
+            .HasIndex(c => new { c.Active, c.ApprovalStatus, c.Status, c.RecommendationScore, c.UpdatedAtUtc, c.Id })
+            // Scorul și data descrescător, restul crescător — aceeași ordine ca în migrație.
+            .IsDescending(false, false, false, true, true, false)
+            .HasDatabaseName("ix_cars_recommended");
         builder.HasIndex(c => c.StripeCheckoutSessionId);
         builder.HasIndex(c => c.StripeSubscriptionId);
 

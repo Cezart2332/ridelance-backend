@@ -1,6 +1,7 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Cars;
+using Application.Cars.Scoring;
 using Domain.Cars;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +9,9 @@ using SharedKernel;
 
 namespace Application.Cars.Queries.GetAllCars;
 
-internal sealed class GetAllCarsQueryHandler(IApplicationDbContext context)
+internal sealed class GetAllCarsQueryHandler(
+    IApplicationDbContext context,
+    ListingScoreService scoreService)
     : IQueryHandler<GetAllCarsQuery, List<CarDto>>
 {
     public async Task<Result<List<CarDto>>> Handle(GetAllCarsQuery query, CancellationToken cancellationToken)
@@ -27,9 +30,7 @@ internal sealed class GetAllCarsQueryHandler(IApplicationDbContext context)
             queryable = queryable.Where(c => c.Active && c.ApprovalStatus == CarApprovalStatus.Approved);
         }
 
-        List<Car> cars = await queryable
-            .OrderByDescending(c => c.CreatedAtUtc)
-            .ToListAsync(cancellationToken);
+        List<Car> cars = await Order(queryable, query).ToListAsync(cancellationToken);
 
         var posterIds = cars
             .Where(c => c.PostedByUserId.HasValue)
@@ -59,14 +60,61 @@ internal sealed class GetAllCarsQueryHandler(IApplicationDbContext context)
         Dictionary<Guid, CarOwnerDto> owners =
             await CarDtoMapper.LoadOwnersAsync(context, cars, posterRoles, cancellationToken);
 
-        var dtos = cars
-            .Select(c => CarDtoMapper.ToDto(
-                c,
-                CarDtoMapper.IsPostedByAdmin(c, posterRoles),
-                recentViews.GetValueOrDefault(c.Id),
-                c.PostedByUserId.HasValue ? owners.GetValueOrDefault(c.PostedByUserId.Value) : null))
-            .ToList();
+        // Scorul brut și sugestiile se dau **doar** proprietarului, pe anunțurile lui (spec §5.2):
+        // expuse public, ar fi devenit o clasificare a partenerilor între ei.
+        bool ownerView = query.PosterUserId.HasValue;
+
+        var dtos = new List<CarDto>(cars.Count);
+        foreach (Car car in cars)
+        {
+            List<ScoreSuggestionDto>? suggestions = null;
+            if (ownerView)
+            {
+                IReadOnlyList<ScoreSuggestion> raw = await scoreService.GetSuggestionsAsync(car, cancellationToken);
+                suggestions = raw.Select(s => new ScoreSuggestionDto(s.Id, s.Label, s.Points)).ToList();
+            }
+
+            dtos.Add(CarDtoMapper.ToDto(
+                car,
+                CarDtoMapper.IsPostedByAdmin(car, posterRoles),
+                recentViews.GetValueOrDefault(car.Id),
+                car.PostedByUserId.HasValue ? owners.GetValueOrDefault(car.PostedByUserId.Value) : null,
+                ownerView ? car.RecommendationScore : null,
+                suggestions));
+        }
 
         return dtos;
+    }
+
+    /// <summary>
+    /// Ordonarea listei (spec §5).
+    /// </summary>
+    /// <remarks>
+    /// Fiecare variantă se termină cu <c>Id</c>: fără un criteriu final unic, două anunțuri egale
+    /// pot ieși în ordine diferită la două cereri, iar la paginare asta înseamnă rânduri care sar
+    /// sau dispar între pagini.
+    ///
+    /// La „Recomandate", indisponibilele merg după cele disponibile indiferent de scor (§5.2).
+    /// </remarks>
+    private static IQueryable<Car> Order(IQueryable<Car> queryable, GetAllCarsQuery query)
+    {
+        // Listele de administrare și cele proprii rămân pe „cele mai noi": acolo utilizatorul
+        // caută ce a atins ultima dată, nu ce e bine poziționat public.
+        if (query.AdminMode || query.PosterUserId.HasValue)
+        {
+            return queryable.OrderByDescending(c => c.CreatedAtUtc).ThenBy(c => c.Id);
+        }
+
+        return query.Sort switch
+        {
+            "newest" => queryable.OrderByDescending(c => c.CreatedAtUtc).ThenBy(c => c.Id),
+            "price_asc" => queryable.OrderBy(c => c.PricePerWeek).ThenBy(c => c.Id),
+            "price_desc" => queryable.OrderByDescending(c => c.PricePerWeek).ThenBy(c => c.Id),
+            _ => queryable
+                .OrderBy(c => c.Status == CarStatus.Available ? 0 : 1)
+                .ThenByDescending(c => c.RecommendationScore)
+                .ThenByDescending(c => c.UpdatedAtUtc)
+                .ThenBy(c => c.Id),
+        };
     }
 }

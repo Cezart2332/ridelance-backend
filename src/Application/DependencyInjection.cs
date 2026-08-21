@@ -54,6 +54,8 @@ public static class DependencyInjection
         services.AddSingleton<Cars.Scoring.IRecommendationScoreCalculator,
             Cars.Scoring.RecommendationScoreCalculator>();
 
+        services.AddScoped<Cars.Scoring.ListingScoreService>();
+
         services.AddScoped<Banking.BankAccountSyncService>();
         services.AddScoped<Banking.BankConnectionClaimService>();
 

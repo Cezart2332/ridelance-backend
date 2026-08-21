@@ -2,7 +2,15 @@ using Application.Abstractions.Messaging;
 
 namespace Application.Cars.Queries.GetAllCars;
 
-public sealed record GetAllCarsQuery(bool AdminMode = false, Guid? PosterUserId = null) : IQuery<List<CarDto>>;
+/// <param name="Sort">
+/// Cum se ordonează lista publică. `recommended` e implicitul din spec §5.1; restul valorilor
+/// sunt cele din selectorul de sortare. O valoare necunoscută cade pe implicit, nu dă eroare:
+/// un query string greșit nu are voie să lase marketplace-ul gol.
+/// </param>
+public sealed record GetAllCarsQuery(
+    bool AdminMode = false,
+    Guid? PosterUserId = null,
+    string? Sort = null) : IQuery<List<CarDto>>;
 
 public sealed record CarDto(
     Guid Id,
@@ -30,6 +38,8 @@ public sealed record CarDto(
     DateTime? PaidAtUtc,
     bool PostedByAdmin,
     CarOwnerDto? Owner,
+    int? RecommendationScore,
+    List<ScoreSuggestionDto>? ScoreSuggestions,
     List<CarImageDto> Images,
     DateTime CreatedAtUtc,
     CarStatsDto Stats);
@@ -52,5 +62,8 @@ public sealed record CarOwnerDto(
     string Slug,
     bool Verified);
 #pragma warning restore CA1054
+
+/// <summary>O acțiune concretă care crește scorul, cu câte puncte aduce.</summary>
+public sealed record ScoreSuggestionDto(string Id, string Label, int Points);
 
 public sealed record CarStatsDto(int Views, int UniqueViews, int ViewsLast7Days, int Clicks, int Forms);

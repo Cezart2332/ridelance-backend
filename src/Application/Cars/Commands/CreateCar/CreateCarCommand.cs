@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Cars.Scoring;
 using Domain.Cars;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -30,7 +31,8 @@ public sealed record CreateCarCommand(
 
 internal sealed class CreateCarCommandHandler(
     IApplicationDbContext context,
-    IUserContext userContext)
+    IUserContext userContext,
+    ListingScoreService scoreService)
     : ICommandHandler<CreateCarCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateCarCommand command, CancellationToken cancellationToken)
@@ -94,6 +96,11 @@ internal sealed class CreateCarCommandHandler(
         };
 
         context.Cars.Add(car);
+
+        // Scorul se calculează în aceeași tranzacție: un anunț fără scor ar cădea la coada
+        // sortării „Recomandate" până la primul job nocturn.
+        await scoreService.RecalculateAsync(car, cancellationToken);
+
         await context.SaveChangesAsync(cancellationToken);
 
         return car.Id;
