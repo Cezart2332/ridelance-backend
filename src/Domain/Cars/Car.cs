@@ -50,6 +50,19 @@ public sealed class Car : Entity
     public DateTime? PaidAtUtc { get; set; }
 
     // Audit
+    /// <summary>
+    /// Scorul „Recomandate", 0–100 (spec §5.2).
+    /// </summary>
+    /// <remarks>
+    /// Stocat, nu calculat la fiecare cerere: sortarea marketplace-ului nu are voie să depindă de
+    /// cât durează un calcul per rând. Se recalculează la evenimentele care îl pot schimba și,
+    /// pentru componenta de prospețime, printr-un job nocturn.
+    /// </remarks>
+    public int RecommendationScore { get; set; }
+
+    /// <summary>Când a fost calculat ultima dată. `null` = niciodată, deci scorul e 0 implicit.</summary>
+    public DateTime? ScoreComputedAtUtc { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 

@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Cars.Scoring;
 using Application.Abstractions.Services;
 using Domain.Cars;
 using Domain.Users;
@@ -14,7 +15,8 @@ public sealed record UploadCarImageCommand(Guid CarId, string FileName, Stream F
 internal sealed class UploadCarImageCommandHandler(
     IApplicationDbContext context,
     IUserContext userContext,
-    ILicensePlateDetectionService licensePlateDetectionService)
+    ILicensePlateDetectionService licensePlateDetectionService,
+    ListingScoreService scoreService)
     : ICommandHandler<UploadCarImageCommand, Guid>
 {
     private static readonly string[] AllowedTypes = ["IMAGE/JPEG", "IMAGE/JPG", "IMAGE/PNG", "IMAGE/WEBP"];
@@ -83,6 +85,8 @@ internal sealed class UploadCarImageCommandHandler(
         };
 
         context.CarImages.Add(image);
+        car.Images.Add(image);
+        await scoreService.RecalculateAsync(car, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
 
         return image.Id;

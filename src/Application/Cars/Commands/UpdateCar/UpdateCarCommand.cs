@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Cars.Scoring;
 using Domain.Cars;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -31,7 +32,8 @@ public sealed record UpdateCarCommand(
 
 internal sealed class UpdateCarCommandHandler(
     IApplicationDbContext context,
-    IUserContext userContext)
+    IUserContext userContext,
+    ListingScoreService scoreService)
     : ICommandHandler<UpdateCarCommand>
 {
     public async Task<Result> Handle(UpdateCarCommand command, CancellationToken cancellationToken)
@@ -106,6 +108,7 @@ internal sealed class UpdateCarCommandHandler(
         }
 
         car.UpdatedAtUtc = DateTime.UtcNow;
+        await scoreService.RecalculateAsync(car, cancellationToken);
 
         await context.SaveChangesAsync(cancellationToken);
         return Result.Success();

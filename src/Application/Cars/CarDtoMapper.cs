@@ -20,7 +20,9 @@ internal static class CarDtoMapper
         Car car,
         bool postedByAdmin,
         int viewsLast7Days = 0,
-        CarOwnerDto? owner = null) =>
+        CarOwnerDto? owner = null,
+        int? recommendationScore = null,
+        List<ScoreSuggestionDto>? scoreSuggestions = null) =>
         new(
             car.Id,
             car.Slug,
@@ -47,6 +49,8 @@ internal static class CarDtoMapper
             car.PaidAtUtc,
             postedByAdmin,
             owner,
+            recommendationScore,
+            scoreSuggestions,
             car.Images.OrderBy(i => i.DisplayOrder)
                 .Select(i => new CarImageDto(i.Id, i.Url, i.DisplayOrder))
                 .ToList(),

@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Cars.Scoring;
 using Domain.Cars;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,8 @@ public sealed record ToggleCarActiveCommand(Guid CarId) : ICommand<bool>;
 
 internal sealed class ToggleCarActiveCommandHandler(
     IApplicationDbContext context,
-    IUserContext userContext)
+    IUserContext userContext,
+    ListingScoreService scoreService)
     : ICommandHandler<ToggleCarActiveCommand, bool>
 {
     public async Task<Result<bool>> Handle(ToggleCarActiveCommand command, CancellationToken cancellationToken)
@@ -53,6 +55,7 @@ internal sealed class ToggleCarActiveCommandHandler(
 
         car.Active = !car.Active;
         car.UpdatedAtUtc = DateTime.UtcNow;
+        await scoreService.RecalculateAsync(car, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
 
         return car.Active;
