@@ -14,7 +14,14 @@ public sealed record ListingScoreInput(
     bool IsAvailable,
     bool OwnerVerified,
     bool OwnerHasLogo,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    /// <summary>Pinul de preluare, nu doar orașul ca text.</summary>
+    bool HasMapPin = false,
+    /// <summary>
+    /// Câte dintre cele patru câmpuri administrative sunt completate: număr, VIN, kilometraj,
+    /// primă înmatriculare. Se trimite ca fracție, nu ca „e complet": pragul e o setare.
+    /// </summary>
+    double DossierCompletion = 0);
 
 /// <summary>O acțiune concretă și câte puncte aduce: „Adaugă 3 poze: +7".</summary>
 public sealed record ScoreSuggestion(string Id, string Label, int Points);

@@ -28,7 +28,8 @@ public sealed record UpdateCarCommand(
     List<string> Badges,
     string Description,
     bool Active,
-    string ListingSource) : ICommand;
+    string ListingSource,
+    CarListingDetails? Details = null) : ICommand;
 
 internal sealed class UpdateCarCommandHandler(
     IApplicationDbContext context,
@@ -106,6 +107,8 @@ internal sealed class UpdateCarCommandHandler(
             car.ApprovalStatus = CarApprovalStatus.Pending;
             car.Active = false;
         }
+
+        CarListingDetailsMapper.Apply(car, command.Details);
 
         car.UpdatedAtUtc = DateTime.UtcNow;
         await scoreService.RecalculateAsync(car, cancellationToken);

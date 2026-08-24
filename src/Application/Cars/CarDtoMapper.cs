@@ -55,7 +55,8 @@ internal static class CarDtoMapper
                 .Select(i => new CarImageDto(i.Id, i.Url, i.DisplayOrder))
                 .ToList(),
             car.CreatedAtUtc,
-            MapStats(car, viewsLast7Days));
+            MapStats(car, viewsLast7Days),
+            CarListingDetailsMapper.From(car));
 
     /// <summary>
     /// Profilurile proprietarilor pentru o listă de mașini, într-un singur query.

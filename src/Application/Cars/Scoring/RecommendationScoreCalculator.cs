@@ -59,6 +59,28 @@ internal sealed class RecommendationScoreCalculator(IOptions<RecommendationScori
             Suggest(suggestions, "logo", "Încarcă logo-ul firmei", _options.OwnerHasLogo);
         }
 
+        if (input.HasMapPin)
+        {
+            points += _options.MapPin;
+        }
+        else
+        {
+            Suggest(suggestions, "map", "Setează locația pe hartă", _options.MapPin);
+        }
+
+        if (input.DossierCompletion >= _options.VehicleDossierThreshold)
+        {
+            points += _options.VehicleDossier;
+        }
+        else
+        {
+            Suggest(
+                suggestions,
+                "dossier",
+                "Completează dosarul vehiculului (număr, VIN, kilometraj)",
+                _options.VehicleDossier);
+        }
+
         double multiplier = FreshnessMultiplier(input.UpdatedAtUtc, nowUtc);
 
         // Rotunjire la întreg: scorul e o poziție în listă, nu o măsurătoare.
