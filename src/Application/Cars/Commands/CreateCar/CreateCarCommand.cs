@@ -27,7 +27,8 @@ public sealed record CreateCarCommand(
     List<string> Badges,
     string Description,
     bool Active,
-    string ListingSource) : ICommand<Guid>;
+    string ListingSource,
+    CarListingDetails? Details = null) : ICommand<Guid>;
 
 internal sealed class CreateCarCommandHandler(
     IApplicationDbContext context,
@@ -94,6 +95,8 @@ internal sealed class CreateCarCommandHandler(
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow,
         };
+
+        CarListingDetailsMapper.Apply(car, command.Details);
 
         context.Cars.Add(car);
 

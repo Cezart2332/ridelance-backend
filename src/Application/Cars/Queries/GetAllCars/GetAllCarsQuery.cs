@@ -1,4 +1,5 @@
 using Application.Abstractions.Messaging;
+using Application.Cars;
 
 namespace Application.Cars.Queries.GetAllCars;
 
@@ -42,7 +43,8 @@ public sealed record CarDto(
     List<ScoreSuggestionDto>? ScoreSuggestions,
     List<CarImageDto> Images,
     DateTime CreatedAtUtc,
-    CarStatsDto Stats);
+    CarStatsDto Stats,
+    CarListingDetails? Details = null);
 
 #pragma warning disable CA1054
 public sealed record CarImageDto(Guid Id, string ImageUrl, int DisplayOrder);

@@ -94,7 +94,26 @@ public sealed class ListingScoreService(
         car.Status == CarStatus.Available,
         owner?.IsVerified ?? false,
         !string.IsNullOrWhiteSpace(owner?.LogoUrl),
-        car.UpdatedAtUtc);
+        car.UpdatedAtUtc,
+        car.Latitude.HasValue && car.Longitude.HasValue,
+        DossierCompletion(car));
+
+    /// <summary>
+    /// Cât din dosarul administrativ e completat, ca fracție din patru câmpuri. Pragul care
+    /// decide dacă se punctează stă în configurare, nu aici.
+    /// </summary>
+    private static double DossierCompletion(Car car)
+    {
+        bool[] fields =
+        [
+            !string.IsNullOrWhiteSpace(car.PlateNumber),
+            !string.IsNullOrWhiteSpace(car.Vin),
+            car.Mileage.HasValue,
+            car.FirstRegistrationAtUtc.HasValue,
+        ];
+
+        return fields.Count(filled => filled) / (double)fields.Length;
+    }
 
     private Task<CompanyProfile?> LoadOwnerAsync(Guid userId, CancellationToken cancellationToken) =>
         context.CompanyProfiles

@@ -41,14 +41,17 @@ public sealed class RecommendationScoringOptions
     public int FreshnessStaleDays { get; set; } = 30;
 
     /// <summary>
-    /// Criteriile din spec §5.2 care nu au încă sursă de date: pinul pe hartă (<c>Car.Location</c>
-    /// e doar oraș, ca text) și completitudinea dosarului de vehicul (nu există dosar).
-    ///
-    /// Sunt lăsate aici, la zero, ca prezența lor în spec să rămână vizibilă și ca activarea lor
-    /// să fie o valoare de configurare, nu o modificare de cod. Consecința asumată: maximul
-    /// atingibil azi e 80, nu 100 — deliberat **nu** rescalăm, fiindcă scorurile de acum ar
-    /// deveni incomparabile cu cele de după.
+    /// Pinul de preluare, setat pe hartă (spec §5.2). A devenit măsurabil odată cu fluxul de
+    /// adăugare pe pași, care salvează coordonate, nu doar orașul ca text.
     /// </summary>
-    public int MapPin { get; set; }
-    public int VehicleDossier { get; set; }
+    public int MapPin { get; set; } = 10;
+
+    /// <summary>
+    /// Completitudinea dosarului de vehicul. Pragul e proporția câmpurilor administrative
+    /// completate — număr, VIN, kilometraj, primă înmatriculare.
+    /// </summary>
+    public int VehicleDossier { get; set; } = 10;
+
+    /// <summary>Cât din dosar trebuie completat ca să conteze. Spec §5.2 cere 80%.</summary>
+    public double VehicleDossierThreshold { get; set; } = 0.8;
 }

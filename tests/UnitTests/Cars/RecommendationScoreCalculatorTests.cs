@@ -31,7 +31,9 @@ public class RecommendationScoreCalculatorTests
         IsAvailable: false,
         OwnerVerified: false,
         OwnerHasLogo: false,
-        UpdatedAtUtc: Now);
+        UpdatedAtUtc: Now,
+        HasMapPin: false,
+        DossierCompletion: 0);
 
     [Fact]
     public void EmptyListing_ScoresZero()
@@ -121,12 +123,12 @@ public class RecommendationScoreCalculatorTests
     }
 
     [Theory]
-    [InlineData(0, 80)]    // actualizat azi
-    [InlineData(7, 80)]    // exact la limita „recent"
-    [InlineData(8, 72)]    // 80 × 0.9
-    [InlineData(30, 72)]   // ultima zi din intervalul mijlociu
-    [InlineData(31, 60)]   // 80 × 0.75
-    [InlineData(400, 60)]
+    [InlineData(0, 100)]   // actualizat azi
+    [InlineData(7, 100)]   // exact la limita „recent"
+    [InlineData(8, 90)]    // 100 × 0.9
+    [InlineData(30, 90)]   // ultima zi din intervalul mijlociu
+    [InlineData(31, 75)]   // 100 × 0.75
+    [InlineData(400, 75)]
     public void Freshness_ScalesTheWholeScore(int daysOld, int expected)
     {
         ListingScoreInput input = Perfect() with { UpdatedAtUtc = Now.AddDays(-daysOld) };
@@ -135,16 +137,43 @@ public class RecommendationScoreCalculatorTests
     }
 
     /// <summary>
-    /// Maximul atingibil azi e 80, nu 100: pinul pe hartă și dosarul vehiculului nu au încă sursă
-    /// de date, deci ponderile lor sunt zero. Testul fixează cifra ca să nu se schimbe din greșeală.
+    /// Un anunț complet atinge acum 100. Plafonul era 80 cât timp pinul pe hartă și dosarul
+    /// vehiculului n-aveau sursă de date; fluxul de adăugare pe pași le-a dat una.
     /// </summary>
     [Fact]
-    public void PerfectListing_Scores80_UntilMapAndDossierExist()
+    public void PerfectListing_Scores100()
     {
         ListingScoreResult result = Calculator().Calculate(Perfect(), Now);
 
-        result.Score.ShouldBe(80);
+        result.Score.ShouldBe(100);
         result.Suggestions.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void MapPin_Scores10()
+    {
+        Calculator().Calculate(Empty() with { HasMapPin = true }, Now).Score.ShouldBe(10);
+    }
+
+    [Fact]
+    public void MissingMapPin_IsSuggested()
+    {
+        ScoreSuggestion map = Calculator().Calculate(Empty(), Now).Suggestions.Single(s => s.Id == "map");
+
+        map.Points.ShouldBe(10);
+        map.Label.ShouldBe("Setează locația pe hartă");
+    }
+
+    /// <summary>Dosarul punctează la prag, nu proporțional: 80% din spec §5.2.</summary>
+    [Theory]
+    [InlineData(0.0, 0)]
+    [InlineData(0.5, 0)]
+    [InlineData(0.75, 0)]
+    [InlineData(0.8, 10)]
+    [InlineData(1.0, 10)]
+    public void VehicleDossier_ScoresAtThreshold(double completion, int expected)
+    {
+        Calculator().Calculate(Empty() with { DossierCompletion = completion }, Now).Score.ShouldBe(expected);
     }
 
     [Fact]
@@ -199,14 +228,13 @@ public class RecommendationScoreCalculatorTests
         Calculator(options).Calculate(Empty() with { DiscountActive = true }, Now).Score.ShouldBe(42);
     }
 
-    /// <summary>
-    /// Criteriile fără sursă de date se pot aprinde din configurare, fără modificare de cod.
-    /// </summary>
+    /// <summary>Pragul dosarului e o setare, nu o constantă în calculator.</summary>
     [Fact]
-    public void MapAndDossierWeights_AreConfigurableButOffByDefault()
+    public void DossierThreshold_ComesFromConfiguration()
     {
-        new RecommendationScoringOptions().MapPin.ShouldBe(0);
-        new RecommendationScoringOptions().VehicleDossier.ShouldBe(0);
+        var options = new RecommendationScoringOptions { VehicleDossierThreshold = 0.25 };
+
+        Calculator(options).Calculate(Empty() with { DossierCompletion = 0.5 }, Now).Score.ShouldBe(10);
     }
 
     private static ListingScoreInput Perfect() => new(
@@ -216,5 +244,7 @@ public class RecommendationScoreCalculatorTests
         IsAvailable: true,
         OwnerVerified: true,
         OwnerHasLogo: true,
-        UpdatedAtUtc: Now);
+        UpdatedAtUtc: Now,
+        HasMapPin: true,
+        DossierCompletion: 1);
 }
