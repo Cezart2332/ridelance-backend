@@ -96,6 +96,8 @@ public static class DependencyInjection
         // Oblio (facturare)
         services.Configure<OblioOptions>(configuration.GetSection(OblioOptions.SectionName));
         services.AddHttpClient<IOblioService, OblioService>();
+        // Facturarea pe contul proprietarului — alt client, aceleași conducte HTTP.
+        services.AddHttpClient<IOwnerInvoicingService, OwnerOblioService>();
         services.AddScoped<IInvoiceGenerator, InvoiceGenerator>();
 
         // Bolt

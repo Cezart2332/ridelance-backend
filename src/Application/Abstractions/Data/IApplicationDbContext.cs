@@ -5,6 +5,7 @@ using Domain.Cars;
 using Domain.Companies;
 using Domain.Chat;
 using Domain.Documents;
+using Domain.Invoicing;
 using Domain.Maintenance;
 using Domain.Expenses;
 using Domain.Taxes;
@@ -26,6 +27,7 @@ public interface IApplicationDbContext
     DbSet<CompanyProfile> CompanyProfiles { get; }
     DbSet<MaintenanceEntry> MaintenanceEntries { get; }
     DbSet<Rental> Rentals { get; }
+    DbSet<OblioIntegration> OblioIntegrations { get; }
     DbSet<PfaRegistration> PfaRegistrations { get; }
     DbSet<PfaFiscalProfile> PfaFiscalProfiles { get; }
     DbSet<PfaPlatformAccount> PfaPlatformAccounts { get; }

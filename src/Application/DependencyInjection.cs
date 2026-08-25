@@ -56,6 +56,9 @@ public static class DependencyInjection
 
         services.AddScoped<Cars.Scoring.ListingScoreService>();
 
+        // Aduce și decriptează credențialele Oblio ale proprietarului, într-un singur loc.
+        services.AddScoped<Invoicing.OwnerOblioResolver>();
+
         services.AddScoped<Banking.BankAccountSyncService>();
         services.AddScoped<Banking.BankConnectionClaimService>();
 
