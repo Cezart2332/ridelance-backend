@@ -13,6 +13,7 @@ using Infrastructure.Notifications;
 using Infrastructure.Services;
 using Infrastructure.Banking;
 using Infrastructure.Email;
+using Infrastructure.CompanyLookup;
 using Infrastructure.Invoicing;
 using Infrastructure.Payments;
 using Application.Abstractions;
@@ -98,6 +99,10 @@ public static class DependencyInjection
         services.AddHttpClient<IOblioService, OblioService>();
         // Facturarea pe contul proprietarului — alt client, aceleași conducte HTTP.
         services.AddHttpClient<IOwnerInvoicingService, OwnerOblioService>();
+
+        // Registrul public ANAF, pentru precompletarea facturii după CUI.
+        services.AddHttpClient<ICompanyLookupService, AnafCompanyLookupService>(client =>
+            client.Timeout = TimeSpan.FromSeconds(10));
         services.AddScoped<IInvoiceGenerator, InvoiceGenerator>();
 
         // Bolt
