@@ -4,6 +4,7 @@ using Domain.Banking;
 using Domain.Bolt;
 using Domain.Cars;
 using Domain.Companies;
+using Domain.Invoicing;
 using Domain.Maintenance;
 using Domain.Rentals;
 using Domain.Chat;
@@ -32,6 +33,7 @@ public sealed class ApplicationDbContext(
     public DbSet<CompanyProfile> CompanyProfiles { get; set; }
     public DbSet<MaintenanceEntry> MaintenanceEntries { get; set; }
     public DbSet<Rental> Rentals { get; set; }
+    public DbSet<OblioIntegration> OblioIntegrations { get; set; }
     public DbSet<PfaRegistration> PfaRegistrations { get; set; }
     public DbSet<PfaFiscalProfile> PfaFiscalProfiles { get; set; }
     public DbSet<PfaPlatformAccount> PfaPlatformAccounts { get; set; }
