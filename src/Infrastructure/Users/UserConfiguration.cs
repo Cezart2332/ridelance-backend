@@ -19,5 +19,9 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.PhoneNumber).HasMaxLength(32);
         builder.Property(u => u.Role).HasConversion<string>().HasMaxLength(32);
         builder.Property(u => u.RefreshToken).HasMaxLength(256);
+        builder.Property(u => u.EmailVerificationCode).HasMaxLength(16);
+
+        // Proprietate calculată din `EmailVerifiedAtUtc`; nu are coloană.
+        builder.Ignore(u => u.IsEmailVerified);
     }
 }

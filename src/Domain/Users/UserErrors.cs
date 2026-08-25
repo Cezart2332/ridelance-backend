@@ -24,6 +24,30 @@ public static class UserErrors
         "Users.InvalidCredentials",
         "The provided email or password is incorrect.");
 
+    /// <summary>
+    /// Cod greșit — sau adresă fără cont. Deliberat același mesaj pentru ambele: unul distinct ar
+    /// fi spus oricui care adrese sunt înregistrate pe platformă.
+    /// </summary>
+    public static readonly Error VerificationCodeInvalid = Error.Failure(
+        "Users.VerificationCodeInvalid",
+        "Codul introdus nu este corect.");
+
+    public static readonly Error VerificationCodeExpired = Error.Failure(
+        "Users.VerificationCodeExpired",
+        "Codul a expirat. Cere unul nou.");
+
+    public static readonly Error VerificationCodeMissing = Error.Failure(
+        "Users.VerificationCodeMissing",
+        "Nu există un cod activ pentru această adresă. Cere unul nou.");
+
+    public static readonly Error VerificationTooManyAttempts = Error.Failure(
+        "Users.VerificationTooManyAttempts",
+        "Prea multe încercări. Cere un cod nou.");
+
+    public static readonly Error VerificationResendTooSoon = Error.Failure(
+        "Users.VerificationResendTooSoon",
+        "Am trimis deja un cod. Așteaptă un minut înainte să ceri altul.");
+
     public static readonly Error InvalidRefreshToken = Error.Failure(
         "Users.InvalidRefreshToken",
         "The refresh token is invalid or has expired.");
