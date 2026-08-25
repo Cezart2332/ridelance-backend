@@ -1,8 +1,10 @@
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Services;
 using Application.Invoicing.Commands.CancelInvoice;
 using Application.Invoicing.Commands.CollectInvoice;
 using Application.Invoicing.Commands.ConnectOblio;
 using Application.Invoicing.Commands.DisconnectOblio;
+using Application.Invoicing.Commands.IssueInvoice;
 using Application.Invoicing.Queries.GetOwnerInvoices;
 using SharedKernel;
 using Web.Api.Infrastructure;
@@ -97,6 +99,47 @@ internal sealed class CancelInvoice : IEndpoint
         {
             Result result = await handler.Handle(command, cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+}
+
+internal sealed class IssueInvoice : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPost("invoices/issue", async (
+            IssueInvoiceCommand command,
+            ICommandHandler<IssueInvoiceCommand, IssuedInvoiceResult> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<IssuedInvoiceResult> result = await handler.Handle(command, cancellationToken);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+}
+
+/// <summary>
+/// Datele publice ale unei firme, pentru precompletarea facturii.
+/// </summary>
+/// <remarks>
+/// Registrul e public, dar endpointul cere autentificare: fără ea, ar fi fost un proxy deschis
+/// peste ANAF, pe socoteala noastră.
+/// </remarks>
+internal sealed class LookupCompany : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapGet("invoices/company/{cui}", async (
+            string cui,
+            ICompanyLookupService lookup,
+            CancellationToken cancellationToken) =>
+        {
+            CompanyLookupResult? company = await lookup.FindByCuiAsync(cui, cancellationToken);
+            return company is null ? Results.NotFound() : Results.Ok(company);
         })
         .RequireAuthorization()
         .WithTags(Tags.Companies);
