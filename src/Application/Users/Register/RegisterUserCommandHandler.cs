@@ -29,6 +29,11 @@ internal sealed class RegisterUserCommandHandler(IApplicationDbContext context, 
             CreatedAtUtc = DateTime.UtcNow
         };
 
+        // Codul se scrie odată cu contul, într-o singură salvare. Emailul pleacă din
+        // `UserRegisteredDomainEventHandler`, care rulează după `SaveChangesAsync`, deci codul e
+        // deja în baza de date când ajunge mesajul — nu invers.
+        EmailVerificationCodes.Issue(user);
+
         user.Raise(new UserRegisteredDomainEvent(user.Id));
 
         context.Users.Add(user);
