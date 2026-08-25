@@ -90,16 +90,61 @@ internal sealed class GetOwnerInvoicesQueryHandler(
 
         var dtos = invoices.Select(invoice => Map(invoice, today)).ToList();
 
+        IReadOnlyList<string> series = integration.AvailableSeries.Count > 0
+            ? integration.AvailableSeries
+            : await BackfillSeriesAsync(integration.Id, credentials.Value, cancellationToken);
+
         var connection = new OblioConnectionDto(
             true,
             integration.CompanyName,
             integration.Cif,
             integration.SeriesName,
-            [],
+            series,
             null,
             integration.LastSyncAtUtc);
 
         return Result.Success(new OwnerInvoicesDto(connection, Summarise(dtos), dtos));
+    }
+
+    /// <summary>
+    /// Citește seriile din Oblio și le scrie pe integrare, o singură dată.
+    /// </summary>
+    /// <remarks>
+    /// Există pentru integrările conectate înainte ca seriile să fie reținute: coloana lor e goală,
+    /// iar altfel ar fi trebuit ca fiecare să se reconecteze ca să poată emite. După prima citire
+    /// reușită, ramura asta nu se mai atinge.
+    ///
+    /// Un eșec nu strică pagina: lista rămâne goală, facturile deja aduse se afișează, iar
+    /// încercarea se reia la următoarea deschidere.
+    /// </remarks>
+    private async Task<IReadOnlyList<string>> BackfillSeriesAsync(
+        Guid integrationId,
+        OwnerOblioCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            OblioConnectionInfo info = await invoicing.TestConnectionAsync(credentials, cancellationToken);
+            if (info.InvoiceSeries.Count == 0)
+            {
+                return [];
+            }
+
+            OblioIntegration? tracked = await context.OblioIntegrations
+                .FirstOrDefaultAsync(o => o.Id == integrationId, cancellationToken);
+
+            if (tracked is not null)
+            {
+                tracked.AvailableSeries = [.. info.InvoiceSeries];
+                await context.SaveChangesAsync(cancellationToken);
+            }
+
+            return info.InvoiceSeries;
+        }
+        catch (OblioApiException)
+        {
+            return [];
+        }
     }
 
     private static OwnerInvoiceDto Map(OwnerInvoice invoice, DateOnly today)
