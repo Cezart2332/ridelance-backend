@@ -72,6 +72,7 @@ internal sealed class ConnectOblioCommandHandler(
         integration.ClientSecretEncrypted = secrets.Protect(command.ClientSecret.Trim());
         integration.Cif = command.Cif.Trim();
         integration.CompanyName = info.CompanyName;
+        integration.AvailableSeries = [.. info.InvoiceSeries];
         // Seria cerută, dacă e una dintre cele reale; altfel prima din cont.
         string? defaultSeries = info.InvoiceSeries.Count > 0 ? info.InvoiceSeries[0] : null;
         integration.SeriesName = info.InvoiceSeries.Contains(command.SeriesName ?? string.Empty)

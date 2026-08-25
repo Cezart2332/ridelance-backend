@@ -33,6 +33,16 @@ public sealed class OblioIntegration : Entity
     /// <summary>Denumirea citită din Oblio la conectare — confirmă vizual că e contul corect.</summary>
     public string? CompanyName { get; set; }
 
+    /// <summary>
+    /// Seriile de facturare din contul Oblio, citite la conectare.
+    /// </summary>
+    /// <remarks>
+    /// Se rețin, nu se recitesc la fiecare afișare: lista se schimbă rar, iar un apel în plus la
+    /// Oblio pentru fiecare deschidere a paginii de facturi ar fi dublat timpul de încărcare.
+    /// Se împrospătează la reconectare — acolo se duce cine adaugă o serie nouă în Oblio.
+    /// </remarks>
+    public List<string> AvailableSeries { get; set; } = [];
+
     public bool IsConnected { get; set; }
     public string? ErrorMessage { get; set; }
 
