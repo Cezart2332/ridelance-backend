@@ -14,6 +14,8 @@ public sealed record SubscriptionResponse(
     DateTime? NextBillingDateUtc,
     DateTime? CreatedAtUtc,
     bool DashboardAccessGranted,
+    // "Monthly" | "Annual". Null pe răspunsul fără abonament.
+    string? BillingCycle = null,
     string? PfaStatus = null,
     string? PfaRegistrationType = null,
     string? PendingPlan = null,

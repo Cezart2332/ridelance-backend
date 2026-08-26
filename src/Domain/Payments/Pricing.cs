@@ -26,6 +26,30 @@ public static class Pricing
         public const bool OnboardingAdvanceIsRefundable = false;
     }
 
+    /// <summary>
+    /// Abonamentele lunare și anuale, în bani.
+    ///
+    /// Sumele sunt cele anunțate public (`src/data/plans.ts` în frontend): plata lunară, cu 10%
+    /// reducere la plata anuală. Până acum catalogul Stripe încasa săptămânal (49/99/149 lei),
+    /// deci pagina anunța un model pe care casa nu-l putea onora — de aici încolo e o singură sumă.
+    /// </summary>
+    public static class Plans
+    {
+        public const long SoloMonthlyBani = 19_900;
+        public const long StartMonthlyBani = 39_900;
+        public const long ProMonthlyBani = 59_900;
+
+        /// <summary>Reducerea la plata anuală, ca fracție. Aceeași valoare ca `ANNUAL_DISCOUNT`.</summary>
+        public const decimal AnnualDiscount = 0.10m;
+
+        // Totalul facturat o dată pe an: 12 luni cu reducerea aplicată. Scris explicit, nu calculat:
+        // un `Price` Stripe are nevoie de un întreg exact, iar rotunjirea nu are voie să depindă de
+        // ordinea operațiilor.
+        public const long SoloAnnualBani = 214_920;
+        public const long StartAnnualBani = 430_920;
+        public const long ProAnnualBani = 646_920;
+    }
+
     // Tarifele ARR (eliberare autorizație, copie conformă, ecusoane) NU sunt aici: se citesc din
     // `ArrAuthorizationRequest.FeeSnapshotBani` și `VehicleCopyRequest`, stampilate la momentul
     // cererii. Lipsa unui snapshot se afișează ca atare în UI — nu se inventează o sumă.

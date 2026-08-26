@@ -145,13 +145,13 @@ internal sealed class HandleStripeWebhookCommandHandler(
             // Subscription checkout completed — record first payment + create subscription record
             string? planStr = session.Metadata?.GetValueOrDefault("customMetadata") ?? string.Empty;
             SubscriptionPlan plan = ParsePlan(planStr);
+            SubscriptionBillingCycle cycle = ParseCycle(planStr);
 
-            DateTime firstBilling = GetNextMondayBillingDateUtc();
-
-            // The account is usable immediately after the subscription checkout.
-            // Monday 15:00 remains the automatic billing anchor, not an access gate.
-            bool grantAccessNow = true;
-            DateTime? accessGrantedUtc = DateTime.UtcNow;
+            // Abonamentul se încasează la checkout, deci prima facturare e chiar acum. Nu mai
+            // există ancora de luni 15:00: clientul plătește când cumpără, iar reînnoirea cade
+            // la o lună sau un an de la momentul ăla.
+            DateTime firstBilling = DateTime.UtcNow;
+            DateTime nextBilling = NextBillingFrom(firstBilling, cycle);
 
             // Check if subscription already exists for this user (e.g. upgrade)
             UserSubscription? existing = await context.UserSubscriptions
@@ -159,30 +159,20 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
             if (existing is not null)
             {
-                bool isPlanChange = session.Metadata?.GetValueOrDefault("isPlanChange") == "true";
-                bool preserveDashboardAccess = isPlanChange && existing.DashboardAccessGranted;
-
-                if (isPlanChange)
-                {
-                    existing.PendingPlan = plan;
-                }
-                else
-                {
-                    existing.Plan = plan;
-                    existing.PendingPlan = null;
-                }
-                existing.Status = SubscriptionStatus.ActivePendingBilling;
+                // Schimbarea de plan intră în vigoare acum, nu la următoarea facturare: clientul
+                // tocmai a plătit planul nou. `PendingPlan` amâna trecerea până la ancora de luni
+                // 15:00 — nu mai are ce amâna, deci se golește pe orice checkout reușit.
+                existing.Plan = plan;
+                existing.PendingPlan = null;
+                existing.Status = SubscriptionStatus.Active;
+                existing.BillingCycle = cycle;
                 existing.StripeSubscriptionId = session.SubscriptionId;
                 existing.StripeCustomerId = session.CustomerId;
                 existing.FirstBillingDateUtc = firstBilling;
-                existing.NextBillingDateUtc = firstBilling;
+                existing.NextBillingDateUtc = nextBilling;
                 existing.CancelledAtUtc = null;
-
-                if (!preserveDashboardAccess)
-                {
-                    existing.DashboardAccessGranted = grantAccessNow;
-                    existing.DashboardAccessGrantedUtc = accessGrantedUtc;
-                }
+                existing.DashboardAccessGranted = true;
+                existing.DashboardAccessGrantedUtc ??= DateTime.UtcNow;
             }
             else
             {
@@ -192,14 +182,15 @@ internal sealed class HandleStripeWebhookCommandHandler(
                     UserId = userId,
                     Plan = plan,
                     PendingPlan = null,
-                    Status = SubscriptionStatus.ActivePendingBilling,
+                    Status = SubscriptionStatus.Active,
+                    BillingCycle = cycle,
                     StripeSubscriptionId = session.SubscriptionId,
                     StripeCustomerId = session.CustomerId,
                     FirstBillingDateUtc = firstBilling,
-                    NextBillingDateUtc = firstBilling,
+                    NextBillingDateUtc = nextBilling,
                     CreatedAtUtc = DateTime.UtcNow,
-                    DashboardAccessGranted = grantAccessNow,
-                    DashboardAccessGrantedUtc = accessGrantedUtc,
+                    DashboardAccessGranted = true,
+                    DashboardAccessGrantedUtc = DateTime.UtcNow,
                 };
                 context.UserSubscriptions.Add(sub);
             }
@@ -212,7 +203,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 PaymentType = PaymentType.Subscription,
                 Status = PaymentStatus.Succeeded,
                 AmountBani = session.AmountTotal ?? 0,
-                Description = $"RIDElance {plan} — abonament săptămânal",
+                Description = $"RIDElance {plan} — {CycleLabel(cycle)}",
                 StripePaymentId = session.PaymentIntentId,
                 StripeSessionId = session.Id,
                 CreatedAtUtc = DateTime.UtcNow,
@@ -237,9 +228,12 @@ internal sealed class HandleStripeWebhookCommandHandler(
         if (user != null)
         {
             decimal amountLei = (session.AmountTotal ?? 0) / 100m;
+            // Metadata e „plan:solo|cycle:Annual", nu un nume de plan: scrisă direct, ajungea în
+            // emailul clientului exact așa.
+            string subscriptionMetadata = session.Metadata?.GetValueOrDefault("customMetadata") ?? string.Empty;
             string description = mode == "payment"
                 ? BuildOneTimeDescription(session)
-                : $"Abonament săptămânal RIDElance — Plan {session.Metadata?.GetValueOrDefault("customMetadata") ?? "Start"}";
+                : $"Abonament RIDElance {CycleLabel(ParseCycle(subscriptionMetadata))} — Plan {ParsePlan(subscriptionMetadata)}";
 
             string mjml = ServiceOrderConfirmationEmail.BuildMjml(
                 $"{user.FirstName} {user.LastName}",
@@ -492,10 +486,9 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return;
         }
 
-        // Update to Active, set next billing date, and grant dashboard access
-        // (recurring invoice means Monday job already ran or this is the first cycle)
+        // O factură plătită înseamnă un ciclu nou: următoarea cade la o lună sau un an de acum.
         sub.Status = SubscriptionStatus.Active;
-        sub.NextBillingDateUtc = GetNextMondayBillingDateUtc();
+        sub.NextBillingDateUtc = NextBillingFrom(DateTime.UtcNow, sub.BillingCycle);
         sub.DashboardAccessGranted = true;
         sub.DashboardAccessGrantedUtc ??= DateTime.UtcNow;
 
@@ -513,7 +506,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
             PaymentType = PaymentType.Subscription,
             Status = PaymentStatus.Succeeded,
             AmountBani = invoice.AmountPaid,
-            Description = $"RIDElance {sub.Plan} — abonament săptămânal",
+            Description = $"RIDElance {sub.Plan} — {CycleLabel(sub.BillingCycle)}",
             StripePaymentId = invoice.Payments?.FirstOrDefault()?.Payment?.PaymentIntentId,
             CreatedAtUtc = DateTime.UtcNow,
         };
@@ -531,7 +524,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
         if (user != null)
         {
             decimal amountLei = invoice.AmountPaid / 100m;
-            string description = $"Abonament săptămânal RIDElance — Plan {sub.Plan}";
+            string description = $"Abonament RIDElance {CycleLabel(sub.BillingCycle)} — Plan {sub.Plan}";
 
             string mjml = ServiceOrderConfirmationEmail.BuildMjml(
                 $"{user.FirstName} {user.LastName}",
@@ -666,28 +659,32 @@ internal sealed class HandleStripeWebhookCommandHandler(
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns the next Monday 15:00 Romania time in UTC.
-    /// Romania is EEST (+3) in summer, EET (+2) in winter.
+    /// Când cade următoarea încasare, pornind de la cea de acum. O lună sau un an — nu mai există
+    /// o zi fixă a săptămânii: abonamentul se reînnoiește la aniversarea plății.
     /// </summary>
-    private static DateTime GetNextMondayBillingDateUtc()
-    {
-        // Use Romania timezone
-        var romaniaZone = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
-        DateTime nowRomania = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, romaniaZone);
+    private static DateTime NextBillingFrom(DateTime fromUtc, SubscriptionBillingCycle cycle) =>
+        cycle == SubscriptionBillingCycle.Annual ? fromUtc.AddYears(1) : fromUtc.AddMonths(1);
 
-        int dayOfWeek = (int)nowRomania.DayOfWeek; // 0=Sun, 1=Mon
-        // Always push to next week's Monday (business rule: even if today is Monday, next week)
-        int daysUntilMonday = dayOfWeek == 1 ? 7 : (8 - dayOfWeek) % 7;
-        if (daysUntilMonday == 0)
+    /// <summary>Cum se numește ciclul pe factură și în emailul de confirmare.</summary>
+    private static string CycleLabel(SubscriptionBillingCycle cycle) =>
+        cycle == SubscriptionBillingCycle.Annual ? "abonament anual" : "abonament lunar";
+
+    /// <summary>
+    /// Ciclul din metadata sesiunii („plan:solo|cycle:Annual”). Lipsa lui înseamnă lunar: așa
+    /// arată sesiunile create înainte ca ciclul să existe.
+    /// </summary>
+    private static SubscriptionBillingCycle ParseCycle(string metadata)
+    {
+        foreach (string part in metadata.Split('|', StringSplitOptions.RemoveEmptyEntries))
         {
-            daysUntilMonday = 7;
+            if (part.StartsWith("cycle:", StringComparison.OrdinalIgnoreCase)
+                && Enum.TryParse(part[6..], ignoreCase: true, out SubscriptionBillingCycle parsed))
+            {
+                return parsed;
+            }
         }
 
-        DateTime nextMondayRomania = nowRomania.Date
-            .AddDays(daysUntilMonday)
-            .AddHours(15);
-
-        return TimeZoneInfo.ConvertTimeToUtc(nextMondayRomania, romaniaZone);
+        return SubscriptionBillingCycle.Monthly;
     }
 
     private static SubscriptionPlan ParsePlan(string metadata)

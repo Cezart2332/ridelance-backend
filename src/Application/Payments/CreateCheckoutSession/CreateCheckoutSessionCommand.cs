@@ -1,17 +1,23 @@
 using System.Diagnostics.CodeAnalysis;
 using Application.Abstractions.Messaging;
+using Domain.Payments;
 
 namespace Application.Payments.CreateCheckoutSession;
 
 /// <summary>
 /// Creates a Stripe Checkout Session URL. Returns the redirect URL.
 /// </summary>
+/// <param name="Cycle">
+/// Ciclul de facturare al abonamentului: lunar (implicit) sau anual. Ignorat pe modul "payment",
+/// unde nu există reînnoire. A luat locul ancorei de facturare — plata se face acum, la checkout,
+/// nu la următoarea zi de luni.
+/// </param>
 public sealed record CreateCheckoutSessionCommand(
     Guid UserId,
     string UserEmail,
     string Mode,          // "payment" or "subscription"
     string Plan,          // e.g. "solo", "start", "pro", "infiintare_pfa"
-    long? BillingAnchorUnix, // Unix timestamp for Monday 15:00 billing anchor (subscriptions only)
+    SubscriptionBillingCycle Cycle = SubscriptionBillingCycle.Monthly,
     [property: SuppressMessage("Design", "CA1054:Uri parameters should not be strings", Justification = "Strings are preferred for API DTOs")]
     [param: SuppressMessage("Design", "CA1054:Uri parameters should not be strings", Justification = "Strings are preferred for API DTOs")]
     string? SuccessUrl = null,

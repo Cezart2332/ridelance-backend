@@ -11,7 +11,7 @@ namespace Domain.Payments;
 /// <param name="ProductName">Product name shown in Stripe; kept without diacritics like the existing ones.</param>
 /// <param name="UnitAmountBani">Amount in the smallest currency unit (bani).</param>
 /// <param name="Currency">ISO currency code, lowercase.</param>
-/// <param name="Interval">Recurring interval ("week", "month"); <see langword="null"/> for a one-time price.</param>
+/// <param name="Interval">Recurring interval ("month", "year"); <see langword="null"/> for a one-time price.</param>
 /// <param name="Metadata">Metadata written on the product and the price at creation time.</param>
 public sealed record StripeCatalogItem(
     string LookupKey,
@@ -33,47 +33,61 @@ public static class StripeCatalog
 {
     private const string Ron = "ron";
 
-    public static StripeCatalogItem Solo { get; } = new(
-        "ridelance_plan_solo_weekly_ron",
-        "RIDElance Solo",
-        4900,
-        Ron,
-        "week",
-        new Dictionary<string, string>
-        {
-            ["app"] = "ridelance",
-            ["kind"] = "subscription_plan",
-            ["plan"] = "solo",
-            ["billing_unit"] = "week",
-        });
+    /// <summary>
+    /// Un plan de abonament, în ambele cicluri de facturare.
+    /// </summary>
+    /// <remarks>
+    /// Cheile poartă suma („_199_”, „_2149_”) pentru că un <c>Price</c> Stripe e imutabil: dacă
+    /// suma se schimbă, cheia trebuie să se schimbe odată cu ea, altfel se regăsește prețul vechi.
+    /// Vechile chei săptămânale (<c>ridelance_plan_solo_weekly_ron</c> ș.a.) nu se mai caută —
+    /// prețurile lor rămân în cont, dar nimeni nu le mai cumpără.
+    /// </remarks>
+    private static StripeCatalogItem Plan(string key, string title, long monthlyBani, long annualBani, bool annual) =>
+        annual
+            ? new StripeCatalogItem(
+                $"ridelance_plan_{key}_annual_{annualBani / 100}_ron",
+                $"{title} - anual",
+                annualBani,
+                Ron,
+                "year",
+                new Dictionary<string, string>
+                {
+                    ["app"] = "ridelance",
+                    ["kind"] = "subscription_plan",
+                    ["plan"] = key,
+                    ["billing_unit"] = "year",
+                })
+            : new StripeCatalogItem(
+                $"ridelance_plan_{key}_monthly_{monthlyBani / 100}_ron",
+                title,
+                monthlyBani,
+                Ron,
+                "month",
+                new Dictionary<string, string>
+                {
+                    ["app"] = "ridelance",
+                    ["kind"] = "subscription_plan",
+                    ["plan"] = key,
+                    ["billing_unit"] = "month",
+                });
 
-    public static StripeCatalogItem Start { get; } = new(
-        "ridelance_plan_start_weekly_ron",
-        "RIDElance Start",
-        9900,
-        Ron,
-        "week",
-        new Dictionary<string, string>
-        {
-            ["app"] = "ridelance",
-            ["kind"] = "subscription_plan",
-            ["plan"] = "start",
-            ["billing_unit"] = "week",
-        });
+    public static StripeCatalogItem Solo { get; } =
+        Plan("solo", "RIDElance Solo", Pricing.Plans.SoloMonthlyBani, Pricing.Plans.SoloAnnualBani, annual: false);
 
-    public static StripeCatalogItem Pro { get; } = new(
-        "ridelance_plan_pro_weekly_ron",
-        "RIDElance Pro",
-        14900,
-        Ron,
-        "week",
-        new Dictionary<string, string>
-        {
-            ["app"] = "ridelance",
-            ["kind"] = "subscription_plan",
-            ["plan"] = "pro",
-            ["billing_unit"] = "week",
-        });
+    public static StripeCatalogItem SoloAnnual { get; } =
+        Plan("solo", "RIDElance Solo", Pricing.Plans.SoloMonthlyBani, Pricing.Plans.SoloAnnualBani, annual: true);
+
+    public static StripeCatalogItem Start { get; } =
+        Plan("start", "RIDElance Start", Pricing.Plans.StartMonthlyBani, Pricing.Plans.StartAnnualBani, annual: false);
+
+    public static StripeCatalogItem StartAnnual { get; } =
+        Plan("start", "RIDElance Start", Pricing.Plans.StartMonthlyBani, Pricing.Plans.StartAnnualBani, annual: true);
+
+    public static StripeCatalogItem Pro { get; } =
+        Plan("pro", "RIDElance Pro", Pricing.Plans.ProMonthlyBani, Pricing.Plans.ProAnnualBani, annual: false);
+
+    public static StripeCatalogItem ProAnnual { get; } =
+        Plan("pro", "RIDElance Pro", Pricing.Plans.ProMonthlyBani, Pricing.Plans.ProAnnualBani, annual: true);
 
     /// <summary>
     /// The RIDElance Start advance paid during onboarding, before the file reaches the accounting
@@ -153,8 +167,11 @@ public static class StripeCatalog
     public static IReadOnlyList<StripeCatalogItem> All { get; } =
     [
         Solo,
+        SoloAnnual,
         Start,
+        StartAnnual,
         Pro,
+        ProAnnual,
         RidelanceStartAdvance,
         InfiintarePfaPublic,
         SediuSocial,
@@ -162,12 +179,20 @@ public static class StripeCatalog
         CarListingMonthly,
     ];
 
-    private static readonly Dictionary<string, StripeCatalogItem> SubscriptionPlans =
+    private static readonly Dictionary<string, StripeCatalogItem> MonthlyPlans =
         new(StringComparer.OrdinalIgnoreCase)
         {
             ["solo"] = Solo,
             ["start"] = Start,
             ["pro"] = Pro,
+        };
+
+    private static readonly Dictionary<string, StripeCatalogItem> AnnualPlans =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["solo"] = SoloAnnual,
+            ["start"] = StartAnnual,
+            ["pro"] = ProAnnual,
         };
 
     private static readonly Dictionary<string, StripeCatalogItem> DashboardServices =
@@ -187,15 +212,23 @@ public static class StripeCatalog
         };
 
     /// <summary>
-    /// Resolves what an authenticated user is buying from the app: a weekly plan when
-    /// <paramref name="mode"/> is "subscription", otherwise a one-time service from the dashboard.
+    /// Resolves what an authenticated user is buying from the app: a subscription plan on the
+    /// requested billing cycle when <paramref name="mode"/> is "subscription", otherwise a
+    /// one-time service from the dashboard (where the cycle is meaningless and ignored).
     /// </summary>
-    public static bool TryResolvePlan(string planKey, string mode, [NotNullWhen(true)] out StripeCatalogItem? item)
+    public static bool TryResolvePlan(
+        string planKey,
+        string mode,
+        SubscriptionBillingCycle cycle,
+        [NotNullWhen(true)] out StripeCatalogItem? item)
     {
+        if (!string.Equals(mode, "subscription", StringComparison.OrdinalIgnoreCase))
+        {
+            return DashboardServices.TryGetValue(planKey ?? string.Empty, out item);
+        }
+
         Dictionary<string, StripeCatalogItem> source =
-            string.Equals(mode, "subscription", StringComparison.OrdinalIgnoreCase)
-                ? SubscriptionPlans
-                : DashboardServices;
+            cycle == SubscriptionBillingCycle.Annual ? AnnualPlans : MonthlyPlans;
 
         return source.TryGetValue(planKey ?? string.Empty, out item);
     }

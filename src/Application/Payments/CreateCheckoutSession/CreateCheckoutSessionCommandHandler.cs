@@ -21,20 +21,8 @@ internal sealed class CreateCheckoutSessionCommandHandler(
         CreateCheckoutSessionCommand command,
         CancellationToken cancellationToken)
     {
-        if (command.IsPlanChange)
-        {
-            UserSubscription? subscription = await context.UserSubscriptions
-                .Where(s => s.UserId == command.UserId)
-                .OrderByDescending(s => s.CreatedAtUtc)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (subscription is not null && subscription.Status == SubscriptionStatus.ActivePendingBilling)
-            {
-                return Result.Failure<string>(Error.Problem(
-                    "Subscription.PendingChange",
-                    "Ai deja o schimbare de abonament programată pentru lunea viitoare. Poți schimba abonamentul doar o dată pe săptămână."));
-            }
-        }
+        // Nu mai există „o schimbare pe săptămână": poarta aia păzea ancora de luni 15:00, iar
+        // schimbarea de plan se încasează acum, la checkout, ca orice altă plată.
 
 #pragma warning disable S1075 // URIs should not be hardcoded
         string baseUrl = configuration["App:BaseUrl"] ?? throw new InvalidOperationException("App:BaseUrl is missing in configuration.");
@@ -51,9 +39,10 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             ? $"{baseUrl}/inregistrare/abonament"
             : $"{baseUrl}/inregistrare/pfa");
 
-        // Build metadata: include plan/service name + billing anchor for subscriptions
-        string metadata = command.Mode == "subscription" && command.BillingAnchorUnix.HasValue
-            ? $"plan:{command.Plan}|billingAnchor:{command.BillingAnchorUnix.Value}"
+        // Metadata: planul, plus ciclul pe abonamente. Webhookul are nevoie de ciclu ca să știe
+        // ce a cumpărat clientul — prețul Stripe îl spune, dar nu ajunge întreg în eveniment.
+        string metadata = command.Mode == "subscription"
+            ? $"plan:{command.Plan}|cycle:{command.Cycle}"
             : $"plan:{command.Plan}";
 
 
@@ -62,7 +51,7 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             ? new Dictionary<string, string> { ["isPlanChange"] = "true" }
             : null;
 
-        if (!StripeCatalog.TryResolvePlan(command.Plan, command.Mode, out StripeCatalogItem? catalogItem))
+        if (!StripeCatalog.TryResolvePlan(command.Plan, command.Mode, command.Cycle, out StripeCatalogItem? catalogItem))
         {
             return Result.Failure<string>(Error.Problem(
                 "Checkout.UnknownPlan",

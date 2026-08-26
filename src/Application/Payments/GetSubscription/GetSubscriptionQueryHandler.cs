@@ -43,6 +43,7 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
                 null,
                 null,
                 false,
+                null,
                 pfa?.Status.ToString(),
                 pfa?.RegistrationType.ToString(),
                 null,
@@ -50,49 +51,11 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
                 onboardingSectionsValidated));
         }
 
-        // Auto Catch-Up for local development/testing where NextBillingDateUtc is in the past
-        if ((sub.Status == SubscriptionStatus.Active || sub.Status == SubscriptionStatus.ActivePendingBilling) &&
-            sub.NextBillingDateUtc.HasValue &&
-            sub.NextBillingDateUtc.Value < DateTime.UtcNow)
-        {
-            DateTime currentBilling = sub.NextBillingDateUtc.Value;
-            DateTime nowUtc = DateTime.UtcNow;
-            bool updated = false;
-
-            while (currentBilling < nowUtc)
-            {
-                currentBilling = currentBilling.AddDays(7);
-
-                // If there's a pending plan change scheduled, it takes effect at this billing point
-                if (sub.PendingPlan.HasValue)
-                {
-                    sub.Plan = sub.PendingPlan.Value;
-                    sub.PendingPlan = null;
-                }
-
-                // Record the weekly subscription payment in the database (with the now-active plan)
-                var record = new PaymentRecord
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = sub.UserId,
-                    PaymentType = PaymentType.Subscription,
-                    Status = PaymentStatus.Succeeded,
-                    AmountBani = GetPlanPriceBani(sub.Plan),
-                    Description = $"RIDElance {sub.Plan} — abonament săptămânal",
-                    StripePaymentId = $"mock_pay_{Guid.NewGuid().ToString("N")[..8]}",
-                    CreatedAtUtc = currentBilling.AddDays(-7), // The payment occurred at the start of that billing week
-                };
-                context.PaymentRecords.Add(record);
-                updated = true;
-            }
-
-            if (updated)
-            {
-                sub.NextBillingDateUtc = currentBilling;
-                sub.Status = SubscriptionStatus.Active;
-                await context.SaveChangesAsync(cancellationToken);
-            }
-        }
+        // Aici stătea un „auto catch-up": la fiecare citire a abonamentului, dacă data următoarei
+        // facturări era în trecut, se inventau plăți săptămânale (`mock_pay_...`) cu sume scrise
+        // de mână, direct în istoricul real al clientului. Cu facturarea lunară prin Stripe,
+        // singura sursă de plăți e `invoice.payment_succeeded` din webhook — o citire nu are voie
+        // să scrie o încasare care nu s-a întâmplat.
 
         return Result.Success<SubscriptionResponse?>(new SubscriptionResponse(
             sub.Id,
@@ -103,6 +66,7 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             sub.NextBillingDateUtc,
             sub.CreatedAtUtc,
             sub.DashboardAccessGranted,
+            sub.BillingCycle.ToString(),
             pfa?.Status.ToString(),
             pfa?.RegistrationType.ToString(),
             sub.PendingPlan?.ToString(),
@@ -110,15 +74,4 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             onboardingSectionsValidated));
     }
 
-
-    private static long GetPlanPriceBani(SubscriptionPlan plan)
-    {
-        return plan switch
-        {
-            SubscriptionPlan.Solo => 4900,
-            SubscriptionPlan.Start => 9900,
-            SubscriptionPlan.Pro => 14900,
-            _ => 9900
-        };
-    }
 }

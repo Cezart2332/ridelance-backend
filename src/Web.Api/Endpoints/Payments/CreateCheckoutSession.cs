@@ -2,6 +2,7 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Payments.CreateCheckoutSession;
+using Domain.Payments;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -14,7 +15,8 @@ internal sealed class CreateCheckoutSession : IEndpoint
     public sealed record Request(
         string Mode,          // "payment" or "subscription"
         string Plan,          // e.g. "solo", "start", "pro", "infiintare_pfa"
-        long? BillingAnchorUnix,
+        // "Monthly" | "Annual". Absent sau nerecunoscut înseamnă lunar.
+        string? Cycle,
         string? SuccessUrl = null,
         string? CancelUrl = null,
         bool IsPlanChange = false);
@@ -39,7 +41,7 @@ internal sealed class CreateCheckoutSession : IEndpoint
                 email ?? string.Empty,
                 request.Mode,
                 request.Plan,
-                request.BillingAnchorUnix,
+                ParseCycle(request.Cycle),
                 request.SuccessUrl,
                 request.CancelUrl,
                 request.IsPlanChange);
@@ -53,4 +55,13 @@ internal sealed class CreateCheckoutSession : IEndpoint
         .RequireAuthorization()
         .WithTags(Tags.Payments);
     }
+
+    /// <summary>
+    /// Lunar e implicit: un ciclu lipsă sau scris greșit nu are voie să vândă din greșeală un an
+    /// întreg. Greșeala în direcția cealaltă costă clientul, nu doar o reîncercare.
+    /// </summary>
+    private static SubscriptionBillingCycle ParseCycle(string? cycle) =>
+        Enum.TryParse(cycle, ignoreCase: true, out SubscriptionBillingCycle parsed)
+            ? parsed
+            : SubscriptionBillingCycle.Monthly;
 }
