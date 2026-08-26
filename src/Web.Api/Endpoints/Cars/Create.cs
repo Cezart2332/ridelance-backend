@@ -1,4 +1,5 @@
 using Application.Abstractions.Messaging;
+using Application.Cars;
 using Application.Cars.Commands.CreateCar;
 using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
@@ -22,7 +23,8 @@ internal sealed class Create : IEndpoint
                 request.PricePerWeek, request.OldPrice, request.DiscountActive, request.Garantie,
                 request.OfferType, request.Status,
                 request.UberCategories, request.BoltCategories, request.Badges,
-                request.Description, request.Active, request.ListingSource);
+                request.Description, request.Active, request.ListingSource,
+                request.Details);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.Created($"/cars/{result.Value}", new { id = result.Value });
@@ -39,4 +41,7 @@ internal sealed record CreateCarRequest(
     string OfferType, string Status,
     List<string> UberCategories, List<string> BoltCategories,
     List<string> Badges, string Description, bool Active,
-    string ListingSource = "Ridelance");
+    string ListingSource = "Ridelance",
+    // Vezi nota din `UpdateCarRequest`: lipsea la fel și aici, deci nici la publicare nu se
+    // salva nimic din pasul de locație.
+    CarListingDetails? Details = null);
