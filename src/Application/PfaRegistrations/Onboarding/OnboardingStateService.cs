@@ -53,14 +53,30 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
     /// Poarta de scriere. Se apelează prima în handlerele de pas, înainte de orice validare de
     /// conținut: dacă pasul nu e activ, un mesaj despre câmpuri lipsă ar fi oricum irelevant.
     /// </summary>
+    /// <param name="allowJustCompleted">
+    /// Acceptă și un pas pe care userul tocmai l-a completat, cât timp onboardingul nu e închis.
+    ///
+    /// De ce: un pas al cărui status se derivă din datele userului se închide chiar în timpul
+    /// completării. Pe Uber/Bolt Fleet, salvarea automată din timpul tastării parolei putea
+    /// completa pasul, iar următoarea salvare — aceeași parolă, câteva litere mai încolo — era
+    /// refuzată ca „pas inactiv". Formularul rămânea pe „Nesalvat" și nu se mai putea trece mai
+    /// departe. Datele sunt ale userului și niciun admin nu le-a preluat încă, deci corectarea
+    /// lor nu are ce strica.
+    /// </param>
     public async Task<Result> EnsureWritableAsync(
         Guid userId,
         OnboardingStepKey step,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowJustCompleted = false)
     {
         OnboardingStateResponse state = await GetForUserAsync(userId, cancellationToken);
 
-        return OnboardingStepCatalog.IsWritableByUser(state.Steps, step)
+        bool writable = OnboardingStepCatalog.IsWritableByUser(state.Steps, step)
+            || allowJustCompleted
+                && !state.AllSectionsValidated
+                && OnboardingStepCatalog.IsCompleted(state.Steps, step);
+
+        return writable
             ? Result.Success()
             : Result.Failure(OnboardingErrors.StepNotActive(OnboardingStepCatalog.LabelOf(step)));
     }

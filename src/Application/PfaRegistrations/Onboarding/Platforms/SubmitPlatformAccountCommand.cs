@@ -37,8 +37,10 @@ internal sealed class SubmitPlatformAccountCommandHandler(
     {
         // Poarta RL-01: se scrie doar pe pasul activ. Prima verificare din handler —
         // altfel am valida conținutul unei cereri care oricum nu are voie să treacă.
+        // `allowJustCompleted`: pasul se închide singur în clipa în care credențialele sunt
+        // complete, iar salvarea automată din timpul tastării nu are voie să se blocheze pe asta.
         Result guard = await stateService.EnsureWritableAsync(
-            command.UserId, OnboardingStepKey.Platforms, cancellationToken);
+            command.UserId, OnboardingStepKey.Platforms, cancellationToken, allowJustCompleted: true);
 
         if (guard.IsFailure)
         {
