@@ -96,6 +96,13 @@ public static class OnboardingStepCatalog
         return step?.State is States.Available or States.InProgress or States.Rejected;
     }
 
+    /// <summary>Pasul cerut e finalizat. Pereche cu <see cref="IsWritableByUser"/>, aceeași sursă.</summary>
+    public static bool IsCompleted(IReadOnlyList<OnboardingStepDto> steps, OnboardingStepKey key)
+    {
+        string wireKey = WireKeyOf(key);
+        return steps.FirstOrDefault(s => s.Key == wireKey)?.Status == StatusCompleted;
+    }
+
     public static string WireKeyOf(OnboardingStepKey key) =>
         Steps.Single(s => s.Key == key).WireKey;
 
