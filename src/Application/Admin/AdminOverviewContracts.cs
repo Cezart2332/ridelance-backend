@@ -133,15 +133,31 @@ public sealed record AdminPfaActivityLogRow(
 
 public static class AdminBillingLabels
 {
-    public static long WeeklyPriceBani(SubscriptionPlan plan) => plan switch
-    {
-        SubscriptionPlan.Solo => 4900,
-        SubscriptionPlan.Start => 9900,
-        SubscriptionPlan.Pro => 14900,
-        _ => 0
-    };
+    /// <summary>
+    /// Cât costă planul pe ciclul lui. Sumele vin din <see cref="Pricing.Plans"/>, nu scrise a
+    /// doua oară aici: până acum tabelul ăsta ținea prețurile săptămânale, iar estimarea lunară
+    /// era „×4" — adică adminul raporta alte sume decât cele încasate.
+    /// </summary>
+    public static long PriceBani(SubscriptionPlan plan, SubscriptionBillingCycle cycle) =>
+        (plan, cycle) switch
+        {
+            (SubscriptionPlan.Solo, SubscriptionBillingCycle.Annual) => Pricing.Plans.SoloAnnualBani,
+            (SubscriptionPlan.Start, SubscriptionBillingCycle.Annual) => Pricing.Plans.StartAnnualBani,
+            (SubscriptionPlan.Pro, SubscriptionBillingCycle.Annual) => Pricing.Plans.ProAnnualBani,
+            (SubscriptionPlan.Solo, _) => Pricing.Plans.SoloMonthlyBani,
+            (SubscriptionPlan.Start, _) => Pricing.Plans.StartMonthlyBani,
+            (SubscriptionPlan.Pro, _) => Pricing.Plans.ProMonthlyBani,
+            _ => 0
+        };
 
-    public static long MonthlyEstimateBani(SubscriptionPlan plan) => WeeklyPriceBani(plan) * 4;
+    /// <summary>
+    /// Contribuția lunară a unui abonament la venitul recurent. Un abonament anual se împarte la
+    /// 12 — altfel o singură vânzare anuală ar umfla luna în care s-a făcut.
+    /// </summary>
+    public static long MonthlyEstimateBani(SubscriptionPlan plan, SubscriptionBillingCycle cycle) =>
+        cycle == SubscriptionBillingCycle.Annual
+            ? PriceBani(plan, cycle) / 12
+            : PriceBani(plan, cycle);
 
     public static string PlanLabel(SubscriptionPlan? plan) => plan switch
     {

@@ -126,7 +126,6 @@ public static class DependencyInjection
         services.AddHttpClient<IBankDataProvider, FintableBankDataProvider>();
 
         // Background Jobs
-        services.AddHostedService<MondayAccessGrantJob>();
         services.AddHostedService<RecurringDocumentationNotificationJob>();
         services.AddHostedService<DocumentExpiryCheckJob>();
         services.AddHostedService<PfaIncomePeriodInitializationJob>();

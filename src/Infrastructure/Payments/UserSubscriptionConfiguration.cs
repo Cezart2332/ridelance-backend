@@ -16,6 +16,7 @@ internal sealed class UserSubscriptionConfiguration : IEntityTypeConfiguration<U
 
         builder.Property(s => s.Plan).HasConversion<string>().HasMaxLength(32);
         builder.Property(s => s.Status).HasConversion<string>().HasMaxLength(64);
+        builder.Property(s => s.BillingCycle).HasConversion<string>().HasMaxLength(16);
         builder.Property(s => s.StripeSubscriptionId).HasMaxLength(128);
         builder.Property(s => s.StripeCustomerId).HasMaxLength(128);
 

@@ -96,7 +96,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
 
         long pfaMonthlyRecurringRevenue = latestSubscriptions.Values
             .Where(s => s.Status is SubscriptionStatus.Active or SubscriptionStatus.ActivePendingBilling)
-            .Sum(s => AdminBillingLabels.MonthlyEstimateBani(s.Plan));
+            .Sum(s => AdminBillingLabels.MonthlyEstimateBani(s.Plan, s.BillingCycle));
 
         var recentPayments = BuildPaymentRows(payments, serviceOrders, cars)
             .OrderByDescending(p => p.DateUtc)
