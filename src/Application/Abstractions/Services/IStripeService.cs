@@ -60,6 +60,18 @@ public interface IStripeService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Aplică reducerea BCR pe un abonament existent: 50 lei pe lună, șase luni.
+    /// </summary>
+    /// <remarks>
+    /// Cuponul e unul singur pentru toți clienții, cu id fix, creat la prima folosire. Se atașează
+    /// abonamentului, deci Stripe scade suma de pe facturile următoare și se oprește singur după
+    /// cele șase luni — nu avem noi un ceas de urmărit.
+    /// </remarks>
+    Task ApplyBcrDiscountAsync(
+        string stripeSubscriptionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Lists the discount codes of the configured account, newest first.
     /// </summary>
     Task<IReadOnlyList<DiscountCode>> ListDiscountCodesAsync(

@@ -50,6 +50,29 @@ public static class Pricing
         public const long ProAnnualBani = 646_920;
     }
 
+    /// <summary>
+    /// Reducerea pentru clienții care își deschid cont BCR prin RIDElance.
+    ///
+    /// Nu se aplică la bifă, ci după ce BCR confirmă contul: până atunci nu avem de unde ști dacă
+    /// s-a deschis. De aceea bifa de la checkout doar înregistrează intenția, iar suma încasată
+    /// atunci rămâne întreagă.
+    /// </summary>
+    public static class BcrDiscount
+    {
+        public const long MonthlyBani = 5_000;
+        public const int Months = 6;
+
+        /// <summary>
+        /// Id-ul cuponului din Stripe. Fix, nu generat: cuponul e același pentru toți clienții, iar
+        /// unul nou la fiecare confirmare ar umple contul cu duplicate identice.
+        ///
+        /// Suma e în id din același motiv pentru care e în lookup key-urile din
+        /// <see cref="StripeCatalog"/>: un cupon Stripe e imutabil, deci o valoare nouă cere un id
+        /// nou, altfel se regăsește cel vechi și reducerea nu se schimbă.
+        /// </summary>
+        public const string StripeCouponId = "ridelance_bcr_50ron_6m";
+    }
+
     // Tarifele ARR (eliberare autorizație, copie conformă, ecusoane) NU sunt aici: se citesc din
     // `ArrAuthorizationRequest.FeeSnapshotBani` și `VehicleCopyRequest`, stampilate la momentul
     // cererii. Lipsa unui snapshot se afișează ca atare în UI — nu se inventează o sumă.

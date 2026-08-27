@@ -12,6 +12,10 @@ namespace Application.Payments.CreateCheckoutSession;
 /// unde nu există reînnoire. A luat locul ancorei de facturare — plata se face acum, la checkout,
 /// nu la următoarea zi de luni.
 /// </param>
+/// <param name="BcrDiscountRequested">
+/// Clientul a bifat că își deschide cont BCR. Nu schimbă suma încasată acum: reducerea se aplică
+/// abia după ce BCR confirmă contul, deci aici se înregistrează doar intenția.
+/// </param>
 public sealed record CreateCheckoutSessionCommand(
     Guid UserId,
     string UserEmail,
@@ -24,5 +28,6 @@ public sealed record CreateCheckoutSessionCommand(
     [property: SuppressMessage("Design", "CA1054:Uri parameters should not be strings", Justification = "Strings are preferred for API DTOs")]
     [param: SuppressMessage("Design", "CA1054:Uri parameters should not be strings", Justification = "Strings are preferred for API DTOs")]
     string? CancelUrl = null,
-    bool IsPlanChange = false
+    bool IsPlanChange = false,
+    bool BcrDiscountRequested = false
 ) : ICommand<string>;

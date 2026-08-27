@@ -20,4 +20,8 @@ public sealed record SubscriptionResponse(
     string? PfaRegistrationType = null,
     string? PendingPlan = null,
     bool HasPaidInfiintare = false,
-    bool OnboardingSectionsValidated = false);
+    bool OnboardingSectionsValidated = false,
+    /// <summary>Clientul a bifat contul BCR la checkout. Doar intenția.</summary>
+    bool BcrDiscountRequested = false,
+    /// <summary>Când a confirmat BCR contul. De aici curg cele șase luni de reducere.</summary>
+    DateTime? BcrDiscountConfirmedAtUtc = null);

@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Services;
 using Domain.Payments;
 using Domain.PfaRegistrations;
 using Domain.Users;
@@ -228,6 +229,83 @@ internal sealed class ReactivateAdminPfaCommandHandler(
             string.IsNullOrWhiteSpace(command.Note)
                 ? "Cont reactivat."
                 : $"Cont reactivat. {command.Note.Trim()}",
+            cancellationToken);
+
+        await context.SaveChangesAsync(cancellationToken);
+        return await AdminPfaActionHelpers.LoadDetailAsync(context, pfaResult.Value.Id, cancellationToken);
+    }
+}
+
+/// <summary>
+/// BCR a confirmat contul clientului: de aici pornesc cele șase luni de reducere.
+///
+/// E o acțiune de om, nu un automatism, pentru că informația vine din afara sistemului — cineva
+/// de la BCR spune că s-a deschis contul. Bifa de la checkout e doar intenția clientului.
+/// </summary>
+public sealed record ConfirmAdminPfaBcrDiscountCommand(
+    Guid PfaRegistrationId,
+    string? Note) : ICommand<AdminPfaDetailResponse>;
+
+internal sealed class ConfirmAdminPfaBcrDiscountCommandHandler(
+    IApplicationDbContext context,
+    IUserContext userContext,
+    IStripeService stripeService)
+    : ICommandHandler<ConfirmAdminPfaBcrDiscountCommand, AdminPfaDetailResponse>
+{
+    public async Task<Result<AdminPfaDetailResponse>> Handle(
+        ConfirmAdminPfaBcrDiscountCommand command,
+        CancellationToken cancellationToken)
+    {
+        Result<PfaRegistration> pfaResult = await AdminPfaActionHelpers.GetPfaForAdminAsync(
+            context,
+            userContext.UserId,
+            command.PfaRegistrationId,
+            cancellationToken);
+
+        if (pfaResult.IsFailure)
+        {
+            return Result.Failure<AdminPfaDetailResponse>(pfaResult.Error);
+        }
+
+        UserSubscription? subscription = await context.UserSubscriptions
+            .Where(s => s.UserId == pfaResult.Value.UserId)
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (subscription is null)
+        {
+            return Result.Failure<AdminPfaDetailResponse>(
+                Error.Problem("BcrDiscount.NoSubscription", "Clientul nu are un abonament pe care să se aplice reducerea."));
+        }
+
+        if (subscription.BcrDiscountConfirmedAtUtc is not null)
+        {
+            // A doua confirmare ar reporni cele șase luni de la zero. Reducerea e una singură.
+            return Result.Failure<AdminPfaDetailResponse>(
+                Error.Problem("BcrDiscount.AlreadyConfirmed", "Reducerea BCR e deja confirmată pentru acest client."));
+        }
+
+        if (string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
+        {
+            return Result.Failure<AdminPfaDetailResponse>(
+                Error.Problem("BcrDiscount.NoStripeSubscription", "Abonamentul nu are corespondent în Stripe, deci reducerea nu poate fi aplicată."));
+        }
+
+        // Stripe înainte de baza noastră de date: dacă apelul eșuează, nu rămânem cu un abonament
+        // marcat „redus" pe care Stripe îl facturează întreg.
+        await stripeService.ApplyBcrDiscountAsync(subscription.StripeSubscriptionId, cancellationToken);
+
+        subscription.BcrDiscountConfirmedAtUtc = DateTime.UtcNow;
+
+        string description =
+            $"Reducere BCR confirmată: {Pricing.BcrDiscount.MonthlyBani / 100m:0.##} lei pe lună, {Pricing.BcrDiscount.Months} luni.";
+
+        await AdminPfaActionHelpers.AddLogAsync(
+            context,
+            pfaResult.Value.Id,
+            userContext.UserId,
+            "BcrDiscountConfirmed",
+            string.IsNullOrWhiteSpace(command.Note) ? description : $"{description} {command.Note.Trim()}",
             cancellationToken);
 
         await context.SaveChangesAsync(cancellationToken);

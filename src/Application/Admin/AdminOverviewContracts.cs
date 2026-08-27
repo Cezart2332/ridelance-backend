@@ -123,7 +123,11 @@ public sealed record AdminPfaDetailResponse(
     int MissingMonthlyDocuments,
     int DocumentsToReview,
     string InternalNote,
-    IReadOnlyList<AdminPfaActivityLogRow> ActivityLog);
+    IReadOnlyList<AdminPfaActivityLogRow> ActivityLog,
+    /// <summary>Clientul a bifat contul BCR la checkout — adminul are ce confirma.</summary>
+    bool BcrDiscountRequested = false,
+    /// <summary>Când s-a confirmat. Null cât timp reducerea n-a pornit.</summary>
+    DateTime? BcrDiscountConfirmedAtUtc = null);
 
 public sealed record AdminPfaActivityLogRow(
     Guid Id,

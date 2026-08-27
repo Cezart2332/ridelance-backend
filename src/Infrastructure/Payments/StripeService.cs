@@ -271,6 +271,60 @@ internal sealed class StripeService : IStripeService
         return Convert.ToHexString(hash, 0, 8);
     }
 
+    public async Task ApplyBcrDiscountAsync(
+        string stripeSubscriptionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stripeSubscriptionId);
+
+        string couponId = await EnsureBcrCouponAsync(cancellationToken);
+
+        await new SubscriptionService().UpdateAsync(
+            stripeSubscriptionId,
+            new SubscriptionUpdateOptions
+            {
+                Discounts = [new SubscriptionDiscountOptions { Coupon = couponId }],
+            },
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Cuponul BCR, creat o singură dată. Id-ul e fix, deci a doua confirmare îl regăsește în loc
+    /// să facă un duplicat.
+    /// </summary>
+    private static async Task<string> EnsureBcrCouponAsync(CancellationToken cancellationToken)
+    {
+        var coupons = new CouponService();
+
+        try
+        {
+            Coupon existing = await coupons.GetAsync(
+                Pricing.BcrDiscount.StripeCouponId,
+                cancellationToken: cancellationToken);
+            return existing.Id;
+        }
+        catch (StripeException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Prima confirmare din contul ăsta Stripe. Orice altă eroare urcă mai departe: dacă
+            // Stripe e căzut sau cheia e greșită, confirmarea trebuie să eșueze zgomotos, nu să
+            // se încheie cu o reducere care n-a fost aplicată.
+        }
+
+        Coupon created = await coupons.CreateAsync(
+            new CouponCreateOptions
+            {
+                Id = Pricing.BcrDiscount.StripeCouponId,
+                Name = "RIDElance — cont BCR",
+                AmountOff = Pricing.BcrDiscount.MonthlyBani,
+                Currency = "ron",
+                Duration = "repeating",
+                DurationInMonths = Pricing.BcrDiscount.Months,
+            },
+            cancellationToken: cancellationToken);
+
+        return created.Id;
+    }
+
     public async Task<DiscountCode> CreateDiscountCodeAsync(
         NewDiscountCode code,
         CancellationToken cancellationToken = default)

@@ -41,8 +41,13 @@ internal sealed class CreateCheckoutSessionCommandHandler(
 
         // Metadata: planul, plus ciclul pe abonamente. Webhookul are nevoie de ciclu ca să știe
         // ce a cumpărat clientul — prețul Stripe îl spune, dar nu ajunge întreg în eveniment.
+        // Bifa BCR călătorește pe același drum ca planul și ciclul. Nu se scrie direct în baza de
+        // date la crearea sesiunii: o sesiune de checkout poate fi abandonată, iar o intenție
+        // înregistrată pentru o plată care nu s-a făcut ar cere reducere pentru un abonament
+        // inexistent. Ajunge în abonament din webhook, adică după ce s-a plătit.
+        string bcrMark = command.BcrDiscountRequested ? "|bcr:1" : string.Empty;
         string metadata = command.Mode == "subscription"
-            ? $"plan:{command.Plan}|cycle:{command.Cycle}"
+            ? $"plan:{command.Plan}|cycle:{command.Cycle}{bcrMark}"
             : $"plan:{command.Plan}";
 
 

@@ -118,7 +118,9 @@ internal sealed class GetAdminPfaDetailQueryHandler(IApplicationDbContext contex
             pfa.Documents.Count(d => d.Status == DocumentStatus.Rejected),
             pfa.Documents.Count(d => d.Status == DocumentStatus.Pending),
             internalNote,
-            logs);
+            logs,
+            subscription?.BcrDiscountRequestedAtUtc is not null,
+            subscription?.BcrDiscountConfirmedAtUtc);
 
         return response;
     }

@@ -50,6 +50,18 @@ public sealed class UserSubscription : Entity
     /// <summary>Istoric, pereche cu <see cref="DashboardAccessGranted"/>.</summary>
     public DateTime? DashboardAccessGrantedUtc { get; set; }
 
+    /// <summary>
+    /// Când a bifat clientul, la checkout, că își deschide cont BCR. Doar intenția — nu dovada.
+    /// </summary>
+    public DateTime? BcrDiscountRequestedAtUtc { get; set; }
+
+    /// <summary>
+    /// Când a confirmat BCR contul, marcat de un administrator. De aici pornesc cele
+    /// <see cref="Pricing.BcrDiscount.Months"/> luni de reducere; până aici, bifa nu costă nimic
+    /// pe nimeni.
+    /// </summary>
+    public DateTime? BcrDiscountConfirmedAtUtc { get; set; }
+
     // Navigation
     public User User { get; set; } = null!;
 }

@@ -173,6 +173,13 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 existing.CancelledAtUtc = null;
                 existing.DashboardAccessGranted = true;
                 existing.DashboardAccessGrantedUtc ??= DateTime.UtcNow;
+
+                // `??=`, nu atribuire: cine a cerut reducerea o dată n-o pierde pentru că a
+                // schimbat planul fără să rebifeze. Confirmarea, dacă a venit deja, rămâne pe loc.
+                if (ParseBcrRequested(planStr))
+                {
+                    existing.BcrDiscountRequestedAtUtc ??= DateTime.UtcNow;
+                }
             }
             else
             {
@@ -191,6 +198,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
                     CreatedAtUtc = DateTime.UtcNow,
                     DashboardAccessGranted = true,
                     DashboardAccessGrantedUtc = DateTime.UtcNow,
+                    BcrDiscountRequestedAtUtc = ParseBcrRequested(planStr) ? DateTime.UtcNow : null,
                 };
                 context.UserSubscriptions.Add(sub);
             }
@@ -686,6 +694,14 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
         return SubscriptionBillingCycle.Monthly;
     }
+
+    /// <summary>
+    /// A bifat clientul contul BCR? Lipsa marcajului înseamnă „nu": o reducere presupusă din
+    /// tăcere e o reducere pe care n-a cerut-o nimeni.
+    /// </summary>
+    private static bool ParseBcrRequested(string metadata) =>
+        metadata.Split('|', StringSplitOptions.RemoveEmptyEntries)
+            .Any(part => part.Equals("bcr:1", StringComparison.OrdinalIgnoreCase));
 
     private static SubscriptionPlan ParsePlan(string metadata)
     {
