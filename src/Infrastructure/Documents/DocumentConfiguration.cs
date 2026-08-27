@@ -11,6 +11,12 @@ internal sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.HasKey(d => d.Id);
 
         builder.HasIndex(d => d.UserId);
+        // Dosarul unei mașini se citește des și mereu la fel: toate documentele ei, cele mai noi
+        // întâi. Filtrat, nu parțial: majoritatea documentelor n-au mașină.
+        builder
+            .HasIndex(d => new { d.CarId, d.UploadedAtUtc })
+            .IsDescending(false, true)
+            .HasFilter("car_id IS NOT NULL");
 
         builder.Property(d => d.OriginalFileName).HasMaxLength(512).IsRequired();
         builder.Property(d => d.StoredFileName).HasMaxLength(512).IsRequired();

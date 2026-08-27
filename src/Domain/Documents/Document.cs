@@ -51,6 +51,19 @@ public sealed class Document : Entity
     /// <summary>Vehiculul clientului de care ține documentul (fără FK încă — se adaugă la Pasul 5).</summary>
     public Guid? PfaVehicleId { get; set; }
 
+    /// <summary>
+    /// Mașina din flotă la care se leagă documentul: talon, RCA, CASCO, ITP, copie conformă.
+    /// </summary>
+    /// <remarks>
+    /// Separat de <see cref="PfaVehicleId"/>, care e vehiculul din onboardingul PFA — două
+    /// reprezentări diferite ale unei mașini, documentat ca atare în `PfaVehicle`. Un document
+    /// aparține uneia sau alteia, niciodată amândurora.
+    ///
+    /// Nullable pentru că majoritatea documentelor din platformă n-au nicio mașină: buletine,
+    /// contracte, certificate de firmă.
+    /// </remarks>
+    public Guid? CarId { get; set; }
+
     /// <summary>Platforma de care ține documentul (Uber/Bolt) când e cazul.</summary>
     public string? PlatformProvider { get; set; }
 

@@ -58,6 +58,7 @@ internal sealed class UploadDocumentCommandHandler(
             Id = Guid.NewGuid(),
             UserId = command.UserId,
             PfaRegistrationId = command.PfaRegistrationId,
+            CarId = command.CarId,
             OriginalFileName = command.FileName,
             StoredFileName = storedFileName,
             ContentType = command.ContentType,

@@ -30,3 +30,24 @@ internal sealed class GetByUser : IEndpoint
         .WithTags(Tags.Documents);
     }
 }
+
+internal sealed class GetCarDossier : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapGet("documents/car/{carId:guid}", async (
+            Guid carId,
+            IQueryHandler<Application.Documents.CarDossier.GetCarDossierQuery,
+                Application.Documents.CarDossier.CarDossierDto> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<Application.Documents.CarDossier.CarDossierDto> result = await handler.Handle(
+                new Application.Documents.CarDossier.GetCarDossierQuery(carId),
+                cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Documents);
+    }
+}
