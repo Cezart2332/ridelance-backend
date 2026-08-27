@@ -18,6 +18,7 @@ internal sealed class Upload : IEndpoint
             [FromForm] string? pfaRegistrationId,
             [FromForm] string? userId,
             [FromForm] string? expiresAt,
+            [FromForm] string? carId,
             HttpContext httpContext,
             IUserContext userContext,
             ICommandHandler<UploadDocumentCommand, Guid> handler,
@@ -54,7 +55,8 @@ internal sealed class Upload : IEndpoint
                 file.ContentType,
                 stream,
                 file.Length,
-                expiresAtUtc);
+                expiresAtUtc,
+                Guid.TryParse(carId, out Guid parsedCarId) ? parsedCarId : null);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
 

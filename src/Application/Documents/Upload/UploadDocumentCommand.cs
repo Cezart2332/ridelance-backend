@@ -11,4 +11,6 @@ public sealed record UploadDocumentCommand(
     string ContentType,
     Stream FileStream,
     long FileSize,
-    DateTime? ExpiresAtUtc) : ICommand<Guid>;
+    DateTime? ExpiresAtUtc,
+    /// <summary>Mașina din flotă, când documentul e al ei.</summary>
+    Guid? CarId = null) : ICommand<Guid>;
