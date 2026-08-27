@@ -19,7 +19,8 @@ internal sealed class CreateCheckoutSession : IEndpoint
         string? Cycle,
         string? SuccessUrl = null,
         string? CancelUrl = null,
-        bool IsPlanChange = false);
+        bool IsPlanChange = false,
+        bool BcrDiscountRequested = false);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -44,7 +45,8 @@ internal sealed class CreateCheckoutSession : IEndpoint
                 ParseCycle(request.Cycle),
                 request.SuccessUrl,
                 request.CancelUrl,
-                request.IsPlanChange);
+                request.IsPlanChange,
+                request.BcrDiscountRequested);
 
             Result<string> result = await handler.Handle(command, cancellationToken);
 

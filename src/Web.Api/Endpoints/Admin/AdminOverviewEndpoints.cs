@@ -126,6 +126,21 @@ internal sealed class AdminOverviewEndpoints : IEndpoint
         .HasPermission(Permissions.ManagePfaRegistrations)
         .WithTags(Tags.Admin);
 
+        app.MapPost("admin/pfas/{id:guid}/bcr-discount/confirm", async (
+            Guid id,
+            AdminNoteRequest request,
+            ICommandHandler<ConfirmAdminPfaBcrDiscountCommand, AdminPfaDetailResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<AdminPfaDetailResponse> result = await handler.Handle(
+                new ConfirmAdminPfaBcrDiscountCommand(id, request.Note),
+                cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(Permissions.ManagePfaRegistrations)
+        .WithTags(Tags.Admin);
+
         app.MapPut("admin/pfas/{id:guid}/internal-note", async (
             Guid id,
             UpdateInternalNoteRequest request,

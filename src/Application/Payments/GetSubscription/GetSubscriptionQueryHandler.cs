@@ -71,7 +71,9 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             pfa?.RegistrationType.ToString(),
             sub.PendingPlan?.ToString(),
             hasPaidInfiintare,
-            onboardingSectionsValidated));
+            onboardingSectionsValidated,
+            sub.BcrDiscountRequestedAtUtc is not null,
+            sub.BcrDiscountConfirmedAtUtc));
     }
 
 }
