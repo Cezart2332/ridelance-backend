@@ -83,3 +83,25 @@ internal sealed class FleetRentalDefaultsConfiguration : IEntityTypeConfiguratio
         builder.HasIndex(d => d.OwnerUserId).IsUnique();
     }
 }
+
+internal sealed class GeneratedDocumentConfiguration : IEntityTypeConfiguration<GeneratedDocument>
+{
+    public void Configure(EntityTypeBuilder<GeneratedDocument> builder)
+    {
+        builder.HasKey(d => d.Id);
+
+        builder.Property(d => d.Type).HasMaxLength(32).IsRequired();
+        builder.Property(d => d.Status).HasConversion<string>().HasMaxLength(32);
+        builder.Property(d => d.SentToEmail).HasMaxLength(256);
+        builder.Property(d => d.ExternalSignatureRef).HasMaxLength(256);
+
+        builder
+            .HasOne(d => d.Rental)
+            .WithMany()
+            .HasForeignKey(d => d.RentalId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Documentele unei închirieri se citesc mereu împreună, cel mai recent întâi.
+        builder.HasIndex(d => new { d.RentalId, d.GeneratedAtUtc }).IsDescending(false, true);
+    }
+}
