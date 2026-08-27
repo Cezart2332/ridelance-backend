@@ -24,6 +24,7 @@ internal sealed class GetRentalsQueryHandler(
     {
         List<Rental> rentals = await context.Rentals
             .AsNoTracking()
+            .Include(r => r.Tenant)
             .Where(r => r.OwnerUserId == userContext.UserId)
             .OrderByDescending(r => r.StartAtUtc)
             .ThenBy(r => r.Id)
@@ -71,25 +72,41 @@ internal sealed class GetRentalsQueryHandler(
 
         return new RentalDto(
             rental.Id,
+            rental.PublicCode,
             rental.CarId,
             carLabel,
-            rental.TenantName,
-            rental.TenantType.ToString(),
-            rental.TenantFiscalCode,
-            rental.TenantPhone,
-            rental.TenantEmail,
+            ToDto(rental.Tenant),
+            rental.Lifecycle.ToString(),
             rental.StartAtUtc,
             rental.EndAtUtc,
             rental.ClosedAtUtc,
             rental.WeeklyRentBani,
             rental.DepositBani,
+            rental.OtherCostsBani,
             rental.HasKmLimit,
+            rental.MileageLimit,
             rental.ExtraKmCostBani,
             rental.FuelRule,
+            rental.FuelLevelAtPickup,
             rental.StartMileage,
             rental.Accessories,
+            rental.AccessoriesOther,
             rental.Notes,
             RentalStatus.For(rental, nowUtc),
             contractValue);
     }
+
+    internal static TenantDto ToDto(Tenant tenant) => new(
+        tenant.Id,
+        tenant.Name,
+        tenant.Type.ToString(),
+        tenant.Cnp,
+        tenant.IdSeries,
+        tenant.IdNumber,
+        tenant.Cui,
+        tenant.RegCom,
+        tenant.Address,
+        tenant.Phone,
+        tenant.Email,
+        tenant.DriverLicenseNumber);
 }

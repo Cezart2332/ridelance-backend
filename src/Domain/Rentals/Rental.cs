@@ -22,16 +22,20 @@ public sealed class Rental : Entity
 {
     public Guid Id { get; set; }
 
+    /// <summary>
+    /// Codul din documente și din discuțiile cu clientul: <c>RL-000123</c>. Stabil, secvențial,
+    /// niciodată reutilizat. Id-ul e un GUID — nu se poate citi la telefon.
+    /// </summary>
+    public string PublicCode { get; set; } = string.Empty;
+
     public Guid CarId { get; set; }
     public Guid OwnerUserId { get; set; }
 
-    public string TenantName { get; set; } = string.Empty;
-    public TenantType TenantType { get; set; } = TenantType.Individual;
+    public Guid TenantId { get; set; }
+    public Tenant Tenant { get; set; } = null!;
 
-    /// <summary>CNP pentru persoană fizică, CUI pentru PFA sau SRL.</summary>
-    public string? TenantFiscalCode { get; set; }
-    public string? TenantPhone { get; set; }
-    public string? TenantEmail { get; set; }
+    /// <summary>Ce s-a decis: pregătită, confirmată sau anulată. Restul stărilor sunt derivate.</summary>
+    public RentalLifecycle Lifecycle { get; set; } = RentalLifecycle.Confirmed;
 
     public DateTime StartAtUtc { get; set; }
 
@@ -48,14 +52,32 @@ public sealed class Rental : Entity
     public long WeeklyRentBani { get; set; }
     public long DepositBani { get; set; }
 
+    /// <summary>Costuri în afara chiriei și a garanției, convenite la semnare.</summary>
+    public long OtherCostsBani { get; set; }
+
     public bool HasKmLimit { get; set; }
+
+    /// <summary>Câți kilometri sunt incluși. Lipsea: se putea spune „cu limită" fără să spui care.</summary>
+    public int? MileageLimit { get; set; }
+
     public long ExtraKmCostBani { get; set; }
     public string? FuelRule { get; set; }
+
+    /// <summary>Nivelul la predare, așa cum se citește de pe bord: „plin", „3/4", „80%".</summary>
+    public string? FuelLevelAtPickup { get; set; }
 
     /// <summary>Kilometrajul la predare, punctul de plecare pentru orice decont de km.</summary>
     public int? StartMileage { get; set; }
 
-    public string? Accessories { get; set; }
+    /// <summary>
+    /// Accesoriile predate, ca listă. Erau un singur șir de text, în care „2 chei" și „doua chei"
+    /// erau lucruri diferite, imposibil de numărat la primire.
+    /// </summary>
+    public List<string> Accessories { get; set; } = [];
+
+    /// <summary>Ce s-a predat în plus față de lista standard.</summary>
+    public string? AccessoriesOther { get; set; }
+
     public string? Notes { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

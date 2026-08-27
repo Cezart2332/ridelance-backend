@@ -101,6 +101,8 @@ public static class DependencyInjection
         services.AddHttpClient<IOwnerInvoicingService, OwnerOblioService>();
 
         // Registrul public ANAF, pentru precompletarea facturii după CUI.
+        services.AddScoped<IRentalCodeGenerator, Infrastructure.Rentals.RentalCodeGenerator>();
+
         services.AddHttpClient<ICompanyLookupService, AnafCompanyLookupService>(client =>
             client.Timeout = TimeSpan.FromSeconds(10));
         services.AddScoped<IInvoiceGenerator, InvoiceGenerator>();

@@ -27,6 +27,8 @@ public interface IApplicationDbContext
     DbSet<CompanyProfile> CompanyProfiles { get; }
     DbSet<MaintenanceEntry> MaintenanceEntries { get; }
     DbSet<Rental> Rentals { get; }
+    DbSet<Tenant> Tenants { get; }
+    DbSet<FleetRentalDefaults> FleetRentalDefaults { get; }
     DbSet<OblioIntegration> OblioIntegrations { get; }
     DbSet<PfaRegistration> PfaRegistrations { get; }
     DbSet<PfaFiscalProfile> PfaFiscalProfiles { get; }
