@@ -5,6 +5,8 @@ using Application.Rentals.Commands.CreateRental;
 using Application.Rentals.Commands.SaveRentalDefaults;
 using Application.Rentals.Commands.UpdateRental;
 using Application.Rentals.Queries.GetRentalDefaults;
+using Application.Rentals.Documents;
+using Application.Rentals.Queries.GetRentalDocuments;
 using Application.Rentals.Queries.GetRentals;
 using Application.Rentals.Queries.GetTenants;
 using SharedKernel;
@@ -166,4 +168,45 @@ internal sealed class RentalDefaults : IEndpoint
         .RequireAuthorization()
         .WithTags(Tags.Companies);
     }
+}
+
+internal sealed class RentalDocuments : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapGet("rentals/{id:guid}/documents", async (
+            Guid id,
+            IQueryHandler<GetRentalDocumentsQuery, List<GeneratedDocumentDto>> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<List<GeneratedDocumentDto>> result = await handler.Handle(
+                new GetRentalDocumentsQuery(id), cancellationToken);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+
+        app.MapPost("rentals/{id:guid}/documents", async (
+            Guid id,
+            GenerateDocumentRequest body,
+            ICommandHandler<GenerateRentalDocumentCommand, GeneratedDocumentDto> handler,
+            CancellationToken cancellationToken) =>
+        {
+            ArgumentNullException.ThrowIfNull(body);
+
+            if (!Enum.TryParse(body.Type, ignoreCase: true, out RentalDocumentType type))
+            {
+                return Results.BadRequest(new { detail = "Tip de document necunoscut." });
+            }
+
+            Result<GeneratedDocumentDto> result = await handler.Handle(
+                new GenerateRentalDocumentCommand(id, type), cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+
+    internal sealed record GenerateDocumentRequest(string Type);
 }
