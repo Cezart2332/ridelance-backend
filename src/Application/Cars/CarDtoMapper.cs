@@ -43,6 +43,7 @@ internal static class CarDtoMapper
             car.Badges,
             car.Description,
             car.Active,
+            car.ListingStatus.ToString(),
             car.ListingSource.ToString(),
             car.ApprovalStatus.ToString(),
             car.PaymentStatus.ToString(),

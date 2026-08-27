@@ -29,6 +29,9 @@ internal sealed class CarConfiguration : IEntityTypeConfiguration<Car>
         builder.Property(c => c.Vin).HasMaxLength(32);
         builder.Property(c => c.OfferType).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(32);
+        builder.Property(c => c.ListingStatus).HasConversion<string>().HasMaxLength(32);
+        // `Active` e derivat din `ListingStatus`, deci nu are coloană.
+        builder.Ignore(c => c.Active);
         builder.Property(c => c.ListingSource).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.ApprovalStatus).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.PaymentStatus).HasConversion<string>().HasMaxLength(32);
@@ -41,9 +44,9 @@ internal sealed class CarConfiguration : IEntityTypeConfiguration<Car>
         // Indexul sortării „Recomandate" (spec §7.1). Ordinea coloanelor urmează exact ordinea
         // din `ORDER BY`, altfel Postgres l-ar folosi doar pentru filtrare, nu și pentru sortare.
         builder
-            .HasIndex(c => new { c.Active, c.ApprovalStatus, c.Status, c.RecommendationScore, c.UpdatedAtUtc, c.Id })
+            .HasIndex(c => new { c.ListingStatus, c.ApprovalStatus, c.PaymentStatus, c.Status, c.RecommendationScore, c.UpdatedAtUtc, c.Id })
             // Scorul și data descrescător, restul crescător — aceeași ordine ca în migrație.
-            .IsDescending(false, false, false, true, true, false)
+            .IsDescending(false, false, false, false, true, true, false)
             .HasDatabaseName("ix_cars_recommended");
         builder.HasIndex(c => c.StripeCheckoutSessionId);
         builder.HasIndex(c => c.StripeSubscriptionId);

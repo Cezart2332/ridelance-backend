@@ -1,4 +1,5 @@
 using Application.Abstractions.Messaging;
+using Application.Cars.Commands.ArchiveCar;
 using Application.Cars.Commands.DeleteCar;
 using Application.Cars.Commands.ToggleCarActive;
 using SharedKernel;
@@ -24,17 +25,34 @@ internal sealed class Delete : IEndpoint
     }
 }
 
+internal sealed class ArchiveCar : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPatch("cars/{id:guid}/archive", async (
+            Guid id,
+            ICommandHandler<ArchiveCarCommand, CarListingStateDto> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<CarListingStateDto> result = await handler.Handle(new ArchiveCarCommand(id), cancellationToken);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Cars);
+    }
+}
+
 internal sealed class ToggleActive : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapPatch("cars/{id:guid}/toggle-active", async (
             Guid id,
-            ICommandHandler<ToggleCarActiveCommand, bool> handler,
+            ICommandHandler<ToggleCarActiveCommand, CarListingStateDto> handler,
             CancellationToken cancellationToken) =>
         {
-            Result<bool> result = await handler.Handle(new ToggleCarActiveCommand(id), cancellationToken);
-            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(new { active = result.Value });
+            Result<CarListingStateDto> result = await handler.Handle(new ToggleCarActiveCommand(id), cancellationToken);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
         })
         .RequireAuthorization()
         .WithTags(Tags.Cars);

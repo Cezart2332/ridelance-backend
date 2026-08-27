@@ -27,7 +27,7 @@ internal sealed class GetAllCarsQueryHandler(
         }
         else if (!query.AdminMode)
         {
-            queryable = queryable.Where(c => c.Active && c.ApprovalStatus == CarApprovalStatus.Approved);
+            queryable = queryable.Where(CarVisibility.IsPublic);
         }
 
         List<Car> cars = await Order(queryable, query).ToListAsync(cancellationToken);

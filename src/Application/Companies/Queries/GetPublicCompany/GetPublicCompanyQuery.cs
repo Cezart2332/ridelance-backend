@@ -54,9 +54,8 @@ internal sealed class GetPublicCompanyQueryHandler(IApplicationDbContext context
             .AsNoTracking()
             .Include(c => c.Images.OrderBy(i => i.DisplayOrder))
             .Include(c => c.Leads)
-            .Where(c => c.PostedByUserId == profile.UserId
-                && c.Active
-                && c.ApprovalStatus == CarApprovalStatus.Approved)
+            .Where(c => c.PostedByUserId == profile.UserId)
+            .Where(CarVisibility.IsPublic)
             .OrderBy(c => c.Status == CarStatus.Available ? 0 : 1)
             .ThenByDescending(c => c.RecommendationScore)
             .ThenByDescending(c => c.UpdatedAtUtc)

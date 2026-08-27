@@ -47,12 +47,13 @@ internal sealed class ApproveCarListingCommandHandler(
             }
 
             car.ApprovalStatus = CarApprovalStatus.Approved;
-            car.Active = true;
+            car.ListingStatus = ListingStatus.Published;
         }
         else
         {
             car.ApprovalStatus = CarApprovalStatus.Rejected;
-            car.Active = false;
+            // Draft, nu Archived: respins înseamnă „de refăcut", nu „scos din flotă".
+            car.ListingStatus = ListingStatus.Draft;
         }
 
         car.UpdatedAtUtc = DateTime.UtcNow;

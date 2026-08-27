@@ -100,12 +100,14 @@ internal sealed class UpdateCarCommandHandler(
 
         if (isAdmin)
         {
-            car.Active = command.Active;
+            car.ListingStatus = command.Active ? ListingStatus.Published : ListingStatus.Draft;
         }
         else
         {
+            // Editarea de către proprietar retrimite anunțul la aprobare, deci îl scoate de pe
+            // piață. Draft, nu Paused: pauza e o decizie a proprietarului, asta e o consecință.
             car.ApprovalStatus = CarApprovalStatus.Pending;
-            car.Active = false;
+            car.ListingStatus = ListingStatus.Draft;
         }
 
         CarListingDetailsMapper.Apply(car, command.Details);

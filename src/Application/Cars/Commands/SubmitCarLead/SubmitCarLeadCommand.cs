@@ -3,6 +3,7 @@ using Application.Abstractions.Messaging;
 using Domain.Cars;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
+using Application.Cars;
 
 namespace Application.Cars.Commands.SubmitCarLead;
 
@@ -35,7 +36,9 @@ internal sealed class SubmitCarLeadCommandHandler(IApplicationDbContext context)
         }
 
         Car? car = await context.Cars
-            .FirstOrDefaultAsync(c => c.Id == command.CarId && c.Active, cancellationToken);
+            .Where(c => c.Id == command.CarId)
+            .Where(CarVisibility.IsPublic)
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (car is null)
         {

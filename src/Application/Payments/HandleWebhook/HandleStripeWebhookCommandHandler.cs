@@ -308,7 +308,6 @@ internal sealed class HandleStripeWebhookCommandHandler(
         car.StripeCheckoutSessionId = session.Id;
         car.StripeSubscriptionId = session.SubscriptionId;
         car.PaidAtUtc = DateTime.UtcNow;
-        car.Active = car.ApprovalStatus == CarApprovalStatus.Approved;
         car.UpdatedAtUtc = DateTime.UtcNow;
 
         bool paymentRecordExists = await context.PaymentRecords
@@ -432,7 +431,6 @@ internal sealed class HandleStripeWebhookCommandHandler(
         if (paidCar is not null)
         {
             paidCar.PaymentStatus = CarListingPaymentStatus.Paid;
-            paidCar.Active = paidCar.ApprovalStatus == CarApprovalStatus.Approved;
             paidCar.UpdatedAtUtc = DateTime.UtcNow;
 
             var carPaymentRecord = new Domain.Payments.PaymentRecord
@@ -580,7 +578,6 @@ internal sealed class HandleStripeWebhookCommandHandler(
         if (car is not null)
         {
             car.PaymentStatus = CarListingPaymentStatus.PastDue;
-            car.Active = false;
             car.UpdatedAtUtc = DateTime.UtcNow;
 
             context.PaymentRecords.Add(new Domain.Payments.PaymentRecord
@@ -641,7 +638,6 @@ internal sealed class HandleStripeWebhookCommandHandler(
         if (car is not null)
         {
             car.PaymentStatus = CarListingPaymentStatus.Cancelled;
-            car.Active = false;
             car.UpdatedAtUtc = DateTime.UtcNow;
 
             await context.SaveChangesAsync(ct);
