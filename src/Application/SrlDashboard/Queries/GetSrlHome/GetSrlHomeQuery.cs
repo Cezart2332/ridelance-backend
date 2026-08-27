@@ -42,6 +42,7 @@ internal sealed class GetSrlHomeQueryHandler(
 
         List<Rental> rentals = await context.Rentals
             .AsNoTracking()
+            .Include(r => r.Tenant)
             .Where(r => r.OwnerUserId == userId)
             .ToListAsync(cancellationToken);
 
@@ -94,7 +95,7 @@ internal sealed class GetSrlHomeQueryHandler(
                 $"rental-{rental.Id}",
                 "warning",
                 $"Predare în {days} {(days == 1 ? "zi" : "zile")}",
-                $"{carLabels.GetValueOrDefault(rental.CarId, "Mașină")} · {rental.TenantName}",
+                $"{carLabels.GetValueOrDefault(rental.CarId, "Mașină")} · {rental.Tenant.Name}",
                 "inchirieri"));
         }
 
@@ -124,7 +125,7 @@ internal sealed class GetSrlHomeQueryHandler(
             .Select(r => new ActiveRentalRowDto(
                 r.Id,
                 carLabels.GetValueOrDefault(r.CarId, "Mașină ștearsă"),
-                r.TenantName,
+                r.Tenant.Name,
                 r.StartAtUtc,
                 r.EndAtUtc,
                 r.WeeklyRentBani,

@@ -33,6 +33,8 @@ public sealed class ApplicationDbContext(
     public DbSet<CompanyProfile> CompanyProfiles { get; set; }
     public DbSet<MaintenanceEntry> MaintenanceEntries { get; set; }
     public DbSet<Rental> Rentals { get; set; }
+    public DbSet<Tenant> Tenants { get; set; }
+    public DbSet<FleetRentalDefaults> FleetRentalDefaults { get; set; }
     public DbSet<OblioIntegration> OblioIntegrations { get; set; }
     public DbSet<PfaRegistration> PfaRegistrations { get; set; }
     public DbSet<PfaFiscalProfile> PfaFiscalProfiles { get; set; }
