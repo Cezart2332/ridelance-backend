@@ -32,7 +32,10 @@ public sealed record CarDto(
     List<string> BoltCategories,
     List<string> Badges,
     string Description,
+    /// <summary>Se vede în marketplace. Derivat din starea anunțului, a aprobării și a plății.</summary>
     bool Active,
+    /// <summary>Intenția proprietarului: Draft, Published, Paused sau Archived.</summary>
+    string ListingStatus,
     string ListingSource,
     string ApprovalStatus,
     string PaymentStatus,

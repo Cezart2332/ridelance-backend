@@ -91,7 +91,7 @@ internal sealed class CreateCarCommandHandler(
             ListingSource = listingSource,
             ApprovalStatus = isAdmin ? CarApprovalStatus.Approved : CarApprovalStatus.Pending,
             PaymentStatus = requiresPayment ? CarListingPaymentStatus.Pending : CarListingPaymentStatus.NotRequired,
-            Active = isAdmin && command.Active,
+            ListingStatus = isAdmin && command.Active ? ListingStatus.Published : ListingStatus.Draft,
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow,
         };

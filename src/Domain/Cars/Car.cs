@@ -66,8 +66,25 @@ public sealed class Car : Entity
     // Content
     public string Description { get; set; } = string.Empty;
 
-    // Visibility
-    public bool Active { get; set; } = true;
+    /// <summary>
+    /// Starea anunțului public. A luat locul lui <c>Active</c>: un boolean nu putea deosebi
+    /// „încă nepublicat" de „retras temporar" de „scos definitiv", iar toate trei ajungeau `false`.
+    /// </summary>
+    public ListingStatus ListingStatus { get; set; } = ListingStatus.Draft;
+
+    /// <summary>
+    /// Se vede anunțul în marketplace?
+    ///
+    /// Derivat din cele trei condiții, nu stocat. Ca boolean scris în baza de date, răspunsul ăsta
+    /// trebuia recalculat de mână în unsprezece locuri — la aprobare, la respingere, la creare, la
+    /// editare, la fiecare eveniment Stripe — și oricare uitat lăsa un anunț plătit invizibil sau
+    /// unul neplătit pe piață. `ListingStatus` spune ce vrea proprietarul; celelalte două spun dacă
+    /// are voie.
+    /// </summary>
+    public bool Active =>
+        ListingStatus == ListingStatus.Published
+        && ApprovalStatus == CarApprovalStatus.Approved
+        && PaymentStatus is CarListingPaymentStatus.Paid or CarListingPaymentStatus.NotRequired;
 
     // Listing metadata
     public Guid? PostedByUserId { get; set; }

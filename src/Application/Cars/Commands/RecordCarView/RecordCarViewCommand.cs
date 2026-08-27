@@ -3,6 +3,7 @@ using Application.Abstractions.Messaging;
 using Domain.Cars;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
+using Application.Cars;
 
 namespace Application.Cars.Commands.RecordCarView;
 
@@ -22,11 +23,9 @@ internal sealed class RecordCarViewCommandHandler(IApplicationDbContext context)
     {
         bool carExists = await context.Cars
             .AsNoTracking()
-            .AnyAsync(
-                c => c.Id == command.CarId &&
-                     c.Active &&
-                     c.ApprovalStatus == CarApprovalStatus.Approved,
-                cancellationToken);
+            .Where(c => c.Id == command.CarId)
+            .Where(CarVisibility.IsPublic)
+            .AnyAsync(cancellationToken);
 
         if (!carExists)
         {

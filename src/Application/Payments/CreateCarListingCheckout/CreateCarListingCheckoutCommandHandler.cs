@@ -90,8 +90,8 @@ internal sealed class CreateCarListingCheckoutCommandHandler(
             sessionMetadata,
             cancellationToken: cancellationToken);
 
+        // Vizibilitatea nu se mai scrie aici: `Car.Active` o derivă din starea plății.
         car.PaymentStatus = CarListingPaymentStatus.Pending;
-        car.Active = false;
         car.UpdatedAtUtc = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
