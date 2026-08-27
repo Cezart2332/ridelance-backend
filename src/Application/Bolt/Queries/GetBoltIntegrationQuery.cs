@@ -9,7 +9,12 @@ namespace Application.Bolt.Queries;
 
 public sealed record BoltIntegrationResponse(
     Guid Id,
-    string ClientId,
+    /// <summary>
+    /// Doar pentru afișare: `4wEssh...ME`, nu un Client ID cu care se poate autentifica nimeni.
+    /// Numele spune asta pentru că a fost nevoie — formularul îl reciclase ca valoare inițială și
+    /// îl trimitea înapoi la salvare, suprascriind Client ID-ul real cu masca lui.
+    /// </summary>
+    string ClientIdMasked,
     int CompanyId,
     string? CompanyName,
     bool IsConnected,
@@ -37,7 +42,8 @@ internal sealed class GetBoltIntegrationQueryHandler(
             return Result.Success<BoltIntegrationResponse?>(null);
         }
 
-        // Mask Client ID for UI display
+        // Masca de afișare. Nu se întoarce niciodată Client ID-ul întreg: interfața n-are ce face
+        // cu el, iar orice câmp care îl primește îl poate trimite înapoi.
         string maskedClientId = integration.ClientId.Length > 8
             ? integration.ClientId[..6] + "..." + integration.ClientId[^2..]
             : "••••••••";
