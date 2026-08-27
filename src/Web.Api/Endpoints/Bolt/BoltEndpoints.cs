@@ -13,14 +13,6 @@ internal sealed class BoltEndpoints : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("bolt/debug", async (
-            Application.Abstractions.Data.IApplicationDbContext db,
-            CancellationToken ct) =>
-        {
-            var list = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.BoltIntegrations, ct);
-            return Results.Ok(list);
-        }).AllowAnonymous();
-
         var group = app.MapGroup("bolt")
             .RequireAuthorization()
             .WithTags("Bolt Integration");
