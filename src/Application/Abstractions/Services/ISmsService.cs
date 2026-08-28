@@ -8,7 +8,7 @@ namespace Application.Abstractions.Services;
 /// <remarks>
 /// Interfața nu spune prin cine: furnizorii de SMS se schimbă după preț și după livrabilitate în
 /// România, iar codul care cere o confirmare n-are de ce să afle asta. Implementarea curentă e
-/// Twilio; înlocuirea ei înseamnă o clasă și o linie în <c>DependencyInjection</c>.
+/// Vonage; înlocuirea ei înseamnă o clasă și o linie în <c>DependencyInjection</c>.
 /// </remarks>
 public interface ISmsService
 {
