@@ -85,12 +85,17 @@ public static class RentalStatus
             return Draft;
         }
 
-        if (rental.ClosedAtUtc.HasValue || rental.EndAtUtc < nowUtc)
+        // Comparație pe zile, nu pe momente: perioada se alege dintr-un calendar, fără oră, iar
+        // ora ajunge în bază drept prânz UTC. Comparate ca momente, o închiriere creată dimineața
+        // pentru azi ar fi ieșit „viitoare" până la 12:00 — adică ar fi dispărut din lista celor
+        // active exact în ziua în care a fost făcută. La fel la celălalt capăt: ultima zi de
+        // închiriere e o zi întreagă, nu se încheie la prânz.
+        if (rental.ClosedAtUtc.HasValue || rental.EndAtUtc.Date < nowUtc.Date)
         {
             return Completed;
         }
 
-        if (rental.StartAtUtc > nowUtc)
+        if (rental.StartAtUtc.Date > nowUtc.Date)
         {
             return Upcoming;
         }
