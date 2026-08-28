@@ -65,7 +65,7 @@ internal sealed class UpdateCompanyProfileCommandHandler(
             };
 
             // Slug-ul se fixează o singură dată, la creare. Redenumirea firmei nu îl mută:
-            // linkurile deja distribuite către /f/{slug} trebuie să continue să funcționeze.
+            // linkurile deja distribuite către /{slug} trebuie să continue să funcționeze.
             Result<string> slug = await ResolveSlugAsync(context, command.LegalName, profile.Id, cancellationToken);
             if (slug.IsFailure)
             {
@@ -111,6 +111,9 @@ internal sealed class UpdateCompanyProfileCommandHandler(
             .AsNoTracking()
             .AnyAsync(p => p.Slug == preferred, cancellationToken);
 
-        return Result.Success(taken ? CompanySlug.Disambiguate(preferred, profileId) : preferred);
+        // Un slug rezervat se tratează ca luat: nu de altă firmă, ci de o pagină a site-ului.
+        return Result.Success(taken || CompanySlug.IsReserved(preferred)
+            ? CompanySlug.Disambiguate(preferred, profileId)
+            : preferred);
     }
 }
