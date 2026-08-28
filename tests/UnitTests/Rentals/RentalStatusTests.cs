@@ -6,64 +6,71 @@ using Xunit;
 namespace UnitTests.Rentals;
 
 /// <summary>
-/// Statusul se derivă, nu se stochează. Un status stocat ar fi avut nevoie de un job la fiecare
-/// miezul nopții ca să treacă închirierile în „încheiată", iar între rulări ar fi mințit.
+/// Statusul unei închirieri se citește pe zile, fiindcă perioada se alege pe zile.
 /// </summary>
-public class RentalStatusTests
+/// <remarks>
+/// Ora din bază e prânzul UTC, pusă acolo de formular ca să aibă ce salva pentru o dată fără oră.
+/// Comparată ca moment, o închiriere făcută dimineața pentru azi apărea „viitoare" până la 12:00 —
+/// deci lipsea din lista celor active chiar în ziua în care fusese creată.
+/// </remarks>
+public sealed class RentalStatusTests
 {
-    private static readonly DateTime Now = new(2026, 8, 21, 12, 0, 0, DateTimeKind.Utc);
-
-    private static Rental Rental(int startsInDays, int endsInDays, DateTime? closedAt = null) => new()
+    private static Rental Rental(DateTime start, DateTime end) => new()
     {
-        StartAtUtc = Now.AddDays(startsInDays),
-        EndAtUtc = Now.AddDays(endsInDays),
-        ClosedAtUtc = closedAt,
+        Id = Guid.NewGuid(),
+        Lifecycle = RentalLifecycle.Confirmed,
+        StartAtUtc = start,
+        EndAtUtc = end,
     };
 
+    /// <summary>Dimineața zilei în care se face închirierea, înainte de prânzul din date.</summary>
+    private static readonly DateTime Morning = new(2026, 8, 28, 9, 0, 0, DateTimeKind.Utc);
+
+    private static DateTime NoonOn(int day) => new(2026, 8, day, 12, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>Un final destul de departe cât să nu intre în fereastra „se apropie predarea".</summary>
+    private static readonly DateTime FarEnd = new(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc);
+
     [Fact]
-    public void BeforeStart_IsUpcoming()
+    public void O_inchiriere_care_incepe_azi_e_activa_de_dimineata()
     {
-        RentalStatus.For(Rental(startsInDays: 3, endsInDays: 60), Now).ShouldBe(RentalStatus.Upcoming);
+        Rental rental = Rental(NoonOn(28), FarEnd);
+
+        RentalStatus.For(rental, Morning).ShouldBe(RentalStatus.Active);
     }
 
     [Fact]
-    public void InProgress_IsActive()
+    public void Ultima_zi_de_inchiriere_e_o_zi_intreaga()
     {
-        RentalStatus.For(Rental(startsInDays: -10, endsInDays: 50), Now).ShouldBe(RentalStatus.Active);
+        // Se încheie azi la prânz; la 21:00 tot azi, încă nu e încheiată.
+        Rental rental = Rental(NoonOn(20), NoonOn(28));
+        var evening = new DateTime(2026, 8, 28, 21, 0, 0, DateTimeKind.Utc);
+
+        RentalStatus.For(rental, evening).ShouldBe(RentalStatus.EndingSoon);
     }
 
     [Fact]
-    public void WithinAWeekOfHandover_IsEndingSoon()
+    public void O_inchiriere_care_incepe_maine_e_viitoare()
     {
-        RentalStatus.For(Rental(startsInDays: -50, endsInDays: 5), Now).ShouldBe(RentalStatus.EndingSoon);
+        Rental rental = Rental(NoonOn(29), FarEnd);
+
+        RentalStatus.For(rental, Morning).ShouldBe(RentalStatus.Upcoming);
     }
 
     [Fact]
-    public void ExactlyAtTheEndingSoonBoundary_IsEndingSoon()
+    public void O_inchiriere_terminata_ieri_e_incheiata()
     {
-        RentalStatus.For(Rental(startsInDays: -50, endsInDays: RentalStatus.EndingSoonDays), Now)
-            .ShouldBe(RentalStatus.EndingSoon);
+        Rental rental = Rental(NoonOn(20), NoonOn(27));
+
+        RentalStatus.For(rental, Morning).ShouldBe(RentalStatus.Completed);
     }
 
     [Fact]
-    public void PastEndDate_IsCompleted()
+    public void Deciziile_bat_calendarul()
     {
-        RentalStatus.For(Rental(startsInDays: -90, endsInDays: -1), Now).ShouldBe(RentalStatus.Completed);
-    }
+        Rental cancelled = Rental(NoonOn(28), FarEnd);
+        cancelled.Lifecycle = RentalLifecycle.Cancelled;
 
-    /// <summary>Predarea anticipată încheie închirierea, chiar dacă data planificată e în viitor.</summary>
-    [Fact]
-    public void ClosedEarly_IsCompletedEvenWhileStillScheduled()
-    {
-        RentalStatus.For(Rental(startsInDays: -10, endsInDays: 40, closedAt: Now.AddDays(-1)), Now)
-            .ShouldBe(RentalStatus.Completed);
-    }
-
-    /// <summary>O rezervare viitoare anulată nu apare ca „urmează".</summary>
-    [Fact]
-    public void ClosedBeforeStarting_IsCompleted()
-    {
-        RentalStatus.For(Rental(startsInDays: 5, endsInDays: 60, closedAt: Now), Now)
-            .ShouldBe(RentalStatus.Completed);
+        RentalStatus.For(cancelled, Morning).ShouldBe(RentalStatus.Cancelled);
     }
 }
