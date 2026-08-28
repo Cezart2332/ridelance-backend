@@ -54,7 +54,7 @@ internal sealed class VonageSmsService(
             new KeyValuePair<string, string>("api_secret", _options.ApiSecret!),
             // Vonage vrea numărul fără plus: 407… , nu +407… .
             new KeyValuePair<string, string>("to", phoneNumber.TrimStart('+')),
-            new KeyValuePair<string, string>("from", _options.From!),
+            new KeyValuePair<string, string>("from", NormalizeSender(_options.From!)),
             new KeyValuePair<string, string>("text", message),
         ]);
 
@@ -130,6 +130,22 @@ internal sealed class VonageSmsService(
             errorText);
 
         return Result.Failure(SmsErrors.SendFailed);
+    }
+
+    /// <summary>
+    /// Expeditorul, în forma pe care o vrea Vonage.
+    /// </summary>
+    /// <remarks>
+    /// Un expeditor numeric se scrie fără plus, ca destinatarul. Unul alfanumeric („RIDElance")
+    /// rămâne neatins — acolo n-ar fi ce normaliza, iar tăierea unui caracter din el ar schimba
+    /// numele afișat pe telefon.
+    /// </remarks>
+    private static string NormalizeSender(string from)
+    {
+        string trimmed = from.Trim();
+        string withoutPlus = trimmed.TrimStart('+');
+
+        return withoutPlus.All(char.IsAsciiDigit) ? withoutPlus : trimmed;
     }
 
     /// <summary>Ultimele trei cifre sunt destule ca să recunoști numărul într-un log. Restul nu.</summary>
