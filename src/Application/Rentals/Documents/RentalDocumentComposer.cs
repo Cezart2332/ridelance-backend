@@ -15,6 +15,9 @@ namespace Application.Rentals.Documents;
 /// </remarks>
 internal static class RentalDocumentComposer
 {
+    /// <summary>Linia pe care semnează firma: prima.</summary>
+    public const int CompanySignatureSlot = 1;
+
     /// <summary>Linia pe care semnează chiriașul: a doua, după cea a firmei.</summary>
     public const int TenantSignatureSlot = 2;
 

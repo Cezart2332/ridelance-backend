@@ -148,13 +148,24 @@ internal sealed class SignDocumentCommandHandler(
             CultureInfo.InvariantCulture,
             $"Semnat electronic la {DateTime.UtcNow.ToLocalTime():dd.MM.yyyy, ora HH:mm}");
 
-        byte[] pdf = await generator.SignAsync(
-            source,
-            new Dictionary<int, RentalSignature>
-            {
-                [RentalDocumentComposer.TenantSignatureSlot] = new RentalSignature(signature, note),
-            },
-            cancellationToken);
+        Dictionary<int, RentalSignature> signatures = new()
+        {
+            [RentalDocumentComposer.TenantSignatureSlot] = new RentalSignature(signature, note),
+        };
+
+        // Semnătura firmei se pune din nou, altfel varianta semnată ar pierde-o. Se ia după id-ul
+        // reținut pe document, nu de pe profil: dacă proprietarul și-a schimbat între timp
+        // specimenul, documentul semnat trebuie să poarte semnătura care era pe cel trimis.
+        byte[]? companySignature = await StoredSignature.ReadAsync(
+            context, encryption, generated.CompanySignatureDocumentId, cancellationToken);
+
+        if (companySignature is not null)
+        {
+            signatures[RentalDocumentComposer.CompanySignatureSlot] =
+                new RentalSignature(companySignature, string.Empty);
+        }
+
+        byte[] pdf = await generator.SignAsync(source, signatures, cancellationToken);
 
         string fileName =
             $"{generated.Rental.PublicCode}-{generated.Type}-v{generated.Version}-semnat.pdf";

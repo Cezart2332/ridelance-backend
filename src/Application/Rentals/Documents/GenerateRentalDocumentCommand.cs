@@ -91,7 +91,22 @@ internal sealed class GenerateRentalDocumentCommandHandler(
         RentalDocumentData data = RentalDocumentComposer.Compose(
             command.Type, rental, car, company!, rental.Tenant, defaults?.DefaultConditions);
 
-        RentalDocumentOutput printed = await generator.GenerateAsync(data, cancellationToken);
+        // Semnătura firmei se pune din prima tipărire: proprietarul a semnat-o o dată, la profil,
+        // ca să nu semneze de mână fiecare document.
+        byte[]? companySignature = await StoredSignature.ReadAsync(
+            context, encryption, company!.SignatureDocumentId, cancellationToken);
+
+        Dictionary<int, RentalSignature> signatures = [];
+
+        if (companySignature is not null)
+        {
+            // Fără mențiune sub nume: spre deosebire de chiriaș, firma n-are un moment de semnare
+            // de consemnat — și-a pus specimenul pe document, iar data lui e în antet.
+            signatures[RentalDocumentComposer.CompanySignatureSlot] =
+                new RentalSignature(companySignature, string.Empty);
+        }
+
+        RentalDocumentOutput printed = await generator.GenerateAsync(data, signatures, cancellationToken);
 
         int version = await context.GeneratedDocuments
             .CountAsync(d => d.RentalId == rental.Id && d.Type == command.Type.ToString(), cancellationToken) + 1;
@@ -139,6 +154,7 @@ internal sealed class GenerateRentalDocumentCommandHandler(
             DocumentId = document.Id,
             SourceFilePath = encryptedSource.FilePath,
             SourceIv = encryptedSource.Iv,
+            CompanySignatureDocumentId = companySignature is null ? null : company.SignatureDocumentId,
             GeneratedAtUtc = DateTime.UtcNow,
         };
 

@@ -50,8 +50,14 @@ public sealed record RentalDocumentData(
 /// </remarks>
 public interface IRentalDocumentGenerator
 {
+    /// <param name="signatures">
+    /// Semnăturile de pus din prima tipărire — în practică, specimenul firmei. Sursa întoarsă nu le
+    /// conține, ca retipărirea de la semnare să pornească de la același text.
+    /// </param>
     Task<RentalDocumentOutput> GenerateAsync(
-        RentalDocumentData data, CancellationToken cancellationToken = default);
+        RentalDocumentData data,
+        IReadOnlyDictionary<int, RentalSignature> signatures,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Retipărește un document deja generat, cu semnăturile date pe liniile lui.</summary>
     /// <param name="source">Sursa întoarsă la generare, păstrată de atunci.</param>

@@ -1,6 +1,7 @@
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
 using Application.Companies;
+using Application.Companies.Commands.CompanySignature;
 using Application.Companies.Commands.UpdateCompanyProfile;
 using Application.Companies.Commands.UploadCompanyLogo;
 using Application.Companies.Queries.GetCompanyProfile;
@@ -104,3 +105,45 @@ internal sealed class LookupCompanyForProfile : IEndpoint
         .WithTags(Tags.Companies);
     }
 }
+
+/// <summary>
+/// Specimenul de semnătură al firmei, cel care se tipărește pe documentele generate.
+/// </summary>
+/// <remarks>
+/// Se trimite ca imagine în corpul cererii, nu ca fișier încărcat: vine dintr-o pânză de desenat,
+/// nu de pe discul cuiva. Citirea lui înapoi se face prin <c>documents/{id}/download</c>, ca la
+/// orice document criptat — nu are endpoint propriu, ca să nu existe două căi către același fișier.
+/// </remarks>
+internal sealed class CompanySignature : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPut("companies/profile/signature", async (
+            SaveCompanySignatureRequest request,
+            ICommandHandler<SaveCompanySignatureCommand, Guid> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<Guid> result = await handler.Handle(
+                new SaveCompanySignatureCommand(request.SignatureImage), cancellationToken);
+
+            return result.IsFailure
+                ? CustomResults.Problem(result)
+                : Results.Ok(new { signatureDocumentId = result.Value });
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+
+        app.MapDelete("companies/profile/signature", async (
+            ICommandHandler<DeleteCompanySignatureCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(new DeleteCompanySignatureCommand(), cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+}
+
+public sealed record SaveCompanySignatureRequest(string SignatureImage);

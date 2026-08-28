@@ -48,6 +48,18 @@ public sealed class CompanyProfile : Entity
     /// <summary>Calea logo-ului încărcat. <c>null</c> nu e o eroare — atunci se afișează inițialele.</summary>
     public string? LogoUrl { get; set; }
 
+    /// <summary>Specimenul de semnătură al firmei, ca document criptat.</summary>
+    /// <remarks>
+    /// Se tipărește pe contractele și procesele-verbale generate, ca proprietarul să nu semneze de
+    /// mână fiecare document. Spre deosebire de logo, nu stă niciodată în clar pe disc: e o
+    /// semnătură, nu o marcă.
+    /// <para>
+    /// Înlocuirea creează un document nou; cel vechi rămâne, fiindcă documentele deja tipărite cu el
+    /// trebuie să se poată retipări identic.
+    /// </para>
+    /// </remarks>
+    public Guid? SignatureDocumentId { get; set; }
+
     /// <summary>
     /// Identitatea din URL-ul mini-site-ului: <c>/f/{slug}</c>. Unic.
     /// </summary>
