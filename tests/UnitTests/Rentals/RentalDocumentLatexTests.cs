@@ -67,6 +67,33 @@ public sealed class RentalDocumentLatexTests
     }
 
     [Fact]
+    public void Fiecare_parte_are_un_loc_de_semnatura_si_o_mentiune()
+    {
+        string tex = Build();
+
+        // Locurile se tipăresc goale și se umplu la retipărire, din fișierele de alături.
+        tex.ShouldContain(@"\semnatura{1} & \semnatura{2} \\");
+        tex.ShouldContain(@"\mentiune{1} & \mentiune{2} \\");
+    }
+
+    [Fact]
+    public void Locul_semnaturii_isi_tine_inaltimea_si_cand_e_gol()
+    {
+        // Altfel documentul semnat și cel nesemnat ar avea paginări diferite, iar cele două n-ar
+        // mai fi vizibil același document.
+        Build().ShouldContain(@"{\rule{0pt}{1.3cm}}");
+    }
+
+    [Theory]
+    [InlineData(1, "semnatura-1.png", "mentiune-1.tex")]
+    [InlineData(2, "semnatura-2.png", "mentiune-2.tex")]
+    public void Fisierele_unei_linii_se_numesc_dupa_numarul_ei(int slot, string image, string note)
+    {
+        RentalDocumentLatex.SignatureFileName(slot).ShouldBe(image);
+        RentalDocumentLatex.SignatureNoteFileName(slot).ShouldBe(note);
+    }
+
+    [Fact]
     public void Documentul_nu_poarta_marca_platformei()
     {
         // Contractul e între firmă și chiriaș; RIDElance nu e parte în el.

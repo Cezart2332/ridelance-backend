@@ -43,6 +43,20 @@ public sealed class GeneratedDocument : Entity
     /// <summary>Varianta semnată, când există. Separată: originalul rămâne consultabil.</summary>
     public Guid? SignedDocumentId { get; set; }
 
+    /// <summary>Sursa din care a ieșit documentul, criptată la fel ca fișierele.</summary>
+    /// <remarks>
+    /// Se păstrează ca să se poată retipări identic, cu semnătura pe el. Fără ea, documentul semnat
+    /// ar trebui recompus din datele de azi ale închirierii — adică ar putea ieși alt document decât
+    /// cel care a fost citit și semnat.
+    /// <para>
+    /// Goală pentru documentele generate înainte ca sursa să fie păstrată; acelea rămân semnabile,
+    /// dar fără variantă tipărită cu semnătura.
+    /// </para>
+    /// </remarks>
+    public string? SourceFilePath { get; set; }
+
+    public string? SourceIv { get; set; }
+
     public DateTime GeneratedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? SentAtUtc { get; set; }
     public string? SentToEmail { get; set; }

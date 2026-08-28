@@ -6,11 +6,28 @@ public sealed record RentalDocumentField(string Label, string? Value);
 /// <summary>O secțiune din document: un titlu și rândurile lui.</summary>
 public sealed record RentalDocumentSection(string Title, IReadOnlyList<RentalDocumentField> Fields);
 
+/// <param name="Pdf">Documentul tipărit.</param>
+/// <param name="Source">
+/// Sursa din care a ieșit, opacă pentru apelant. Se păstrează pentru că e singurul mod de a
+/// retipări mai târziu exact același document, cu semnătura pe el.
+/// </param>
+public sealed record RentalDocumentOutput(byte[] Pdf, string Source);
+
+/// <param name="Image">Semnătura, ca PNG.</param>
+/// <param name="Note">
+/// Mențiunea de sub nume: când și cum s-a semnat. O semnătură tipărită fără ea nu spune dacă a fost
+/// dată pe hârtie sau printr-un link, și nici când.
+/// </param>
+public sealed record RentalSignature(byte[] Image, string Note);
+
 /// <param name="Title">Titlul de pe prima pagină: „Contract de închiriere".</param>
 /// <param name="PublicCode">Codul închirierii, tipărit ca număr de document.</param>
 /// <param name="Sections">Părțile, obiectul, condițiile — în ordinea în care se citesc.</param>
 /// <param name="Clauses">Textul de condiții, dacă firma și-a setat unul.</param>
-/// <param name="SignatureLines">Cine semnează. Două linii la contract, două la proces-verbal.</param>
+/// <param name="SignatureLines">
+/// Cine semnează, în ordinea liniilor de pe document. Poziția din listă, plus unu, e numărul liniei
+/// pe care se așază mai târziu semnătura.
+/// </param>
 public sealed record RentalDocumentData(
     string Title,
     string PublicCode,
@@ -33,5 +50,19 @@ public sealed record RentalDocumentData(
 /// </remarks>
 public interface IRentalDocumentGenerator
 {
-    Task<byte[]> GenerateAsync(RentalDocumentData data, CancellationToken cancellationToken = default);
+    Task<RentalDocumentOutput> GenerateAsync(
+        RentalDocumentData data, CancellationToken cancellationToken = default);
+
+    /// <summary>Retipărește un document deja generat, cu semnăturile date pe liniile lui.</summary>
+    /// <param name="source">Sursa întoarsă la generare, păstrată de atunci.</param>
+    /// <param name="signatures">Semnătura, pe numărul liniei pe care se așază.</param>
+    /// <remarks>
+    /// Se pornește de la sursa păstrată, nu de la date recompuse: între generare și semnare se pot
+    /// schimba chiriașul, mașina sau termenii, iar documentul semnat trebuie să rămână documentul
+    /// care a fost citit și semnat, nu unul refăcut din datele de azi.
+    /// </remarks>
+    Task<byte[]> SignAsync(
+        string source,
+        IReadOnlyDictionary<int, RentalSignature> signatures,
+        CancellationToken cancellationToken = default);
 }

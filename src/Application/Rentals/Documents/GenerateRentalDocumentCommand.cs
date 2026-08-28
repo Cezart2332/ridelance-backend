@@ -7,6 +7,7 @@ using Domain.Cars;
 using Domain.Companies;
 using Domain.Documents;
 using Domain.Rentals;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 using Application.Rentals.Checks;
@@ -90,15 +91,21 @@ internal sealed class GenerateRentalDocumentCommandHandler(
         RentalDocumentData data = RentalDocumentComposer.Compose(
             command.Type, rental, car, company!, rental.Tenant, defaults?.DefaultConditions);
 
-        byte[] pdf = await generator.GenerateAsync(data, cancellationToken);
+        RentalDocumentOutput printed = await generator.GenerateAsync(data, cancellationToken);
 
         int version = await context.GeneratedDocuments
             .CountAsync(d => d.RentalId == rental.Id && d.Type == command.Type.ToString(), cancellationToken) + 1;
 
         string fileName = $"{data.PublicCode}-{command.Type}-v{version}.pdf";
 
-        using var stream = new MemoryStream(pdf);
+        using var stream = new MemoryStream(printed.Pdf);
         EncryptedFileResult encrypted = await encryption.EncryptAndSaveAsync(stream, fileName, cancellationToken);
+
+        // Sursa se păstrează lângă document, criptată la fel: e singurul mod de a-l retipări mai
+        // târziu identic, cu semnătura pe el.
+        using var sourceStream = new MemoryStream(Encoding.UTF8.GetBytes(printed.Source));
+        EncryptedFileResult encryptedSource = await encryption.EncryptAndSaveAsync(
+            sourceStream, Path.ChangeExtension(fileName, ".tex"), cancellationToken);
 
         var document = new Document
         {
@@ -115,7 +122,7 @@ internal sealed class GenerateRentalDocumentCommandHandler(
             Origin = DocumentOrigin.SystemGenerated,
             EncryptedFilePath = encrypted.FilePath,
             EncryptionIv = encrypted.Iv,
-            FileSize = pdf.Length,
+            FileSize = printed.Pdf.Length,
             UploadedAtUtc = DateTime.UtcNow,
             AiStatus = DocumentAiStatus.None,
         };
@@ -130,6 +137,8 @@ internal sealed class GenerateRentalDocumentCommandHandler(
             Status = GeneratedDocumentStatus.Generated,
             Version = version,
             DocumentId = document.Id,
+            SourceFilePath = encryptedSource.FilePath,
+            SourceIv = encryptedSource.Iv,
             GeneratedAtUtc = DateTime.UtcNow,
         };
 
