@@ -6,6 +6,7 @@ using Application.Rentals.Commands.SaveRentalDefaults;
 using Application.Rentals.Commands.UpdateRental;
 using Application.Rentals.Queries.GetRentalDefaults;
 using Application.Rentals.Documents;
+using Application.Rentals.Signing;
 using Application.Rentals.Queries.GetRentalDocuments;
 using Application.Rentals.Queries.GetRentals;
 using Application.Rentals.Queries.GetTenants;
@@ -209,4 +210,28 @@ internal sealed class RentalDocuments : IEndpoint
     }
 
     internal sealed record GenerateDocumentRequest(string Type);
+}
+
+internal sealed class SendDocumentForSignature : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPost("rentals/documents/{documentId:guid}/send", async (
+            Guid documentId,
+            SendRequest body,
+            ICommandHandler<SendForSignatureCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            ArgumentNullException.ThrowIfNull(body);
+
+            Result result = await handler.Handle(
+                new SendForSignatureCommand(documentId, body.Email), cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+
+    internal sealed record SendRequest(string Email);
 }

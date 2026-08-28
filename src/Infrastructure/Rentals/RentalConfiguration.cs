@@ -105,3 +105,26 @@ internal sealed class GeneratedDocumentConfiguration : IEntityTypeConfiguration<
         builder.HasIndex(d => new { d.RentalId, d.GeneratedAtUtc }).IsDescending(false, true);
     }
 }
+
+internal sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<SignatureRequest>
+{
+    public void Configure(EntityTypeBuilder<SignatureRequest> builder)
+    {
+        builder.HasKey(r => r.Id);
+
+        builder.Property(r => r.TokenHash).HasMaxLength(64).IsRequired();
+        builder.Property(r => r.Email).HasMaxLength(256).IsRequired();
+        builder.Property(r => r.IpAddress).HasMaxLength(64);
+        builder.Property(r => r.UserAgent).HasMaxLength(512);
+        builder.Property(r => r.PayloadHash).HasMaxLength(64);
+
+        // Căutarea se face exclusiv după amprenta tokenului, la fiecare deschidere de link.
+        builder.HasIndex(r => r.TokenHash).IsUnique();
+
+        builder
+            .HasOne(r => r.GeneratedDocument)
+            .WithMany()
+            .HasForeignKey(r => r.GeneratedDocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
