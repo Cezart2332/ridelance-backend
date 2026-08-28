@@ -108,6 +108,11 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(10));
         services.AddScoped<IInvoiceGenerator, InvoiceGenerator>();
 
+        // SMS-ul de confirmare a numărului de telefon.
+        services.Configure<Infrastructure.Sms.SmsOptions>(configuration.GetSection(Infrastructure.Sms.SmsOptions.SectionName));
+        services.AddHttpClient<ISmsService, Infrastructure.Sms.TwilioSmsService>(client =>
+            client.Timeout = TimeSpan.FromSeconds(15));
+
         // Bolt
         services.AddHttpClient();
         services.AddScoped<IBoltService, BoltService>();

@@ -10,5 +10,7 @@ public sealed record UserProfileResponse(
     string FirstName,
     string LastName,
     string? PhoneNumber,
+    /// <summary>Numărul a fost confirmat prin SMS. Vezi <c>PhoneVerification</c>.</summary>
+    bool IsPhoneVerified,
     string Role,
     DateTime CreatedAtUtc);
