@@ -3,6 +3,7 @@ using Application.Rentals;
 using Application.Rentals.Commands.CloseRental;
 using Application.Rentals.Commands.CreateRental;
 using Application.Rentals.Commands.SaveRentalDefaults;
+using Application.Rentals.Commands.FillDocumentFields;
 using Application.Rentals.Commands.UpdateRental;
 using Application.Rentals.Queries.GetRentalDefaults;
 using Application.Rentals.Documents;
@@ -284,3 +285,64 @@ internal sealed class RentalPaymentsEndpoint : IEndpoint
 
     internal sealed record PaymentRequest(long AmountBani, DateTime PaidOnUtc, string Method, string? Notes);
 }
+
+/// <summary>
+/// Completează câmpurile fără de care documentele nu se pot genera.
+/// </summary>
+/// <remarks>
+/// Perechea endpointului de generare: acela răspunde cu lista câmpurilor lipsă, ăsta le primește
+/// înapoi completate. Ruta stă pe închiriere fiindcă de acolo pornește totul, chiar dacă valorile
+/// ajung pe firmă, pe mașină și pe chiriaș.
+/// </remarks>
+internal sealed class FillRentalDocumentFields : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPut("rentals/{id:guid}/document-fields", async (
+            Guid id,
+            FillDocumentFieldsRequest body,
+            ICommandHandler<FillDocumentFieldsCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            ArgumentNullException.ThrowIfNull(body);
+
+            Result result = await handler.Handle(
+                new FillDocumentFieldsCommand(
+                    id,
+                    body.CompanyLegalName,
+                    body.CompanyCui,
+                    body.CompanyRegisteredOffice,
+                    body.CompanyLegalRepresentative,
+                    body.CarPlateNumber,
+                    body.CarVin,
+                    body.TenantName,
+                    body.TenantAddress,
+                    body.TenantCnp,
+                    body.TenantIdSeries,
+                    body.TenantIdNumber,
+                    body.TenantCui,
+                    body.RentalStartMileage),
+                cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+}
+
+/// <summary>Toate opționale: se trimit doar câmpurile care lipseau.</summary>
+internal sealed record FillDocumentFieldsRequest(
+    string? CompanyLegalName,
+    string? CompanyCui,
+    string? CompanyRegisteredOffice,
+    string? CompanyLegalRepresentative,
+    string? CarPlateNumber,
+    string? CarVin,
+    string? TenantName,
+    string? TenantAddress,
+    string? TenantCnp,
+    string? TenantIdSeries,
+    string? TenantIdNumber,
+    string? TenantCui,
+    int? RentalStartMileage);
