@@ -1,5 +1,6 @@
 using Application.Abstractions.Messaging;
 using Application.Rentals.Checks;
+using Microsoft.AspNetCore.Mvc;
 using Domain.Rentals;
 using SharedKernel;
 using Web.Api.Infrastructure;
@@ -85,5 +86,44 @@ internal sealed class VehicleTimelineEndpoint : IEndpoint
         })
         .RequireAuthorization()
         .WithTags(Tags.Cars);
+    }
+}
+
+internal sealed class CheckPhotos : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPost("rentals/{id:guid}/checks/{kind}/photos", async (
+            Guid id,
+            string kind,
+            [FromForm] IFormFile file,
+            [FromForm] string slot,
+            ICommandHandler<AddCheckPhotoCommand, Guid> handler,
+            CancellationToken cancellationToken) =>
+        {
+            ArgumentNullException.ThrowIfNull(file);
+
+            if (!Enum.TryParse(kind, ignoreCase: true, out CheckKind parsedKind))
+            {
+                return Results.BadRequest(new { detail = "Tip necunoscut: predare sau primire." });
+            }
+
+            if (!Enum.TryParse(slot, ignoreCase: true, out CheckPhotoSlot parsedSlot))
+            {
+                return Results.BadRequest(new { detail = "Slot necunoscut." });
+            }
+
+            using Stream stream = file.OpenReadStream();
+
+            Result<Guid> result = await handler.Handle(
+                new AddCheckPhotoCommand(
+                    id, parsedKind, parsedSlot, file.FileName, file.ContentType, stream, file.Length),
+                cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(new { id = result.Value });
+        })
+        .RequireAuthorization()
+        .DisableAntiforgery()
+        .WithTags(Tags.Companies);
     }
 }
