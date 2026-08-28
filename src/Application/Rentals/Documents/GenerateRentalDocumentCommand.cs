@@ -9,6 +9,7 @@ using Domain.Documents;
 using Domain.Rentals;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
+using Application.Rentals.Checks;
 
 namespace Application.Rentals.Documents;
 
@@ -133,6 +134,14 @@ internal sealed class GenerateRentalDocumentCommandHandler(
         };
 
         context.GeneratedDocuments.Add(generated);
+
+        VehicleTimeline.Record(
+            context,
+            rental.CarId,
+            VehicleEventType.DocumentGenerated,
+            $"{DocumentLabel(command.Type)} generat pentru {rental.PublicCode}",
+            rental.Id);
+
         await context.SaveChangesAsync(cancellationToken);
 
         return Result.Success(new GeneratedDocumentDto(
@@ -147,4 +156,11 @@ internal sealed class GenerateRentalDocumentCommandHandler(
             generated.SentToEmail,
             generated.SignedAtUtc));
     }
+
+    private static string DocumentLabel(RentalDocumentType type) => type switch
+    {
+        RentalDocumentType.RentalContract => "Contract",
+        RentalDocumentType.HandoverProtocol => "Proces-verbal de predare",
+        _ => "Proces-verbal de primire",
+    };
 }

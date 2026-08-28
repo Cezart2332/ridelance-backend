@@ -6,6 +6,7 @@ using Domain.Cars;
 using Domain.Rentals;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
+using Application.Rentals.Checks;
 
 namespace Application.Rentals.Commands.CreateRental;
 
@@ -130,6 +131,14 @@ internal sealed class CreateRentalCommandHandler(
         };
 
         context.Rentals.Add(rental);
+
+        VehicleTimeline.Record(
+            context,
+            car.Id,
+            VehicleEventType.RentalOpened,
+            $"Închiriere {rental.PublicCode} către {tenantResult.Value.Name}",
+            rental.Id);
+
         await context.SaveChangesAsync(cancellationToken);
 
         return rental.Id;

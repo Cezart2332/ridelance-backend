@@ -33,6 +33,9 @@ public sealed class ApplicationDbContext(
     public DbSet<CompanyProfile> CompanyProfiles { get; set; }
     public DbSet<MaintenanceEntry> MaintenanceEntries { get; set; }
     public DbSet<Rental> Rentals { get; set; }
+    public DbSet<CheckRecord> CheckRecords { get; set; }
+    public DbSet<CheckPhoto> CheckPhotos { get; set; }
+    public DbSet<VehicleEvent> VehicleEvents { get; set; }
     public DbSet<SignatureRequest> SignatureRequests { get; set; }
     public DbSet<GeneratedDocument> GeneratedDocuments { get; set; }
     public DbSet<Tenant> Tenants { get; set; }

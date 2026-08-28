@@ -4,6 +4,8 @@ using Application.Abstractions.Messaging;
 using Domain.Rentals;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
+using Application.Rentals.Checks;
+using Domain.Cars;
 
 namespace Application.Rentals.Commands.CloseRental;
 
@@ -44,6 +46,13 @@ internal sealed class CloseRentalCommandHandler(
             string note = $"Kilometraj la predare: {command.EndMileage.Value}.";
             rental.Notes = string.IsNullOrWhiteSpace(rental.Notes) ? note : $"{rental.Notes}\n{note}";
         }
+
+        VehicleTimeline.Record(
+            context,
+            rental.CarId,
+            VehicleEventType.RentalClosed,
+            $"Închiriere {rental.PublicCode} încheiată",
+            rental.Id);
 
         await context.SaveChangesAsync(cancellationToken);
         return Result.Success();
