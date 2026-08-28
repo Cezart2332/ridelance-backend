@@ -48,6 +48,14 @@ public static class UserErrors
         "Users.VerificationResendTooSoon",
         "Am trimis deja un cod. Așteaptă un minut înainte să ceri altul.");
 
+    public static readonly Error PhoneMissing = Error.Failure(
+        "Users.PhoneMissing",
+        "Adaugă un număr de telefon înainte de a-l confirma.");
+
+    public static readonly Error PhoneInvalid = Error.Failure(
+        "Users.PhoneInvalid",
+        "Numărul de telefon nu pare valid. Scrie-l în forma 07XX XXX XXX.");
+
     public static readonly Error InvalidRefreshToken = Error.Failure(
         "Users.InvalidRefreshToken",
         "The refresh token is invalid or has expired.");

@@ -39,5 +39,25 @@ public sealed class User : Entity
 
     public bool IsEmailVerified => EmailVerifiedAtUtc.HasValue;
 
+    /// <summary>
+    /// Când a fost confirmat numărul de telefon. <see langword="null" /> înseamnă neconfirmat.
+    /// </summary>
+    /// <remarks>
+    /// Confirmarea se face pe numărul din <see cref="PhoneNumber" />, iar schimbarea numărului o
+    /// anulează — altfel un număr confirmat o dată ar rămâne „confirmat" după ce a fost înlocuit
+    /// cu altul, ceea ce e exact pe dos față de ce garantează bifa.
+    /// </remarks>
+    public DateTime? PhoneVerifiedAtUtc { get; set; }
+
+    /// <summary>Codul din SMS. Se șterge la confirmare, ca să nu poată fi refolosit.</summary>
+    public string? PhoneVerificationCode { get; set; }
+
+    public DateTime? PhoneVerificationCodeExpiresAtUtc { get; set; }
+
+    /// <summary>Câte coduri greșite s-au încercat de la ultima trimitere.</summary>
+    public int PhoneVerificationAttempts { get; set; }
+
+    public bool IsPhoneVerified => PhoneVerifiedAtUtc.HasValue;
+
     public List<PushSubscription> PushSubscriptions { get; set; } = [];
 }

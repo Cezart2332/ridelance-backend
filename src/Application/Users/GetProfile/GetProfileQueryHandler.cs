@@ -28,6 +28,7 @@ internal sealed class GetProfileQueryHandler(IApplicationDbContext context)
             user.FirstName,
             user.LastName,
             user.PhoneNumber,
+            user.IsPhoneVerified,
             user.Role.ToString(),
             user.CreatedAtUtc);
     }
