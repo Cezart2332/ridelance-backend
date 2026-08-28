@@ -90,7 +90,7 @@ internal sealed class GenerateRentalDocumentCommandHandler(
         RentalDocumentData data = RentalDocumentComposer.Compose(
             command.Type, rental, car, company!, rental.Tenant, defaults?.DefaultConditions);
 
-        byte[] pdf = generator.Generate(data);
+        byte[] pdf = await generator.GenerateAsync(data, cancellationToken);
 
         int version = await context.GeneratedDocuments
             .CountAsync(d => d.RentalId == rental.Id && d.Type == command.Type.ToString(), cancellationToken) + 1;

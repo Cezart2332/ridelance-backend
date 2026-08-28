@@ -102,7 +102,12 @@ public static class DependencyInjection
 
         // Registrul public ANAF, pentru precompletarea facturii după CUI.
         services.AddScoped<IRentalCodeGenerator, Infrastructure.Rentals.RentalCodeGenerator>();
-        services.AddScoped<Application.Abstractions.Dossiers.IRentalDocumentGenerator, Infrastructure.Dossiers.RentalDocumentGenerator>();
+        // Contractul și procesele-verbale se tipăresc cu LaTeX, printr-un motor din imagine.
+        services.Configure<Infrastructure.Dossiers.Latex.LatexOptions>(
+            configuration.GetSection(Infrastructure.Dossiers.Latex.LatexOptions.SectionName));
+        services.AddScoped<Infrastructure.Dossiers.Latex.LatexPdfCompiler>();
+        services.AddScoped<Application.Abstractions.Dossiers.IRentalDocumentGenerator,
+            Infrastructure.Dossiers.Latex.LatexRentalDocumentGenerator>();
 
         services.AddHttpClient<ICompanyLookupService, AnafCompanyLookupService>(client =>
             client.Timeout = TimeSpan.FromSeconds(10));

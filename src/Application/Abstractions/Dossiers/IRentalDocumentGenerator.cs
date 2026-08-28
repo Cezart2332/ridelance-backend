@@ -25,8 +25,13 @@ public sealed record RentalDocumentData(
 /// <remarks>
 /// Primește date deja compuse, nu entități. Generatorul nu trebuie să știe ce e un `Rental` — altfel
 /// fiecare câmp nou din domeniu ar fi cerut o modificare în stratul de tipărire.
+/// <para>
+/// Tipărirea e asincronă pentru că se face în afara procesului: PDF-ul iese dintr-un motor LaTeX
+/// pornit ca proces separat, iar un fir de execuție blocat câteva sute de milisecunde per document
+/// e un fir pe care nu-l mai are cine să-l folosească la cereri.
+/// </para>
 /// </remarks>
 public interface IRentalDocumentGenerator
 {
-    byte[] Generate(RentalDocumentData data);
+    Task<byte[]> GenerateAsync(RentalDocumentData data, CancellationToken cancellationToken = default);
 }
