@@ -191,7 +191,14 @@ namespace Infrastructure.Migrations
             migrationBuilder.Sql(
                 """
                 CREATE SEQUENCE IF NOT EXISTS public.rental_public_code_seq AS bigint START WITH 1;
-                SELECT setval('public.rental_public_code_seq', GREATEST((SELECT COUNT(*) FROM public.rentals), 1), true);
+                -- `setval` întoarce o valoare, iar un SELECT gol e ilegal în PL/pgSQL. Scriptul
+                -- idempotent (`dotnet-ef migrations script`) împachetează fiecare migrație într-un
+                -- bloc DO, deci un SELECT liber aici pică acolo cu „query has no destination for
+                -- result data", chiar dacă la pornirea aplicației, unde comenzile se execută
+                -- direct, merge. DO + PERFORM e valid pe ambele căi.
+                DO $seq$ BEGIN
+                    PERFORM setval('public.rental_public_code_seq', GREATEST((SELECT COUNT(*) FROM public.rentals), 1), true);
+                END $seq$;
                 """);
 
             migrationBuilder.Sql(
