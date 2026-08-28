@@ -6,6 +6,7 @@ using Application.Rentals.Commands.SaveRentalDefaults;
 using Application.Rentals.Commands.UpdateRental;
 using Application.Rentals.Queries.GetRentalDefaults;
 using Application.Rentals.Documents;
+using Application.Rentals.Payments;
 using Application.Rentals.Signing;
 using Application.Rentals.Queries.GetRentalDocuments;
 using Application.Rentals.Queries.GetRentals;
@@ -234,4 +235,52 @@ internal sealed class SendDocumentForSignature : IEndpoint
     }
 
     internal sealed record SendRequest(string Email);
+}
+
+internal sealed class RentalPaymentsEndpoint : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapGet("rentals/{id:guid}/payments", async (
+            Guid id,
+            IQueryHandler<GetRentalPaymentsQuery, RentalPaymentsDto> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<RentalPaymentsDto> result = await handler.Handle(
+                new GetRentalPaymentsQuery(id), cancellationToken);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+
+        app.MapPost("rentals/{id:guid}/payments", async (
+            Guid id,
+            PaymentRequest body,
+            ICommandHandler<AddRentalPaymentCommand, Guid> handler,
+            CancellationToken cancellationToken) =>
+        {
+            ArgumentNullException.ThrowIfNull(body);
+
+            Result<Guid> result = await handler.Handle(
+                new AddRentalPaymentCommand(id, body.AmountBani, body.PaidOnUtc, body.Method, body.Notes),
+                cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(new { id = result.Value });
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+
+        app.MapDelete("rentals/payments/{paymentId:guid}", async (
+            Guid paymentId,
+            ICommandHandler<DeleteRentalPaymentCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(new DeleteRentalPaymentCommand(paymentId), cancellationToken);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+
+    internal sealed record PaymentRequest(long AmountBani, DateTime PaidOnUtc, string Method, string? Notes);
 }

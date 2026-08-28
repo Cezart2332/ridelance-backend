@@ -178,3 +178,22 @@ internal sealed class CheckPhotoConfiguration : IEntityTypeConfiguration<CheckPh
         builder.HasIndex(p => p.CheckRecordId);
     }
 }
+
+internal sealed class RentalPaymentConfiguration : IEntityTypeConfiguration<RentalPayment>
+{
+    public void Configure(EntityTypeBuilder<RentalPayment> builder)
+    {
+        builder.HasKey(p => p.Id);
+
+        builder.Property(p => p.Method).HasConversion<string>().HasMaxLength(16);
+        builder.Property(p => p.Notes).HasMaxLength(512);
+
+        builder
+            .HasOne(p => p.Rental)
+            .WithMany()
+            .HasForeignKey(p => p.RentalId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(p => new { p.RentalId, p.PaidOnUtc }).IsDescending(false, true);
+    }
+}

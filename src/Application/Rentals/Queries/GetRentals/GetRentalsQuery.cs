@@ -5,6 +5,7 @@ using Domain.Cars;
 using Domain.Rentals;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
+using Application.Rentals.Payments;
 
 namespace Application.Rentals.Queries.GetRentals;
 
@@ -67,8 +68,9 @@ internal sealed class GetRentalsQueryHandler(
     private static RentalDto Map(Rental rental, string carLabel, DateTime nowUtc)
     {
         // Valoarea contractuală: chiria săptămânală × durata convenită, nu × cât a durat efectiv.
-        decimal weeks = (decimal)(rental.EndAtUtc - rental.StartAtUtc).TotalDays / 7m;
-        long contractValue = (long)Math.Round(rental.WeeklyRentBani * Math.Max(weeks, 0m));
+        // Formula stă în `RentalContractValue`, ca rezumatul de plăți și lista asta să nu ajungă
+        // să arate două cifre diferite pentru același contract.
+        long contractValue = RentalContractValue.For(rental);
 
         return new RentalDto(
             rental.Id,

@@ -33,6 +33,7 @@ public sealed class ApplicationDbContext(
     public DbSet<CompanyProfile> CompanyProfiles { get; set; }
     public DbSet<MaintenanceEntry> MaintenanceEntries { get; set; }
     public DbSet<Rental> Rentals { get; set; }
+    public DbSet<RentalPayment> RentalPayments { get; set; }
     public DbSet<CheckRecord> CheckRecords { get; set; }
     public DbSet<CheckPhoto> CheckPhotos { get; set; }
     public DbSet<VehicleEvent> VehicleEvents { get; set; }
