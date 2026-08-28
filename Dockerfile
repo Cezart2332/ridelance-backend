@@ -59,6 +59,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libglib2.0-0t64 \
   && rm -rf /var/lib/apt/lists/*
 
+# XeLaTeX, pentru contracte și procesele-verbale de predare/primire.
+# XeLaTeX și nu pdfLaTeX: fonturile clasice TeX compun ș și ț din literă plus accent, iar PDF-ul
+# iese corect la vedere dar cu un strat de text din care „Mureș" nu se mai poate căuta ori copia.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  texlive-xetex \
+  texlive-latex-recommended \
+  texlive-fonts-recommended \
+  && rm -rf /var/lib/apt/lists/*
+
 # OpenEXR 2.5 runtime libs (from Jammy; required by libOpenCvSharpExtern.so on Noble)
 COPY --from=openexr2 /openexr-libs/ /usr/lib/x86_64-linux-gnu/
 
