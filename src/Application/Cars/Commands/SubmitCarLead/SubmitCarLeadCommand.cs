@@ -19,7 +19,8 @@ public sealed record SubmitCarLeadCommand(
     DateOnly? PreferredStartDate = null,
     int? Weeks = null,
     bool? HasPlatformAccount = null,
-    string? Message = null) : ICommand<Guid>;
+    string? Message = null,
+    string? Source = null) : ICommand<Guid>;
 
 internal sealed class SubmitCarLeadCommandHandler(IApplicationDbContext context)
     : ICommandHandler<SubmitCarLeadCommand, Guid>
@@ -65,6 +66,7 @@ internal sealed class SubmitCarLeadCommandHandler(IApplicationDbContext context)
             Weeks = command.Weeks,
             HasPlatformAccount = command.HasPlatformAccount,
             Message = string.IsNullOrWhiteSpace(command.Message) ? null : command.Message.Trim(),
+            Source = TrafficSource.Normalize(command.Source),
             Status = CarLeadStatus.New,
             ConsentAcceptedAtUtc = DateTime.UtcNow,
             CreatedAtUtc = DateTime.UtcNow

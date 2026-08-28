@@ -30,8 +30,14 @@ internal sealed class CheckDocumentExpiryCommandHandler(
     private static readonly IReadOnlySet<DocumentCategory> ExpirableCategories =
         DocumentExpiryPolicy.ExpirableCategories;
 
-    // Notify at these days-before-expiry windows
-    private static readonly int[] NotifyAtDaysBefore = [30, 7];
+    /// <summary>
+    /// Când se anunță: cu o lună, cu două săptămâni, cu o săptămână înainte, și în ziua expirării.
+    /// </summary>
+    /// <remarks>
+    /// Erau doar 30 și 7. Între ele treceau trei săptămâni fără niciun semn, iar în ziua expirării
+    /// nu se spunea nimic — exact ziua în care mașina nu mai poate circula legal.
+    /// </remarks>
+    private static readonly int[] NotifyAtDaysBefore = [30, 14, 7, 0];
 
     public async Task<Result> Handle(
         CheckDocumentExpiryCommand command,
@@ -65,10 +71,11 @@ internal sealed class CheckDocumentExpiryCommandHandler(
             }
 
             // Idempotency: skip if we already sent this notification today
+            // Cheia stă acum într-o coloană, nu în textul citit de om.
             string notifTag = $"expiry:{doc.Id}:{daysUntilExpiry}d:{todayRomania:yyyy-MM-dd}";
             bool alreadySent = await context.Notifications
                 .AsNoTracking()
-                .AnyAsync(n => n.Text.Contains(notifTag), cancellationToken);
+                .AnyAsync(n => n.DedupeKey == notifTag, cancellationToken);
 
             if (alreadySent)
             {
@@ -101,14 +108,14 @@ internal sealed class CheckDocumentExpiryCommandHandler(
             };
 
             string ownerText = daysUntilExpiry == 0
-                ? $"Documentul tău \"{categoryLabel}\" a expirat astăzi! [{notifTag}]"
-                : $"Documentul tău \"{categoryLabel}\" expiră în {daysUntilExpiry} zile ({expiryRomania:dd.MM.yyyy}). [{notifTag}]";
+                ? $"Documentul tău \"{categoryLabel}\" a expirat astăzi!"
+                : $"Documentul tău \"{categoryLabel}\" expiră în {daysUntilExpiry} zile ({expiryRomania:dd.MM.yyyy}).";
 
             // Preferința titularului se respectă doar pentru el: contabila primește oricum
             // anunțul, pentru că e o obligație de serviciu, nu o notificare de confort.
             if (await OwnerWantsAsync(ownerId, NotificationTypes.DocumentExpiringSoon, cancellationToken))
             {
-                await CreateNotificationAsync(ownerId, ownerText, NotificationTypes.DocumentExpiringSoon);
+                await CreateNotificationAsync(ownerId, ownerText, NotificationTypes.DocumentExpiringSoon, notifTag);
             }
 
             if (contabilId.HasValue)
@@ -123,10 +130,10 @@ internal sealed class CheckDocumentExpiryCommandHandler(
                     : "Un client";
 
                 string contabilText = daysUntilExpiry == 0
-                    ? $"Clientul {ownerName}: \"{categoryLabel}\" a expirat astăzi! [{notifTag}:contabil]"
-                    : $"Clientul {ownerName}: \"{categoryLabel}\" expiră în {daysUntilExpiry} zile ({expiryRomania:dd.MM.yyyy}). [{notifTag}:contabil]";
+                    ? $"Clientul {ownerName}: \"{categoryLabel}\" a expirat astăzi!"
+                    : $"Clientul {ownerName}: \"{categoryLabel}\" expiră în {daysUntilExpiry} zile ({expiryRomania:dd.MM.yyyy}).";
 
-                await CreateNotificationAsync(contabilId.Value, contabilText, NotificationTypes.DocumentExpiringSoon);
+                await CreateNotificationAsync(contabilId.Value, contabilText, NotificationTypes.DocumentExpiringSoon, $"{notifTag}:contabil");
             }
 
             await context.SaveChangesAsync(cancellationToken);
@@ -170,7 +177,7 @@ internal sealed class CheckDocumentExpiryCommandHandler(
         return preference?.Enabled ?? true;
     }
 
-    private async Task CreateNotificationAsync(Guid userId, string text, string type)
+    private async Task CreateNotificationAsync(Guid userId, string text, string type, string? dedupeKey = null)
     {
         var notification = new Notification
         {
@@ -179,6 +186,7 @@ internal sealed class CheckDocumentExpiryCommandHandler(
             Text = text,
             Type = type,
             IsRead = false,
+            DedupeKey = dedupeKey,
             CreatedAtUtc = DateTime.UtcNow
         };
         context.Notifications.Add(notification);

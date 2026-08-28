@@ -17,6 +17,7 @@ public sealed record UpdateCompanyProfileCommand(
     string? RegCom,
     string? LegalRepresentative,
     string? RegisteredOffice,
+    string? Iban,
     string? Phone,
     string? Email,
     string? Website,
@@ -80,6 +81,8 @@ internal sealed class UpdateCompanyProfileCommandHandler(
         profile.RegCom = command.RegCom?.Trim();
         profile.LegalRepresentative = command.LegalRepresentative?.Trim();
         profile.RegisteredOffice = command.RegisteredOffice?.Trim();
+        // Fără spații: un IBAN se scrie grupat, dar se compară și se tipărește compact.
+        profile.Iban = command.Iban?.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
         profile.Phone = command.Phone?.Trim();
         profile.Email = command.Email?.Trim();
         profile.Website = command.Website?.Trim();

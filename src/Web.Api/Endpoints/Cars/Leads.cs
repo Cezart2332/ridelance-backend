@@ -22,7 +22,7 @@ internal sealed class SubmitLead : IEndpoint
                 id, request.UserName, request.UserEmail, request.UserPhone,
                 request.City, request.InterestType, request.ConsentAccepted,
                 request.Intent, request.PreferredStartDate, request.Weeks,
-                request.HasPlatformAccount, request.Message);
+                request.HasPlatformAccount, request.Message, request.Source);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
             return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(new { leadId = result.Value });
@@ -35,7 +35,7 @@ internal sealed record SubmitLeadRequest(
     string UserName, string UserEmail, string UserPhone,
     string City, string InterestType, bool ConsentAccepted,
     string? Intent, DateOnly? PreferredStartDate, int? Weeks,
-    bool? HasPlatformAccount, string? Message);
+    bool? HasPlatformAccount, string? Message, string? Source);
 
 internal sealed class GetLeads : IEndpoint
 {

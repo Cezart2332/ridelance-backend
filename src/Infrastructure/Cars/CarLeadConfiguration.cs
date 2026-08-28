@@ -18,6 +18,7 @@ internal sealed class CarLeadConfiguration : IEntityTypeConfiguration<CarLead>
         builder.Property(l => l.Status).HasConversion<string>().HasMaxLength(32);
         builder.Property(l => l.Intent).HasConversion<string>().HasMaxLength(32);
         builder.Property(l => l.Message).HasMaxLength(2048);
+        builder.Property(l => l.Source).HasMaxLength(32).IsRequired();
         builder.HasIndex(l => l.CarId);
         builder.HasIndex(l => l.Status);
     }

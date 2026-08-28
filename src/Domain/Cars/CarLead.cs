@@ -27,6 +27,12 @@ public sealed class CarLead
 
     public string? Message { get; set; }
 
+    /// <summary>
+    /// De unde a venit cererea: `utm_source` din link sau pagina internă de plecare.
+    /// „vdp" înseamnă direct pe anunț. Vezi <c>TrafficSource</c>.
+    /// </summary>
+    public string Source { get; set; } = "vdp";
+
     /// <summary>Când a bifat acordul de prelucrare a datelor. Fără el, cererea nu se salvează.</summary>
     public DateTime ConsentAcceptedAtUtc { get; set; }
 

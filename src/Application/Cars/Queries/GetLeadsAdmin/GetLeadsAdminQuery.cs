@@ -24,6 +24,8 @@ public sealed record CarLeadDto(
     int? Weeks,
     bool? HasPlatformAccount,
     string? Message,
+    /// <summary>De unde a venit cererea. „vdp" = direct pe anunț.</summary>
+    string Source,
     string Status,
     string? AdminNote,
     DateTime CreatedAtUtc);
@@ -73,6 +75,7 @@ internal sealed class GetLeadsAdminQueryHandler(
                 l.InterestType,
                 l.Intent.ToString(),
                 l.PreferredStartDate, l.Weeks, l.HasPlatformAccount, l.Message,
+                l.Source,
                 l.Status.ToString(), l.AdminNote,
                 l.CreatedAtUtc))
             .ToListAsync(cancellationToken);

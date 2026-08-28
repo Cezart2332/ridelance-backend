@@ -60,7 +60,7 @@ internal sealed class RecordCarViewCommandHandler(IApplicationDbContext context)
             Id = Guid.NewGuid(),
             CarId = command.CarId,
             VisitorHash = command.VisitorHash,
-            Source = command.Source,
+            Source = TrafficSource.Normalize(command.Source),
             CreatedAtUtc = now,
         });
 
