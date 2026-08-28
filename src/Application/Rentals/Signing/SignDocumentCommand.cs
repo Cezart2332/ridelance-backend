@@ -1,4 +1,7 @@
+using System.Globalization;
 using System.Security.Cryptography;
+using System.Text;
+using Application.Abstractions.Dossiers;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
@@ -6,6 +9,7 @@ using Domain.Documents;
 using Domain.Rentals;
 using SharedKernel;
 using Application.Rentals.Checks;
+using Application.Rentals.Documents;
 using Domain.Cars;
 
 namespace Application.Rentals.Signing;
@@ -21,7 +25,8 @@ public sealed record SigningContext(string? IpAddress, string? UserAgent);
 
 internal sealed class SignDocumentCommandHandler(
     IApplicationDbContext context,
-    IFileEncryptionService encryption)
+    IFileEncryptionService encryption,
+    IRentalDocumentGenerator generator)
     : ICommandHandler<SignDocumentCommand>
 {
     /// <summary>Limita imaginii de semnătură. Aceeași ca la deschiderea PFA.</summary>
@@ -86,6 +91,17 @@ internal sealed class SignDocumentCommandHandler(
         byte[] signed = await ReadDocumentAsync(request.GeneratedDocument.DocumentId, cancellationToken);
         request.PayloadHash = Convert.ToHexString(SHA256.HashData([.. signature, .. signed]));
 
+        // Documentul se retipărește cu semnătura pe linia chiriașului. Se face înainte de orice
+        // modificare de stare: dacă tipărirea eșuează, semnarea nu se înregistrează pe jumătate, iar
+        // chiriașul poate reîncerca de pe același link.
+        Document? signedPdf = await PrintSignedAsync(request.GeneratedDocument, signature, cancellationToken);
+
+        if (signedPdf is not null)
+        {
+            context.Documents.Add(signedPdf);
+            request.GeneratedDocument.SignedDocumentId = signedPdf.Id;
+        }
+
         request.UsedAtUtc = DateTime.UtcNow;
         request.SignatureImageDocumentId = image.Id;
         request.IpAddress = command.Context.IpAddress;
@@ -105,6 +121,65 @@ internal sealed class SignDocumentCommandHandler(
         await context.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
+    }
+
+    /// <summary>Documentul retipărit cu semnătura pe el, sau nimic dacă sursa lui nu s-a păstrat.</summary>
+    /// <remarks>
+    /// Documentele generate înainte ca sursa să fie păstrată rămân semnabile — semnătura se
+    /// înregistrează și se păstrează ca imagine — dar nu se pot retipări. Se rezolvă regenerându-le.
+    /// </remarks>
+    private async Task<Document?> PrintSignedAsync(
+        GeneratedDocument generated, byte[] signature, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(generated.SourceFilePath) || string.IsNullOrEmpty(generated.SourceIv))
+        {
+            return null;
+        }
+
+        string source;
+        using (Stream stream = await encryption.DecryptAndReadAsync(
+            generated.SourceFilePath, generated.SourceIv, cancellationToken))
+        {
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            source = await reader.ReadToEndAsync(cancellationToken);
+        }
+
+        string note = string.Create(
+            CultureInfo.InvariantCulture,
+            $"Semnat electronic la {DateTime.UtcNow.ToLocalTime():dd.MM.yyyy, ora HH:mm}");
+
+        byte[] pdf = await generator.SignAsync(
+            source,
+            new Dictionary<int, RentalSignature>
+            {
+                [RentalDocumentComposer.TenantSignatureSlot] = new RentalSignature(signature, note),
+            },
+            cancellationToken);
+
+        string fileName =
+            $"{generated.Rental.PublicCode}-{generated.Type}-v{generated.Version}-semnat.pdf";
+
+        using var pdfStream = new MemoryStream(pdf);
+        EncryptedFileResult encrypted = await encryption.EncryptAndSaveAsync(
+            pdfStream, fileName, cancellationToken);
+
+        return new Document
+        {
+            Id = Guid.NewGuid(),
+            UserId = generated.Rental.OwnerUserId,
+            CarId = generated.Rental.CarId,
+            OriginalFileName = fileName,
+            StoredFileName = fileName,
+            ContentType = "application/pdf",
+            Category = DocumentCategory.Other,
+            Status = DocumentStatus.Verified,
+            Origin = DocumentOrigin.SystemGenerated,
+            EncryptedFilePath = encrypted.FilePath,
+            EncryptionIv = encrypted.Iv,
+            FileSize = pdf.Length,
+            UploadedAtUtc = DateTime.UtcNow,
+            AiStatus = DocumentAiStatus.None,
+        };
     }
 
     /// <summary>Fișierul semnat, ca octeți, pentru amprentă. Nu se modifică — doar se citește.</summary>

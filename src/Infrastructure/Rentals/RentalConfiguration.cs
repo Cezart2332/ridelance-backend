@@ -94,6 +94,8 @@ internal sealed class GeneratedDocumentConfiguration : IEntityTypeConfiguration<
         builder.Property(d => d.Status).HasConversion<string>().HasMaxLength(32);
         builder.Property(d => d.SentToEmail).HasMaxLength(256);
         builder.Property(d => d.ExternalSignatureRef).HasMaxLength(256);
+        builder.Property(d => d.SourceFilePath).HasMaxLength(1024);
+        builder.Property(d => d.SourceIv).HasMaxLength(64);
 
         builder
             .HasOne(d => d.Rental)

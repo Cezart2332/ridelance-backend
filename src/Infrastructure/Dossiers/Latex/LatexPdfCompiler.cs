@@ -14,7 +14,12 @@ internal sealed class LatexPdfCompiler(IOptions<LatexOptions> options)
 {
     private const string JobName = "document";
 
-    public async Task<byte[]> CompileAsync(string source, CancellationToken cancellationToken)
+    /// <param name="files">
+    /// Fișiere puse lângă sursă, pe care documentul le poate include. Numele lor vine din șablon,
+    /// niciodată de la utilizator.
+    /// </param>
+    public async Task<byte[]> CompileAsync(
+        string source, IReadOnlyDictionary<string, byte[]> files, CancellationToken cancellationToken)
     {
         LatexOptions settings = options.Value;
 
@@ -28,6 +33,11 @@ internal sealed class LatexPdfCompiler(IOptions<LatexOptions> options)
         {
             await File.WriteAllTextAsync(
                 Path.Combine(workDir, $"{JobName}.tex"), source, new UTF8Encoding(false), cancellationToken);
+
+            foreach ((string name, byte[] content) in files)
+            {
+                await File.WriteAllBytesAsync(Path.Combine(workDir, name), content, cancellationToken);
+            }
 
             int exitCode = await RunAsync(settings, workDir, home, cancellationToken);
 
