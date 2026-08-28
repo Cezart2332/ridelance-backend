@@ -14,6 +14,13 @@ internal sealed class NotificationConfiguration : IEntityTypeConfiguration<Notif
 
         builder.Property(n => n.Text).HasMaxLength(1024).IsRequired();
         builder.Property(n => n.Type).HasMaxLength(32).IsRequired();
+        builder.Property(n => n.DedupeKey).HasMaxLength(128);
+
+        // Căutarea se face exact așa: „am mai trimis notificarea asta?". Filtrat, fiindcă
+        // majoritatea notificărilor n-au cheie.
+        builder
+            .HasIndex(n => n.DedupeKey)
+            .HasFilter("dedupe_key IS NOT NULL");
 
         builder.HasOne(n => n.User)
             .WithMany()

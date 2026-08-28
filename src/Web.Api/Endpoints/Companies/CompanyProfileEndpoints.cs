@@ -1,4 +1,5 @@
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Services;
 using Application.Companies;
 using Application.Companies.Commands.UpdateCompanyProfile;
 using Application.Companies.Commands.UploadCompanyLogo;
@@ -72,6 +73,34 @@ internal sealed class UploadCompanyLogo : IEndpoint
         })
         .RequireAuthorization()
         .DisableAntiforgery()
+        .WithTags(Tags.Companies);
+    }
+}
+
+/// <summary>
+/// Datele firmei din registrul ANAF, pentru completarea profilului la prima configurare.
+/// </summary>
+/// <remarks>
+/// Aceleași date pe care le folosește deja facturarea (<c>invoices/company/{cui}</c>), dar ruta
+/// stă lângă profil, fiindcă de aici o cheamă flota — n-are sens ca setarea firmei să treacă
+/// printr-un endpoint de facturi ca să afle cum o cheamă.
+///
+/// Cere autentificare, deși registrul e public: altfel ar fi un proxy deschis peste ANAF, pe
+/// socoteala noastră.
+/// </remarks>
+internal sealed class LookupCompanyForProfile : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapGet("companies/lookup/{cui}", async (
+            string cui,
+            ICompanyLookupService lookup,
+            CancellationToken cancellationToken) =>
+        {
+            CompanyLookupResult? company = await lookup.FindByCuiAsync(cui, cancellationToken);
+            return company is null ? Results.NotFound() : Results.Ok(company);
+        })
+        .RequireAuthorization()
         .WithTags(Tags.Companies);
     }
 }

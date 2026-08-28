@@ -13,6 +13,7 @@ internal sealed class CompanyProfileConfiguration : IEntityTypeConfiguration<Com
         builder.Property(c => c.OwnerType).HasConversion<string>().HasMaxLength(16);
         builder.Property(c => c.LegalName).HasMaxLength(256).IsRequired();
         builder.Property(c => c.Cui).HasMaxLength(32);
+        builder.Property(c => c.Iban).HasMaxLength(34);
         builder.Property(c => c.RegCom).HasMaxLength(64);
         builder.Property(c => c.LegalRepresentative).HasMaxLength(256);
         builder.Property(c => c.RegisteredOffice).HasMaxLength(512);

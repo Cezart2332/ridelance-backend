@@ -14,6 +14,8 @@ public sealed record CompanyProfileDto(
     string? RegCom,
     string? LegalRepresentative,
     string? RegisteredOffice,
+    /// <summary>Contul în care se încasează chiriile. Intră în contracte și facturi.</summary>
+    string? Iban,
     string? Phone,
     string? Email,
     string? Website,
@@ -37,6 +39,7 @@ public static class CompanyProfileMapper
         profile.RegCom,
         profile.LegalRepresentative,
         profile.RegisteredOffice,
+        profile.Iban,
         profile.Phone,
         profile.Email,
         profile.Website,

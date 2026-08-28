@@ -30,6 +30,16 @@ public sealed class CompanyProfile : Entity
     public string? LegalRepresentative { get; set; }
     public string? RegisteredOffice { get; set; }
 
+    /// <summary>
+    /// Contul în care se încasează chiriile. Intră în contracte și în facturi.
+    /// </summary>
+    /// <remarks>
+    /// În clar, spre deosebire de IBAN-urile din onboardingul PFA, care se criptează: acela e al
+    /// unei persoane fizice, ăsta e al firmei și apare oricum tipărit pe fiecare document pe care
+    /// firma îl trimite. Criptarea lui ar fi protejat ceva ce firma publică singură.
+    /// </remarks>
+    public string? Iban { get; set; }
+
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public string? Website { get; set; }
