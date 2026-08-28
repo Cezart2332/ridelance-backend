@@ -5,6 +5,7 @@ using Domain.Cars;
 using Domain.Maintenance;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
+using Application.Rentals.Checks;
 
 namespace Application.Maintenance.Commands.AddMaintenanceEntry;
 
@@ -69,6 +70,14 @@ internal sealed class AddMaintenanceEntryCommandHandler(
         };
 
         context.MaintenanceEntries.Add(entry);
+
+        VehicleTimeline.Record(
+            context,
+            entry.CarId,
+            VehicleEventType.Maintenance,
+            entry.Title,
+            occurredAtUtc: entry.PerformedAtUtc);
+
         await context.SaveChangesAsync(cancellationToken);
 
         return entry.Id;

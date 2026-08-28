@@ -128,3 +128,53 @@ internal sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<S
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+internal sealed class CheckRecordConfiguration : IEntityTypeConfiguration<CheckRecord>
+{
+    public void Configure(EntityTypeBuilder<CheckRecord> builder)
+    {
+        builder.HasKey(c => c.Id);
+
+        builder.Property(c => c.Kind).HasConversion<string>().HasMaxLength(16);
+        builder.Property(c => c.FuelLevel).HasMaxLength(32);
+        builder.Property(c => c.Notes).HasMaxLength(2048);
+        builder.Property(c => c.WithholdingReason).HasMaxLength(1024);
+
+        var stringListComparer = new ValueComparer<List<string>>(
+            (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
+            c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+            c => c.ToList());
+
+        builder.Property(c => c.Accessories)
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
+            .Metadata.SetValueComparer(stringListComparer);
+
+        builder
+            .HasOne(c => c.Rental)
+            .WithMany()
+            .HasForeignKey(c => c.RentalId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder
+            .HasMany(c => c.Photos)
+            .WithOne(p => p.CheckRecord)
+            .HasForeignKey(p => p.CheckRecordId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // O singură predare și o singură primire per închiriere. A doua ar face istoricul ambiguu.
+        builder.HasIndex(c => new { c.RentalId, c.Kind }).IsUnique();
+    }
+}
+
+internal sealed class CheckPhotoConfiguration : IEntityTypeConfiguration<CheckPhoto>
+{
+    public void Configure(EntityTypeBuilder<CheckPhoto> builder)
+    {
+        builder.HasKey(p => p.Id);
+        builder.Property(p => p.Slot).HasConversion<string>().HasMaxLength(16);
+        builder.HasIndex(p => p.CheckRecordId);
+    }
+}

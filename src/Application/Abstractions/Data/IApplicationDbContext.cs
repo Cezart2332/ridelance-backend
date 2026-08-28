@@ -27,6 +27,9 @@ public interface IApplicationDbContext
     DbSet<CompanyProfile> CompanyProfiles { get; }
     DbSet<MaintenanceEntry> MaintenanceEntries { get; }
     DbSet<Rental> Rentals { get; }
+    DbSet<CheckRecord> CheckRecords { get; }
+    DbSet<CheckPhoto> CheckPhotos { get; }
+    DbSet<VehicleEvent> VehicleEvents { get; }
     DbSet<SignatureRequest> SignatureRequests { get; }
     DbSet<GeneratedDocument> GeneratedDocuments { get; }
     DbSet<Tenant> Tenants { get; }

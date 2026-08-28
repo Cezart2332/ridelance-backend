@@ -5,6 +5,8 @@ using Application.Abstractions.Services;
 using Domain.Documents;
 using Domain.Rentals;
 using SharedKernel;
+using Application.Rentals.Checks;
+using Domain.Cars;
 
 namespace Application.Rentals.Signing;
 
@@ -92,6 +94,13 @@ internal sealed class SignDocumentCommandHandler(
         request.GeneratedDocument.Status = GeneratedDocumentStatus.Signed;
         request.GeneratedDocument.SignedAtUtc = DateTime.UtcNow;
         request.GeneratedDocument.ExternalSignatureRef = request.Id.ToString();
+
+        VehicleTimeline.Record(
+            context,
+            request.GeneratedDocument.Rental.CarId,
+            VehicleEventType.DocumentSigned,
+            $"Document semnat de {request.GeneratedDocument.Rental.Tenant.Name} · {request.GeneratedDocument.Rental.PublicCode}",
+            request.GeneratedDocument.RentalId);
 
         await context.SaveChangesAsync(cancellationToken);
 
