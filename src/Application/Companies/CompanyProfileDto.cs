@@ -21,6 +21,8 @@ public sealed record CompanyProfileDto(
     string? Website,
     string? PublicDescription,
     string? LogoUrl,
+    /// <summary>Documentul cu specimenul de semnătură, dacă a fost salvat unul.</summary>
+    Guid? SignatureDocumentId,
     string Slug,
     bool IsVerified,
     VisibilityDto Visibility);
@@ -45,6 +47,7 @@ public static class CompanyProfileMapper
         profile.Website,
         profile.PublicDescription,
         profile.LogoUrl,
+        profile.SignatureDocumentId,
         profile.Slug,
         profile.IsVerified,
         new VisibilityDto(profile.ShowPhone, profile.ShowEmail, profile.ShowWhatsApp, profile.ShowLocation));

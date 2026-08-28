@@ -57,6 +57,14 @@ public sealed class GeneratedDocument : Entity
 
     public string? SourceIv { get; set; }
 
+    /// <summary>Specimenul de semnătură al firmei folosit la tipărirea documentului ăstuia.</summary>
+    /// <remarks>
+    /// Se ține pe document, nu se recitește de pe profil la retipărire: dacă proprietarul își
+    /// schimbă semnătura între timp, varianta semnată trebuie să poarte semnătura care era pe
+    /// documentul trimis, nu pe cea de azi.
+    /// </remarks>
+    public Guid? CompanySignatureDocumentId { get; set; }
+
     public DateTime GeneratedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? SentAtUtc { get; set; }
     public string? SentToEmail { get; set; }
