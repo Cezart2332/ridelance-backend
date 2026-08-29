@@ -20,51 +20,10 @@ public class OnboardingStepCatalogTests
     {
         List<OnboardingStepDto> steps = Build(registration: null, eligibility: null);
 
-        // Șase pași cu conținut plus „Abonamente", secțiunea anunțată dar încă nedefinită.
-        steps.Count.ShouldBe(7);
+        steps.Count.ShouldBe(6);
         steps[0].Status.ShouldBe(InProgress);
         steps[0].State.ShouldBe(OnboardingStepCatalog.States.Available);
         steps.Skip(1).ShouldAllBe(s => s.Status == Locked);
-    }
-
-    /* Abonamente — intrare în sidebar, cu lacăt, fără să blocheze înrolarea. */
-
-    [Fact]
-    public void BuildSteps_SubscriptionsSection_IsAlwaysLockedAndSaysWhy()
-    {
-        List<OnboardingStepDto> steps = Build(registration: null, eligibility: null);
-
-        OnboardingStepDto subscriptions = steps.Single(s => s.Key == "subscriptions");
-
-        subscriptions.Label.ShouldBe("Abonamente");
-        subscriptions.Status.ShouldBe(Locked);
-        subscriptions.State.ShouldBe(OnboardingStepCatalog.States.Locked);
-        subscriptions.BlockReason.ShouldNotBeNull().ShouldContain("se pregătește");
-    }
-
-    [Fact]
-    public void AllCompleted_IgnoresTheSectionThatCannotBeCompletedYet()
-    {
-        // Toți pașii reali finalizați, „Abonamente" blocat: înrolarea e completă.
-        List<OnboardingStepDto> steps =
-        [
-            .. Build(registration: null, eligibility: null)
-                .Select(s => s.Key == "subscriptions" ? s : s with { Status = Completed }),
-        ];
-
-        OnboardingStepCatalog.AllCompleted(steps).ShouldBeTrue();
-    }
-
-    [Fact]
-    public void CurrentStepKey_NeverPointsAtTheSectionThatCannotBeCompletedYet()
-    {
-        List<OnboardingStepDto> steps =
-        [
-            .. Build(registration: null, eligibility: null)
-                .Select(s => s.Key == "subscriptions" ? s : s with { Status = Completed }),
-        ];
-
-        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBeNull();
     }
 
     [Fact]
