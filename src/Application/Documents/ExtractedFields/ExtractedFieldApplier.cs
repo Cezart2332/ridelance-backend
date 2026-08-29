@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Application.Abstractions.Data;
 using Application.Abstractions.Security;
+using Domain.Cars;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.PfaRegistrations.CompanyFormation;
@@ -448,6 +449,14 @@ internal sealed class ExtractedFieldApplier(
     private async Task ApplyToVehicleAsync(
         Document document, string key, string value, CancellationToken cancellationToken)
     {
+        // Talonul încărcat în dosarul unei mașini de flotă completează mașina, nu vehiculul din
+        // dosarul PFA — sunt două entități diferite, iar documentul spune singur care e a lui.
+        if (document.CarId is Guid carId)
+        {
+            await ApplyToFleetCarAsync(carId, key, value, cancellationToken);
+            return;
+        }
+
         PfaVehicle? vehicle = await FindVehicleAsync(document, cancellationToken);
         if (vehicle is null)
         {
@@ -473,6 +482,39 @@ internal sealed class ExtractedFieldApplier(
         }
 
         vehicle.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Precompletează mașina din flotă din talon sau din poliță.
+    ///
+    /// Doar câmpurile goale, spre deosebire de vehiculul din dosarul PFA. Acolo documentul e
+    /// singura sursă și omul nu tastează nimic; aici proprietarul își editează mașina într-un
+    /// formular, iar o corectură făcută de el n-are voie să fie ștearsă de o reîncărcare.
+    ///
+    /// Marca și modelul rămân cum le-a scris el: sunt textul anunțului, nu date de identificare.
+    /// </summary>
+    private async Task ApplyToFleetCarAsync(
+        Guid carId, string key, string value, CancellationToken cancellationToken)
+    {
+        Car? car = await context.Cars.FirstOrDefaultAsync(c => c.Id == carId, cancellationToken);
+        if (car is null)
+        {
+            return;
+        }
+
+        switch (key.Trim().ToUpperInvariant())
+        {
+            case "PLATE_NUMBER" when string.IsNullOrWhiteSpace(car.PlateNumber):
+                car.PlateNumber = value;
+                break;
+            case "VIN" when string.IsNullOrWhiteSpace(car.Vin):
+                car.Vin = value;
+                break;
+            default:
+                return;
+        }
+
+        car.UpdatedAtUtc = DateTime.UtcNow;
     }
 
     private async Task ApplyToCopyRequestAsync(
