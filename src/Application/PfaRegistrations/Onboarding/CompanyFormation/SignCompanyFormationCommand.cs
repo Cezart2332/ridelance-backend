@@ -5,7 +5,9 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Security;
 using Application.Abstractions.Services;
+using Application.Payments;
 using Domain.Documents;
+using Domain.Payments;
 using Domain.PfaRegistrations.CompanyFormation;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -43,6 +45,7 @@ internal sealed class SignCompanyFormationCommandHandler(
     IApplicationDbContext context,
     ISecretProtector secretProtector,
     IFileEncryptionService fileEncryptionService,
+    ConsultoDossierSender consultoDossierSender,
     OnboardingStateService stateService)
     : ICommandHandler<SignCompanyFormationCommand, CompanyFormationResponse>
 {
@@ -181,14 +184,38 @@ internal sealed class SignCompanyFormationCommandHandler(
         context.CompanyFormationSignatures.Add(signature);
         request.Signature = signature;
 
-        // Semnat ≠ trimis. Dosarul se blochează la editare, dar rămâne pe loc până când Stripe
-        // confirmă plata: plata e condiție de trimitere, nu un pas de după ea.
-        request.Status = CompanyFormationStatus.AwaitingPayment;
+        // Avansul se încasează înaintea deschiderii dosarului, deci la semnare plata e de regulă
+        // deja făcută și dosarul poate pleca imediat. `AwaitingPayment` rămâne pentru dosarele
+        // deschise sub regula veche, care semnau înainte să plătească — ele trec prin webhook.
+        bool paid = await InfiintarePaymentCheck.HasPaidAsync(context, command.UserId, cancellationToken);
+
+        if (paid)
+        {
+            request.PaymentConfirmedAtUtc ??= signedAtUtc;
+            request.Status = CompanyFormationStatus.PaymentConfirmed;
+        }
+        else
+        {
+            request.Status = CompanyFormationStatus.AwaitingPayment;
+        }
+
         request.CurrentStage = CompanyFormationStage.Consent;
         request.SubmittedAtUtc = signedAtUtc;
         request.UpdatedAtUtc = signedAtUtc;
 
         await context.SaveChangesAsync(cancellationToken);
+
+        // Poarta e a lui `ConsultoDossierSender`, aceeași ca pe traseul webhook: un dosar
+        // neplătit nu pleacă nici de aici. Eșecul nu pică semnarea — semnătura e deja în DB,
+        // iar trimiterea se poate relua din admin.
+        if (request.CanSendToConsulto)
+        {
+            await consultoDossierSender.SendAsync(
+                request.PfaRegistrationId,
+                Pricing.RidelanceStart.OnboardingAdvanceBani,
+                stripeEventId: null,
+                cancellationToken);
+        }
 
         return Result.Success(
             CompanyFormationMapper.ToResponse(request, secretProtector, revealCnp: true));

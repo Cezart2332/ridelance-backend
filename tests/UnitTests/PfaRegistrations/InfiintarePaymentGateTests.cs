@@ -7,8 +7,9 @@ using Xunit;
 namespace UnitTests.PfaRegistrations;
 
 /// <summary>
-/// RL-03 — plata înființării vine DUPĂ completare. Poarta e aceeași funcție folosită și de starea
-/// de onboarding, și de crearea sesiunii Stripe, ca UI-ul și API-ul să nu poată ajunge la
+/// RL-03 — plata înființării vine ÎNAINTEA dosarului: e serviciul pentru care plătește omul, iar
+/// dosarul e lucrul pe care îl începem după ce e achitat. Poarta e aceeași funcție folosită și de
+/// starea de onboarding, și de crearea sesiunii Stripe, ca UI-ul și API-ul să nu poată ajunge la
 /// concluzii diferite despre același dosar.
 /// </summary>
 public class InfiintarePaymentGateTests
@@ -18,37 +19,31 @@ public class InfiintarePaymentGateTests
     {
         // Ramura „Am PFA” nu cumpără nimic: dosarul există deja.
         PfaRegistration registration = Registration(RegistrationType.AmPfa);
-        registration.CompanyFormationRequest = Formation(CompanyFormationStatus.Submitted);
 
         OnboardingStateBuilder.CanPayInfiintare(registration, hasPaidInfiintare: false).ShouldBeFalse();
     }
 
     [Fact]
-    public void CanPay_IsFalse_BeforeTheDossierIsSigned()
+    public void CanPay_IsTrue_BeforeAnyDossierExists()
     {
-        // Exact regresia pe care o previne RL-03: plata înaintea datelor.
+        // Momentul plății: ramura e aleasă, dosarul încă nu e deschis. Asta e regula nouă —
+        // înainte, poarta cerea un dosar semnat, deci se completa tot înainte de a se plăti ceva.
         PfaRegistration registration = Registration(RegistrationType.NuAmPfa);
 
-        OnboardingStateBuilder.CanPayInfiintare(registration, hasPaidInfiintare: false).ShouldBeFalse();
-
-        registration.CompanyFormationRequest = Formation(CompanyFormationStatus.Draft);
-        OnboardingStateBuilder.CanPayInfiintare(registration, hasPaidInfiintare: false).ShouldBeFalse();
+        registration.CompanyFormationRequest.ShouldBeNull();
+        OnboardingStateBuilder.CanPayInfiintare(registration, hasPaidInfiintare: false).ShouldBeTrue();
     }
 
-    [Fact]
-    public void CanPay_IsFalse_WhenWeAskedForMoreInformation()
+    [Theory]
+    [InlineData(CompanyFormationStatus.Draft)]
+    [InlineData(CompanyFormationStatus.InfoRequested)]
+    [InlineData(CompanyFormationStatus.AwaitingPayment)]
+    public void CanPay_StaysTrue_ForDossiersOpenedUnderTheOldRule(CompanyFormationStatus status)
     {
+        // Dosare deschise înainte de schimbare, încă neplătite: ecranul de plată trebuie să le
+        // rămână disponibil, altfel ar fi blocate fără nicio cale de a achita.
         PfaRegistration registration = Registration(RegistrationType.NuAmPfa);
-        registration.CompanyFormationRequest = Formation(CompanyFormationStatus.InfoRequested);
-
-        OnboardingStateBuilder.CanPayInfiintare(registration, hasPaidInfiintare: false).ShouldBeFalse();
-    }
-
-    [Fact]
-    public void CanPay_IsTrue_OnceSigned()
-    {
-        PfaRegistration registration = Registration(RegistrationType.NuAmPfa);
-        registration.CompanyFormationRequest = Formation(CompanyFormationStatus.Submitted);
+        registration.CompanyFormationRequest = Formation(status);
 
         OnboardingStateBuilder.CanPayInfiintare(registration, hasPaidInfiintare: false).ShouldBeTrue();
     }
@@ -57,7 +52,6 @@ public class InfiintarePaymentGateTests
     public void CanPay_IsFalse_OnceAlreadyPaid()
     {
         PfaRegistration registration = Registration(RegistrationType.NuAmPfa);
-        registration.CompanyFormationRequest = Formation(CompanyFormationStatus.Submitted);
 
         OnboardingStateBuilder.CanPayInfiintare(registration, hasPaidInfiintare: true).ShouldBeFalse();
     }

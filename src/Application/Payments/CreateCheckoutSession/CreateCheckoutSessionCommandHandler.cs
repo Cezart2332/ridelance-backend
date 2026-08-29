@@ -155,23 +155,9 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             return Result.Success(registration.Id);
         }
 
-        CompanyFormationRequest? formation = registration.CompanyFormationRequest;
-        var missing = new List<string>();
-
-        if (formation is null || !formation.PersonalDataComplete)
-        {
-            missing.Add("datele personale");
-        }
-
-        if (formation is null || !formation.RegisteredOfficeComplete)
-        {
-            missing.Add("sediul profesional");
-        }
-
-        missing.Add("semnarea dosarului");
-
+        // Rămâne un singur caz: ramura „Am PFA", care nu plătește înființarea.
         return Result.Failure<Guid>(Error.Unprocessable(
-            "Checkout.FormationIncomplete",
-            $"Dosarul nu poate fi depus încă. Mai lipsește: {string.Join(", ", missing)}."));
+            "Checkout.NotApplicable",
+            "Înființarea se plătește doar pe ramura „Nu am PFA”."));
     }
 }
