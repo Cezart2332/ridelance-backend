@@ -22,7 +22,11 @@ internal sealed class OnboardingPlatforms : IEndpoint
         string? Email,
         string? Phone,
         // Parola contului de flotă: se stochează criptată și nu se mai întoarce niciodată.
-        string? Password);
+        string? Password,
+        // Contul de ȘOFER de pe aceeași platformă — alt cont decât cel de flotă. ID-ul e opțional.
+        string? DriverEmail,
+        string? DriverPhone,
+        string? DriverExternalId);
 
     public sealed record AdvanceRequest(string Provider, string OnboardingStatus);
 
@@ -79,7 +83,8 @@ internal sealed class OnboardingPlatforms : IEndpoint
                     userContext.UserId, provider, request.HasExistingAccount,
                     request.OperatorAccountId, request.AffiliationContractDocumentId,
                     request.ExistingAccountAnswer,
-                    request.Email, request.Phone, request.Password),
+                    request.Email, request.Phone, request.Password,
+                    request.DriverEmail, request.DriverPhone, request.DriverExternalId),
                 cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);

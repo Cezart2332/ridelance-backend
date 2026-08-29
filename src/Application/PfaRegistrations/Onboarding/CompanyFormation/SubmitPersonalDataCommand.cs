@@ -72,6 +72,12 @@ internal sealed class SubmitPersonalDataCommandHandler(
         request.PrefilledFields = prefilled.Serialize();
         request.UpdatedAtUtc = DateTime.UtcNow;
 
+        // CNP-ul e sursa de adevăr pentru data nașterii și sex: e un cod verificat matematic,
+        // pe când data din buletin trece printr-un OCR. Cât timp CNP-ul e valid, profilul de
+        // eligibilitate se rescrie după el, iar ce a citit OCR-ul diferit se notează pentru
+        // admin — fără să blocheze pe nimeni.
+        await ApplyCnpAsSourceOfTruthAsync(request, cnp, command.UserId, cancellationToken);
+
         if (request.PersonalDataComplete && request.CurrentStage == CompanyFormationStage.PersonalData)
         {
             request.CurrentStage = CompanyFormationStage.RegisteredOffice;
@@ -81,6 +87,48 @@ internal sealed class SubmitPersonalDataCommandHandler(
 
         return Result.Success(
             CompanyFormationMapper.ToResponse(request, secretProtector, revealCnp: true));
+    }
+
+    /// <summary>
+    /// Aliniază data nașterii din profilul de eligibilitate la CNP și notează discrepanța.
+    ///
+    /// Ordinea contează: întâi se scrie data din CNP, apoi se compară cu ce era acolo. Invers,
+    /// nota ar descrie o stare pe care tocmai am înlocuit-o.
+    /// </summary>
+    private async Task ApplyCnpAsSourceOfTruthAsync(
+        CompanyFormationRequest request,
+        string? cnp,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        if (cnp is not { Length: 13 } || !CnpValidator.IsValid(cnp))
+        {
+            // Fără CNP valid nu avem sursă de adevăr, deci nici discrepanță de raportat.
+            request.IdentityMismatchNote = null;
+            return;
+        }
+
+        DateOnly? fromCnp = CnpValidator.BirthDateOf(cnp);
+        if (fromCnp is null)
+        {
+            request.IdentityMismatchNote = null;
+            return;
+        }
+
+        OnboardingEligibilityProfile? profile = await context.OnboardingEligibilityProfiles
+            .FirstOrDefaultAsync(e => e.UserId == userId, cancellationToken);
+
+        DateOnly? fromIdCard = profile?.DateOfBirth;
+
+        request.IdentityMismatchNote = fromIdCard is not null && fromIdCard != fromCnp
+            ? $"Data nașterii: CNP {fromCnp:yyyy-MM-dd}, buletin (OCR) {fromIdCard:yyyy-MM-dd}."
+            : null;
+
+        if (profile is not null)
+        {
+            profile.DateOfBirth = fromCnp;
+            profile.UpdatedAtUtc = DateTime.UtcNow;
+        }
     }
 }
 

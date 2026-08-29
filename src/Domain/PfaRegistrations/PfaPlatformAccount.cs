@@ -31,6 +31,17 @@ public sealed class PfaPlatformAccount : Entity
     public string? PasswordProtected { get; set; }
 
     public DateTime? PasswordUpdatedAtUtc { get; set; }
+
+    // Contul de ȘOFER de pe aceeași platformă. Sunt două conturi distincte: cel de flotă
+    // (operator) administrează mașinile, cel de șofer e cel cu care se conduce efectiv. Pasul
+    // cerea doar flota, deci jumătate din ce trebuie ca să poți lucra lipsea din dosar.
+    /// <summary>Emailul contului de șofer.</summary>
+    public string? DriverEmail { get; set; }
+    /// <summary>Telefonul contului de șofer, în format E.164.</summary>
+    public string? DriverPhone { get; set; }
+    /// <summary>ID/UUID-ul de șofer de pe platformă. Opțional: nu toți îl știu pe de rost.</summary>
+    public string? DriverExternalId { get; set; }
+
     /// <summary>Contractul de afiliere semnat cu platforma.</summary>
     public Guid? AffiliationContractDocumentId { get; set; }
     public PfaPlatformOnboardingStatus OnboardingStatus { get; set; } = PfaPlatformOnboardingStatus.NotStarted;

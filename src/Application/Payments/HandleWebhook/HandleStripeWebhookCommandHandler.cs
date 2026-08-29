@@ -35,7 +35,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
     IWebPushService webPushService,
     IInvoiceGenerator invoiceGenerator,
     PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier opsNotifier,
-    IQueryHandler<ExportCompanyFormationQuery, CompanyFormationExport> companyFormationExport,
+    ConsultoDossierSender consultoDossierSender,
     IConfiguration configuration,
     ILogger<HandleStripeWebhookCommandHandler> logger)
     : ICommandHandler<HandleStripeWebhookCommand>
@@ -271,13 +271,13 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 session.PaymentIntentId ?? session.Id,
                 ct);
 
-            // Dosarul de înființare e semnat înainte de plată (RL-03), deci plata e ultimul
-            // eveniment: aici arhiva pentru Consulto e completă. O generăm și o trimitem, ca
-            // să nu depindă de cineva care ține minte să intre în admin și s-o descarce.
+            // Plata e condiția de trimitere a dosarului la Consulto, iar confirmarea ei vine
+            // exclusiv de aici — din webhook, server-side. Clientul nu declanșează niciun email:
+            // un „am plătit" venit din browser nu e o dovadă de plată.
             if (paidCompanyFormationId is Guid formationId)
             {
-                await SendCompanyFormationArchiveAsync(
-                    formationId, user, session.AmountTotal ?? 0, ct);
+                await ConfirmPaymentAndSendToConsultoAsync(
+                    formationId, session.AmountTotal ?? 0, e.Id, ct);
             }
 
             // Send in-app and push notifications
@@ -721,59 +721,60 @@ internal sealed class HandleStripeWebhookCommandHandler(
     }
 
     /// <summary>
-    /// Produce arhiva dosarului de înființare și o trimite pe adresa de operațiuni.
+    /// Confirmă plata avansului pe dosarul de înființare și, dacă e cazul, trimite arhiva la
+    /// Consulto. Cele două sunt un singur drum, în ordinea asta:
     ///
-    /// Nu aruncă niciodată: un webhook Stripe care pică din cauza unui email ar fi reîncercat de
-    /// Stripe și ar dubla înregistrarea plății. Dacă arhiva nu se poate produce (dosar nesemnat,
-    /// fișier lipsă din storage), rămâne descărcabilă manual din admin.
+    /// <c>plata_in_asteptare → plata_confirmata → trimis_consulto</c>
+    ///
+    /// Confirmarea plății se salvează separat, înaintea trimiterii: dacă arhiva nu se poate
+    /// produce acum, dosarul rămâne în <c>PaymentConfirmed</c> și adminul poate relua trimiterea
+    /// din endpointul dedicat. Trimiterea propriu-zisă e a lui <see cref="ConsultoDossierSender"/>
+    /// — un singur loc, ca poarta de plată să nu poată fi ocolită pe vreo ramură.
+    ///
+    /// Nu aruncă niciodată: un webhook care pică din cauza unui email ar fi reîncercat de Stripe
+    /// și ar dubla înregistrarea plății.
     /// </summary>
-    private async Task SendCompanyFormationArchiveAsync(
+    private async Task ConfirmPaymentAndSendToConsultoAsync(
         Guid pfaRegistrationId,
-        User user,
         long amountBani,
+        string stripeEventId,
         CancellationToken ct)
     {
         try
         {
             CompanyFormationRequest? request = await context.CompanyFormationRequests
-                .AsNoTracking()
-                .Include(r => r.Signature)
                 .FirstOrDefaultAsync(r => r.PfaRegistrationId == pfaRegistrationId, ct);
 
-            if (request?.Signature is null)
+            if (request is null)
+            {
+                return;
+            }
+
+            // Deja trimis: nici același event repetat, nici altul nou nu au ce retrimite.
+            if (request.SentToConsultoAtUtc is not null)
             {
                 logger.LogInformation(
-                    "Dosarul {PfaRegistrationId} nu e semnat; arhiva nu se trimite acum.",
-                    pfaRegistrationId);
+                    "Dosarul {PfaRegistrationId} a plecat deja la Consulto la {SentAt}; "
+                        + "evenimentul {StripeEventId} se ignoră.",
+                    pfaRegistrationId,
+                    request.SentToConsultoAtUtc,
+                    stripeEventId);
                 return;
             }
 
-            Result<CompanyFormationExport> export = await companyFormationExport.Handle(
-                new ExportCompanyFormationQuery(pfaRegistrationId), ct);
+            ConsultoDossierSender.MarkPaymentConfirmed(request);
+            await context.SaveChangesAsync(ct);
 
-            if (export.IsFailure)
+            Result sent = await consultoDossierSender.SendAsync(
+                pfaRegistrationId, amountBani, stripeEventId, ct);
+
+            if (sent.IsFailure)
             {
                 logger.LogWarning(
-                    "Arhiva dosarului {PfaRegistrationId} nu a putut fi generată: {Error}.",
+                    "Dosarul {PfaRegistrationId} e plătit, dar nu a putut pleca la Consulto: {Error}.",
                     pfaRegistrationId,
-                    export.Error.Description);
-                return;
+                    sent.Error.Description);
             }
-
-            string applicant = $"{request.Solicitant.Nume} {request.Solicitant.Prenume}".Trim();
-            if (string.IsNullOrWhiteSpace(applicant))
-            {
-                applicant = $"{user.FirstName} {user.LastName}".Trim();
-            }
-
-            await opsNotifier.PfaDossierReadyAsync(
-                applicant,
-                user.Email,
-                request.Signature.SignedAtUtc,
-                amountBani,
-                new EmailAttachmentContent(
-                    export.Value.FileName, "application/zip", export.Value.Content),
-                ct);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

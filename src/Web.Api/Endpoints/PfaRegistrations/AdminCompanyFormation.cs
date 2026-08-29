@@ -67,6 +67,20 @@ internal sealed class AdminCompanyFormation : IEndpoint
         })
         .HasPermission(Permissions.ManagePfaRegistrations);
 
+        // Reluarea trimiterii, când traseul normal (webhook Stripe) a confirmat plata dar nu a
+        // putut livra arhiva. Poarta e aceeași: fără plată confirmată se întoarce 409.
+        group.MapPost("send-to-consulto", async (
+            Guid id,
+            ICommandHandler<SendCompanyFormationToConsultoCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(
+                new SendCompanyFormationToConsultoCommand(id), cancellationToken);
+
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .HasPermission(Permissions.ManagePfaRegistrations);
+
         group.MapGet("export", async (
             Guid id,
             IQueryHandler<ExportCompanyFormationQuery, CompanyFormationExport> handler,

@@ -12,6 +12,21 @@ public enum CompanyFormationStatus
     InfoRequested = 3,
     Approved = 4,
     Rejected = 5,
+
+    /// <summary>
+    /// Semnat, dar neplătit. Dosarul e complet și blocat la editare, iar mai departe nu pleacă
+    /// nimic: plata e condiția de trimitere, nu un pas de după ea.
+    /// </summary>
+    AwaitingPayment = 6,
+
+    /// <summary>
+    /// Plata a fost confirmată de Stripe (webhook, server-side). Singura stare din care dosarul
+    /// are voie să plece spre Consulto.
+    /// </summary>
+    PaymentConfirmed = 7,
+
+    /// <summary>Arhiva a plecat pe email spre Consulto. Trimiterea nu se mai repetă.</summary>
+    SentToConsulto = 8,
 }
 
 /// <summary>Tipul actului de identitate al unei persoane fizice din dosar.</summary>

@@ -21,6 +21,8 @@ internal sealed class CompanyFormationRequestConfiguration : IEntityTypeConfigur
         builder.Property(r => r.OfficeType).HasConversion<string>().HasMaxLength(24);
         builder.Property(r => r.PrefilledFields).HasColumnType("jsonb");
         builder.Property(r => r.AdminNote).HasMaxLength(1024);
+        builder.Property(r => r.IdentityMismatchNote).HasMaxLength(512);
+        builder.Property(r => r.ConsultoSendStripeEventId).HasMaxLength(128);
 
         builder.OwnsOne(r => r.Solicitant, CompanyFormationMapping.ConfigurePersoana);
         builder.OwnsOne(r => r.OfficeAddress, CompanyFormationMapping.ConfigureAdresa);
