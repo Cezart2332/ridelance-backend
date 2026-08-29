@@ -72,6 +72,7 @@ public sealed record OnboardingStateResponse(
     // Emailul contului. Toate câmpurile de email din onboarding (Oblio, Uber Fleet, Bolt Fleet)
     // se precompletează de aici; niciunul nu-și mai citește valoarea din alt loc.
     string? ContactEmail = null,
+    string? ContactPhone = null,
     // Județul sediului social, cu adresa din buletin ca rezervă. Precompletează selectul ARR.
     string? PrimaryCounty = null,
     // Avansul RIDElance Start, în bani. Vine din `Pricing`, deci UI-ul nu are sume scrise în el.
@@ -219,6 +220,7 @@ public static class OnboardingStateBuilder
             registration?.CompanyFormationRequest?.CurrentStage.ToString(),
             TestSkipEnabled: false,
             ContactEmail: registration?.User?.Email,
+            ContactPhone: registration?.User?.PhoneNumber,
             PrimaryCounty: PrimaryCountyOf(registration, countyFromIdCard),
             OnboardingAdvanceBani: Pricing.RidelanceStart.OnboardingAdvanceBani,
             OnboardingAdvanceIsRefundable: Pricing.RidelanceStart.OnboardingAdvanceIsRefundable,

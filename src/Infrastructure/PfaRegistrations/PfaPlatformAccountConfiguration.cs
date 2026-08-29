@@ -23,6 +23,13 @@ internal sealed class PfaPlatformAccountConfiguration : IEntityTypeConfiguration
         builder.Property(a => a.ExistingAccountAnswer).HasMaxLength(32);
         builder.Property(a => a.OnboardingStatus).HasConversion<string>().HasMaxLength(32);
 
+        // Contul de șofer, pe aceeași linie cu cel de flotă: e aceeași platformă, aceeași
+        // înregistrare, doar alt rol — o a doua linie ar cere un al doilea Kind și ar strica
+        // indexul unic de mai sus.
+        builder.Property(a => a.DriverEmail).HasMaxLength(256);
+        builder.Property(a => a.DriverPhone).HasMaxLength(32);
+        builder.Property(a => a.DriverExternalId).HasMaxLength(128);
+
         builder.HasOne(a => a.PfaRegistration)
             .WithMany(r => r.PlatformAccounts)
             .HasForeignKey(a => a.PfaRegistrationId)

@@ -53,6 +53,27 @@ public sealed class CompanyFormationRequest : Entity
     /// <summary>Motivul pentru care adminul a cerut corecturi (status InfoRequested).</summary>
     public string? AdminNote { get; set; }
 
+    /// <summary>
+    /// Ce a citit OCR-ul din buletin și nu se potrivește cu ce spune CNP-ul (data nașterii, sexul).
+    ///
+    /// CNP-ul e sursa de adevăr, deci discrepanța nu blochează pe nimeni — se scrie aici ca
+    /// adminul să poată verifica actul înainte de depunere. Null = nicio discrepanță cunoscută.
+    /// </summary>
+    public string? IdentityMismatchNote { get; set; }
+
+    /// <summary>Când a confirmat Stripe plata avansului. Poarta dinaintea trimiterii la Consulto.</summary>
+    public DateTime? PaymentConfirmedAtUtc { get; set; }
+
+    /// <summary>Când a plecat arhiva spre Consulto. Setat o singură dată.</summary>
+    public DateTime? SentToConsultoAtUtc { get; set; }
+
+    /// <summary>
+    /// Evenimentul Stripe care a declanșat trimiterea. Stripe reîncearcă webhook-urile, iar
+    /// dedupe-ul se face pe perechea (event, dosar): același event de două ori nu retrimite,
+    /// iar un event nou pe un dosar deja trimis nici atât.
+    /// </summary>
+    public string? ConsultoSendStripeEventId { get; set; }
+
     // Navigation
     public PfaRegistration PfaRegistration { get; set; } = null!;
     public ConsultoOffice? ConsultoOffice { get; set; }
@@ -62,6 +83,15 @@ public sealed class CompanyFormationRequest : Entity
 
     /// <summary>Dosarul e trimis — șoferul nu mai poate edita nimic.</summary>
     public bool IsLocked => Status is not (CompanyFormationStatus.Draft or CompanyFormationStatus.InfoRequested);
+
+    /// <summary>
+    /// Dosarul are voie să plece spre Consulto: plata e confirmată și nu a plecat deja.
+    /// Singura poartă — endpointul de trimitere și webhook-ul o citesc pe amândouă de aici.
+    /// </summary>
+    public bool CanSendToConsulto =>
+        Status == CompanyFormationStatus.PaymentConfirmed
+        && PaymentConfirmedAtUtc is not null
+        && SentToConsultoAtUtc is null;
 
     /// <summary>Etapa 1 e completă și se poate trece la sediul social.</summary>
     public bool PersonalDataComplete => Solicitant.IsComplete;

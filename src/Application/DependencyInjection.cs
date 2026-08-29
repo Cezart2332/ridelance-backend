@@ -45,6 +45,7 @@ public static class DependencyInjection
 
         // Anunțurile interne: dosar generat, plată încasată.
         services.AddScoped<PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier>();
+        services.AddScoped<PfaRegistrations.Onboarding.CompanyFormation.ConsultoDossierSender>();
 
         // Poarta uneltelor de dezvoltare. Se înregistrează mereu: ea însăși e cea care răspunde
         // „nu" în producție, deci nu depinde de o decizie luată la pornire.

@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Security;
 using Domain.PfaRegistrations;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -23,7 +24,10 @@ public sealed record SubmitPlatformAccountCommand(
     string? ExistingAccountAnswer = null,
     string? Email = null,
     string? Phone = null,
-    string? Password = null) : ICommand<PlatformOnboardingResponse>;
+    string? Password = null,
+    string? DriverEmail = null,
+    string? DriverPhone = null,
+    string? DriverExternalId = null) : ICommand<PlatformOnboardingResponse>;
 
 internal sealed class SubmitPlatformAccountCommandHandler(
     IApplicationDbContext context,
@@ -82,8 +86,37 @@ internal sealed class SubmitPlatformAccountCommandHandler(
         account.OperatorAccountId = string.IsNullOrWhiteSpace(command.OperatorAccountId) ? null : command.OperatorAccountId.Trim();
         account.AffiliationContractDocumentId = command.AffiliationContractDocumentId;
 
-        account.Email = string.IsNullOrWhiteSpace(command.Email) ? null : command.Email.Trim();
-        account.Phone = string.IsNullOrWhiteSpace(command.Phone) ? null : command.Phone.Trim();
+        // Emailul și telefonul contului de flotă vin din fișa clientului când sunt precompletate:
+        // valoarea trimisă de client se ignoră, ca un câmp read-only din UI să nu poată fi
+        // ocolit cu o cerere fabricată.
+        User? owner = await context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == command.UserId, cancellationToken);
+
+        account.Email = Rehydrated(command.Email, owner?.Email);
+        account.Phone = PlatformContactRules.ToE164(Rehydrated(command.Phone, owner?.PhoneNumber));
+
+        // Datele de contact, verificate pe server, nu doar în formular. Câmpurile goale trec:
+        // salvarea e de draft, iar completitudinea o cere `UserPartComplete`.
+        if (!string.IsNullOrWhiteSpace(command.DriverEmail)
+            && !PlatformContactRules.IsValidEmail(command.DriverEmail))
+        {
+            return Result.Failure<PlatformOnboardingResponse>(PlatformShared.InvalidEmail);
+        }
+
+        if (!string.IsNullOrWhiteSpace(command.DriverPhone)
+            && !PlatformContactRules.IsValidPhone(command.DriverPhone))
+        {
+            return Result.Failure<PlatformOnboardingResponse>(PlatformShared.InvalidPhone);
+        }
+
+        account.DriverEmail = string.IsNullOrWhiteSpace(command.DriverEmail)
+            ? account.DriverEmail
+            : command.DriverEmail.Trim();
+        account.DriverPhone = PlatformContactRules.ToE164(command.DriverPhone) ?? account.DriverPhone;
+        account.DriverExternalId = string.IsNullOrWhiteSpace(command.DriverExternalId)
+            ? account.DriverExternalId
+            : command.DriverExternalId.Trim();
 
         // Parola nu se șterge la o retrimitere fără ea: formularul nu o primește înapoi de la
         // server, deci ar veni goală la fiecare salvare ulterioară.
@@ -112,5 +145,19 @@ internal sealed class SubmitPlatformAccountCommandHandler(
         await context.SaveChangesAsync(cancellationToken);
 
         return Result.Success(PlatformShared.ToResponse(registration));
+    }
+
+    /// <summary>
+    /// Valoarea din fișa clientului bate ce a trimis clientul, când fișa o are. Câmpul e
+    /// read-only în UI tocmai fiindcă e al contului RIDElance; serverul nu se bazează pe asta.
+    /// </summary>
+    private static string? Rehydrated(string? fromClient, string? fromProfile)
+    {
+        if (!string.IsNullOrWhiteSpace(fromProfile))
+        {
+            return fromProfile.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(fromClient) ? null : fromClient.Trim();
     }
 }

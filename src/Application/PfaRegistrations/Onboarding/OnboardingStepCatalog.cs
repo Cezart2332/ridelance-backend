@@ -50,7 +50,13 @@ public static class OnboardingStepCatalog
         string WireKey,
         string Label,
         string Path,
-        string OwnedBy);
+        string OwnedBy,
+        /// <summary>
+        /// Secțiune anunțată, dar fără conținut definit încă: se vede în sidebar cu lacăt și nu
+        /// se poate deschide. Nu intră nici în condiția de înrolare, nici în alegerea pasului
+        /// curent — altfel ar bloca pe toată lumea la coada fluxului.
+        /// </summary>
+        bool IsPlaceholder = false);
 
     // eligibility ──> pfa ──> fiscal ──> arr ──> platforms ──> vehicle
     private static readonly StepDef[] Steps =
@@ -68,18 +74,31 @@ public static class OnboardingStepCatalog
         // Copia conformă se emite pe autorizația de transport.
         new(OnboardingStepKey.Vehicle, "vehicle", "Vehicul, copie conformă & ecusoane", "/onboarding/vehicle",
             Owners.Admin),
+        // Conținutul se definește separat; până atunci intrarea există, dar rămâne blocată.
+        new(OnboardingStepKey.Subscriptions, "subscriptions", "Abonamente", "/onboarding/abonamente",
+            Owners.Admin, IsPlaceholder: true),
     ];
 
-    /// <summary>Toți cei 6 pași sunt finalizați — condiția reală de înrolare.</summary>
-    public static bool AllCompleted(IReadOnlyList<OnboardingStepDto> steps) =>
-        steps.Count > 0 && steps.All(s => s.Status == StatusCompleted);
+    /// <summary>Pașii care nu se pot finaliza încă, după cheia de wire.</summary>
+    private static readonly string[] PlaceholderWireKeys =
+        [.. Steps.Where(s => s.IsPlaceholder).Select(s => s.WireKey)];
+
+    /// <summary>
+    /// Toți pașii cu conținut sunt finalizați — condiția reală de înrolare. Secțiunile
+    /// placeholder sunt excluse: nu au ce finaliza, iar cerute aici ar face înrolarea imposibilă.
+    /// </summary>
+    public static bool AllCompleted(IReadOnlyList<OnboardingStepDto> steps)
+    {
+        List<OnboardingStepDto> real = [.. steps.Where(s => !PlaceholderWireKeys.Contains(s.Key))];
+        return real.Count > 0 && real.TrueForAll(s => s.Status == StatusCompleted);
+    }
 
     /// <summary>
     /// Cheia pasului la care e oprit șoferul acum: primul nefinalizat. <c>null</c> când totul e gata.
     /// Fluxul fiind liniar, ăsta e și singurul pas pe care se poate scrie.
     /// </summary>
     public static string? CurrentStepKey(IReadOnlyList<OnboardingStepDto> steps) =>
-        steps.FirstOrDefault(s => s.Status != StatusCompleted)?.Key;
+        steps.FirstOrDefault(s => s.Status != StatusCompleted && !PlaceholderWireKeys.Contains(s.Key))?.Key;
 
     /// <summary>
     /// Poate userul să scrie pe pasul cerut? Funcție pură, ca regula să fie testabilă fără bază de
@@ -123,6 +142,8 @@ public static class OnboardingStepCatalog
             ArrStatusOf(registration),
             PlatformsStatusOf(registration),
             VehicleStatusOf(registration),
+            // Abonamente: fără conținut, deci fără cale de finalizare.
+            StatusLocked,
         ];
 
         // Semnale auxiliare, folosite doar pentru vocabularul fin (`State`).
@@ -134,6 +155,7 @@ public static class OnboardingStepCatalog
             registration?.ArrAuthorizationRequest is not null,
             registration?.PlatformAccounts.Exists(p => p.IsSelectedByUser) == true,
             registration?.Vehicles.Count > 0,
+            false,
         ];
 
         bool[] rejected =
@@ -145,6 +167,7 @@ public static class OnboardingStepCatalog
             false,
             SectionRejected(registration, OnboardingSectionKey.CopieConforma)
                 || SectionRejected(registration, OnboardingSectionKey.Vehicul),
+            false,
         ];
 
         // 2) Deblocare liniară: un pas rămâne blocat cât timp predecesorul lui nu e finalizat.
@@ -157,7 +180,11 @@ public static class OnboardingStepCatalog
             string status = own[order];
             string? blockReason = null;
 
-            if (!predecessorDone && status != StatusCompleted)
+            if (def.IsPlaceholder)
+            {
+                blockReason = "Secțiunea se pregătește. Îți spunem când e gata.";
+            }
+            else if (!predecessorDone && status != StatusCompleted)
             {
                 status = StatusLocked;
                 blockReason = $"Finalizează întâi pasul „{Steps[order - 1].Label}”.";

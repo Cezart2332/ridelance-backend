@@ -68,6 +68,20 @@ internal static class CompanyFormationErrors
         "CompanyFormation.SignatureTooLarge",
         "Imaginea semnăturii este prea mare.");
 
+    // Poarta de trimitere spre Consulto. Conflict (409), nu Validation: cererea e corectă,
+    // doar starea dosarului nu o permite încă.
+    public static readonly Error PaymentNotConfirmed = Error.Conflict(
+        "CompanyFormation.PaymentNotConfirmed",
+        "Dosarul nu poate fi trimis: plata avansului nu e confirmată.");
+
+    public static readonly Error AlreadySentToConsulto = Error.Conflict(
+        "CompanyFormation.AlreadySentToConsulto",
+        "Dosarul a fost deja trimis la Consulto.");
+
+    public static readonly Error NotSigned = Error.Conflict(
+        "CompanyFormation.NotSigned",
+        "Dosarul nu e semnat, deci nu poate fi trimis.");
+
     public static readonly Error ConsultoOfficeNotFound = Error.NotFound(
         "CompanyFormation.ConsultoOfficeNotFound",
         "Adresa de sediu aleasă nu mai este disponibilă.");

@@ -181,7 +181,9 @@ internal sealed class SignCompanyFormationCommandHandler(
         context.CompanyFormationSignatures.Add(signature);
         request.Signature = signature;
 
-        request.Status = CompanyFormationStatus.Submitted;
+        // Semnat ≠ trimis. Dosarul se blochează la editare, dar rămâne pe loc până când Stripe
+        // confirmă plata: plata e condiție de trimitere, nu un pas de după ea.
+        request.Status = CompanyFormationStatus.AwaitingPayment;
         request.CurrentStage = CompanyFormationStage.Consent;
         request.SubmittedAtUtc = signedAtUtc;
         request.UpdatedAtUtc = signedAtUtc;
