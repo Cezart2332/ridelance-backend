@@ -15,11 +15,4 @@ public enum OnboardingStepKey
     Arr = 3,
     Platforms = 4,
     Vehicle = 5,
-
-    /// <summary>
-    /// Abonamentele. Apare în sidebar sub aceleași reguli de deblocare ca restul, dar conținutul
-    /// ei nu e definit încă, deci nu se poate finaliza — și tocmai de aceea NU intră în
-    /// <c>AllCompleted</c>: altfel nimeni nu ar mai termina onboardingul.
-    /// </summary>
-    Subscriptions = 6,
 }
