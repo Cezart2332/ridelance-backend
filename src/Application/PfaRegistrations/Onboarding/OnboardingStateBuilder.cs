@@ -57,8 +57,8 @@ public sealed record OnboardingStateResponse(
     // Cheia pasului la care e oprit șoferul acum — singurul pe care se poate scrie. Null când
     // onboardingul e complet. Frontendul nu mai calculează asta singur.
     string? CurrentStep = null,
-    // RL-03 — plata înființării vine DUPĂ completare. `CanPay` e adevărat abia când dosarul de
-    // înființare e semnat: fără el n-avem ce depune la ONRC, deci n-avem ce încasa.
+    // RL-03 — plata înființării vine ÎNAINTEA deschiderii dosarului: e serviciul pentru care
+    // plătește omul, iar dosarul e lucrul pe care îl începem după ce e achitat.
     bool CanPay = false,
     // NOT_REQUIRED (ramura „Am PFA") | PENDING | PAID | FAILED
     string PaymentStatus = "NOT_REQUIRED",
@@ -103,22 +103,16 @@ public static class OnboardingStateBuilder
     ];
 
     /// <summary>
-    /// Dosarul de înființare e semnat, deci poate fi depus — singura condiție pentru plată.
+    /// Plata avansului se cere ÎNAINTE de deschiderea dosarului de înființare, nu după
+    /// completarea lui: e serviciul pentru care plătește omul, iar noi începem lucrul la el abia
+    /// după ce e achitat. Deci singura condiție e ramura „Nu am PFA" și o plată care încă nu
+    /// s-a făcut — nu starea unui dosar care, în noul flux, nici nu există încă.
+    ///
     /// Aceeași funcție gardează și crearea sesiunii Stripe, ca UI-ul și API-ul să nu poată
     /// ajunge la concluzii diferite.
     /// </summary>
-    public static bool CanPayInfiintare(PfaRegistration? registration, bool hasPaidInfiintare)
-    {
-        if (registration?.RegistrationType != RegistrationType.NuAmPfa || hasPaidInfiintare)
-        {
-            return false;
-        }
-
-        CompanyFormationStatus? formation = registration.CompanyFormationRequest?.Status;
-        return formation is not null
-            and not CompanyFormationStatus.Draft
-            and not CompanyFormationStatus.InfoRequested;
-    }
+    public static bool CanPayInfiintare(PfaRegistration? registration, bool hasPaidInfiintare) =>
+        registration?.RegistrationType == RegistrationType.NuAmPfa && !hasPaidInfiintare;
 
     private static string PaymentStatusOf(
         PfaRegistration? registration,
