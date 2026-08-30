@@ -20,7 +20,15 @@ public sealed record CompanyProfileDto(
     string? Email,
     string? Website,
     string? PublicDescription,
+    /// <summary>Fraza scurtă de sub denumire, în antetul mini-site-ului.</summary>
+    string? Tagline,
     string? LogoUrl,
+    /// <summary>Fotografia de fundal a mini-site-ului. Cale relativă, ca logo-ul.</summary>
+    string? CoverImageUrl,
+    /// <summary>Culorile mini-site-ului. Niciodată null — fără nimic salvat, sunt cele implicite.</summary>
+    CompanyPageTheme PageTheme,
+    /// <summary>Conținutul secțiunilor proprii ale mini-site-ului.</summary>
+    CompanyPageContent PageContent,
     /// <summary>Documentul cu specimenul de semnătură, dacă a fost salvat unul.</summary>
     Guid? SignatureDocumentId,
     string Slug,
@@ -46,7 +54,11 @@ public static class CompanyProfileMapper
         profile.Email,
         profile.Website,
         profile.PublicDescription,
+        profile.Tagline,
         profile.LogoUrl,
+        profile.CoverImageUrl,
+        profile.PageTheme,
+        profile.PageContent,
         profile.SignatureDocumentId,
         profile.Slug,
         profile.IsVerified,

@@ -1,7 +1,4 @@
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Application.Abstractions.Ai;
 using Application.Documents.AiVerification;
 using Microsoft.Extensions.Logging;
@@ -15,11 +12,6 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
     IOptions<OpenRouterOptions> options,
     ILogger<OpenRouterDocumentAiAnalyzer> logger) : IDocumentAiAnalyzer
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     public async Task<Result<DocumentAiAnalysisResult>> AnalyzeAsync(
         DocumentAiAnalysisRequest request,
         CancellationToken cancellationToken)
@@ -87,43 +79,12 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
             },
         };
 
-        using var httpRequest = new HttpRequestMessage(
-            HttpMethod.Post,
-            $"{config.BaseUrl.TrimEnd('/')}/chat/completions");
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
-        httpRequest.Headers.Add("HTTP-Referer", "https://ridelance.ro");
-        httpRequest.Headers.Add("X-Title", "RIDElance");
-        httpRequest.Content = new StringContent(
-            JsonSerializer.Serialize(payload, SerializerOptions),
-            Encoding.UTF8,
-            "application/json");
+        Result<string> body = await OpenRouterJson.SendAsync(
+            httpClient, config, payload, logger, $"fișierul {request.FileName}", cancellationToken);
 
-        try
-        {
-            using HttpResponseMessage response = await httpClient.SendAsync(httpRequest, cancellationToken);
-            string body = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                logger.LogWarning(
-                    "OpenRouter a răspuns cu {StatusCode} pentru fișierul {FileName}.",
-                    (int)response.StatusCode,
-                    request.FileName);
-                return Result.Failure<DocumentAiAnalysisResult>(Error.Failure(
-                    "Ai.RequestFailed",
-                    $"OpenRouter a răspuns cu status {(int)response.StatusCode}."));
-            }
-
-            return ParseResponse(body);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException &&
-                                   !cancellationToken.IsCancellationRequested)
-        {
-            logger.LogWarning(ex, "Apelul către OpenRouter a eșuat pentru fișierul {FileName}.", request.FileName);
-            return Result.Failure<DocumentAiAnalysisResult>(Error.Failure(
-                "Ai.RequestFailed",
-                "Apelul către serviciul AI a eșuat."));
-        }
+        return body.IsFailure
+            ? Result.Failure<DocumentAiAnalysisResult>(body.Error)
+            : ParseResponse(body.Value);
     }
 
     /// <summary>
@@ -161,25 +122,16 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
 
     private Result<DocumentAiAnalysisResult> ParseResponse(string body)
     {
+        Result<string> content = OpenRouterJson.ExtractContent(body);
+        if (content.IsFailure)
+        {
+            logger.LogWarning("Răspunsul OpenRouter nu a putut fi interpretat: {Code}.", content.Error.Code);
+            return Result.Failure<DocumentAiAnalysisResult>(content.Error);
+        }
+
         try
         {
-            using var document = JsonDocument.Parse(body);
-            string? content = document.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
-
-            if (string.IsNullOrWhiteSpace(content))
-            {
-                return Result.Failure<DocumentAiAnalysisResult>(Error.Failure(
-                    "Ai.EmptyResponse",
-                    "Serviciul AI a returnat un răspuns gol."));
-            }
-
-            string json = StripCodeFences(content);
-
-            using var verdict = JsonDocument.Parse(json);
+            using var verdict = JsonDocument.Parse(content.Value);
             JsonElement root = verdict.RootElement;
 
             bool matches = GetBool(root, "matches_expected_type") ?? false;
@@ -262,23 +214,4 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         root.TryGetProperty(property, out JsonElement element) && element.ValueKind == JsonValueKind.String
             ? element.GetString()
             : null;
-
-    private static string StripCodeFences(string content)
-    {
-        string trimmed = content.Trim();
-        if (!trimmed.StartsWith("```", StringComparison.Ordinal))
-        {
-            return trimmed;
-        }
-
-        int firstNewline = trimmed.IndexOf('\n', StringComparison.Ordinal);
-        if (firstNewline < 0)
-        {
-            return trimmed;
-        }
-
-        trimmed = trimmed[(firstNewline + 1)..];
-        int closingFence = trimmed.LastIndexOf("```", StringComparison.Ordinal);
-        return closingFence >= 0 ? trimmed[..closingFence].Trim() : trimmed.Trim();
-    }
 }
