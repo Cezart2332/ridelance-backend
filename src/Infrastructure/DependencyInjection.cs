@@ -132,6 +132,12 @@ public static class DependencyInjection
         }
         services.AddHttpClient<IDocumentAiAnalyzer, OpenRouterDocumentAiAnalyzer>(client =>
             client.Timeout = TimeSpan.FromMinutes(3));
+        // Scrisul e mult mai scurt decât citirea unui PDF de zece pagini, iar butonul din editor
+        // stă în fața unui om care așteaptă: trei minute acolo ar fi însemnat o pagină înghețată.
+        services.AddHttpClient<IAiTextGenerator, OpenRouterTextGenerator>(client =>
+            client.Timeout = TimeSpan.FromSeconds(60));
+        services.AddMemoryCache();
+        services.AddSingleton<IAiUsageLimiter, MemoryAiUsageLimiter>();
 
         // Un singur provider de open banking. Alegerea prin config a dispărut odată cu
         // Enable Banking și GoCardless — cine vrea altul îl înregistrează aici.

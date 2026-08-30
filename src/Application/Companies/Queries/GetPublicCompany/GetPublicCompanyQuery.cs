@@ -16,18 +16,27 @@ public sealed record GetPublicCompanyQuery(string Slug) : IQuery<PublicCompanyDt
 /// Datele de contact apar **doar** dacă proprietarul le-a marcat publice în Profil. Filtrarea se
 /// face aici, nu în interfață: un câmp ascuns care ajunge totuși în răspunsul API e public, chiar
 /// dacă nu se vede pe ecran.
+///
+/// Website-ul n-are comutator și nu are nevoie de unul: e adresa pe care firma o publică singură.
+/// Culorile și conținutul secțiunilor pleacă întotdeauna — sunt tot ce face pagina să arate a
+/// site-ul firmei, nu al nostru.
 /// </remarks>
 #pragma warning disable CA1054
 public sealed record PublicCompanyDto(
     string LegalName,
     string Slug,
     string? LogoUrl,
+    string? CoverImageUrl,
+    string? Tagline,
     string? PublicDescription,
     bool IsVerified,
     string? Phone,
     string? Email,
+    string? Website,
     bool WhatsAppEnabled,
     string? Location,
+    CompanyPageTheme Theme,
+    CompanyPageContent Content,
     List<CarDto> Cars);
 #pragma warning restore CA1054
 
@@ -78,13 +87,18 @@ internal sealed class GetPublicCompanyQueryHandler(IApplicationDbContext context
             profile.LegalName,
             profile.Slug,
             profile.LogoUrl,
+            profile.CoverImageUrl,
+            profile.Tagline,
             profile.PublicDescription,
             profile.IsVerified,
             profile.ShowPhone ? profile.Phone : null,
             profile.ShowEmail ? profile.Email : null,
+            profile.Website,
             // WhatsApp are nevoie de numărul de telefon, deci butonul depinde de ambele setări.
             profile.ShowWhatsApp && profile.ShowPhone && !string.IsNullOrWhiteSpace(profile.Phone),
             profile.ShowLocation ? profile.RegisteredOffice : null,
+            profile.PageTheme,
+            profile.PageContent,
             carDtos));
     }
 }

@@ -1,7 +1,10 @@
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
 using Application.Companies;
+using Application.Companies.Commands.CompanyCover;
 using Application.Companies.Commands.CompanySignature;
+using Application.Companies.Commands.GenerateCompanyDescription;
+using Application.Companies.Commands.UpdateCompanyPage;
 using Application.Companies.Commands.UpdateCompanyProfile;
 using Application.Companies.Commands.UploadCompanyLogo;
 using Application.Companies.Queries.GetCompanyProfile;
@@ -147,3 +150,90 @@ internal sealed class CompanySignature : IEndpoint
 }
 
 public sealed record SaveCompanySignatureRequest(string SignatureImage);
+
+/// <summary>
+/// Personalizarea mini-site-ului: slogan, descriere, culori, conținutul secțiunilor.
+/// </summary>
+/// <remarks>
+/// Separat de <c>companies/profile</c> fiindcă sunt două lucruri diferite salvate de două ecrane
+/// diferite: identitatea juridică, respectiv pagina publică. O singură rută ar fi însemnat că
+/// editorul de pagină trimite înapoi CUI-ul și IBAN-ul la fiecare schimbare de culoare.
+/// </remarks>
+internal sealed class UpdateCompanyPage : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPut("companies/profile/page", async (
+            UpdateCompanyPageCommand command,
+            ICommandHandler<UpdateCompanyPageCommand, CompanyProfileDto> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<CompanyProfileDto> result = await handler.Handle(command, cancellationToken);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+}
+
+/// <summary>Fotografia de fundal a mini-site-ului.</summary>
+internal sealed class CompanyCover : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPost("companies/profile/cover", async (
+            IFormFile file,
+            ICommandHandler<UploadCompanyCoverCommand, string> handler,
+            CancellationToken cancellationToken) =>
+        {
+            using Stream stream = file.OpenReadStream();
+
+            var command = new UploadCompanyCoverCommand(file.FileName, stream, file.ContentType);
+            Result<string> result = await handler.Handle(command, cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(new { coverImageUrl = result.Value });
+        })
+        .RequireAuthorization()
+        .DisableAntiforgery()
+        .WithTags(Tags.Companies);
+
+        app.MapDelete("companies/profile/cover", async (
+            ICommandHandler<DeleteCompanyCoverCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(new DeleteCompanyCoverCommand(), cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+}
+
+/// <summary>
+/// Propuneri de text pentru pagina firmei, scrise de model.
+/// </summary>
+/// <remarks>
+/// <c>POST</c>, deși nu salvează nimic: cererea are corp (indicațiile proprietarului) și costă
+/// bani la fiecare apel. Un <c>GET</c> ar fi invitat cache-urile să repete cererea.
+/// </remarks>
+internal sealed class GenerateCompanyDescription : IEndpoint
+{
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPost("companies/profile/page/description", async (
+            GenerateCompanyDescriptionRequest request,
+            ICommandHandler<GenerateCompanyDescriptionCommand, CompanyDescriptionSuggestion> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<CompanyDescriptionSuggestion> result = await handler.Handle(
+                new GenerateCompanyDescriptionCommand(request.Hints), cancellationToken);
+
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.Companies);
+    }
+}
+
+public sealed record GenerateCompanyDescriptionRequest(string? Hints);

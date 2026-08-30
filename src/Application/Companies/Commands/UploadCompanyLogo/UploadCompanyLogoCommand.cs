@@ -93,33 +93,8 @@ internal sealed class UploadCompanyLogoCommandHandler(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        DeletePreviousLogo(previous);
+        CompanyUploads.DeleteIfOurs(previous);
 
         return Result.Success(profile.LogoUrl);
-    }
-
-    private static void DeletePreviousLogo(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url) || !url.StartsWith("/uploads/companies/", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        try
-        {
-            string path = Path.Combine("uploads", "companies", Path.GetFileName(url));
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch (IOException)
-        {
-            // Un fișier orfan pe disc nu merită să rupă salvarea profilului.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Idem: lipsa drepturilor pe fișierul vechi nu invalidează logo-ul nou.
-        }
     }
 }

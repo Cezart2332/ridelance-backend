@@ -11,6 +11,11 @@ namespace Application.Companies.Commands.UpdateCompanyProfile;
 /// <summary>
 /// Salvează datele de identitate ale firmei. Creează profilul dacă e prima salvare.
 /// </summary>
+/// <remarks>
+/// Descrierea publică nu mai e aici: s-a mutat în <c>UpdateCompanyPageCommand</c>, lângă restul
+/// mini-site-ului, unde se editează cu previzualizarea alături. Profilul rămâne despre identitatea
+/// juridică — cea care intră în contracte și facturi.
+/// </remarks>
 public sealed record UpdateCompanyProfileCommand(
     string LegalName,
     string? Cui,
@@ -21,7 +26,6 @@ public sealed record UpdateCompanyProfileCommand(
     string? Phone,
     string? Email,
     string? Website,
-    string? PublicDescription,
     bool ShowPhone,
     bool ShowEmail,
     bool ShowWhatsApp,
@@ -86,7 +90,6 @@ internal sealed class UpdateCompanyProfileCommandHandler(
         profile.Phone = command.Phone?.Trim();
         profile.Email = command.Email?.Trim();
         profile.Website = command.Website?.Trim();
-        profile.PublicDescription = command.PublicDescription?.Trim();
         profile.ShowPhone = command.ShowPhone;
         profile.ShowEmail = command.ShowEmail;
         profile.ShowWhatsApp = command.ShowWhatsApp;

@@ -45,6 +45,23 @@ public sealed class CompanyProfile : Entity
     public string? Website { get; set; }
     public string? PublicDescription { get; set; }
 
+    /// <summary>Fraza scurtă de sub denumire, în antetul mini-site-ului.</summary>
+    /// <remarks>
+    /// Separată de <see cref="PublicDescription"/> fiindcă are altă treabă: descrierea se citește,
+    /// sloganul se vede. Într-un singur câmp, primele opt cuvinte ale descrierii ar fi devenit
+    /// titlu, iar cine scria un paragraf bun ajungea cu un titlu prost.
+    /// </remarks>
+    public string? Tagline { get; set; }
+
+    /// <summary>Fotografia de fundal din antetul mini-site-ului. Cale relativă, ca logo-ul.</summary>
+    public string? CoverImageUrl { get; set; }
+
+    /// <summary>Culorile mini-site-ului. Nu e niciodată <c>null</c>: fără nimic salvat, sunt cele implicite.</summary>
+    public CompanyPageTheme PageTheme { get; set; } = new();
+
+    /// <summary>Conținutul secțiunilor proprii ale mini-site-ului.</summary>
+    public CompanyPageContent PageContent { get; set; } = new();
+
     /// <summary>Calea logo-ului încărcat. <c>null</c> nu e o eroare — atunci se afișează inițialele.</summary>
     public string? LogoUrl { get; set; }
 
