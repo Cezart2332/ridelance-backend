@@ -34,7 +34,8 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
                 Permissions.ViewCars,
                 Permissions.ViewServiceOrders,
                 Permissions.ManageDiscounts,
-                Permissions.ManageOfficeCalendar
+                Permissions.ManageOfficeCalendar,
+                Permissions.ManageCompanyPages
             ],
             UserRole.Contabil =>
             [
@@ -87,4 +88,7 @@ public static class Permissions
     public const string ViewServiceOrders = "payments:view_service_orders";
     public const string ManageDiscounts = "payments:manage_discounts";
     public const string ManageOfficeCalendar = "office:manage";
+
+    /// <summary>Verificarea mini-site-urilor firmelor: aprobare, refuz, blocare de secțiuni, corecturi.</summary>
+    public const string ManageCompanyPages = "company_pages:manage";
 }

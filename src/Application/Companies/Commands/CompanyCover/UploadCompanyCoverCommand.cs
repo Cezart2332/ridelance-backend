@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Companies.Page;
 using Domain.Companies;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -82,6 +83,9 @@ internal sealed class UploadCompanyCoverCommandHandler(
         profile.CoverImageUrl = $"/uploads/companies/{safeFileName}";
         profile.UpdatedAtUtc = DateTime.UtcNow;
 
+        // Fotografia e conținut public încărcat liber, deci trece prin aceeași verificare ca textul.
+        CompanyPageReview.SubmitForReview(profile);
+
         await context.SaveChangesAsync(cancellationToken);
 
         CompanyUploads.DeleteIfOurs(previous);
@@ -114,6 +118,7 @@ internal sealed class DeleteCompanyCoverCommandHandler(
 
         profile.CoverImageUrl = null;
         profile.UpdatedAtUtc = DateTime.UtcNow;
+        CompanyPageReview.SubmitForReview(profile);
         await context.SaveChangesAsync(cancellationToken);
 
         CompanyUploads.DeleteIfOurs(previous);

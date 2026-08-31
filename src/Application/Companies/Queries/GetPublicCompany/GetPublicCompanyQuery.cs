@@ -18,8 +18,11 @@ public sealed record GetPublicCompanyQuery(string Slug) : IQuery<PublicCompanyDt
 /// dacă nu se vede pe ecran.
 ///
 /// Website-ul n-are comutator și nu are nevoie de unul: e adresa pe care firma o publică singură.
-/// Culorile și conținutul secțiunilor pleacă întotdeauna — sunt tot ce face pagina să arate a
-/// site-ul firmei, nu al nostru.
+///
+/// Textul, culorile, fotografia de cover și punctul de preluare vin din copia **aprobată**
+/// (<see cref="Domain.Companies.CompanyPagePublication"/>), nu din ciorna de pe profil. Fără o
+/// aprobare, pagina rămâne la ce nu se poate scrie liber: denumirea, mașinile deja verificate și
+/// datele de contact marcate publice.
 /// </remarks>
 #pragma warning disable CA1054
 public sealed record PublicCompanyDto(
@@ -37,6 +40,7 @@ public sealed record PublicCompanyDto(
     string? Location,
     CompanyPageTheme Theme,
     CompanyPageContent Content,
+    PickupLocationDto Pickup,
     List<CarDto> Cars);
 #pragma warning restore CA1054
 
@@ -83,13 +87,22 @@ internal sealed class GetPublicCompanyQueryHandler(IApplicationDbContext context
             .Select(c => CarDtoMapper.ToDto(c, postedByAdmin: false, viewsLast7Days: 0, owner: owner))
             .ToList();
 
+        // Nicio versiune aprobată = pagina de bază. Nu 404: linkul „vezi flota" de pe fiecare anunț
+        // duce aici, iar o firmă cu mașini aprobate care așteaptă verificarea paginii n-are de ce
+        // să pară inexistentă.
+        CompanyPagePublication published = profile.PublishedPage.ApprovedAtUtc.HasValue
+            ? profile.PublishedPage
+            : new CompanyPagePublication();
+
+        var blocked = profile.PageModeration.BlockedSections.ToHashSet(StringComparer.Ordinal);
+
         return Result.Success(new PublicCompanyDto(
             profile.LegalName,
             profile.Slug,
             profile.LogoUrl,
-            profile.CoverImageUrl,
-            profile.Tagline,
-            profile.PublicDescription,
+            published.CoverImageUrl,
+            published.Tagline,
+            blocked.Contains(CompanyPageSections.About) ? null : published.PublicDescription,
             profile.IsVerified,
             profile.ShowPhone ? profile.Phone : null,
             profile.ShowEmail ? profile.Email : null,
@@ -97,8 +110,48 @@ internal sealed class GetPublicCompanyQueryHandler(IApplicationDbContext context
             // WhatsApp are nevoie de numărul de telefon, deci butonul depinde de ambele setări.
             profile.ShowWhatsApp && profile.ShowPhone && !string.IsNullOrWhiteSpace(profile.Phone),
             profile.ShowLocation ? profile.RegisteredOffice : null,
-            profile.PageTheme,
-            profile.PageContent,
+            published.Theme,
+            FilterBlocked(published.Content, blocked),
+            // Fără comutator al proprietarului: locul de preluare se publică prin faptul că a fost
+            // completat. Sediul social de mai sus rămâne cel supus lui `ShowLocation`.
+            blocked.Contains(CompanyPageSections.Location)
+                ? new PickupLocationDto(null, null, null, null)
+                : new PickupLocationDto(
+                    published.PickupAddress,
+                    published.PickupLatitude,
+                    published.PickupLongitude,
+                    published.PickupNote),
             carDtos));
+    }
+
+    /// <summary>
+    /// Scoate din răspuns secțiunile oprite din administrare.
+    /// </summary>
+    /// <remarks>
+    /// Se golește conținutul, nu se adaugă un semnalizator de ascuns: secțiunile de pe mini-site
+    /// apar deja doar dacă au ce arăta (<c>src/components/company/sections.ts</c>), deci o listă
+    /// goală e exact felul în care pagina știe să nu deseneze nimic. Un câmp în plus ar fi
+    /// însemnat două reguli de vizibilitate pentru aceeași secțiune.
+    ///
+    /// Filtrarea se face aici, nu în interfață: un text care pleacă în răspunsul API e public chiar
+    /// dacă nimeni nu-l randează.
+    /// </remarks>
+    private static CompanyPageContent FilterBlocked(CompanyPageContent content, HashSet<string> blocked)
+    {
+        if (blocked.Count == 0)
+        {
+            return content;
+        }
+
+        bool schedule = blocked.Contains(CompanyPageSections.Schedule);
+
+        return new CompanyPageContent
+        {
+            Highlights = blocked.Contains(CompanyPageSections.Highlights) ? [] : content.Highlights,
+            Schedule = schedule ? [] : content.Schedule,
+            CoverageAreas = schedule ? [] : content.CoverageAreas,
+            CoverageNote = schedule ? null : content.CoverageNote,
+            Faq = blocked.Contains(CompanyPageSections.Faq) ? [] : content.Faq,
+        };
     }
 }
