@@ -26,6 +26,8 @@ internal sealed class CompanyProfileConfiguration : IEntityTypeConfiguration<Com
         builder.Property(c => c.Tagline).HasMaxLength(160);
         builder.Property(c => c.LogoUrl).HasMaxLength(512);
         builder.Property(c => c.CoverImageUrl).HasMaxLength(512);
+        builder.Property(c => c.PickupAddress).HasMaxLength(512);
+        builder.Property(c => c.PickupNote).HasMaxLength(600);
         builder.Property(c => c.Slug).HasMaxLength(160).IsRequired();
 
         // Personalizarea mini-site-ului stă în jsonb, ca listele de pe anunț (vezi CarConfiguration).
@@ -36,6 +38,11 @@ internal sealed class CompanyProfileConfiguration : IEntityTypeConfiguration<Com
         // culoare, fiindcă referința obiectului rămâne aceeași.
         ConfigureJson(builder.Property(c => c.PageTheme));
         ConfigureJson(builder.Property(c => c.PageContent));
+
+        // Verdictul de moderare și copia aprobată a paginii, tot jsonb: se citesc împreună cu
+        // profilul la fiecare deschidere a paginii publice și nu se caută niciodată după ele.
+        ConfigureJson(builder.Property(c => c.PageModeration));
+        ConfigureJson(builder.Property(c => c.PublishedPage));
 
         // Un cont are cel mult un profil, iar slug-ul e identitatea publică: ambele unice.
         builder.HasIndex(c => c.UserId).IsUnique();

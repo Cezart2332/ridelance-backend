@@ -29,15 +29,52 @@ public sealed record CompanyProfileDto(
     CompanyPageTheme PageTheme,
     /// <summary>Conținutul secțiunilor proprii ale mini-site-ului.</summary>
     CompanyPageContent PageContent,
+    /// <summary>Locul de preluare, cu pin pe hartă. Separat de sediul social.</summary>
+    PickupLocationDto Pickup,
     /// <summary>Documentul cu specimenul de semnătură, dacă a fost salvat unul.</summary>
     Guid? SignatureDocumentId,
     string Slug,
     bool IsVerified,
-    VisibilityDto Visibility);
+    VisibilityDto Visibility,
+    /// <summary>Unde a ajuns pagina în verificare și ce secțiuni i-a oprit administrarea.</summary>
+    CompanyPageModerationDto PageModeration);
 #pragma warning restore CA1054
+
+/// <summary>
+/// Locul de unde se preiau mașinile.
+/// </summary>
+/// <remarks>
+/// Coordonatele lipsesc când proprietarul n-a pus încă pinul. Adresa poate exista fără ele —
+/// cineva scrie „București, Sector 3" fără să deschidă harta — iar secțiunea de pe mini-site se
+/// descurcă și așa: arată textul, fără hartă.
+/// </remarks>
+public sealed record PickupLocationDto(
+    string? Address,
+    double? Latitude,
+    double? Longitude,
+    string? Note);
 
 /// <summary>Ce anume din datele de contact e public pe mini-site și pe anunțuri.</summary>
 public sealed record VisibilityDto(bool Phone, bool Email, bool WhatsApp, bool Location);
+
+/// <summary>
+/// Starea verificării mini-site-ului, așa cum o vede proprietarul.
+/// </summary>
+/// <remarks>
+/// <paramref name="Note" /> e motivul scris de administrare. Ajunge la proprietar dinadins: un
+/// refuz pe care nu-l poate remedia îl face să retrimită aceeași pagină.
+///
+/// <paramref name="PublishedAtUtc" /> e ce diferențiază „încă n-am publicat niciodată" de
+/// „versiunea veche e live cât timp o verificăm pe cea nouă" — două stări care arată la fel în
+/// statut, dar înseamnă lucruri opuse pentru vizitator.
+/// </remarks>
+public sealed record CompanyPageModerationDto(
+    string Status,
+    IReadOnlyList<string> BlockedSections,
+    string? Note,
+    DateTime? SubmittedAtUtc,
+    DateTime? ReviewedAtUtc,
+    DateTime? PublishedAtUtc);
 
 public static class CompanyProfileMapper
 {
@@ -59,8 +96,22 @@ public static class CompanyProfileMapper
         profile.CoverImageUrl,
         profile.PageTheme,
         profile.PageContent,
+        new PickupLocationDto(
+            profile.PickupAddress,
+            profile.PickupLatitude,
+            profile.PickupLongitude,
+            profile.PickupNote),
         profile.SignatureDocumentId,
         profile.Slug,
         profile.IsVerified,
-        new VisibilityDto(profile.ShowPhone, profile.ShowEmail, profile.ShowWhatsApp, profile.ShowLocation));
+        new VisibilityDto(profile.ShowPhone, profile.ShowEmail, profile.ShowWhatsApp, profile.ShowLocation),
+        ToModerationDto(profile));
+
+    public static CompanyPageModerationDto ToModerationDto(CompanyProfile profile) => new(
+        profile.PageModeration.Status.ToString(),
+        profile.PageModeration.BlockedSections,
+        profile.PageModeration.Note,
+        profile.PageModeration.SubmittedAtUtc,
+        profile.PageModeration.ReviewedAtUtc,
+        profile.PublishedPage.ApprovedAtUtc);
 }

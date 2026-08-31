@@ -56,11 +56,41 @@ public sealed class CompanyProfile : Entity
     /// <summary>Fotografia de fundal din antetul mini-site-ului. Cale relativă, ca logo-ul.</summary>
     public string? CoverImageUrl { get; set; }
 
+    /// <summary>
+    /// Locul de unde se preiau mașinile, cu adresă și pin pe hartă.
+    /// </summary>
+    /// <remarks>
+    /// Separat de <see cref="RegisteredOffice"/> dinadins: sediul social e o adresă juridică, de
+    /// multe ori a contabilului, și e supus comutatorului de vizibilitate. Ăsta e locul în care
+    /// omul chiar vine să ia mașina — n-are comutator, fiindcă a-l completa **este** actul de a-l
+    /// publica, iar el se completează într-o secțiune care se numește „Unde ne găsiți".
+    /// </remarks>
+    public string? PickupAddress { get; set; }
+
+    public double? PickupLatitude { get; set; }
+    public double? PickupLongitude { get; set; }
+
+    /// <summary>Indicația practică de lângă hartă: „intrarea din spate", „lângă benzinărie".</summary>
+    public string? PickupNote { get; set; }
+
     /// <summary>Culorile mini-site-ului. Nu e niciodată <c>null</c>: fără nimic salvat, sunt cele implicite.</summary>
     public CompanyPageTheme PageTheme { get; set; } = new();
 
     /// <summary>Conținutul secțiunilor proprii ale mini-site-ului.</summary>
     public CompanyPageContent PageContent { get; set; } = new();
+
+    /// <summary>
+    /// Verdictul administrării asupra paginii și secțiunile blocate de ea.
+    /// </summary>
+    /// <remarks>
+    /// Câmpurile de mai sus — slogan, descriere, culori, secțiuni, cover, punct de preluare — sunt
+    /// **ciorna** proprietarului, nu ce se vede pe internet. Ce se vede stă în
+    /// <see cref="PublishedPage"/> și ajunge acolo doar printr-o aprobare.
+    /// </remarks>
+    public CompanyPageModeration PageModeration { get; set; } = new();
+
+    /// <summary>Copia aprobată a paginii. <c>ApprovedAtUtc == null</c> înseamnă că n-a fost publicată niciodată.</summary>
+    public CompanyPagePublication PublishedPage { get; set; } = new();
 
     /// <summary>Calea logo-ului încărcat. <c>null</c> nu e o eroare — atunci se afișează inițialele.</summary>
     public string? LogoUrl { get; set; }
