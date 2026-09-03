@@ -26,6 +26,20 @@ public static class Pricing
         /// Explicit, ca UI-ul să nu decidă singur ce scrie pe badge: avansul nu se returnează.
         /// </summary>
         public const bool OnboardingAdvanceIsRefundable = false;
+
+        /// <summary>
+        /// Descrierea cu care se înregistrează plata avansului.
+        ///
+        /// Constantă, nu text scris în două locuri: plata se poate face ÎNAINTE să existe un
+        /// dosar (întrebarea „ai deja PFA?" vine după), deci rândul rămâne o vreme fără
+        /// <c>PfaRegistrationId</c>, iar „a plătit avansul?" se răspunde pe descriere. Dacă
+        /// scrierea și citirea ar folosi texte diferite, clientul ar fi pus să plătească a doua
+        /// oară.
+        /// </summary>
+        public const string OnboardingAdvanceDescription = "Avans abonament RIDElance Start";
+
+        /// <summary>Descrierea folosită înainte ca avansul să se ceară pe ambele ramuri.</summary>
+        public const string LegacyInfiintareDescription = "Înființare PFA";
     }
 
     /// <summary>

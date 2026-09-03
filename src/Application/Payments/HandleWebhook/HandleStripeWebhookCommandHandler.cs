@@ -108,7 +108,11 @@ internal sealed class HandleStripeWebhookCommandHandler(
             string? planStr = session.Metadata?.GetValueOrDefault("customMetadata") ?? string.Empty;
             string description = planStr switch
             {
-                var s when s.Contains("infiintare_pfa", StringComparison.OrdinalIgnoreCase) => "Înființare PFA",
+                // Avans pe abonament, nu taxă de înființare: se cere pe ambele ramuri, înainte ca
+                // omul să fi ales ceva. Descrierea vine din `Pricing`, fiindcă tot pe ea se
+                // răspunde „a plătit?" cât timp rândul n-are încă dosar de care să se lege.
+                var s when s.Contains("infiintare_pfa", StringComparison.OrdinalIgnoreCase)
+                    => Pricing.RidelanceStart.OnboardingAdvanceDescription,
                 var s when s.Contains("sediu_social", StringComparison.OrdinalIgnoreCase) => "Găzduire Sediu Social",
                 var s when s.Contains("start_ride", StringComparison.OrdinalIgnoreCase) => "Start Ride",
                 _ => BuildDescriptionFromSession(session)

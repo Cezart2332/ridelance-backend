@@ -69,7 +69,7 @@ internal sealed class CreateCheckoutSessionCommandHandler(
 
         if (IsInfiintareOnboarding(command))
         {
-            Result<Guid> gate = await EnsurePayableAsync(command.UserId, cancellationToken);
+            Result<Guid?> gate = await EnsurePayableAsync(command.UserId, cancellationToken);
 
             if (gate.IsFailure)
             {
@@ -117,50 +117,35 @@ internal sealed class CreateCheckoutSessionCommandHandler(
         && command.Plan.Equals("infiintare_pfa", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Întoarce dosarul plătibil, sau 422 cu ce mai lipsește. Mesajul e cel arătat clientului,
-    /// deci enumeră etapele, nu numele câmpurilor din DB.
+    /// Avansul poate fi plătit? Întoarce dosarul, dacă există — dar lipsa lui NU e o piedică:
+    /// plata vine înaintea întrebării „ai deja PFA?", deci înaintea dosarului. Când dosarul apare,
+    /// plata i se leagă la creare.
     /// </summary>
-    private async Task<Result<Guid>> EnsurePayableAsync(Guid userId, CancellationToken cancellationToken)
+    private async Task<Result<Guid?>> EnsurePayableAsync(Guid userId, CancellationToken cancellationToken)
     {
         PfaRegistration? registration = await context.PfaRegistrations
             .AsNoTracking()
-            .Include(r => r.CompanyFormationRequest)
             .Where(r => r.UserId == userId)
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (registration is null)
-        {
-            return Result.Failure<Guid>(Error.Unprocessable(
-                "Checkout.NoRegistration",
-                "Deschide întâi dosarul de înființare."));
-        }
-
         // §13.5 — o sesiune atinsă de uneltele de dezvoltare nu are voie să genereze o plată
-        // reală. Poarta e aici, nu în UI: butonul se poate ascunde, endpoint-ul nu.
-        if (registration.IsDevSession)
+        // reală. Poarta e aici, nu în UI: butonul se poate ascunde, endpoint-ul nu. Fără dosar
+        // n-are ce sesiune de test să fie: marcajul trăiește pe dosar.
+        if (registration?.IsDevSession == true)
         {
-            return Result.Failure<Guid>(Error.Unprocessable(
+            return Result.Failure<Guid?>(Error.Unprocessable(
                 "Checkout.DevSession",
                 "Sesiune de test: plățile reale sunt dezactivate. Folosește Stripe în test mode."));
         }
 
         bool hasPaid = await InfiintarePaymentCheck.HasPaidAsync(context, userId, cancellationToken);
 
-        if (hasPaid)
-        {
-            return Result.Failure<Guid>(Error.Unprocessable(
+        return OnboardingStateBuilder.CanPayOnboardingAdvance(hasPaid)
+            ? Result.Success(registration?.Id)
+            : Result.Failure<Guid?>(Error.Unprocessable(
                 "Checkout.AlreadyPaid",
-                "Înființarea este deja achitată."));
-        }
-
-        // Avansul se datorează pe ambele ramuri, deci după poarta de mai sus nu mai rămâne niciun
-        // caz de respins: un dosar care există și n-a plătit e plătibil.
-        return OnboardingStateBuilder.CanPayOnboardingAdvance(registration, hasPaid)
-            ? Result.Success(registration.Id)
-            : Result.Failure<Guid>(Error.Unprocessable(
-                "Checkout.NotApplicable",
-                "Avansul nu poate fi plătit acum."));
+                "Avansul este deja achitat."));
     }
 
     /// <summary>

@@ -106,30 +106,21 @@ public static class OnboardingStateBuilder
     ];
 
     /// <summary>
-    /// Plata avansului se cere ÎNAINTE de pasul PFA, pe AMBELE ramuri.
+    /// Plata avansului se cere între eligibilitate și pasul PFA, ÎNAINTEA oricărei alegeri.
     ///
-    /// Avansul e o lună de RIDElance Start plătită înainte, nu o taxă de înființare — de aceea o
-    /// datorează și cine are deja PFA, deși pentru el nu deschidem nimic la ONRC. Se întoarce
-    /// integral ca reducere la primul abonament, deci nu e un cost în plus, ci același cost mai
-    /// devreme. Cât timp era legat de ramura „Nu am PFA", jumătate din clienți intrau în tot
-    /// procesul fără să fi plătit nimic.
+    /// Avansul e o lună de RIDElance Start plătită mai devreme, nu o taxă de înființare: nu
+    /// depinde de ce urmează să aleagă omul, deci nici de existența unui dosar. Dosarul se
+    /// deschide DUPĂ plată, odată cu răspunsul la „ai deja PFA?" — de aceea poarta nu-l cere.
+    /// Cât timp cerea și ramura „Nu am PFA", jumătate din clienți parcurgeau tot procesul fără
+    /// să fi plătit nimic.
     ///
     /// Aceeași funcție gardează și crearea sesiunii Stripe, ca UI-ul și API-ul să nu poată
     /// ajunge la concluzii diferite.
     /// </summary>
-    public static bool CanPayOnboardingAdvance(PfaRegistration? registration, bool hasPaidAdvance) =>
-        registration is not null && !hasPaidAdvance;
+    public static bool CanPayOnboardingAdvance(bool hasPaidAdvance) => !hasPaidAdvance;
 
-    private static string PaymentStatusOf(
-        PfaRegistration? registration,
-        bool hasPaidInfiintare,
-        bool hasFailedPayment)
+    private static string PaymentStatusOf(bool hasPaidInfiintare, bool hasFailedPayment)
     {
-        if (registration is null)
-        {
-            return "NOT_REQUIRED";
-        }
-
         if (hasPaidInfiintare)
         {
             return "PAID";
@@ -215,8 +206,8 @@ public static class OnboardingStateBuilder
             allStepsCompleted,
             steps,
             currentStepKey,
-            CanPayOnboardingAdvance(registration, hasPaidInfiintare),
-            PaymentStatusOf(registration, hasPaidInfiintare, hasFailedPayment),
+            CanPayOnboardingAdvance(hasPaidInfiintare),
+            PaymentStatusOf(hasPaidInfiintare, hasFailedPayment),
             registration?.CompanyFormationRequest?.Status.ToString(),
             registration?.CompanyFormationRequest?.CurrentStage.ToString(),
             TestSkipEnabled: false,
