@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
 using Domain.Notifications;
+using Domain.Payments;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.Users;
@@ -78,6 +79,22 @@ internal sealed class CreatePfaRegistrationCommandHandler(
         };
 
         context.PfaRegistrations.Add(registration);
+
+        // Avansul se plătește ÎNAINTE de întrebarea „ai deja PFA?", deci rândul de plată se naște
+        // fără dosar. Îl legăm acum, la prima ocazie: altfel rămâne orfan pentru totdeauna, iar
+        // „a plătit?" ar depinde permanent de potrivirea pe descriere.
+        List<PaymentRecord> unlinkedAdvances = await context.PaymentRecords
+            .Where(r => r.UserId == command.UserId &&
+                        r.PfaRegistrationId == null &&
+                        r.PaymentType == PaymentType.OneTime &&
+                        r.Status == PaymentStatus.Succeeded &&
+                        r.Description == Pricing.RidelanceStart.OnboardingAdvanceDescription)
+            .ToListAsync(cancellationToken);
+
+        foreach (PaymentRecord advance in unlinkedAdvances)
+        {
+            advance.PfaRegistrationId = registration.Id;
+        }
 
         await context.SaveChangesAsync(cancellationToken);
 

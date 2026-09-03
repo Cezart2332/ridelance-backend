@@ -7,26 +7,30 @@ namespace Application.Payments;
 public static class InfiintarePaymentCheck
 {
     /// <summary>
-    /// „A plătit înființarea PFA?” — folosită și de GetSubscription, și de starea de onboarding,
-    /// ca cele două să nu diveargă.
+    /// „A plătit avansul?” — folosită și de GetSubscription, și de starea de onboarding, ca cele
+    /// două să nu diveargă.
     ///
-    /// Se răspunde întâi din legătura reală (<see cref="PaymentRecord.PfaRegistrationId"/>). Cât
-    /// timp mai există plăți vechi nelegate, se cade pe euristica istorică pe descriere și sumă.
-    /// Fallbackul e de scos după ce backfillul acoperă tot.
+    /// Trei surse, în ordinea încrederii. Descrierea NU e o euristică pentru plățile noi: e
+    /// răspunsul principal. Avansul se cere înaintea întrebării „ai deja PFA?", deci rândul se
+    /// naște fără <c>PfaRegistrationId</c> și rămâne așa până se deschide dosarul — dacă am fi
+    /// cerut legătura, clientul ar fi fost pus să plătească a doua oară exact între cele două
+    /// ecrane. Ultimul bloc rămâne euristica istorică, pentru plățile de dinaintea constantelor.
     /// </summary>
     public static async Task<bool> HasPaidAsync(
         IApplicationDbContext context,
         Guid userId,
         CancellationToken cancellationToken)
     {
-        bool linked = await context.PaymentRecords
+        bool known = await context.PaymentRecords
             .AnyAsync(r => r.UserId == userId &&
-                           r.PfaRegistrationId != null &&
                            r.PaymentType == PaymentType.OneTime &&
-                           r.Status == PaymentStatus.Succeeded,
+                           r.Status == PaymentStatus.Succeeded &&
+                           (r.PfaRegistrationId != null ||
+                            r.Description == Pricing.RidelanceStart.OnboardingAdvanceDescription ||
+                            r.Description == Pricing.RidelanceStart.LegacyInfiintareDescription),
                       cancellationToken);
 
-        if (linked)
+        if (known)
         {
             return true;
         }

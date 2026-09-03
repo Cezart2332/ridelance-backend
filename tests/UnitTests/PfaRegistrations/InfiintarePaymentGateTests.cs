@@ -1,72 +1,29 @@
 using Application.PfaRegistrations.Onboarding;
 using Domain.Payments;
-using Domain.PfaRegistrations;
-using Domain.PfaRegistrations.CompanyFormation;
 using Shouldly;
 using Xunit;
 
 namespace UnitTests.PfaRegistrations;
 
 /// <summary>
-/// RL-03 — avansul vine ÎNAINTEA dosarului: e o lună de RIDElance Start plătită din start, iar
-/// lucrul la dosar începe după ce e achitată. Poarta e aceeași funcție folosită și de starea de
+/// RL-03 — avansul se cere între eligibilitate și pasul PFA: o lună de RIDElance Start plătită
+/// mai devreme, înaintea oricărei alegeri. Poarta e aceeași funcție folosită și de starea de
 /// onboarding, și de crearea sesiunii Stripe, ca UI-ul și API-ul să nu poată ajunge la concluzii
-/// diferite despre același dosar.
+/// diferite despre același client.
 /// </summary>
 public class InfiintarePaymentGateTests
 {
     /// <summary>
-    /// Avansul e pe abonament, nu pe înființare, deci îl datorează și cine are deja PFA. Cât timp
-    /// poarta cerea ramura „Nu am PFA", jumătate din clienți parcurgeau tot onboardingul fără să
-    /// fi plătit nimic.
+    /// Singura condiție e plata. Nici ramura, nici dosarul nu contează — și nu pot conta: plata
+    /// vine ÎNAINTEA întrebării „ai deja PFA?", deci înaintea dosarului. Cât timp poarta cerea
+    /// ramura „Nu am PFA" și un dosar deschis, jumătate din clienți parcurgeau tot onboardingul
+    /// fără să fi plătit nimic, iar ceilalți plăteau abia după ce alegeau.
     /// </summary>
-    [Theory]
-    [InlineData(RegistrationType.AmPfa)]
-    [InlineData(RegistrationType.NuAmPfa)]
-    public void CanPay_IsTrue_OnBothBranches(RegistrationType type)
-    {
-        PfaRegistration registration = Registration(type);
-
-        OnboardingStateBuilder.CanPayOnboardingAdvance(registration, hasPaidAdvance: false).ShouldBeTrue();
-    }
-
     [Fact]
-    public void CanPay_IsTrue_BeforeAnyDossierExists()
+    public void CanPay_DependsOnlyOnWhetherTheAdvanceIsPaid()
     {
-        // Momentul plății: ramura e aleasă, dosarul încă nu e deschis. Asta e regula nouă —
-        // înainte, poarta cerea un dosar semnat, deci se completa tot înainte de a se plăti ceva.
-        PfaRegistration registration = Registration(RegistrationType.NuAmPfa);
-
-        registration.CompanyFormationRequest.ShouldBeNull();
-        OnboardingStateBuilder.CanPayOnboardingAdvance(registration, hasPaidAdvance: false).ShouldBeTrue();
-    }
-
-    [Theory]
-    [InlineData(CompanyFormationStatus.Draft)]
-    [InlineData(CompanyFormationStatus.InfoRequested)]
-    [InlineData(CompanyFormationStatus.AwaitingPayment)]
-    public void CanPay_StaysTrue_ForDossiersOpenedUnderTheOldRule(CompanyFormationStatus status)
-    {
-        // Dosare deschise înainte de schimbare, încă neplătite: ecranul de plată trebuie să le
-        // rămână disponibil, altfel ar fi blocate fără nicio cale de a achita.
-        PfaRegistration registration = Registration(RegistrationType.NuAmPfa);
-        registration.CompanyFormationRequest = Formation(status);
-
-        OnboardingStateBuilder.CanPayOnboardingAdvance(registration, hasPaidAdvance: false).ShouldBeTrue();
-    }
-
-    [Fact]
-    public void CanPay_IsFalse_OnceAlreadyPaid()
-    {
-        PfaRegistration registration = Registration(RegistrationType.NuAmPfa);
-
-        OnboardingStateBuilder.CanPayOnboardingAdvance(registration, hasPaidAdvance: true).ShouldBeFalse();
-    }
-
-    [Fact]
-    public void CanPay_IsFalse_WithoutARegistration()
-    {
-        OnboardingStateBuilder.CanPayOnboardingAdvance(registration: null, hasPaidAdvance: false).ShouldBeFalse();
+        OnboardingStateBuilder.CanPayOnboardingAdvance(hasPaidAdvance: false).ShouldBeTrue();
+        OnboardingStateBuilder.CanPayOnboardingAdvance(hasPaidAdvance: true).ShouldBeFalse();
     }
 
     /// <summary>
@@ -113,9 +70,16 @@ public class InfiintarePaymentGateTests
         Pricing.OnboardingAdvanceCredit.For("fleet").ShouldBeNull();
     }
 
-    private static PfaRegistration Registration(RegistrationType type) =>
-        new() { Id = Guid.NewGuid(), RegistrationType = type };
-
-    private static CompanyFormationRequest Formation(CompanyFormationStatus status) =>
-        new() { Id = Guid.NewGuid(), Status = status };
+    /// <summary>
+    /// Descrierea cu care se scrie plata e cea pe care o caută <c>InfiintarePaymentCheck</c>.
+    /// Rândul se naște fără dosar — plata precedă alegerea — deci dacă cele două texte ar
+    /// diverge, clientul ar fi pus să plătească a doua oară exact între cele două ecrane.
+    /// </summary>
+    [Fact]
+    public void AdvanceDescription_IsAConstantSharedByWriterAndReader()
+    {
+        Pricing.RidelanceStart.OnboardingAdvanceDescription.ShouldNotBeNullOrWhiteSpace();
+        Pricing.RidelanceStart.OnboardingAdvanceDescription
+            .ShouldNotBe(Pricing.RidelanceStart.LegacyInfiintareDescription);
+    }
 }
