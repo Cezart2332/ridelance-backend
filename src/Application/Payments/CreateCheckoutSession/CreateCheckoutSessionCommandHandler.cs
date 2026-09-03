@@ -91,6 +91,9 @@ internal sealed class CreateCheckoutSessionCommandHandler(
 
         string priceId = await stripeService.ResolvePriceIdAsync(catalogItem, cancellationToken);
 
+        // Avansul plătit în onboarding se întoarce aici, ca reducere pe primele facturi.
+        string? couponId = await AdvanceCreditCouponAsync(command, cancellationToken);
+
         string sessionUrl = await stripeService.CreateCheckoutSessionAsync(
             priceId,
             command.Mode,
@@ -103,6 +106,7 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             // Dublu-click pe „Plătește” nu are voie să producă două sesiuni. Cheia e stabilă cât
             // timp dosarul și planul sunt aceleași, deci reîncercarea reia aceeași plată.
             pfaRegistrationId is null ? null : $"infiintare:{pfaRegistrationId}:{command.Plan}",
+            couponId,
             cancellationToken);
 
         return sessionUrl;
@@ -150,14 +154,48 @@ internal sealed class CreateCheckoutSessionCommandHandler(
                 "Înființarea este deja achitată."));
         }
 
-        if (OnboardingStateBuilder.CanPayInfiintare(registration, hasPaid))
+        // Avansul se datorează pe ambele ramuri, deci după poarta de mai sus nu mai rămâne niciun
+        // caz de respins: un dosar care există și n-a plătit e plătibil.
+        return OnboardingStateBuilder.CanPayOnboardingAdvance(registration, hasPaid)
+            ? Result.Success(registration.Id)
+            : Result.Failure<Guid>(Error.Unprocessable(
+                "Checkout.NotApplicable",
+                "Avansul nu poate fi plătit acum."));
+    }
+
+    /// <summary>
+    /// Cuponul cu care avansul plătit în onboarding se întoarce la primul abonament — sau
+    /// <c>null</c> când nu se aplică.
+    ///
+    /// Două condiții, amândouă necesare: avansul e plătit ȘI clientul n-a mai avut niciun
+    /// abonament. A doua ține loc de „creditul s-a consumat deja", fără o coloană nouă: rândul de
+    /// <c>UserSubscription</c> rămâne și după anulare, deci reducerea nu se poate lua a doua oară
+    /// printr-un abonament reluat, iar o schimbare de plan nu o reia nici ea.
+    /// </summary>
+    private async Task<string?> AdvanceCreditCouponAsync(
+        CreateCheckoutSessionCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (command.Mode != "subscription")
         {
-            return Result.Success(registration.Id);
+            return null;
         }
 
-        // Rămâne un singur caz: ramura „Am PFA", care nu plătește înființarea.
-        return Result.Failure<Guid>(Error.Unprocessable(
-            "Checkout.NotApplicable",
-            "Înființarea se plătește doar pe ramura „Nu am PFA”."));
+        if (Pricing.OnboardingAdvanceCredit.For(command.Plan) is not { } spec)
+        {
+            return null;
+        }
+
+        bool hasSubscribedBefore = await context.UserSubscriptions
+            .AnyAsync(s => s.UserId == command.UserId, cancellationToken);
+
+        if (hasSubscribedBefore)
+        {
+            return null;
+        }
+
+        return await InfiintarePaymentCheck.HasPaidAsync(context, command.UserId, cancellationToken)
+            ? await stripeService.EnsureAdvanceCreditCouponAsync(spec, cancellationToken)
+            : null;
     }
 }

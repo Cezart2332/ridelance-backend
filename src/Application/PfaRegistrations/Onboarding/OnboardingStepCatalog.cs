@@ -9,10 +9,14 @@ namespace Application.PfaRegistrations.Onboarding;
 /// lui (secțiuni de documente + entitățile ghidate). Statusul unui pas NU se stochează — se derivă
 /// mereu aici, la citire. Ordinea și deblocarea (fiecare blocare explică motivul) trăiesc tot aici.
 ///
-/// Deblocarea e STRICT LINIARĂ: pasul N se deschide doar când N-1 e finalizat, deci la orice moment
-/// există exact un pas activ. Anterior fiecare pas își declara dependențele reale (un DAG), ceea ce
-/// deschidea simultan „fiscal”, „arr” și „platforms” imediat ce dosarul PFA era gata. Un singur pas
-/// activ e o cerință de produs, nu o consecință a modelului de date — de aceea lanțul e explicit.
+/// Ordinea e liniară, dar deblocarea NU mai așteaptă adminul: pasul N se deschide când șoferul și-a
+/// terminat partea din N-1, nu când adminul l-a validat. Înainte, poarta cerea „Completed", iar 5
+/// din 6 pași se închid doar din admin — deci dosarul depus la pasul PFA oprea șoferul zile întregi,
+/// iar pasul 5 nu ducea niciodată la 6. Validarea rămâne obligatorie, dar se face în paralel:
+/// înrolarea (<see cref="AllCompleted"/>) cere în continuare toți pașii finalizați.
+///
+/// Singura excepție e pachetul de semnături (RL-02): „arr” rămâne blocat până când adminul îl alocă,
+/// fiindcă împuternicirea din pachet e chiar actul cu care se depune dosarul ARR.
 /// </summary>
 public static class OnboardingStepCatalog
 {
@@ -63,8 +67,10 @@ public static class OnboardingStepCatalog
         new(OnboardingStepKey.Fiscal, "fiscal", "Fiscal, bancă & semnături", "/onboarding/step2", Owners.Admin),
         // Autorizația o emite adminul, după ce șoferul depune dosarul.
         new(OnboardingStepKey.Arr, "arr", "Autorizație transport", "/onboarding/arr", Owners.Admin),
-        // Conturile de operator se activează manual din admin.
-        new(OnboardingStepKey.Platforms, "platforms", "Uber Fleet & Bolt Fleet", "/onboarding/platforms", Owners.Admin),
+        // Conturile de operator se activează manual din admin. Eticheta e „Uber & Bolt", nu
+        // „Uber Fleet & Bolt Fleet": pasul cere DOUĂ conturi pe platformă — cel de flotă și cel de
+        // șofer — iar antetul cu „Fleet" stătea deasupra ecranelor de șofer și le contrazicea.
+        new(OnboardingStepKey.Platforms, "platforms", "Uber & Bolt", "/onboarding/platforms", Owners.Admin),
         // Copia conformă se emite pe autorizația de transport.
         new(OnboardingStepKey.Vehicle, "vehicle", "Vehicul, copie conformă & ecusoane", "/onboarding/vehicle",
             Owners.Admin),
@@ -75,11 +81,15 @@ public static class OnboardingStepCatalog
         steps.Count > 0 && steps.All(s => s.Status == StatusCompleted);
 
     /// <summary>
-    /// Cheia pasului la care e oprit șoferul acum: primul nefinalizat. <c>null</c> când totul e gata.
-    /// Fluxul fiind liniar, ăsta e și singurul pas pe care se poate scrie.
+    /// Cheia pasului la care mai are șoferul ceva de făcut: primul cu partea lui neterminată.
+    /// <c>null</c> când și-a făcut peste tot partea, chiar dacă adminul încă validează.
+    ///
+    /// NU e „primul nefinalizat": un pas trimis la validare rămâne nefinalizat săptămâni, iar
+    /// frontendul folosește valoarea asta ca țintă de navigare — l-ar fi trimis mereu înapoi în
+    /// pasul pe care tocmai îl predase.
     /// </summary>
     public static string? CurrentStepKey(IReadOnlyList<OnboardingStepDto> steps) =>
-        steps.FirstOrDefault(s => s.Status != StatusCompleted)?.Key;
+        steps.FirstOrDefault(s => !s.UserPartDone)?.Key;
 
     /// <summary>
     /// Poate userul să scrie pe pasul cerut? Funcție pură, ca regula să fie testabilă fără bază de
@@ -147,9 +157,27 @@ public static class OnboardingStepCatalog
                 || SectionRejected(registration, OnboardingSectionKey.Vehicul),
         ];
 
-        // 2) Deblocare liniară: un pas rămâne blocat cât timp predecesorul lui nu e finalizat.
+        // Partea șoferului, separat de verdictul adminului. Asta deschide pasul următor.
+        bool[] userDone =
+        [
+            own[0] == StatusCompleted,
+            // Dosarul PFA e depus: predat spre validare sau deja validat. Ramura „Nu am PFA" e
+            // acoperită de `PfaStatusOf`, care ține pasul în `InProgress` până se semnează dosarul
+            // de înființare — deci nici aici nu trece mai devreme.
+            own[1] is StatusAwaitingValidation or StatusCompleted,
+            // Excepția RL-02: pachetul de semnături e al adminului, iar împuternicirea din el e
+            // actul cu care se depune dosarul ARR. Fără el, pasul următor n-are ce depune.
+            own[2] == StatusCompleted,
+            // Dosarul ARR e depus; autorizația o emite ARR, nu șoferul.
+            registration?.ArrAuthorizationRequest?.SubmittedAtUtc is not null,
+            PlatformsUserPartDone(registration),
+            // Ultimul pas: n-are succesor de deblocat.
+            false,
+        ];
+
+        // 2) Deblocare liniară: un pas rămâne blocat cât timp predecesorul lui nu e gata de predat.
         var result = new List<OnboardingStepDto>(Steps.Length);
-        bool predecessorDone = true;
+        bool predecessorOpen = true;
 
         foreach (StepDef def in Steps)
         {
@@ -157,10 +185,15 @@ public static class OnboardingStepCatalog
             string status = own[order];
             string? blockReason = null;
 
-            if (!predecessorDone && status != StatusCompleted)
+            if (!predecessorOpen && status != StatusCompleted)
             {
                 status = StatusLocked;
-                blockReason = $"Finalizează întâi pasul „{Steps[order - 1].Label}”.";
+                // Singurul pas care mai blochează după ce șoferul și-a făcut treaba e cel fiscal,
+                // și acolo așteptarea e a noastră — mesajul trebuie s-o spună, nu să-i ceară lui
+                // să termine ceva ce a terminat deja.
+                blockReason = own[order - 1] == StatusAwaitingValidation
+                    ? $"Așteptăm să finalizăm pasul „{Steps[order - 1].Label}”. Te anunțăm când e gata."
+                    : $"Finalizează întâi pasul „{Steps[order - 1].Label}”.";
             }
 
             result.Add(new OnboardingStepDto(
@@ -171,9 +204,10 @@ public static class OnboardingStepCatalog
                 blockReason,
                 def.Path,
                 StateOf(status, started[order], rejected[order]),
-                def.OwnedBy));
+                def.OwnedBy,
+                userDone[order] || status == StatusCompleted));
 
-            predecessorDone = status == StatusCompleted;
+            predecessorOpen = status == StatusCompleted || userDone[order];
         }
 
         return result;
@@ -280,6 +314,24 @@ public static class OnboardingStepCatalog
         return status == ArrAuthorizationStatus.Issued ? StatusCompleted : StatusInProgress;
     }
 
+    /// <summary>
+    /// Șoferul a terminat partea lui de pas 5: a ales cel puțin o platformă și a completat
+    /// credențialele pentru toate cele alese. Activarea în Uber/Bolt rămâne a adminului.
+    /// </summary>
+    private static bool PlatformsUserPartDone(PfaRegistration? r)
+    {
+        if (r is null)
+        {
+            return false;
+        }
+
+        var selected = r.PlatformAccounts
+            .Where(p => p.IsSelectedByUser)
+            .ToList();
+
+        return selected.Count > 0 && selected.TrueForAll(PlatformShared.UserPartComplete);
+    }
+
     private static string PlatformsStatusOf(PfaRegistration? r)
     {
         if (r is null)
@@ -287,25 +339,19 @@ public static class OnboardingStepCatalog
             return StatusInProgress;
         }
 
-        var selected = r.PlatformAccounts
-            .Where(p => p.IsSelectedByUser)
-            .ToList();
-
-        if (selected.Count == 0)
-        {
-            return StatusInProgress;
-        }
-
-        // Șoferul a terminat partea lui când toate platformele alese au credențialele complete.
-        // Activarea în Uber/Bolt rămâne treaba adminului, dar nu ține userul pe loc.
-        if (selected.All(PlatformShared.UserPartComplete))
+        if (PlatformsUserPartDone(r))
         {
             return StatusCompleted;
         }
 
-        return selected.All(p => p.OnboardingStatus == PfaPlatformOnboardingStatus.Active)
-            ? StatusCompleted
-            : StatusInProgress;
+        var selected = r.PlatformAccounts
+            .Where(p => p.IsSelectedByUser)
+            .ToList();
+
+        return selected.Count > 0
+            && selected.TrueForAll(p => p.OnboardingStatus == PfaPlatformOnboardingStatus.Active)
+                ? StatusCompleted
+                : StatusInProgress;
     }
 
     private static string VehicleStatusOf(PfaRegistration? r)

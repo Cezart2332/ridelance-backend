@@ -41,6 +41,9 @@ public sealed record OnboardingStepDto(
     string State = "locked",
     // user | admin — cine face tranziția finală a pasului.
     string OwnedBy = "user",
+    // Șoferul și-a terminat partea din pas, indiferent dacă adminul a apucat să valideze. Ăsta e
+    // semnalul care deblochează pasul următor; `Status == "Completed"` rămâne verdictul final.
+    bool UserPartDone = false,
     // Ce mai lipsește din pas. Populat doar pentru pasul curent — restul n-au consumator.
     IReadOnlyList<OnboardingChecklistItemDto>? Checklist = null);
 
@@ -90,7 +93,7 @@ public sealed record OnboardingStateResponse(
     IReadOnlyList<string>? DevSkippedSteps = null);
 
 /// <summary>
-/// Public, nu internal: <see cref="CanPayInfiintare"/> e poarta de plată folosită și din afara
+/// Public, nu internal: <see cref="CanPayOnboardingAdvance"/> e poarta de plată folosită și din afara
 /// onboardingului (crearea sesiunii Stripe) și e acoperită de teste.
 /// </summary>
 public static class OnboardingStateBuilder
@@ -103,23 +106,26 @@ public static class OnboardingStateBuilder
     ];
 
     /// <summary>
-    /// Plata avansului se cere ÎNAINTE de deschiderea dosarului de înființare, nu după
-    /// completarea lui: e serviciul pentru care plătește omul, iar noi începem lucrul la el abia
-    /// după ce e achitat. Deci singura condiție e ramura „Nu am PFA" și o plată care încă nu
-    /// s-a făcut — nu starea unui dosar care, în noul flux, nici nu există încă.
+    /// Plata avansului se cere ÎNAINTE de pasul PFA, pe AMBELE ramuri.
+    ///
+    /// Avansul e o lună de RIDElance Start plătită înainte, nu o taxă de înființare — de aceea o
+    /// datorează și cine are deja PFA, deși pentru el nu deschidem nimic la ONRC. Se întoarce
+    /// integral ca reducere la primul abonament, deci nu e un cost în plus, ci același cost mai
+    /// devreme. Cât timp era legat de ramura „Nu am PFA", jumătate din clienți intrau în tot
+    /// procesul fără să fi plătit nimic.
     ///
     /// Aceeași funcție gardează și crearea sesiunii Stripe, ca UI-ul și API-ul să nu poată
     /// ajunge la concluzii diferite.
     /// </summary>
-    public static bool CanPayInfiintare(PfaRegistration? registration, bool hasPaidInfiintare) =>
-        registration?.RegistrationType == RegistrationType.NuAmPfa && !hasPaidInfiintare;
+    public static bool CanPayOnboardingAdvance(PfaRegistration? registration, bool hasPaidAdvance) =>
+        registration is not null && !hasPaidAdvance;
 
     private static string PaymentStatusOf(
         PfaRegistration? registration,
         bool hasPaidInfiintare,
         bool hasFailedPayment)
     {
-        if (registration?.RegistrationType != RegistrationType.NuAmPfa)
+        if (registration is null)
         {
             return "NOT_REQUIRED";
         }
@@ -151,7 +157,8 @@ public static class OnboardingStateBuilder
             null => OnboardingSectionStatus.InProgress,
             { Status: PfaRegistrationStatus.Approved } => OnboardingSectionStatus.Validated,
             { Status: PfaRegistrationStatus.Rejected } => OnboardingSectionStatus.Rejected,
-            { RegistrationType: RegistrationType.NuAmPfa } when !hasPaidInfiintare => OnboardingSectionStatus.InProgress,
+            // Avansul se cere pe ambele ramuri: până e plătit, pasul e al șoferului.
+            _ when !hasPaidInfiintare => OnboardingSectionStatus.InProgress,
             _ => OnboardingSectionStatus.AwaitingValidation,
         };
 
@@ -208,7 +215,7 @@ public static class OnboardingStateBuilder
             allStepsCompleted,
             steps,
             currentStepKey,
-            CanPayInfiintare(registration, hasPaidInfiintare),
+            CanPayOnboardingAdvance(registration, hasPaidInfiintare),
             PaymentStatusOf(registration, hasPaidInfiintare, hasFailedPayment),
             registration?.CompanyFormationRequest?.Status.ToString(),
             registration?.CompanyFormationRequest?.CurrentStage.ToString(),
@@ -229,8 +236,9 @@ public static class OnboardingStateBuilder
     /// dosarul PFA. Null când niciuna nu există — selectul rămâne gol, nu ghicește.
     /// </summary>
     /// <param name="countyFromIdCard">
-    /// Județul citit direct din buletin (câmpul <c>domiciliu_judet</c> extras prin OCR),
-    /// furnizat de <c>OnboardingStateService</c>.
+    /// Județul citit din documentele încărcate, furnizat de <c>OnboardingStateService</c>: mai
+    /// întâi certificatul de înregistrare (câmpul <c>judet</c>), apoi cazierul, apoi buletinul
+    /// (<c>domiciliu_judet</c>). Numele parametrului e istoric — buletinul a fost prima sursă.
     ///
     /// De ce nu e de ajuns <c>Solicitant.Domiciliu.Judet</c>: coloana aceea se populează doar pe
     /// ramura „Nu am PFA", fiindcă doar acolo există un dosar de înființare. Pe ramura „Am PFA"

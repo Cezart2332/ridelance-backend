@@ -45,5 +45,10 @@ public enum DocumentCategory
     RezolutieOnrc = 34,
     /// <summary>Orice alt act primit la înființarea PFA-ului — opțional, pentru arhivă.</summary>
     AlteDocumenteInfiintare = 35,
+    /// <summary>
+    /// Pachetul de semnături întors semnat: împuterniciri ARR/ANAF, contractul de servicii și
+    /// acordul GDPR, într-un singur fișier. Eterogen prin definiție, deci nu se verifică AI.
+    /// </summary>
+    DocumenteSemnate = 38,
     Other = 99
 }

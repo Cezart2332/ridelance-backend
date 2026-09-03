@@ -63,6 +63,7 @@ internal sealed class StripeService : IStripeService
         string? metadata,
         IReadOnlyDictionary<string, string>? sessionMetadata = null,
         string? idempotencyKey = null,
+        string? couponId = null,
         CancellationToken cancellationToken = default)
     {
         var meta = new Dictionary<string, string>
@@ -92,7 +93,12 @@ internal sealed class StripeService : IStripeService
             ],
             Mode = mode, // "payment" or "subscription"
             UiMode = "embedded_page",
-            AllowPromotionCodes = true, // lets customers enter a discount code in checkout
+            // Stripe refuză o sesiune care are și cupon, și câmp de cod promoțional. Când avem un
+            // cupon de aplicat, ăla e reducerea — nu-i cerem clientului să mai tasteze ceva.
+            AllowPromotionCodes = couponId is null ? true : null,
+            Discounts = couponId is null
+                ? null
+                : [new SessionDiscountOptions { Coupon = couponId }],
             ReturnUrl = successUrl.Replace("{{CHECKOUT_SESSION_ID}}", "{CHECKOUT_SESSION_ID}"),
             CustomerEmail = customerEmail,
             Metadata = meta,
@@ -288,37 +294,62 @@ internal sealed class StripeService : IStripeService
             cancellationToken: cancellationToken);
     }
 
+    /// <summary>Cuponul BCR: 50 lei pe lună, șase luni. Aceeași creare cu id fix ca restul.</summary>
+    private static Task<string> EnsureBcrCouponAsync(CancellationToken cancellationToken) =>
+        EnsureCouponAsync(
+            Pricing.BcrDiscount.StripeCouponId,
+            "RIDElance — cont BCR",
+            Pricing.BcrDiscount.MonthlyBani,
+            Pricing.BcrDiscount.Months,
+            cancellationToken);
+
+    public Task<string> EnsureAdvanceCreditCouponAsync(
+        Pricing.OnboardingAdvanceCredit.Spec spec,
+        CancellationToken cancellationToken = default) =>
+        EnsureCouponAsync(
+            spec.CouponId,
+            spec.Name,
+            spec.AmountOffBani,
+            // „once" și „repeating cu o lună" nu sunt același lucru la Stripe pe abonamente: prima
+            // se consumă pe orice factură, a doua e legată de ciclul de facturare. Pentru o singură
+            // lună vrem prima; pentru două, a doua.
+            spec.Months <= 1 ? null : spec.Months,
+            cancellationToken);
+
     /// <summary>
-    /// Cuponul BCR, creat o singură dată. Id-ul e fix, deci a doua confirmare îl regăsește în loc
-    /// să facă un duplicat.
+    /// Cuponul cu id fix, creat o singură dată. A doua folosire îl regăsește în loc să facă un
+    /// duplicat. <paramref name="durationInMonths"/> null înseamnă „o singură factură".
     /// </summary>
-    private static async Task<string> EnsureBcrCouponAsync(CancellationToken cancellationToken)
+    private static async Task<string> EnsureCouponAsync(
+        string couponId,
+        string name,
+        long amountOffBani,
+        int? durationInMonths,
+        CancellationToken cancellationToken)
     {
         var coupons = new CouponService();
 
         try
         {
-            Coupon existing = await coupons.GetAsync(
-                Pricing.BcrDiscount.StripeCouponId,
-                cancellationToken: cancellationToken);
+            Coupon existing = await coupons.GetAsync(couponId, cancellationToken: cancellationToken);
             return existing.Id;
         }
         catch (StripeException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            // Prima confirmare din contul ăsta Stripe. Orice altă eroare urcă mai departe: dacă
-            // Stripe e căzut sau cheia e greșită, confirmarea trebuie să eșueze zgomotos, nu să
-            // se încheie cu o reducere care n-a fost aplicată.
+            // Prima folosire din contul ăsta Stripe. Orice altă eroare urcă mai departe: dacă
+            // Stripe e căzut sau cheia e greșită, checkoutul trebuie să eșueze zgomotos, nu să
+            // trimită clientul la plata întreagă a unei luni pe care a plătit-o deja.
         }
 
         Coupon created = await coupons.CreateAsync(
             new CouponCreateOptions
             {
-                Id = Pricing.BcrDiscount.StripeCouponId,
-                Name = "RIDElance — cont BCR",
-                AmountOff = Pricing.BcrDiscount.MonthlyBani,
+                Id = couponId,
+                Name = name,
+                AmountOff = amountOffBani,
                 Currency = "ron",
-                Duration = "repeating",
-                DurationInMonths = Pricing.BcrDiscount.Months,
+                Duration = durationInMonths is null ? "once" : "repeating",
+                DurationInMonths = durationInMonths,
             },
             cancellationToken: cancellationToken);
 

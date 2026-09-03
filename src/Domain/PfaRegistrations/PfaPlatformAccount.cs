@@ -39,7 +39,12 @@ public sealed class PfaPlatformAccount : Entity
     public string? DriverEmail { get; set; }
     /// <summary>Telefonul contului de șofer, în format E.164.</summary>
     public string? DriverPhone { get; set; }
-    /// <summary>ID/UUID-ul de șofer de pe platformă. Opțional: nu toți îl știu pe de rost.</summary>
+    /// <summary>Numele de pe contul de șofer, așa cum îl are platforma.</summary>
+    public string? DriverFullName { get; set; }
+    /// <summary>
+    /// ID/UUID-ul de șofer de pe platformă. Nu se mai cere în onboarding — șoferii nu-l știu, iar
+    /// platforma regăsește contul după email. Coloana rămâne pentru dosarele care îl au deja.
+    /// </summary>
     public string? DriverExternalId { get; set; }
 
     /// <summary>Contractul de afiliere semnat cu platforma.</summary>

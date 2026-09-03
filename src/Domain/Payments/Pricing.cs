@@ -15,8 +15,10 @@ public static class Pricing
     public static class RidelanceStart
     {
         /// <summary>
-        /// Avansul plătit în onboarding, înainte de transmiterea dosarului către partenerul
-        /// contabil. Nerambursabil — vezi <see cref="OnboardingAdvanceIsRefundable"/>.
+        /// Avansul plătit în onboarding, egal cu o lună de RIDElance Start. Se cere pe ambele
+        /// ramuri — și cine are deja PFA, și cine îl deschide prin noi — fiindcă e avans pe
+        /// abonament, nu taxă de înființare. Nerambursabil, dar se întoarce integral ca reducere
+        /// la primul abonament: vezi <see cref="OnboardingAdvanceCredit"/>.
         /// </summary>
         public const long OnboardingAdvanceBani = 39_900;
 
@@ -24,6 +26,49 @@ public static class Pricing
         /// Explicit, ca UI-ul să nu decidă singur ce scrie pe badge: avansul nu se returnează.
         /// </summary>
         public const bool OnboardingAdvanceIsRefundable = false;
+    }
+
+    /// <summary>
+    /// Cum se întoarce avansul de <see cref="RidelanceStart.OnboardingAdvanceBani"/> la primul
+    /// abonament ales la finalul onboardingului.
+    ///
+    /// Nu e un singur cupon de 399 lei „once": Stripe nu reportează restul unei reduceri pe
+    /// factura următoare, deci pe Solo (199/lună) primul cupon ar fi înghițit 399 pentru o
+    /// factură de 199, iar a doua lună s-ar fi facturat întreagă. De aceea fiecare plan are
+    /// forma lui, iar rezultatul e cel promis: Solo două luni gratis, Start una, Pro prima lună
+    /// mai ieftină cu valoarea avansului. Din luna următoare, preț normal.
+    /// </summary>
+    public static class OnboardingAdvanceCredit
+    {
+        /// <param name="AmountOffBani">Cât se scade de pe fiecare factură acoperită.</param>
+        /// <param name="Months">Câte facturi acoperă. 1 = doar prima.</param>
+        public readonly record struct Spec(string CouponId, string Name, long AmountOffBani, int Months);
+
+        /// <summary>
+        /// Forma reducerii pentru un plan, sau <c>null</c> dacă planul n-are una (flota nu trece
+        /// prin onboardingul PFA, deci n-a plătit avansul).
+        ///
+        /// Id-urile poartă suma, ca la <see cref="BcrDiscount.StripeCouponId"/>: un cupon Stripe e
+        /// imutabil, deci o valoare nouă are nevoie de un id nou, altfel se regăsește cel vechi.
+        /// </summary>
+        public static Spec? For(string plan) => plan?.ToUpperInvariant() switch
+        {
+            // Două luni întregi. 2 × 199 = 398, cu un leu sub avans — 399 nu se împarte la 199,
+            // iar alternativa (un cupon de 199,50) ar fi arătat o sumă inexistentă pe factură
+            // pentru exact aceleași două luni gratuite.
+            "SOLO" => new Spec(
+                "ridelance_avans_solo_199ron_2m", "RIDElance — avans onboarding (Solo)",
+                Plans.SoloMonthlyBani, 2),
+            // Avansul E prețul planului: exact o lună.
+            "START" => new Spec(
+                "ridelance_avans_start_399ron_1m", "RIDElance — avans onboarding (Start)",
+                Plans.StartMonthlyBani, 1),
+            // 599 − 399 = 200 în prima lună.
+            "PRO" => new Spec(
+                "ridelance_avans_pro_399ron_1m", "RIDElance — avans onboarding (Pro)",
+                RidelanceStart.OnboardingAdvanceBani, 1),
+            _ => null,
+        };
     }
 
     /// <summary>

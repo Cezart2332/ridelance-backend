@@ -124,7 +124,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     x.DocumentCount,
                     x.AwaitingAdminAction,
                     x.CreatedAtUtc,
-                    GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc));
+                    GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc),
+                    x.OnboardingCompletedAtUtc);
             })
             .ToList();
 

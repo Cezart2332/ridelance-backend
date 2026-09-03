@@ -28,6 +28,7 @@ internal sealed class PfaPlatformAccountConfiguration : IEntityTypeConfiguration
         // indexul unic de mai sus.
         builder.Property(a => a.DriverEmail).HasMaxLength(256);
         builder.Property(a => a.DriverPhone).HasMaxLength(32);
+        builder.Property(a => a.DriverFullName).HasMaxLength(256);
         builder.Property(a => a.DriverExternalId).HasMaxLength(128);
 
         builder.HasOne(a => a.PfaRegistration)

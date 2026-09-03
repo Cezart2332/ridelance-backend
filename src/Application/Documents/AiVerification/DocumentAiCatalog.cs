@@ -112,6 +112,11 @@ public static class DocumentAiCatalog
             "Cazier judiciar",
             "Certificat de cazier judiciar emis de Poliția Română. Raportează data emiterii și, dacă apare explicit, data de valabilitate.",
             true,
+            [
+                // Sursa de rezervă pentru agenția ARR, când certificatul de înregistrare n-are un
+                // județ lizibil: cazierul se ridică de la poliția județului de domiciliu.
+                new("judet", "Județul unității de poliție emitente, fără prefixul „jud.”", ExtractedFieldType.Text, Required: false),
+            ],
             // Valabil 6 luni de la eliberare; termenul îl calculează serverul, nu modelul.
             ValidMonthsFromIssue: 6),
         [DocumentCategory.ITP] = new(
@@ -147,6 +152,9 @@ public static class DocumentAiCatalog
                 new("registry_number", "Numărul de ordine în registrul comerțului (ex. F40/…/2024)", ExtractedFieldType.Text, Required: false),
                 new("holder_name", "Titularul PFA-ului (persoana fizică), nume și prenume", ExtractedFieldType.Text, Required: false),
                 new("professional_office", "Sediul profesional, ca text, exact cum apare pe certificat", ExtractedFieldType.Text, Required: false),
+                // Județul sediului, separat de adresa completă: de aici se precompletează agenția
+                // ARR la care se depune dosarul, iar un text liber n-ar fi putut alimenta un select.
+                new("judet", "Județul sediului profesional, fără prefixul „jud.”", ExtractedFieldType.Text, Required: false),
                 new("caen_codes", "Toate codurile CAEN ale obiectului de activitate, separate prin virgulă, cel principal primul (ex. 4939)", ExtractedFieldType.Caen, Required: true),
             ],
             // Data de pe certificat e a eliberării: un certificat de înregistrare nu expiră.

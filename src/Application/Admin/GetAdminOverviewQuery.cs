@@ -112,7 +112,9 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
             .ToList();
 
         var enrolledPfas = pfas
-            .Where(p => p.Status == PfaRegistrationStatus.Approved)
+            // Aceeași definiție ca a contorului de mai jos: înrolat = onboarding complet. Lista
+            // filtra pe „dosar aprobat", deci pe același ecran numărul și lista spuneau altceva.
+            .Where(p => p.OnboardingCompletedAtUtc is not null)
             .OrderByDescending(p => LatestActivity(p.User.LastActivityAtUtc, lastActivityByUserId.GetValueOrDefault(p.UserId)) ?? p.CreatedAtUtc)
             .Take(12)
             .Select(p => ToPfaCard(

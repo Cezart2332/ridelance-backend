@@ -27,6 +27,7 @@ public sealed record SubmitPlatformAccountCommand(
     string? Password = null,
     string? DriverEmail = null,
     string? DriverPhone = null,
+    string? DriverFullName = null,
     string? DriverExternalId = null) : ICommand<PlatformOnboardingResponse>;
 
 internal sealed class SubmitPlatformAccountCommandHandler(
@@ -53,6 +54,7 @@ internal sealed class SubmitPlatformAccountCommandHandler(
 
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.PlatformAccounts)
+            .Include(r => r.FleetConsent)
             .Where(r => r.UserId == command.UserId)
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -93,7 +95,31 @@ internal sealed class SubmitPlatformAccountCommandHandler(
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == command.UserId, cancellationToken);
 
-        account.Email = Rehydrated(command.Email, owner?.Email);
+        // Excepția: cine are DEJA cont de operator îl are aproape sigur pe alt email decât cel de
+        // RIDElance, iar noi trebuie să-l legăm pe acela. Acolo câmpul e editabil în UI și
+        // valoarea clientului e cea care contează — validată aici, nu doar în formular.
+        bool ownsAccountElsewhere = string.Equals(
+            account.ExistingAccountAnswer, "HasOperatorAccount", StringComparison.Ordinal);
+
+        if (ownsAccountElsewhere && !string.IsNullOrWhiteSpace(command.Email)
+            && !PlatformContactRules.IsValidEmail(command.Email))
+        {
+            return Result.Failure<PlatformOnboardingResponse>(PlatformShared.InvalidEmail);
+        }
+
+        if (ownsAccountElsewhere)
+        {
+            // Fără fișa clientului în ecuație: contul e al lui, pe adresa lui. Gol înseamnă
+            // „las-o pe cea salvată", ca la parolă — o salvare parțială nu șterge nimic.
+            account.Email = string.IsNullOrWhiteSpace(command.Email)
+                ? account.Email
+                : command.Email.Trim();
+        }
+        else
+        {
+            account.Email = Rehydrated(command.Email, owner?.Email);
+        }
+
         account.Phone = PlatformContactRules.ToE164(Rehydrated(command.Phone, owner?.PhoneNumber));
 
         // Datele de contact, verificate pe server, nu doar în formular. Câmpurile goale trec:
@@ -114,6 +140,9 @@ internal sealed class SubmitPlatformAccountCommandHandler(
             ? account.DriverEmail
             : command.DriverEmail.Trim();
         account.DriverPhone = PlatformContactRules.ToE164(command.DriverPhone) ?? account.DriverPhone;
+        account.DriverFullName = string.IsNullOrWhiteSpace(command.DriverFullName)
+            ? account.DriverFullName
+            : command.DriverFullName.Trim();
         account.DriverExternalId = string.IsNullOrWhiteSpace(command.DriverExternalId)
             ? account.DriverExternalId
             : command.DriverExternalId.Trim();

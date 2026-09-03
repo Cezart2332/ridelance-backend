@@ -23,9 +23,11 @@ internal sealed class OnboardingPlatforms : IEndpoint
         string? Phone,
         // Parola contului de flotă: se stochează criptată și nu se mai întoarce niciodată.
         string? Password,
-        // Contul de ȘOFER de pe aceeași platformă — alt cont decât cel de flotă. ID-ul e opțional.
+        // Contul de ȘOFER de pe aceeași platformă — alt cont decât cel de flotă. ID-ul e opțional
+        // și nu se mai cere în onboarding; rămâne acceptat pentru dosarele care îl au.
         string? DriverEmail,
         string? DriverPhone,
+        string? DriverFullName,
         string? DriverExternalId);
 
     public sealed record AdvanceRequest(string Provider, string OnboardingStatus);
@@ -84,12 +86,29 @@ internal sealed class OnboardingPlatforms : IEndpoint
                     request.OperatorAccountId, request.AffiliationContractDocumentId,
                     request.ExistingAccountAnswer,
                     request.Email, request.Phone, request.Password,
-                    request.DriverEmail, request.DriverPhone, request.DriverExternalId),
+                    request.DriverEmail, request.DriverPhone,
+                    request.DriverFullName, request.DriverExternalId),
                 cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .RequireAuthorization()
+        .WithTags(Tags.PfaRegistrations);
+
+        // Admin — ce a completat șoferul la pasul 5. Pasul n-are documente, deci fără endpointul
+        // ăsta panoul de validare afișa un grup gol pentru date care erau salvate de mult.
+        app.MapGet("pfa-registrations/{id:guid}/platforms", async (
+            Guid id,
+            IQueryHandler<GetPlatformOnboardingForRegistrationQuery, PlatformOnboardingResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<PlatformOnboardingResponse> result = await handler.Handle(
+                new GetPlatformOnboardingForRegistrationQuery(id), cancellationToken);
+
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:view")
         .WithTags(Tags.PfaRegistrations);
 
         // Admin — avans manual
