@@ -54,7 +54,10 @@ internal static class PfaFiscalProfileMapper
             account.FullName,
             account.Status.ToString(),
             account.ConfiguredAtUtc,
-            account.UpdatedAtUtc);
+            account.UpdatedAtUtc,
+            account.DriverEmail,
+            account.DriverPhone,
+            account.DriverFullName);
 
     public static PfaFleetConsentResponse MapConsent(PfaFleetConsent consent) =>
         new(

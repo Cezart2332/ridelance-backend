@@ -33,4 +33,9 @@ public sealed record PfaRegistrationSummary(
     /// <summary>Dosarul așteaptă o acțiune de admin (dosar PFA, secțiune sau pachet de semnături).</summary>
     bool AwaitingAdminAction,
     DateTime CreatedAtUtc,
-    DateTime? LastActivityAtUtc);
+    DateTime? LastActivityAtUtc,
+    /// <summary>
+    /// Când s-a înrolat efectiv: toți pașii de onboarding validați. NU e același lucru cu dosarul
+    /// PFA aprobat — un dosar aprobat poate avea încă patru pași de parcurs.
+    /// </summary>
+    DateTime? OnboardingCompletedAtUtc = null);

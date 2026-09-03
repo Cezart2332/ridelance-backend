@@ -65,6 +65,8 @@ public sealed record PfaFiscalProfileResponse(
     Guid? VehicleSupportingDocumentId,
     DateTime? UpdatedAtUtc);
 
+/// <param name="Email">Contul de FLOTĂ. Pe linia de tip Driver e contul de operator deschis de noi.</param>
+/// <param name="DriverEmail">Contul de ȘOFER, cel cu care se conduce efectiv. Alt cont, alte coloane.</param>
 public sealed record PfaPlatformAccountResponse(
     Guid? Id,
     Guid PfaRegistrationId,
@@ -75,7 +77,10 @@ public sealed record PfaPlatformAccountResponse(
     string? FullName,
     string Status,
     DateTime? ConfiguredAtUtc,
-    DateTime? UpdatedAtUtc);
+    DateTime? UpdatedAtUtc,
+    string? DriverEmail = null,
+    string? DriverPhone = null,
+    string? DriverFullName = null);
 
 public sealed record PfaFleetConsentResponse(
     Guid? Id,

@@ -33,6 +33,7 @@ internal sealed class SelectPlatformsCommandHandler(
 
         PfaRegistration? registration = await context.PfaRegistrations
             .Include(r => r.PlatformAccounts)
+            .Include(r => r.FleetConsent)
             .Where(r => r.UserId == command.UserId)
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);

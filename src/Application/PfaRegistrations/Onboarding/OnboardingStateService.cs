@@ -143,49 +143,65 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
             hasFailedPayment,
             documents,
             devSkippedSteps,
-            await CountyFromIdCardAsync(documents, cancellationToken));
+            await CountyForArrAsync(documents, cancellationToken));
     }
 
     /// <summary>
-    /// Județul de domiciliu citit din buletin. E aceeași valoare pe care OCR-ul o scrie în dosarul
-    /// de înființare, dar luată de la sursă: tabelul de câmpuri extrase.
+    /// Județul cu care se precompletează agenția ARR, citit din documentele deja încărcate.
     ///
-    /// Trebuie citită de aici pentru că dosarul de înființare există doar pe ramura „Nu am PFA",
-    /// iar buletinul se încarcă la eligibilitate — adică înainte ca dosarul să existe. Pe ramura
-    /// „Am PFA" nu se creează niciodată un dosar, deci județul n-avea de unde să vină, iar
-    /// selectul ARR rămânea gol deși informația era deja în sistem.
+    /// Ordinea urmează cine e cel mai aproape de adevăr pentru dosarul ARR: certificatul de
+    /// înregistrare (dosarul se depune pe sediul PFA-ului), apoi cazierul (se ridică de la poliția
+    /// județului de domiciliu), apoi buletinul. Valorile vin de la sursă — tabelul de câmpuri
+    /// extrase — nu din dosarul de înființare: acela există doar pe ramura „Nu am PFA", iar
+    /// documentele se încarcă înainte să existe.
     /// </summary>
-    private async Task<string?> CountyFromIdCardAsync(
+    private async Task<string?> CountyForArrAsync(
         List<Document> documents,
         CancellationToken cancellationToken)
     {
-        Guid[] identityDocumentIds = documents
+        // Fiecare sursă, cu cheia câmpului ei, în ordinea de preferință.
+        (DocumentCategory[] Categories, string FieldKey)[] sources =
+        [
+            ([DocumentCategory.CertificatInregistrare], "judet"),
+            ([DocumentCategory.CazierJudiciar], "judet"),
+            ([DocumentCategory.CarteIdentitate, DocumentCategory.Buletin], "domiciliu_judet"),
+        ];
+
+        Guid[] candidateIds = documents
             .Where(d => d.Status != DocumentStatus.Rejected
-                && d.Category is DocumentCategory.CarteIdentitate or DocumentCategory.Buletin)
-            .OrderByDescending(d => d.UploadedAtUtc)
+                && sources.Any(s => s.Categories.Contains(d.Category)))
             .Select(d => d.Id)
             .ToArray();
 
-        if (identityDocumentIds.Length == 0)
+        if (candidateIds.Length == 0)
         {
             return null;
         }
 
         List<ExtractedField> fields = await context.ExtractedFields
             .AsNoTracking()
-            .Where(f => identityDocumentIds.Contains(f.DocumentId))
+            .Where(f => candidateIds.Contains(f.DocumentId))
             .ToListAsync(cancellationToken);
 
-        // Cel mai recent buletin întâi; în cadrul lui, valoarea confirmată de om bate OCR-ul.
-        foreach (Guid documentId in identityDocumentIds)
+        foreach ((DocumentCategory[] categories, string fieldKey) in sources)
         {
-            ExtractedField? county = fields.Find(f => f.DocumentId == documentId
-                && string.Equals(f.FieldKey, "domiciliu_judet", StringComparison.OrdinalIgnoreCase));
+            // În cadrul unei surse: documentul cel mai recent întâi, iar în el valoarea confirmată
+            // de om bate OCR-ul.
+            IEnumerable<Guid> documentIds = documents
+                .Where(d => d.Status != DocumentStatus.Rejected && categories.Contains(d.Category))
+                .OrderByDescending(d => d.UploadedAtUtc)
+                .Select(d => d.Id);
 
-            string? value = county?.ConfirmedValue ?? county?.AiNormalizedValue;
-            if (!string.IsNullOrWhiteSpace(value))
+            foreach (Guid documentId in documentIds)
             {
-                return value.Trim();
+                ExtractedField? county = fields.Find(f => f.DocumentId == documentId
+                    && string.Equals(f.FieldKey, fieldKey, StringComparison.OrdinalIgnoreCase));
+
+                string? value = county?.ConfirmedValue ?? county?.AiNormalizedValue;
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.Trim();
+                }
             }
         }
 

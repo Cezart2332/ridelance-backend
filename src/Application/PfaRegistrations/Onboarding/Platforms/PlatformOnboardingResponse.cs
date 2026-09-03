@@ -1,4 +1,7 @@
+using System.Linq.Expressions;
+using Application.Abstractions.Data;
 using Domain.PfaRegistrations;
+using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.Platforms;
@@ -20,11 +23,19 @@ public sealed record PlatformAccountDto(
     bool HasPassword,
     string? DriverEmail,
     string? DriverPhone,
+    string? DriverFullName,
     string? DriverExternalId);
 
+/// <param name="FleetAccountsAccepted">
+/// Permisiunea de administrare a conturilor de flotă. Se cere în onboarding, la pasul 5, lângă
+/// conturile la care se referă — înainte trăia în Dashboard, unde ajungeai abia după înrolare.
+/// </param>
+/// <param name="BoltApiAccepted">Integrarea Bolt Fleet API. Doar Bolt o are.</param>
 public sealed record PlatformOnboardingResponse(
     Guid? PfaRegistrationId,
-    IReadOnlyList<PlatformAccountDto> Platforms);
+    IReadOnlyList<PlatformAccountDto> Platforms,
+    bool FleetAccountsAccepted = false,
+    bool BoltApiAccepted = false);
 
 internal static class PlatformShared
 {
@@ -44,6 +55,22 @@ internal static class PlatformShared
         "Onboarding.Platforms.InvalidPhone",
         "Numărul de telefon trebuie să fie în format internațional (ex. +40712345678).");
 
+    /// <summary>
+    /// Graful de care are nevoie răspunsul: conturile și consimțămintele. Într-un singur loc, ca
+    /// cele două citiri (a userului și a adminului) să nu poată include lucruri diferite.
+    /// </summary>
+    public static Task<PfaRegistration?> LoadAsync(
+        IApplicationDbContext context,
+        Expression<Func<PfaRegistration, bool>> filter,
+        CancellationToken cancellationToken) =>
+        context.PfaRegistrations
+            .AsNoTracking()
+            .Include(r => r.PlatformAccounts)
+            .Include(r => r.FleetConsent)
+            .Where(filter)
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
     /// <summary>Contul de onboarding al unei platforme e cel de tip Driver (contul propriu al șoferului).</summary>
     public static PfaPlatformAccount? DriverAccount(PfaRegistration registration, PfaPlatformProvider provider) =>
         registration.PlatformAccounts
@@ -62,6 +89,7 @@ internal static class PlatformShared
         !string.IsNullOrWhiteSpace(a.PasswordProtected),
         a.DriverEmail,
         a.DriverPhone,
+        a.DriverFullName,
         a.DriverExternalId);
 
     public static PlatformOnboardingResponse ToResponse(PfaRegistration registration)
@@ -72,7 +100,16 @@ internal static class PlatformShared
             .Select(ToDto)
             .ToList();
 
-        return new PlatformOnboardingResponse(registration.Id, dtos);
+        // Consimțămintele vin de pe aceeași citire: ecranul de permisiuni din pasul 5 le are nevoie
+        // ca să știe dacă mai are ce cere. Navigația poate lipsi dacă apelantul n-a inclus-o —
+        // atunci răspunsul e „neacceptat", care e și starea inițială reală.
+        PfaFleetConsent? consent = registration.FleetConsent;
+
+        return new PlatformOnboardingResponse(
+            registration.Id,
+            dtos,
+            consent?.FleetAccountsAccepted ?? false,
+            consent?.BoltApiAccepted ?? false);
     }
 
     /// <summary>

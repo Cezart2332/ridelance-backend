@@ -74,9 +74,23 @@ internal sealed class UpsertPfaPlatformAccountsCommandHandler(
                 existingAccounts.Add(account);
             }
 
-            account.Email = Normalize(item.Email);
-            account.Phone = Normalize(item.Phone);
-            account.FullName = Normalize(item.FullName);
+            // Pe linia de tip Driver, `Email`/`Phone` sunt credențialele contului de FLOTĂ, scrise
+            // de onboarding (pasul 5 ține ambele conturi pe același rând). Datele șoferului au
+            // coloanele lor. Fără separarea asta, o salvare din Dashboard ștergea contul de flotă
+            // și îl înlocuia cu cel de șofer — de acolo venea „Bolt Fleet apare la contul de șofer".
+            if (kind == PfaPlatformAccountKind.Driver)
+            {
+                account.DriverEmail = Normalize(item.Email);
+                account.DriverPhone = Normalize(item.Phone);
+                account.DriverFullName = Normalize(item.FullName);
+            }
+            else
+            {
+                account.Email = Normalize(item.Email);
+                account.Phone = Normalize(item.Phone);
+                account.FullName = Normalize(item.FullName);
+            }
+
             account.Status = kind == PfaPlatformAccountKind.Fleet ? status : PfaFleetAccountStatus.Configured;
             account.UpdatedAtUtc = DateTime.UtcNow;
             account.UpdatedByUserId = userContext.UserId;

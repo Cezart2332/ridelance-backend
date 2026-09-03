@@ -26,6 +26,11 @@ public interface IStripeService
         /// sesiune, deci un dublu-click nu produce două plăți.
         /// </summary>
         string? idempotencyKey = null,
+        /// <summary>
+        /// Cupon aplicat pe sesiune. Azi doar creditul avansului plătit în onboarding, care se
+        /// întoarce ca reducere pe primele facturi ale abonamentului.
+        /// </summary>
+        string? couponId = null,
         CancellationToken cancellationToken = default);
 #pragma warning restore CA1054
 
@@ -69,6 +74,19 @@ public interface IStripeService
     /// </remarks>
     Task ApplyBcrDiscountAsync(
         string stripeSubscriptionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cuponul cu care avansul din onboarding se întoarce la primul abonament, creat la prima
+    /// folosire și regăsit după aceea. Întoarce id-ul, de atașat la sesiunea de checkout.
+    /// </summary>
+    /// <remarks>
+    /// Câte un cupon per plan, fiindcă forma reducerii diferă (vezi
+    /// <c>Pricing.OnboardingAdvanceCredit</c>). Id-urile sunt fixe, deci al doilea client îl
+    /// regăsește pe primul în loc să umple contul cu duplicate identice.
+    /// </remarks>
+    Task<string> EnsureAdvanceCreditCouponAsync(
+        Pricing.OnboardingAdvanceCredit.Spec spec,
         CancellationToken cancellationToken = default);
 
     /// <summary>
