@@ -18,9 +18,13 @@ public sealed record FleetOnboardingInput(
     bool TermsAccepted = false, bool PrivacyAccepted = false);
 
 /// <param name="ContactVerificationRequired">
-/// Confirmarea emailului și a telefonului blochează pasul. Fals cât timp furnizorii de email și
-/// SMS nu sunt configurați: altfel pasul ar cere un cod care nu poate ajunge nicăieri, iar
-/// înrolarea s-ar opri acolo definitiv. Se aprinde din configurație, nu dintr-o modificare de cod.
+/// Confirmarea telefonului blochează pasul. Fals cât timp furnizorul de SMS nu e configurat:
+/// altfel pasul ar cere un cod care nu poate ajunge nicăieri, iar înrolarea s-ar opri acolo
+/// definitiv. Se aprinde din configurație, nu dintr-o modificare de cod.
+/// </param>
+/// <param name="EmailVerified">
+/// Informativ. NU blochează nimic în acest flux: emailul e adresa contului, confirmată la
+/// înregistrare — o a doua confirmare aici cerea un cod pentru ceva deja dovedit.
 /// </param>
 public sealed record FleetOnboardingResponse(
     FleetOnboarding Progress, bool DashboardAllowed, string Email, string? Phone,
@@ -37,11 +41,13 @@ public sealed class FleetOnboardingService(
     private static readonly HashSet<string> Platforms = ["Uber", "Bolt", "Blue", "BlackCab", "Altele", "Niciuna"];
 
     /// <summary>
-    /// Confirmarea contactelor e obligatorie doar când chiar putem trimite coduri.
+    /// Confirmarea telefonului e obligatorie doar când chiar putem trimite coduri.
     ///
-    /// Implicit FALS: furnizorii de email și SMS nu sunt încă configurați, iar o poartă care cere
-    /// un cod ce nu poate fi livrat nu e o verificare, e un zid. Câmpurile rămân pe ecran și
-    /// verificarea funcționează pentru cine o face — doar că nu mai oprește înrolarea.
+    /// Implicit FALS: furnizorul de SMS nu e încă configurat, iar o poartă care cere un cod ce nu
+    /// poate fi livrat nu e o verificare, e un zid. Câmpul rămâne pe ecran și confirmarea
+    /// funcționează pentru cine o face — doar că nu mai oprește înrolarea.
+    ///
+    /// Emailul nu intră aici deloc: e adresa contului, confirmată la înregistrare.
     /// </summary>
     private bool ContactVerificationRequired =>
         bool.TryParse(configuration["Onboarding:RequireContactVerification"], out bool required) && required;
@@ -159,9 +165,9 @@ public sealed class FleetOnboardingService(
                 await SaveCompanyAsync(user, progress.Company, ct);
                 break;
             case 2:
-                if (ContactVerificationRequired && (!user.IsEmailVerified || !user.IsPhoneVerified))
+                if (ContactVerificationRequired && !user.IsPhoneVerified)
                 {
-                    return Failure("Confirmă emailul și telefonul înainte de continuare.");
+                    return Failure("Confirmă numărul de telefon înainte de continuare.");
                 }
 
                 if (string.IsNullOrWhiteSpace(input.FirstName) || input.FirstName.Length > 128
@@ -237,7 +243,7 @@ public sealed class FleetOnboardingService(
         User? user = await UserAsync(ct);
         if (user is null || user.FleetOnboarding.CompletedStep != 7
             || user.FleetOnboarding.TermsAcceptedAtUtc is null
-            || ContactVerificationRequired && (!user.IsEmailVerified || !user.IsPhoneVerified))
+            || ContactVerificationRequired && !user.IsPhoneVerified)
         {
             return Result.Failure<string>(Error.Unprocessable("Fleet.Incomplete", "Completează configurarea înainte de plată."));
         }
@@ -318,7 +324,18 @@ public sealed class FleetOnboardingService(
         CompanyProfile? profile = await context.CompanyProfiles.SingleOrDefaultAsync(c => c.UserId == user.Id, ct);
         if (profile is null)
         {
-            profile = new() { Id = Guid.NewGuid(), UserId = user.Id, OwnerType = OwnerType.Srl, Slug = $"firma-{user.Id:N}" };
+            // Slug-ul din denumire, prin același generator ca la editarea profilului. Aici se
+            // scria `firma-{guid}`, deci mini-site-ul unei firme confirmate din onboarding trăia
+            // la o adresă pe care n-o putea citi nimeni — și care nu se mai schimba, fiindcă
+            // slug-ul se generează o singură dată (spec §4.2).
+            var id = Guid.NewGuid();
+            profile = new()
+            {
+                Id = id,
+                UserId = user.Id,
+                OwnerType = OwnerType.Srl,
+                Slug = await ResolveSlugAsync(company.Name, id, ct),
+            };
             context.CompanyProfiles.Add(profile);
         }
         profile.LegalName = company.Name;
@@ -328,6 +345,24 @@ public sealed class FleetOnboardingService(
         profile.Email = user.Email;
         profile.Phone = user.PhoneNumber;
         profile.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Slug-ul preferat, sau varianta cu sufix dacă e deja luat ori rezervat de o pagină a
+    /// site-ului. Aceeași regulă ca la editarea profilului — două definiții ar fi produs adrese
+    /// diferite pentru aceeași firmă, în funcție de unde a fost creată.
+    /// </summary>
+    private async Task<string> ResolveSlugAsync(string legalName, Guid profileId, CancellationToken ct)
+    {
+        string preferred = CompanySlug.Generate(legalName);
+
+        bool taken = await context.CompanyProfiles
+            .AsNoTracking()
+            .AnyAsync(p => p.Slug == preferred, ct);
+
+        return taken || CompanySlug.IsReserved(preferred)
+            ? CompanySlug.Disambiguate(preferred, profileId)
+            : preferred;
     }
 
     private static Result<FleetOnboardingResponse> Failure(string message) =>
