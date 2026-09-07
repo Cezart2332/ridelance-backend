@@ -50,7 +50,27 @@ public static class OblioInvoiceParser
             total,
             collected,
             ReadString(item, "link"),
-            ReadBool(item, "canceled"));
+            ReadBool(item, "canceled"),
+            ReadSpvStatus(item));
+    }
+
+    private static string ReadSpvStatus(JsonElement item)
+    {
+        if (!item.TryGetProperty("einvoiceStatus", out JsonElement status)
+            || status.ValueKind != JsonValueKind.Object)
+        {
+            return "unknown";
+        }
+
+        // `sent` alone does not mean ANAF has finished processing the invoice.
+        return ReadString(status, "code") switch
+        {
+            "1" => "sent",
+            "0" => "processing",
+            "2" => "error",
+            "-1" => "not_sent",
+            _ => "unknown",
+        };
     }
 
     /// <summary>Clientul vine ca obiect imbricat sau, la răspunsuri mai vechi, ca șir simplu.</summary>

@@ -7,7 +7,9 @@ public sealed record NotificationResponse(
     string Text,
     string Type,
     bool IsRead,
-    DateTime CreatedAtUtc)
+    DateTime CreatedAtUtc,
+    Guid? RelatedUserId,
+    string? SectionKey)
 {
     public static NotificationResponse FromEntity(Notification notification) =>
         new(
@@ -15,5 +17,7 @@ public sealed record NotificationResponse(
             notification.Text,
             notification.Type,
             notification.IsRead,
-            notification.CreatedAtUtc);
+            notification.CreatedAtUtc,
+            notification.RelatedUserId,
+            notification.SectionKey);
 }

@@ -184,6 +184,7 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             UserId = document.UserId,
             Text = text,
             Type = NotificationTypes.DocumentAiCheck,
+                SectionKey = document.Category.ToString(),
             IsRead = false,
             CreatedAtUtc = DateTime.UtcNow,
         });

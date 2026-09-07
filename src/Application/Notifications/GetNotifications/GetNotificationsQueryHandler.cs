@@ -14,7 +14,7 @@ internal sealed class GetNotificationsQueryHandler(IApplicationDbContext context
     {
         List<NotificationResponse> notifications = await context.Notifications
             .AsNoTracking()
-            .Where(n => n.UserId == request.UserId)
+            .Where(n => n.UserId == request.UserId && !n.IsDismissed)
             .OrderByDescending(n => n.CreatedAtUtc)
             .Select(n => NotificationResponse.FromEntity(n))
             .ToListAsync(cancellationToken);

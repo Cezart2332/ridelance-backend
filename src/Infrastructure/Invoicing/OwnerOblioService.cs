@@ -79,7 +79,8 @@ internal sealed class OwnerOblioService(
         string path = "docs/invoice/list"
             + $"?cif={Uri.EscapeDataString(credentials.Cif)}"
             + $"&issuedAfter={from:yyyy-MM-dd}"
-            + $"&issuedBefore={to:yyyy-MM-dd}";
+            + $"&issuedBefore={to:yyyy-MM-dd}"
+            + "&withEinvoiceStatus=1";
 
         JsonElement data = await OblioHttp.GetAsync(httpClient, Map(credentials), path, cancellationToken);
 

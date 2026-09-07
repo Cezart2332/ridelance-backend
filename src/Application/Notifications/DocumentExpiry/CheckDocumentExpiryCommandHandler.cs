@@ -111,11 +111,14 @@ internal sealed class CheckDocumentExpiryCommandHandler(
                 ? $"Documentul tău \"{categoryLabel}\" a expirat astăzi!"
                 : $"Documentul tău \"{categoryLabel}\" expiră în {daysUntilExpiry} zile ({expiryRomania:dd.MM.yyyy}).";
 
+            Guid? ownerNotificationId = null;
+            Guid? accountantNotificationId = null;
+
             // Preferința titularului se respectă doar pentru el: contabila primește oricum
             // anunțul, pentru că e o obligație de serviciu, nu o notificare de confort.
             if (await OwnerWantsAsync(ownerId, NotificationTypes.DocumentExpiringSoon, cancellationToken))
             {
-                await CreateNotificationAsync(ownerId, ownerText, NotificationTypes.DocumentExpiringSoon, notifTag);
+                ownerNotificationId = await CreateNotificationAsync(ownerId, ownerText, NotificationTypes.DocumentExpiringSoon, notifTag, ownerId, doc.Category.ToString());
             }
 
             if (contabilId.HasValue)
@@ -133,7 +136,7 @@ internal sealed class CheckDocumentExpiryCommandHandler(
                     ? $"Clientul {ownerName}: \"{categoryLabel}\" a expirat astăzi!"
                     : $"Clientul {ownerName}: \"{categoryLabel}\" expiră în {daysUntilExpiry} zile ({expiryRomania:dd.MM.yyyy}).";
 
-                await CreateNotificationAsync(contabilId.Value, contabilText, NotificationTypes.DocumentExpiringSoon, $"{notifTag}:contabil");
+                accountantNotificationId = await CreateNotificationAsync(contabilId.Value, contabilText, NotificationTypes.DocumentExpiringSoon, $"{notifTag}:contabil", ownerId, doc.Category.ToString());
             }
 
             await context.SaveChangesAsync(cancellationToken);
@@ -142,10 +145,13 @@ internal sealed class CheckDocumentExpiryCommandHandler(
             Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
             string pushTitle = daysUntilExpiry == 0 ? "Document expirat!" : $"Document expiră în {daysUntilExpiry} zile";
 
-            await SendPushAsync(ownerId, pushTitle, categoryLabel, "/dashboard", appBaseUri, cancellationToken);
+            if (ownerNotificationId is not null)
+            {
+                await SendPushAsync(ownerId, pushTitle, categoryLabel, $"/app/notificari/{ownerNotificationId}", appBaseUri, cancellationToken);
+            }
             if (contabilId.HasValue)
             {
-                await SendPushAsync(contabilId.Value, pushTitle, categoryLabel, "/contabil/dashboard", appBaseUri, cancellationToken);
+                await SendPushAsync(contabilId.Value, pushTitle, categoryLabel, $"/app/notificari/{accountantNotificationId}", appBaseUri, cancellationToken);
             }
 
             notifsSent++;
@@ -177,7 +183,7 @@ internal sealed class CheckDocumentExpiryCommandHandler(
         return preference?.Enabled ?? true;
     }
 
-    private async Task CreateNotificationAsync(Guid userId, string text, string type, string? dedupeKey = null)
+    private async Task<Guid> CreateNotificationAsync(Guid userId, string text, string type, string? dedupeKey = null, Guid? relatedUserId = null, string? sectionKey = null)
     {
         var notification = new Notification
         {
@@ -187,10 +193,13 @@ internal sealed class CheckDocumentExpiryCommandHandler(
             Type = type,
             IsRead = false,
             DedupeKey = dedupeKey,
+            RelatedUserId = relatedUserId,
+            SectionKey = sectionKey,
             CreatedAtUtc = DateTime.UtcNow
         };
         context.Notifications.Add(notification);
         await Task.CompletedTask;
+        return notification.Id;
     }
 
     private async Task SendPushAsync(

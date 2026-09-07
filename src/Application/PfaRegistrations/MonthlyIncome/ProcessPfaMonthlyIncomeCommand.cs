@@ -131,6 +131,7 @@ internal sealed class ProcessPfaMonthlyIncomeCommandHandler(
                 UserId = pfa.UserId,
                 Text = clientText,
                 Type = NotificationTypes.MonthProcessed,
+                    RelatedUserId = pfa.UserId,
                 IsRead = false,
                 CreatedAtUtc = DateTime.UtcNow
             };
@@ -149,6 +150,7 @@ internal sealed class ProcessPfaMonthlyIncomeCommandHandler(
                     UserId = admin.Id,
                     Text = adminText,
                     Type = NotificationTypes.MonthProcessed,
+                    RelatedUserId = pfa.UserId,
                     IsRead = false,
                     CreatedAtUtc = DateTime.UtcNow
                 };
@@ -158,7 +160,7 @@ internal sealed class ProcessPfaMonthlyIncomeCommandHandler(
             await context.SaveChangesAsync(cancellationToken);
 
             Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
-            string clientRelativePath = "/dashboard";
+            string clientRelativePath = $"/app/notificari/{clientNotification.Id}";
             string clientDeepLink = appBaseUri is null ? clientRelativePath : new Uri(appBaseUri, clientRelativePath).ToString();
 
             foreach (PushSubscription sub in pfa.User.PushSubscriptions)
@@ -173,7 +175,7 @@ internal sealed class ProcessPfaMonthlyIncomeCommandHandler(
                 }
             }
 
-            string adminRelativePath = "/contabil/dashboard";
+            string adminRelativePath = $"/admin?tab=pfa&user={pfa.UserId}";
             string adminDeepLink = appBaseUri is null ? adminRelativePath : new Uri(appBaseUri, adminRelativePath).ToString();
 
             foreach (User admin in admins)

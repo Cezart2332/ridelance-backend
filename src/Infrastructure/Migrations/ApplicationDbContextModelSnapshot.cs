@@ -714,6 +714,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
+                    b.Property<bool>("IsDismissed").HasColumnType("boolean").HasColumnName("is_dismissed");
+                    b.Property<Guid?>("RelatedUserId").HasColumnType("uuid").HasColumnName("related_user_id");
+                    b.Property<string>("SectionKey").HasMaxLength(64).HasColumnType("character varying(64)").HasColumnName("section_key");
+
                     b.Property<bool>("IsRead")
                         .HasColumnType("boolean")
                         .HasColumnName("is_read");

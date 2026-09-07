@@ -890,7 +890,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
             }
 
             Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
-            string relativePath = "/app/dashboard/profil#plati";
+            string relativePath = $"/app/notificari/{notification.Id}";
             string deepLink = appBaseUri is null ? relativePath : new Uri(appBaseUri, relativePath).ToString();
 
             foreach (PushSubscription sub in user.PushSubscriptions)

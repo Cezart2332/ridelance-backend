@@ -141,6 +141,8 @@ public sealed class ChatHub(
                 UserId = recipientId,
                 Text = notificationText,
                 Type = NotificationTypes.ChatRoomMessage,
+                RelatedUserId = room.ClientUserId,
+                SectionKey = senderRoleLabel,
                 IsRead = false,
                 CreatedAtUtc = DateTime.UtcNow
             };
@@ -166,13 +168,7 @@ public sealed class ChatHub(
             if (recipient is not null)
             {
                 Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
-                string relativePath = recipient.Role switch
-                {
-                    Domain.Users.UserRole.Client => "/app/dashboard/suport",
-                    Domain.Users.UserRole.Contabil => "/contabil/dashboard",
-                    Domain.Users.UserRole.Admin => "/admin/dashboard",
-                    _ => "/app/dashboard"
-                };
+                string relativePath = $"/app/notificari/{notification.Id}";
                 deepLink = appBaseUri is null ? relativePath : new Uri(appBaseUri, relativePath).ToString();
             }
 

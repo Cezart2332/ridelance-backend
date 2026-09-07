@@ -136,6 +136,7 @@ internal sealed class CreatePfaRegistrationCommandHandler(
                 UserId = recipientId,
                 Text = notificationText,
                 Type = NotificationTypes.OnboardingStarted,
+                RelatedUserId = command.UserId,
                 IsRead = false,
                 CreatedAtUtc = DateTime.UtcNow
             };
@@ -160,7 +161,7 @@ internal sealed class CreatePfaRegistrationCommandHandler(
                 .AsNoTracking()
                 .SingleOrDefaultAsync(u => u.Id == sub.UserId, cancellationToken);
 
-            string relativePath = recipient?.Role == UserRole.Admin ? "/admin/dashboard" : "/contabil/dashboard";
+            string relativePath = recipient?.Role == UserRole.Admin ? $"/admin?tab=pfa&user={command.UserId}" : $"/contabil?tab=clients&user={command.UserId}";
             string deepLink = appBaseUri is null ? relativePath : new Uri(appBaseUri, relativePath).ToString();
 
             try

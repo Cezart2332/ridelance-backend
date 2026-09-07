@@ -37,7 +37,6 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
         Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase)
             ? parsedBase
             : null;
-        string deepLink = RecurringDocumentationTexts.BuildDeepLink(appBaseUri);
 
         IQueryable<User> usersQuery = context.Users
             .AsNoTracking()
@@ -100,7 +99,7 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
                         subscription,
                         RecurringDocumentationTexts.PushTitle,
                         pushBody,
-                        deepLink,
+                        appBaseUri is null ? $"/app/notificari/{notification.Id}" : new Uri(appBaseUri, $"/app/notificari/{notification.Id}").ToString(),
                         cancellationToken);
                     pushSent++;
                 }
@@ -144,7 +143,7 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
                             subscription,
                             TaxThresholdTexts.PushTitle,
                             taxPushBody,
-                            deepLink,
+                            appBaseUri is null ? $"/app/notificari/{taxNotification.Id}" : new Uri(appBaseUri, $"/app/notificari/{taxNotification.Id}").ToString(),
                             cancellationToken);
                         pushSent++;
                     }

@@ -10,6 +10,9 @@ public sealed class Notification : Entity
     public string Text { get; set; } = string.Empty;
     public string Type { get; set; } = "info";
     public bool IsRead { get; set; }
+    public bool IsDismissed { get; set; }
+    public Guid? RelatedUserId { get; set; }
+    public string? SectionKey { get; set; }
 
     /// <summary>
     /// Cheia care împiedică trimiterea de două ori a aceleiași notificări.
