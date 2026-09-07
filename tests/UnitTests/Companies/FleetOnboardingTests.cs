@@ -113,13 +113,37 @@ public sealed class FleetOnboardingTests
         (await db.CompanyProfiles.SingleAsync()).LegalName.ShouldBe("Firma Test SRL");
     }
 
+    /// <summary>
+    /// Confirmarea contactelor blochează doar când e pornită din configurație.
+    ///
+    /// Implicit e stinsă: furnizorii de email și SMS nu sunt configurați, iar o poartă care cere
+    /// un cod ce nu poate fi livrat oprea înrolarea fără nicio cale de ieșire.
+    /// </summary>
     [Fact]
-    public async Task UnverifiedContactsCannotAdvance()
+    public async Task UnverifiedContactsAdvanceWhileVerificationIsOff()
     {
         await using ApplicationDbContext db = Database();
         User user = await AddUser(db, 1);
         user.PhoneVerifiedAtUtc = null;
-        (await Service(db, user).SaveAsync(new(2, FirstName: "Ion", LastName: "Pop", Position: "Administrator"), default)).IsFailure.ShouldBeTrue();
+
+        (await Service(db, user).SaveAsync(
+            new(2, FirstName: "Ion", LastName: "Pop", Position: "Administrator"), default))
+            .IsSuccess.ShouldBeTrue();
+
+        user.FleetOnboarding.CompletedStep.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task UnverifiedContactsCannotAdvanceWhenVerificationIsRequired()
+    {
+        await using ApplicationDbContext db = Database();
+        User user = await AddUser(db, 1);
+        user.PhoneVerifiedAtUtc = null;
+
+        (await Service(db, user, requireContactVerification: true).SaveAsync(
+            new(2, FirstName: "Ion", LastName: "Pop", Position: "Administrator"), default))
+            .IsFailure.ShouldBeTrue();
+
         user.FleetOnboarding.CompletedStep.ShouldBe(1);
     }
 
@@ -233,9 +257,17 @@ public sealed class FleetOnboardingTests
         return user;
     }
 
-    private static FleetOnboardingService Service(ApplicationDbContext db, User user, IStripeService? stripe = null) =>
+    private static FleetOnboardingService Service(
+        ApplicationDbContext db,
+        User user,
+        IStripeService? stripe = null,
+        bool requireContactVerification = false) =>
         new(db, new CurrentUser(user.Id), new Lookup(), stripe ?? DispatchProxy.Create<IStripeService, StripeProxy>(),
-            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["App:BaseUrl"] = "https://example.test" }).Build());
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:BaseUrl"] = "https://example.test",
+                ["Onboarding:RequireContactVerification"] = requireContactVerification ? "true" : "false",
+            }).Build());
 
     private sealed record CurrentUser(Guid UserId) : IUserContext;
     private sealed class Lookup : ICompanyLookupService

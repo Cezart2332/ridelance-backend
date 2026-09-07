@@ -17,11 +17,17 @@ public sealed record FleetOnboardingInput(
     bool Deferred = false, bool BcrRequested = false, string? Cycle = null,
     bool TermsAccepted = false, bool PrivacyAccepted = false);
 
+/// <param name="ContactVerificationRequired">
+/// Confirmarea emailului și a telefonului blochează pasul. Fals cât timp furnizorii de email și
+/// SMS nu sunt configurați: altfel pasul ar cere un cod care nu poate ajunge nicăieri, iar
+/// înrolarea s-ar opri acolo definitiv. Se aprinde din configurație, nu dintr-o modificare de cod.
+/// </param>
 public sealed record FleetOnboardingResponse(
     FleetOnboarding Progress, bool DashboardAllowed, string Email, string? Phone,
     bool EmailVerified, bool PhoneVerified, string FirstName, string LastName,
     bool BankConnected, bool OblioConnected, long AmountDueBani, long RegularAmountBani,
-    long MonthlyAmountBani, long AnnualAmountBani, bool LegacyAccount);
+    long MonthlyAmountBani, long AnnualAmountBani, bool LegacyAccount,
+    bool ContactVerificationRequired = false);
 
 public sealed class FleetOnboardingService(
     IApplicationDbContext context, IUserContext userContext,
@@ -29,6 +35,16 @@ public sealed class FleetOnboardingService(
 {
     private static readonly HashSet<string> Positions = ["Administrator", "Asociat", "Manager flotă", "Manager operațional", "Angajat", "Altă funcție"];
     private static readonly HashSet<string> Platforms = ["Uber", "Bolt", "Blue", "BlackCab", "Altele", "Niciuna"];
+
+    /// <summary>
+    /// Confirmarea contactelor e obligatorie doar când chiar putem trimite coduri.
+    ///
+    /// Implicit FALS: furnizorii de email și SMS nu sunt încă configurați, iar o poartă care cere
+    /// un cod ce nu poate fi livrat nu e o verificare, e un zid. Câmpurile rămân pe ecran și
+    /// verificarea funcționează pentru cine o face — doar că nu mai oprește înrolarea.
+    /// </summary>
+    private bool ContactVerificationRequired =>
+        bool.TryParse(configuration["Onboarding:RequireContactVerification"], out bool required) && required;
 
     public async Task<Result<FleetOnboardingResponse>> CancelCheckoutAsync(CancellationToken ct)
     {
@@ -143,7 +159,7 @@ public sealed class FleetOnboardingService(
                 await SaveCompanyAsync(user, progress.Company, ct);
                 break;
             case 2:
-                if (!user.IsEmailVerified || !user.IsPhoneVerified)
+                if (ContactVerificationRequired && (!user.IsEmailVerified || !user.IsPhoneVerified))
                 {
                     return Failure("Confirmă emailul și telefonul înainte de continuare.");
                 }
@@ -221,7 +237,7 @@ public sealed class FleetOnboardingService(
         User? user = await UserAsync(ct);
         if (user is null || user.FleetOnboarding.CompletedStep != 7
             || user.FleetOnboarding.TermsAcceptedAtUtc is null
-            || !user.IsEmailVerified || !user.IsPhoneVerified)
+            || ContactVerificationRequired && (!user.IsEmailVerified || !user.IsPhoneVerified))
         {
             return Result.Failure<string>(Error.Unprocessable("Fleet.Incomplete", "Completează configurarea înainte de plată."));
         }
@@ -293,7 +309,8 @@ public sealed class FleetOnboardingService(
             FleetPricing.AmountDue(p.Cycle, false),
             FleetPricing.AmountDue(SubscriptionBillingCycle.Monthly, p.BcrEligibleAtUtc is not null && p.CompletedAtUtc is null),
             FleetPricing.AmountDue(SubscriptionBillingCycle.Annual, p.BcrEligibleAtUtc is not null && p.CompletedAtUtc is null),
-            !user.FleetOnboardingRequired);
+            !user.FleetOnboardingRequired,
+            ContactVerificationRequired);
     }
 
     private async Task SaveCompanyAsync(User user, FleetCompany company, CancellationToken ct)
