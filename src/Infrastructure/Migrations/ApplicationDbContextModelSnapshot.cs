@@ -1740,6 +1740,16 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Users.User", b =>
                 {
+                    b.Property<bool>("FleetOnboardingRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("fleet_onboarding_required");
+
+                    b.Property<string>("FleetOnboarding")
+                        .IsRequired()
+                        .IsConcurrencyToken()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("fleet_onboarding");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")

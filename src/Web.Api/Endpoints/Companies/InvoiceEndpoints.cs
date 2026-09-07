@@ -42,6 +42,12 @@ internal sealed class ConnectOblio : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
+        app.MapGet("invoices/oblio", async (
+            IQueryHandler<GetOblioCredentialsQuery, OblioCredentialsStatus> handler, CancellationToken ct) =>
+        {
+            Result<OblioCredentialsStatus> result = await handler.Handle(new GetOblioCredentialsQuery(), ct);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
+        }).RequireAuthorization().WithTags(Tags.Companies);
         app.MapPost("invoices/oblio/connect", async (
             ConnectOblioCommand command,
             ICommandHandler<ConnectOblioCommand, OblioConnectionDto> handler,

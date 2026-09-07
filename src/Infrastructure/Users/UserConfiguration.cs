@@ -9,6 +9,14 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
     public void Configure(EntityTypeBuilder<User> builder)
     {
         builder.HasKey(u => u.Id);
+        builder.Property(u => u.FleetOnboarding).IsConcurrencyToken().HasColumnType("jsonb")
+            .HasConversion(
+                value => System.Text.Json.JsonSerializer.Serialize(value, (System.Text.Json.JsonSerializerOptions?)null),
+                value => System.Text.Json.JsonSerializer.Deserialize<Domain.Companies.FleetOnboarding>(value, (System.Text.Json.JsonSerializerOptions?)null) ?? new())
+            .Metadata.SetValueComparer(new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<Domain.Companies.FleetOnboarding>(
+                (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+                value => System.Text.Json.JsonSerializer.Serialize(value, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
+                value => System.Text.Json.JsonSerializer.Deserialize<Domain.Companies.FleetOnboarding>(System.Text.Json.JsonSerializer.Serialize(value, (System.Text.Json.JsonSerializerOptions?)null), (System.Text.Json.JsonSerializerOptions?)null)!));
 
         builder.HasIndex(u => u.Email).IsUnique();
 

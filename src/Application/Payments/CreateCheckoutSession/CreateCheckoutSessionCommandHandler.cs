@@ -21,6 +21,11 @@ internal sealed class CreateCheckoutSessionCommandHandler(
         CreateCheckoutSessionCommand command,
         CancellationToken cancellationToken)
     {
+        if (await context.Users.AnyAsync(u => u.Id == command.UserId && u.Role == Domain.Users.UserRole.CarPoster, cancellationToken)
+            && command.Mode == "subscription")
+        {
+            return Result.Failure<string>(Error.Unprocessable("Checkout.Fleet", "Folosește configurarea flotei pentru abonamentul SRL."));
+        }
         // Nu mai există „o schimbare pe săptămână": poarta aia păzea ancora de luni 15:00, iar
         // schimbarea de plan se încasează acum, la checkout, ca orice altă plată.
 

@@ -97,7 +97,12 @@ public sealed record CompanyLookupResult(
     string? City,
     string? County,
     string? RegistrationNumber,
-    bool VatPayer);
+    bool VatPayer,
+    string? PostalCode = null,
+    string? Caen = null,
+    string? RegistrationDate = null,
+    string? Status = null,
+    bool? VatOnCollection = null);
 
 /// <summary>O factură emisă, citită din Oblio.</summary>
 #pragma warning disable CA1054 // `Link` e URL-ul public al documentului, ca șir — îl afișăm, nu-l construim

@@ -31,6 +31,8 @@ public sealed record StripeCatalogItem(
 /// </remarks>
 public static class StripeCatalog
 {
+    public static StripeCatalogItem Fleet { get; } = Plan("fleet", "RIDElance Fleet", Domain.Companies.FleetPricing.MonthlyBani, Domain.Companies.FleetPricing.AnnualBani, false);
+    public static StripeCatalogItem FleetAnnual { get; } = Plan("fleet", "RIDElance Fleet", Domain.Companies.FleetPricing.MonthlyBani, Domain.Companies.FleetPricing.AnnualBani, true);
     private const string Ron = "ron";
 
     /// <summary>

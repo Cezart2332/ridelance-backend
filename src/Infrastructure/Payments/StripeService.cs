@@ -17,6 +17,13 @@ namespace Infrastructure.Payments;
 /// </summary>
 internal sealed class StripeService : IStripeService
 {
+    public async Task ExpireCheckoutAsync(string sessionId, CancellationToken cancellationToken = default) =>
+        await new SessionService().ExpireAsync(sessionId, cancellationToken: cancellationToken);
+
+    public async Task ApplySubscriptionCouponAsync(string subscriptionId, string couponId, CancellationToken cancellationToken = default) =>
+        await new SubscriptionService().UpdateAsync(subscriptionId,
+            new SubscriptionUpdateOptions { Discounts = [new SubscriptionDiscountOptions { Coupon = couponId }] },
+            new RequestOptions { IdempotencyKey = $"fleet-bcr:{subscriptionId}:{couponId}" }, cancellationToken);
     /// <summary>
     /// Resolved price IDs, shared across requests because the service itself is scoped.
     /// Keyed by API-key fingerprint so a key swap at runtime cannot serve IDs from the old account.
@@ -95,7 +102,7 @@ internal sealed class StripeService : IStripeService
             UiMode = "embedded_page",
             // Stripe refuză o sesiune care are și cupon, și câmp de cod promoțional. Când avem un
             // cupon de aplicat, ăla e reducerea — nu-i cerem clientului să mai tasteze ceva.
-            AllowPromotionCodes = couponId is null ? true : null,
+            AllowPromotionCodes = couponId is null && sessionMetadata?.GetValueOrDefault("fleetOnboarding") != "true" ? true : null,
             Discounts = couponId is null
                 ? null
                 : [new SessionDiscountOptions { Coupon = couponId }],

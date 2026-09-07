@@ -78,6 +78,7 @@ app.UseRequestContextLogging();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<Web.Api.Middleware.FleetAccessMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {

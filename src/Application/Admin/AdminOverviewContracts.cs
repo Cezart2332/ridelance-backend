@@ -148,6 +148,8 @@ public static class AdminBillingLabels
             (SubscriptionPlan.Solo, SubscriptionBillingCycle.Annual) => Pricing.Plans.SoloAnnualBani,
             (SubscriptionPlan.Start, SubscriptionBillingCycle.Annual) => Pricing.Plans.StartAnnualBani,
             (SubscriptionPlan.Pro, SubscriptionBillingCycle.Annual) => Pricing.Plans.ProAnnualBani,
+            (SubscriptionPlan.Fleet, SubscriptionBillingCycle.Annual) => Domain.Companies.FleetPricing.AnnualBani,
+            (SubscriptionPlan.Fleet, _) => Domain.Companies.FleetPricing.MonthlyBani,
             (SubscriptionPlan.Solo, _) => Pricing.Plans.SoloMonthlyBani,
             (SubscriptionPlan.Start, _) => Pricing.Plans.StartMonthlyBani,
             (SubscriptionPlan.Pro, _) => Pricing.Plans.ProMonthlyBani,
@@ -168,6 +170,7 @@ public static class AdminBillingLabels
         SubscriptionPlan.Solo => "Solo",
         SubscriptionPlan.Start => "Start",
         SubscriptionPlan.Pro => "Pro",
+        SubscriptionPlan.Fleet => "Fleet",
         _ => "Fără plan"
     };
 }

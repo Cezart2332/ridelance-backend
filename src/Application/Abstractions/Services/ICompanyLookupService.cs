@@ -16,4 +16,6 @@ public interface ICompanyLookupService
     /// nu e o eroare de sistem, e un CUI greșit.
     /// </summary>
     Task<CompanyLookupResult?> FindByCuiAsync(string cui, CancellationToken cancellationToken = default);
+    Task<CompanyLookupResult?> FindForOnboardingAsync(string cui, CancellationToken cancellationToken = default) =>
+        FindByCuiAsync(cui, cancellationToken);
 }

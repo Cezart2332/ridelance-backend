@@ -4,6 +4,8 @@ namespace Domain.Users;
 
 public sealed class User : Entity
 {
+    public bool FleetOnboardingRequired { get; set; }
+    public Domain.Companies.FleetOnboarding FleetOnboarding { get; set; } = new();
     public Guid Id { get; set; }
     public string Email { get; set; } = string.Empty;
     public string FirstName { get; set; } = string.Empty;

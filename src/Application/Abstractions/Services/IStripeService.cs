@@ -7,6 +7,8 @@ namespace Application.Abstractions.Services;
 /// </summary>
 public interface IStripeService
 {
+    Task ExpireCheckoutAsync(string sessionId, CancellationToken cancellationToken = default);
+    Task ApplySubscriptionCouponAsync(string subscriptionId, string couponId, CancellationToken cancellationToken = default);
     /// <summary>
     /// Creates a Stripe Checkout Session for a one-time payment or subscription.
     /// Returns the session client secret for embedded checkout.

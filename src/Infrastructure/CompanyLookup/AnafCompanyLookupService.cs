@@ -23,7 +23,13 @@ internal sealed class AnafCompanyLookupService(
 {
     private static readonly Uri Endpoint = new("https://webservicesp.anaf.ro/api/PlatitorTvaRest/v9/tva");
 
-    public async Task<CompanyLookupResult?> FindByCuiAsync(string cui, CancellationToken cancellationToken = default)
+    public Task<CompanyLookupResult?> FindByCuiAsync(string cui, CancellationToken cancellationToken = default) =>
+        FindAsync(cui, false, cancellationToken);
+
+    public Task<CompanyLookupResult?> FindForOnboardingAsync(string cui, CancellationToken cancellationToken = default) =>
+        FindAsync(cui, true, cancellationToken);
+
+    private async Task<CompanyLookupResult?> FindAsync(string cui, bool failOnUnavailable, CancellationToken cancellationToken)
     {
         string normalized = Normalize(cui);
         if (normalized.Length == 0 || !long.TryParse(normalized, NumberStyles.None, CultureInfo.InvariantCulture, out long numericCui))
@@ -45,6 +51,11 @@ internal sealed class AnafCompanyLookupService(
             using HttpResponseMessage response = await httpClient.PostAsJsonAsync(Endpoint, body, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                if (failOnUnavailable)
+                {
+                    response.EnsureSuccessStatusCode();
+                }
+
                 logger.LogWarning("ANAF a răspuns {Status} pentru CUI {Cui}.", (int)response.StatusCode, normalized);
                 return null;
             }
@@ -61,12 +72,21 @@ internal sealed class AnafCompanyLookupService(
         }
         catch (HttpRequestException exception)
         {
+            if (failOnUnavailable)
+            {
+                throw;
+            }
             // Registrul indisponibil nu blochează emiterea: câmpurile rămân de completat de mână.
             logger.LogWarning(exception, "Nu am putut interoga ANAF pentru CUI {Cui}.", normalized);
             return null;
         }
         catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
+            if (failOnUnavailable)
+            {
+                throw new HttpRequestException("ANAF timeout.", exception);
+            }
+
             logger.LogWarning(exception, "Interogarea ANAF pentru CUI {Cui} a expirat.", normalized);
             return null;
         }
@@ -100,7 +120,14 @@ internal sealed class AnafCompanyLookupService(
             Text(office, "sdenumire_Localitate"),
             Text(office, "sdenumire_Judet"),
             Text(general, "nrRegCom"),
-            vatPayer);
+            vatPayer,
+            Text(office, "scod_Postal") ?? Text(general, "codPostal"),
+            Text(general, "cod_CAEN"),
+            Text(general, "data_inregistrare"),
+            Text(general, "stare_inregistrare"),
+            entry.TryGetProperty("inregistrare_RTVAI", out JsonElement collection)
+                && collection.TryGetProperty("statusTvaIncasare", out JsonElement status)
+                    ? status.ValueKind == JsonValueKind.True : null);
     }
 
     /// <summary>Strada, numărul și restul, ca un singur rând — cum se scrie pe o factură.</summary>
