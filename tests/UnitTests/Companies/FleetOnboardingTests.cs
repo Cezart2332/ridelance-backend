@@ -134,7 +134,7 @@ public sealed class FleetOnboardingTests
     }
 
     [Fact]
-    public async Task UnverifiedContactsCannotAdvanceWhenVerificationIsRequired()
+    public async Task UnverifiedPhoneCannotAdvanceWhenVerificationIsRequired()
     {
         await using ApplicationDbContext db = Database();
         User user = await AddUser(db, 1);
@@ -145,6 +145,25 @@ public sealed class FleetOnboardingTests
             .IsFailure.ShouldBeTrue();
 
         user.FleetOnboarding.CompletedStep.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Emailul nu se mai confirmă în acest flux: e adresa contului, dovedită la înregistrare.
+    /// Nici cu poarta pornită nu are voie să oprească pasul — altfel am fi cerut un al doilea cod
+    /// pentru aceeași adresă.
+    /// </summary>
+    [Fact]
+    public async Task UnverifiedEmailNeverBlocksTheFleetFlow()
+    {
+        await using ApplicationDbContext db = Database();
+        User user = await AddUser(db, 1);
+        user.EmailVerifiedAtUtc = null;
+
+        (await Service(db, user, requireContactVerification: true).SaveAsync(
+            new(2, FirstName: "Ion", LastName: "Pop", Position: "Administrator"), default))
+            .IsSuccess.ShouldBeTrue();
+
+        user.FleetOnboarding.CompletedStep.ShouldBe(2);
     }
 
     [Fact]
