@@ -68,20 +68,22 @@ internal sealed class RejectOnboardingSectionCommandHandler(
         string sectionLabel = OnboardingSectionCatalog.SectionLabel(command.SectionKey);
         string text = $"Secțiunea „{sectionLabel}” necesită modificări. Vezi mențiunile echipei.";
 
-        context.Notifications.Add(new Notification
+        var notification = new Notification
         {
             Id = Guid.NewGuid(),
             UserId = registration.UserId,
             Text = text,
             Type = NotificationTypes.OnboardingSectionUpdate,
+            SectionKey = command.SectionKey.ToString(),
             IsRead = false,
             CreatedAtUtc = DateTime.UtcNow,
-        });
+        };
+        context.Notifications.Add(notification);
 
         await context.SaveChangesAsync(cancellationToken);
 
         Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
-        string relativePath = $"/onboarding/sections/{command.SectionKey}";
+        string relativePath = $"/app/notificari/{notification.Id}";
         string deepLink = appBaseUri is null ? relativePath : new Uri(appBaseUri, relativePath).ToString();
 
         foreach (PushSubscription sub in registration.User.PushSubscriptions)

@@ -18,6 +18,25 @@ public class OblioInvoiceParserTests
 {
     private static JsonElement Json(string raw) => JsonDocument.Parse(raw).RootElement.Clone();
 
+    [Theory]
+    [InlineData("{\"code\":1,\"sent\":true}", "sent")]
+    [InlineData("{\"code\":0,\"sent\":true}", "processing")]
+    [InlineData("{\"code\":2,\"sent\":false}", "error")]
+    [InlineData("{\"code\":-1,\"sent\":false}", "not_sent")]
+    [InlineData("{\"code\":\"1\"}", "sent")]
+    [InlineData("{\"code\":99}", "unknown")]
+    [InlineData("{\"sent\":true}", "unknown")]
+    [InlineData("null", "unknown")]
+    [InlineData("false", "unknown")]
+    public void ReadsSpvStatusIndependentlyOfPaymentAndSentFlag(string status, string expected)
+    {
+        OwnerInvoice? invoice = OblioInvoiceParser.Parse(Json($$"""
+        {"seriesName":"RMS","number":"9","issueDate":"2026-08-15","total":100,"collected":100,"einvoiceStatus":{{status}}}
+        """));
+
+        invoice!.SpvStatus.ShouldBe(expected);
+    }
+
     [Fact]
     public void ParsesACompleteInvoice()
     {
@@ -104,6 +123,7 @@ public class OblioInvoiceParserTests
         invoice.DueDate.ShouldBeNull();
         invoice.Link.ShouldBeNull();
         invoice.ClientName.ShouldBe("Client necunoscut");
+        invoice.SpvStatus.ShouldBe("unknown");
     }
 
     /// <summary>Anularea are trei forme în răspunsurile lor; toate înseamnă același lucru.</summary>

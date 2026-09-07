@@ -59,6 +59,7 @@ internal sealed class UpdateDocumentStatusCommandHandler(
                 UserId = document.UserId,
                 Text = $"Documentul „{documentLabel}” a fost respins de echipa RIDElance. Încarcă o variantă nouă.",
                 Type = NotificationTypes.DocumentStatusUpdate,
+                SectionKey = document.Category.ToString(),
                 IsRead = false,
                 CreatedAtUtc = DateTime.UtcNow,
             });

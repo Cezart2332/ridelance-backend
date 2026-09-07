@@ -116,5 +116,6 @@ public sealed record OwnerInvoice(
     decimal TotalLei,
     decimal CollectedLei,
     string? Link,
-    bool Canceled);
+    bool Canceled,
+    string SpvStatus = "unknown");
 #pragma warning restore CA1054

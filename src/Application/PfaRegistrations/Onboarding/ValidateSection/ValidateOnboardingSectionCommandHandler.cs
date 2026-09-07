@@ -90,19 +90,21 @@ internal sealed class ValidateOnboardingSectionCommandHandler(
         // Înrolarea NU se produce aici — se declanșează abia când toți cei 6 pași sunt finalizați
         // (vezi OnboardingProgress.TryMarkCompleted, apelat din GetOnboardingStateQueryHandler).
 
-        context.Notifications.Add(new Notification
+        var notification = new Notification
         {
             Id = Guid.NewGuid(),
             UserId = registration.UserId,
             Text = text,
             Type = NotificationTypes.OnboardingSectionUpdate,
+            SectionKey = command.SectionKey.ToString(),
             IsRead = false,
             CreatedAtUtc = DateTime.UtcNow,
-        });
+        };
+        context.Notifications.Add(notification);
 
         await context.SaveChangesAsync(cancellationToken);
 
-        await SendPushAsync(registration.User, "Secțiune validată", text, "/onboarding", cancellationToken);
+        await SendPushAsync(registration.User, "Secțiune validată", text, $"/app/notificari/{notification.Id}", cancellationToken);
 
         return Result.Success();
     }

@@ -26,7 +26,8 @@ public sealed record OwnerInvoiceDto(
     long CollectedBani,
     string? Link,
     string Status,
-    bool Overdue);
+    bool Overdue,
+    string SpvStatus = "unknown");
 #pragma warning restore CA1054
 
 /// <summary>Cifrele de sus ale paginii, calculate din același set pe care îl vede tabelul.</summary>
@@ -170,7 +171,8 @@ internal sealed class GetOwnerInvoicesQueryHandler(
             collected,
             invoice.Link,
             status,
-            overdue);
+            overdue,
+            invoice.SpvStatus);
     }
 
     /// <summary>

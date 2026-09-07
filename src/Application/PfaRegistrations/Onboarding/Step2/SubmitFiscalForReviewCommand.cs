@@ -96,6 +96,7 @@ internal sealed class SubmitFiscalForReviewCommandHandler(
                 UserId = adminId,
                 Text = "Un dosar așteaptă pachetul de semnături (pasul „Fiscal, bancă & semnături”).",
                 Type = NotificationTypes.OnboardingStepAwaitingAdmin,
+                RelatedUserId = command.UserId,
                 IsRead = false,
                 CreatedAtUtc = nowUtc,
             });

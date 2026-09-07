@@ -104,6 +104,7 @@ internal sealed class UploadDocumentCommandHandler(
                 UserId = assignedContabilId.Value,
                 Text = text,
                 Type = NotificationTypes.DocumentUploaded,
+                RelatedUserId = command.UserId,
                 IsRead = false,
                 CreatedAtUtc = DateTime.UtcNow
             };
@@ -120,7 +121,7 @@ internal sealed class UploadDocumentCommandHandler(
             string pushBody = $"Client {clientUser?.FirstName}: {shortFileName}";
 
             Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
-            string relativePath = "/contabil/dashboard";
+            string relativePath = $"/app/notificari/{notification.Id}";
             string deepLink = appBaseUri is null ? relativePath : new Uri(appBaseUri, relativePath).ToString();
 
             foreach (PushSubscription sub in subscriptions)

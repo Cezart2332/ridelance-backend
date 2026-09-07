@@ -38,7 +38,7 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
 
         // Unread notifications
         int unread = await context.Notifications
-            .Where(n => n.UserId == query.UserId && !n.IsRead)
+            .Where(n => n.UserId == query.UserId && !n.IsRead && !n.IsDismissed)
             .CountAsync(cancellationToken);
 
         // 5 most recently uploaded documents
