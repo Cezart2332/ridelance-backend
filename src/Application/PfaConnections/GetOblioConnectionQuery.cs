@@ -55,15 +55,17 @@ internal sealed class GetOblioConnectionQueryHandler(
         }
 
         PfaOblioAccount? account = pfa.OblioAccount;
+        Domain.Invoicing.OblioIntegration? integration = await context.OblioIntegrations.AsNoTracking()
+            .SingleOrDefaultAsync(o => o.UserId == userId, cancellationToken);
 
         return new OblioConnectionResponse(
-            Status: (account?.IntegrationStatus ?? OblioIntegrationStatus.Pending).ToString(),
-            Connected: account?.IntegrationStatus == OblioIntegrationStatus.Active,
-            AccountEmail: account?.AccountEmail,
-            CompanyName: pfa.LegalName ?? pfa.FullName,
-            Cui: pfa.Cui,
+            Status: integration?.IsConnected == true ? "Active" : "Pending",
+            Connected: integration?.IsConnected == true,
+            AccountEmail: integration?.ClientId ?? account?.AccountEmail,
+            CompanyName: integration?.CompanyName ?? pfa.LegalName ?? pfa.FullName,
+            Cui: integration?.Cif ?? pfa.Cui,
             ConsentsAccepted: account?.AllConsentsAccepted ?? false,
             ConsentsAcceptedAtUtc: account?.ConsentsAcceptedAtUtc,
-            LastSyncAtUtc: null);
+            LastSyncAtUtc: integration?.LastSyncAtUtc);
     }
 }

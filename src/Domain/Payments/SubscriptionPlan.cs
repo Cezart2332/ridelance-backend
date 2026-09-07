@@ -4,5 +4,6 @@ public enum SubscriptionPlan
 {
     Solo,
     Start,
-    Pro
+    Pro,
+    Fleet
 }

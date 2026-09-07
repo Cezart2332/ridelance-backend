@@ -11,6 +11,17 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
         Exception exception,
         CancellationToken cancellationToken)
     {
+        if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+            await httpContext.Response.WriteAsJsonAsync(new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Datele au fost actualizate",
+                Detail = "Reîncarcă pagina pentru a continua cu ultima versiune salvată."
+            }, cancellationToken);
+            return true;
+        }
         logger.LogError(exception, "Unhandled exception occurred");
 
         var problemDetails = new ProblemDetails

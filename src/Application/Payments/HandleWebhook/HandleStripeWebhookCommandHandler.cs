@@ -5,9 +5,9 @@ using Application.Abstractions.Notifications;
 using Application.Abstractions.Services;
 using Application.PfaRegistrations.Onboarding.CompanyFormation;
 using Domain.Cars;
-using Domain.PfaRegistrations.CompanyFormation;
 using Domain.Notifications;
 using Domain.Payments;
+using Domain.PfaRegistrations.CompanyFormation;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -57,6 +57,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
         await (stripeEvent.Type switch
         {
             "checkout.session.completed"    => HandleCheckoutSessionCompleted(stripeEvent, cancellationToken),
+            "checkout.session.async_payment_succeeded" => HandleCheckoutSessionCompleted(stripeEvent, cancellationToken),
             "invoice.payment_succeeded"     => HandleInvoicePaymentSucceeded(stripeEvent, cancellationToken),
             "invoice.payment_failed"        => HandleInvoicePaymentFailed(stripeEvent, cancellationToken),
             "customer.subscription.deleted" => HandleSubscriptionDeleted(stripeEvent, cancellationToken),
@@ -149,6 +150,29 @@ internal sealed class HandleStripeWebhookCommandHandler(
             // Subscription checkout completed — record first payment + create subscription record
             string? planStr = session.Metadata?.GetValueOrDefault("customMetadata") ?? string.Empty;
             SubscriptionPlan plan = ParsePlan(planStr);
+            if (plan == SubscriptionPlan.Fleet)
+            {
+                if (await context.PaymentRecords.AnyAsync(p => p.StripeSessionId == session.Id, ct))
+                {
+                    return;
+                }
+                if (session.PaymentStatus is not ("paid" or "no_payment_required"))
+                {
+                    return;
+                }
+
+                Domain.Users.User? fleetUser = await context.Users.SingleOrDefaultAsync(u => u.Id == userId, ct);
+                if (fleetUser?.Role != Domain.Users.UserRole.CarPoster
+                    || fleetUser.FleetOnboarding.CompletedStep != 7
+                    || session.Metadata?.GetValueOrDefault("fleetOnboarding") != "true")
+                {
+                    return;
+                }
+
+                fleetUser.FleetOnboarding.CompletedAtUtc ??= DateTime.UtcNow;
+                fleetUser.FleetOnboarding.CheckoutAttemptId = null;
+                fleetUser.FleetOnboarding.CheckoutClientSecret = null;
+            }
             SubscriptionBillingCycle cycle = ParseCycle(planStr);
 
             // Abonamentul se încasează la checkout, deci prima facturare e chiar acum. Nu mai
@@ -177,6 +201,10 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 existing.CancelledAtUtc = null;
                 existing.DashboardAccessGranted = true;
                 existing.DashboardAccessGrantedUtc ??= DateTime.UtcNow;
+                if (plan == SubscriptionPlan.Fleet && session.Metadata?.GetValueOrDefault("fleetBcrApplied") == "true")
+                {
+                    existing.BcrDiscountConfirmedAtUtc ??= DateTime.UtcNow;
+                }
 
                 // `??=`, nu atribuire: cine a cerut reducerea o dată n-o pierde pentru că a
                 // schimbat planul fără să rebifeze. Confirmarea, dacă a venit deja, rămâne pe loc.
@@ -203,6 +231,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
                     DashboardAccessGranted = true,
                     DashboardAccessGrantedUtc = DateTime.UtcNow,
                     BcrDiscountRequestedAtUtc = ParseBcrRequested(planStr) ? DateTime.UtcNow : null,
+                    BcrDiscountConfirmedAtUtc = plan == SubscriptionPlan.Fleet && session.Metadata?.GetValueOrDefault("fleetBcrApplied") == "true" ? DateTime.UtcNow : null,
                 };
                 context.UserSubscriptions.Add(sub);
             }
@@ -705,6 +734,10 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
     private static SubscriptionPlan ParsePlan(string metadata)
     {
+        if (metadata.Split('|')[0].Equals("plan:fleet", StringComparison.OrdinalIgnoreCase))
+        {
+            return SubscriptionPlan.Fleet;
+        }
         // metadata format: "plan:solo|billingAnchor:1234567"
         string planPart = metadata;
         int pipeIdx = metadata.IndexOf('|');

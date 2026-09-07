@@ -51,11 +51,14 @@ internal sealed class GetConnectionsQueryHandler(
             .OrderByDescending(c => c.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
+        Domain.Invoicing.OblioIntegration? oblio = await context.OblioIntegrations.AsNoTracking()
+            .SingleOrDefaultAsync(o => o.UserId == userContext.UserId, cancellationToken);
         return Result.Success(new List<IntegrationDto>
         {
-            // Oblio există în platformă doar legat de dosarul PFA (`PfaOblioAccount`), deci un SRL
-            // nu are încă unde să se conecteze. Cardul o spune, în loc să pară doar neconectat.
-            new("Oblio", "disconnected", null, null, null, null, Available: false, []),
+            // Aceeași conexiune per proprietar pe care o folosesc facturile și onboardingul.
+            new("Oblio", oblio?.IsConnected == true ? "connected" : "disconnected",
+                oblio?.UpdatedAtUtc, null, oblio?.LastSyncAtUtc, oblio?.ErrorMessage, Available: true,
+                oblio is null ? [] : [new("Email cont", oblio.ClientId), new("CIF", oblio.Cif)]),
             MapBank(bank),
             new("Eldrive", "disconnected", null, null, null, null, Available: false, []),
         });

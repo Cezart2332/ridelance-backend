@@ -25,6 +25,7 @@ internal sealed class RegisterUserCommandHandler(IApplicationDbContext context, 
             LastName = command.LastName?.Trim() ?? string.Empty,
             PasswordHash = passwordHasher.Hash(command.Password),
             Role = command.Role,
+            FleetOnboardingRequired = command.Role == UserRole.CarPoster,
             PhoneNumber = command.PhoneNumber,
             CreatedAtUtc = DateTime.UtcNow
         };

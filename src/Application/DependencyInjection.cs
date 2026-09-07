@@ -39,6 +39,8 @@ public static class DependencyInjection
             Documents.ExtractedFields.ExtractedFieldApplier>();
 
         services.AddScoped<PfaRegistrations.Onboarding.OnboardingStateService>();
+        services.AddScoped<Companies.Onboarding.FleetOnboardingService>();
+        services.AddScoped<Companies.Onboarding.FleetBcrService>();
 
         // Reia în dosarul de înființare datele citite din buletin la pasul de eligibilitate.
         services.AddScoped<PfaRegistrations.Onboarding.CompanyFormation.CompanyFormationPrefillService>();
