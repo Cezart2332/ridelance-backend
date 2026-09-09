@@ -321,6 +321,34 @@ public class OnboardingStepCatalogTests
         steps[3].Status.ShouldBe(InProgress);
     }
 
+    /// <summary>
+    /// „Validează secțiunea" închide pasul chiar dacă partea clientului a rămas neterminată.
+    ///
+    /// Regresia raportată: adminul apăsa butonul, primea „pasul următor al clientului este
+    /// deblocat", iar clientul rămânea exact unde era. Poarta cerea în plus răspunsul la TVA și
+    /// consimțămintele Oblio, deci un dosar căruia îi lipsea oricare din ele nu se putea închide
+    /// din admin — și nimeni nu vedea de ce. Verdictul e al adminului; pentru dosarele incomplete
+    /// există butonul de respingere, cu motiv.
+    /// </summary>
+    [Fact]
+    public void Fiscal_AdminValidation_ClosesTheStepEvenWithTheClientPartUnfinished()
+    {
+        PfaRegistration registration = FiscalRegistration();
+        registration.FiscalProfile = null;
+        registration.OblioAccount = null;
+        registration.SignaturePacket = new OnboardingSignaturePacket
+        {
+            Id = Guid.NewGuid(),
+            Status = SignaturePacketStatus.Completed,
+            SignedAtUtc = DateTime.UtcNow,
+        };
+
+        List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
+
+        steps[2].Status.ShouldBe(Completed);
+        steps[3].Status.ShouldBe(InProgress);
+    }
+
     [Fact]
     public void Fiscal_WhenAdminRejects_ReturnsToUserAsRejected()
     {
