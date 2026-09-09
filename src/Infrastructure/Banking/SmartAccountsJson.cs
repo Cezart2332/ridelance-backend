@@ -4,18 +4,22 @@ using System.Text.Json;
 namespace Infrastructure.Banking;
 
 /// <summary>
-/// Citire tolerantă a răspunsurilor Fintable.
+/// Citire tolerantă a răspunsurilor Smart Accounts.
 ///
-/// OpenAPI-ul declară `Account`, `Transaction` și `Connection` ca obiecte generice, fără
-/// proprietăți — numele de câmpuri le știm doar din exemplele din documentație. Deci fiecare
-/// câmp se caută sub mai multe denumiri plauzibile și lipsa lui nu e o eroare, ci un null.
-/// Alternativa — să presupunem o formă exactă — ar transforma orice schimbare de la ei într-o
-/// excepție la runtime.
+/// Furnizorul normalizează cele cincisprezece bănci sub aceleași scheme, dar normalizarea nu e
+/// perfectă: câmpuri declarate în OpenAPI lipsesc la unele bănci (IBAN la conturile de card,
+/// `valueDate` la altele), iar sumele vin când ca număr, când ca string. Deci fiecare câmp se
+/// caută sub mai multe denumiri plauzibile, iar lipsa lui e un null, nu o excepție.
 /// </summary>
-internal static class FintableJson
+internal static class SmartAccountsJson
 {
     public static string? String(JsonElement element, params string[] names)
     {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
         foreach (string name in names)
         {
             if (!element.TryGetProperty(name, out JsonElement value))
@@ -34,9 +38,9 @@ internal static class FintableJson
 
                     break;
 
-                // Unele câmpuri (nume de instituție) pot veni ca obiect {name: ...}.
+                // Contrapartida vine uneori ca obiect: {iban, currency, name}.
                 case JsonValueKind.Object:
-                    string? nested = String(value, "name", "display_name", "title");
+                    string? nested = String(value, "name", "iban");
                     if (nested is not null)
                     {
                         return nested;
@@ -58,6 +62,11 @@ internal static class FintableJson
     /// </summary>
     public static decimal? Decimal(JsonElement element, params string[] names)
     {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
         foreach (string name in names)
         {
             if (!element.TryGetProperty(name, out JsonElement value))
@@ -78,6 +87,29 @@ internal static class FintableJson
                 {
                     return parsed;
                 }
+            }
+        }
+
+        return null;
+    }
+
+    public static bool? Bool(JsonElement element, params string[] names)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (string name in names)
+        {
+            if (!element.TryGetProperty(name, out JsonElement value))
+            {
+                continue;
+            }
+
+            if (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                return value.GetBoolean();
             }
         }
 
@@ -112,12 +144,34 @@ internal static class FintableJson
             : null;
     }
 
-    /// <summary>Despachetează plicul `{data: ...}` folosit de toate răspunsurile.</summary>
-    public static JsonElement Data(JsonElement root) =>
-        root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out JsonElement data)
-            ? data
+    /// <summary>
+    /// Despachetează plicul `{status, messageStatus, payload}` în care vine absolut orice răspuns.
+    /// </summary>
+    public static JsonElement Payload(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty("payload", out JsonElement payload)
+            ? payload
             : root;
 
-    public static string? Cursor(JsonElement root) =>
-        root.ValueKind == JsonValueKind.Object ? String(root, "next_cursor") : null;
+    /// <summary>
+    /// Pagina următoare de tranzacții: `_links.next.href` sau `links.next.href`, după bancă.
+    /// </summary>
+    public static string? NextPage(JsonElement payload)
+    {
+        foreach (string container in new[] { "_links", "links" })
+        {
+            if (payload.ValueKind == JsonValueKind.Object &&
+                payload.TryGetProperty(container, out JsonElement links) &&
+                links.ValueKind == JsonValueKind.Object &&
+                links.TryGetProperty("next", out JsonElement next))
+            {
+                string? href = next.ValueKind == JsonValueKind.String ? next.GetString() : String(next, "href");
+                if (!string.IsNullOrWhiteSpace(href))
+                {
+                    return href;
+                }
+            }
+        }
+
+        return null;
+    }
 }

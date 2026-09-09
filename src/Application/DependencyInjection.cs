@@ -63,7 +63,7 @@ public static class DependencyInjection
         services.AddScoped<Invoicing.OwnerOblioResolver>();
 
         services.AddScoped<Banking.BankAccountSyncService>();
-        services.AddScoped<Banking.BankConnectionClaimService>();
+        services.AddScoped<Banking.BankConsentFinalizer>();
 
         return services;
     }

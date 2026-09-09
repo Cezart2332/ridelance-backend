@@ -10,7 +10,10 @@ internal sealed class BankAccountConfiguration : IEntityTypeConfiguration<BankAc
     {
         builder.HasKey(ba => ba.Id);
 
-        builder.HasIndex(ba => ba.ProviderAccountId).IsUnique();
+        // Unic pe conexiune, nu global: identificatorul e al băncii, iar la unele bănci chiar
+        // IBAN-ul e identificatorul. Cu index global, doi utilizatori cu conturi la aceeași bancă
+        // s-ar ciocni la inserare.
+        builder.HasIndex(ba => new { ba.BankConnectionId, ba.ProviderAccountId }).IsUnique();
         builder.HasIndex(ba => ba.UserId);
 
         builder.Property(ba => ba.ProviderAccountId).HasMaxLength(128).IsRequired();

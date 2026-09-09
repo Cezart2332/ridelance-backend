@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
@@ -141,8 +142,27 @@ public static class DependencyInjection
 
         // Un singur provider de open banking. Alegerea prin config a dispărut odată cu
         // Enable Banking și GoCardless — cine vrea altul îl înregistrează aici.
-        services.Configure<FintableOptions>(configuration.GetSection(FintableOptions.SectionName));
-        services.AddHttpClient<IBankDataProvider, FintableBankDataProvider>();
+        services.Configure<SmartAccountsOptions>(configuration.GetSection(SmartAccountsOptions.SectionName));
+        services.AddSingleton<SmartAccountsCertificate>();
+        services.AddScoped<IBankConsentTokenStore, BankConsentTokenStore>();
+        services
+            .AddHttpClient<IBankDataProvider, SmartAccountsBankDataProvider>()
+            // Certificatul de client se atașează pe handler, nu pe cerere: mTLS se negociază la
+            // deschiderea conexiunii TLS, cu mult înainte ca cererea să existe.
+            .ConfigurePrimaryHttpMessageHandler(serviceProvider =>
+            {
+                var handler = new HttpClientHandler();
+                X509Certificate2? clientCertificate = serviceProvider
+                    .GetRequiredService<SmartAccountsCertificate>()
+                    .Value;
+
+                if (clientCertificate is not null)
+                {
+                    handler.ClientCertificates.Add(clientCertificate);
+                }
+
+                return handler;
+            });
 
         // Background Jobs
         services.AddHostedService<RecurringDocumentationNotificationJob>();

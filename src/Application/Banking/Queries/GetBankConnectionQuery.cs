@@ -12,16 +12,6 @@ public sealed record BankAccountResponse(
     string? Currency,
     string? OwnerName);
 
-/// <param name="Candidates">
-/// Populat doar când revendicarea a fost ambiguă: mai multe conexiuni noi, sau mai multe
-/// conectări în curs în același timp. Utilizatorul alege una, iar noi nu ghicim.
-/// </param>
-public sealed record BankConnectionCandidate(
-    string ProviderConnectionId,
-    string? InstitutionName,
-    string? InstitutionLogo,
-    DateTime? CreatedAtUtc);
-
 public sealed record BankConnectionResponse(
     string Status,
     string InstitutionId,
@@ -32,21 +22,20 @@ public sealed record BankConnectionResponse(
     DateTime? LastSyncedAtUtc,
     string? ErrorMessage,
     List<BankAccountResponse> Accounts,
-    DateTime? LinkExpiresAtUtc,
-    List<BankConnectionCandidate> Candidates);
+    DateTime? LinkExpiresAtUtc);
 
 public sealed record GetBankConnectionQuery : IQuery<BankConnectionResponse?>;
 
 /// <summary>
 /// Starea conexiunii bancare a utilizatorului curent.
 ///
-/// Aici se face și revendicarea: providerul nu ne anunță când cineva a terminat conectarea,
-/// deci momentul în care aflăm e chiar întrebarea pe care o pune pagina în timp ce așteaptă.
+/// Aici se face și finalizarea: furnizorul nu ne sună înapoi când cineva termină autorizarea la
+/// bancă, deci momentul în care aflăm e chiar întrebarea pe care o pune pagina cât timp așteaptă.
 /// </summary>
 internal sealed class GetBankConnectionQueryHandler(
     IApplicationDbContext context,
     IUserContext userContext,
-    BankConnectionClaimService claimService)
+    BankConsentFinalizer finalizer)
     : IQueryHandler<GetBankConnectionQuery, BankConnectionResponse?>
 {
     public async Task<Result<BankConnectionResponse?>> Handle(
@@ -64,32 +53,23 @@ internal sealed class GetBankConnectionQueryHandler(
             return Result.Success<BankConnectionResponse?>(null);
         }
 
-        List<BankConnectionCandidate> candidates = [];
-
         if (connection.Status is BankConnectionStatus.Created or BankConnectionStatus.Pending)
         {
-            BankClaimOutcome outcome = await claimService.TryClaimAsync(connection, cancellationToken);
-            candidates = [.. outcome.Candidates.Select(c => new BankConnectionCandidate(
-                c.Id,
-                c.InstitutionName,
-                c.InstitutionLogo,
-                c.CreatedAtUtc))];
+            BankConnectionStatus status = await finalizer.TryFinalizeAsync(connection, cancellationToken);
 
-            if (outcome.Status == BankConnectionStatus.Linked)
+            if (status == BankConnectionStatus.Linked)
             {
-                // Revendicarea tocmai a scris conturile; le recitim ca răspunsul să le conțină.
+                // Finalizarea tocmai a scris conturile; le recitim ca răspunsul să le conțină.
                 connection.Accounts = await context.BankAccounts
                     .Where(a => a.BankConnectionId == connection.Id)
                     .ToListAsync(cancellationToken);
             }
         }
 
-        return Result.Success<BankConnectionResponse?>(MapResponse(connection, candidates));
+        return Result.Success<BankConnectionResponse?>(MapResponse(connection));
     }
 
-    internal static BankConnectionResponse MapResponse(
-        BankConnection connection,
-        List<BankConnectionCandidate>? candidates = null) =>
+    internal static BankConnectionResponse MapResponse(BankConnection connection) =>
         new(
             connection.Status.ToString(),
             connection.InstitutionId,
@@ -102,6 +82,5 @@ internal sealed class GetBankConnectionQueryHandler(
             [.. connection.Accounts
                 .Where(a => a.IsActive)
                 .Select(a => new BankAccountResponse(a.IbanMasked, a.Currency, a.OwnerName))],
-            connection.LinkExpiresAtUtc,
-            candidates ?? []);
+            connection.LinkExpiresAtUtc);
 }

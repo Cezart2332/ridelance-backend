@@ -1,7 +1,6 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
-using Application.Abstractions.Security;
 using Application.Abstractions.Services;
 using Domain.Banking;
 using Microsoft.EntityFrameworkCore;
@@ -14,8 +13,7 @@ public sealed record DisconnectBankConnectionCommand : ICommand<bool>;
 internal sealed class DisconnectBankConnectionCommandHandler(
     IApplicationDbContext context,
     IUserContext userContext,
-    IBankDataProvider provider,
-    ISecretProtector secretProtector)
+    IBankDataProvider provider)
     : ICommandHandler<DisconnectBankConnectionCommand, bool>
 {
     public async Task<Result<bool>> Handle(
@@ -35,13 +33,14 @@ internal sealed class DisconnectBankConnectionCommandHandler(
                 "Nu există nicio bancă conectată."));
         }
 
-        // Revocăm accesul la provider (best-effort — poate fi deja expirat).
-        if (!string.IsNullOrEmpty(connection.ProviderRequisitionId))
+        // Revocăm acordul la bancă (best-effort — poate fi deja expirat).
+        if (!string.IsNullOrEmpty(connection.ProviderConsentId))
         {
             try
             {
-                await provider.DeleteConnectionAsync(
-                    secretProtector.Unprotect(connection.ProviderRequisitionId),
+                await provider.DeleteConsentAsync(
+                    connection.InstitutionId,
+                    connection.ProviderConsentId,
                     cancellationToken);
             }
             catch (BankDataProviderException)
@@ -52,6 +51,11 @@ internal sealed class DisconnectBankConnectionCommandHandler(
 
         connection.Status = BankConnectionStatus.Revoked;
         connection.ErrorMessage = null;
+
+        // Tokenurile nu mai au ce deschide; le ștergem ca să nu rămână secrete fără rost în bază.
+        connection.AccessTokenEncrypted = null;
+        connection.RefreshTokenEncrypted = null;
+        connection.AccessTokenExpiresAtUtc = null;
 
         // Tranzacțiile istorice rămân — doar sync-ul se oprește.
         foreach (Domain.Banking.BankAccount account in connection.Accounts)
