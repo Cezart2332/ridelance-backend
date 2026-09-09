@@ -46,6 +46,11 @@ internal sealed class UploadDocumentCommandHandler(
         bool aiConfigured = !string.IsNullOrWhiteSpace(
             configuration["OpenRouter:ApiKey"] ?? Environment.GetEnvironmentVariable("OpenRouter__ApiKey"));
 
+        // Comutator de testare: documentele intră validate, ca parcurgerea onboardingului să nu
+        // depindă de un om sau de verdictul modelului. Ce se blochează mai departe se blochează
+        // dintr-un motiv structural — exact ce vrem să vedem. Implicit stins.
+        bool autoApprove = bool.TryParse(configuration["Onboarding:AutoApproveDocuments"], out bool auto) && auto;
+
         string storedFileName = $"{Guid.NewGuid()}{Path.GetExtension(command.FileName)}";
 
         EncryptedFileResult encryptionResult = await fileEncryptionService.EncryptAndSaveAsync(
@@ -63,7 +68,7 @@ internal sealed class UploadDocumentCommandHandler(
             StoredFileName = storedFileName,
             ContentType = command.ContentType,
             Category = command.Category,
-            Status = DocumentStatus.Pending,
+            Status = autoApprove ? DocumentStatus.Verified : DocumentStatus.Pending,
             EncryptedFilePath = encryptionResult.FilePath,
             EncryptionIv = encryptionResult.Iv,
             FileSize = command.FileSize,

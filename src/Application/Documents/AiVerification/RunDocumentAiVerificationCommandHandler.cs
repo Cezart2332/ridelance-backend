@@ -156,6 +156,29 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             document.AiSummary = Truncate(dates.Reason, 1024);
         }
 
+        /*
+         * Comutatorul de testare (`Onboarding:AutoApproveDocuments`).
+         *
+         * Verificarea a rulat întreagă până aici — tip, lizibilitate, date, câmpuri extrase — și
+         * tot ce a citit rămâne scris. Doar verdictul nu mai are consecințe: documentul nu se
+         * respinge și nu rămâne `Failed`, fiindcă ecranele de înrolare tratează `Failed` ca pe un
+         * document lipsă și pasul s-ar bloca acolo, nu unde vrem noi să vedem că se blochează.
+         *
+         * Motivul real nu se pierde: intră în rezumat, cu prefix, iar dosarul ajunge oricum sub
+         * ochii adminului prin `AiRequiresManualReview`.
+         */
+        if (bool.TryParse(configuration["Onboarding:AutoApproveDocuments"], out bool auto) && auto)
+        {
+            document.AiStatus = DocumentAiStatus.Passed;
+            document.AiRequiresManualReview = true;
+            document.AiSummary = Truncate(
+                $"[Mod de testare — verdictul nu blochează] {document.AiSummary}",
+                1024);
+
+            await context.SaveChangesAsync(cancellationToken);
+            return Result.Success();
+        }
+
         // Auto-respingerea e opțională per categorie: OCR-ul nu trebuie să blocheze fluxul.
         // Când e dezactivată, documentul rămâne în coada adminului (AiRequiresManualReview).
         if (!expectation.AutoRejectOnFailure)
