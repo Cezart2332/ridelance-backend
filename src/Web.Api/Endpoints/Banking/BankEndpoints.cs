@@ -11,10 +11,18 @@ namespace Web.Api.Endpoints.Banking;
 
 internal sealed class BankEndpoints : IEndpoint
 {
-    /// <param name="InstitutionId">Null lasă alegerea băncii în ecranul providerului.</param>
-    public sealed record InitiateConnectionRequest(string? InstitutionId);
-
-    public sealed record ChooseConnectionRequest(string ProviderConnectionId);
+    /// <param name="BankCode">Banca aleasă, cu codul din lista furnizorului.</param>
+    /// <param name="PsuId">Numele de utilizator la bancă, unde banca îl cere.</param>
+    /// <param name="PsuIdType">„PF" sau „PJ", unde banca face diferența.</param>
+    /// <param name="PsuCorporateId">Codul de client firmă, unde e nevoie și de el.</param>
+    /// <param name="TcAccepted">Bifa de termeni și condiții a serviciului de open banking.</param>
+    public sealed record InitiateConnectionRequest(
+        string BankCode,
+        string? PsuId,
+        string? PsuIdType,
+        string? PsuCorporateId,
+        string? Iban,
+        bool TcAccepted);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -42,25 +50,23 @@ internal sealed class BankEndpoints : IEndpoint
 
         group.MapPost("connection", async (
             InitiateConnectionRequest request,
+            HttpContext httpContext,
             ICommandHandler<InitiateBankConnectionCommand, InitiateBankConnectionResponse> handler,
             CancellationToken cancellationToken) =>
         {
             Result<InitiateBankConnectionResponse> result = await handler.Handle(
-                new InitiateBankConnectionCommand(request.InstitutionId),
+                new InitiateBankConnectionCommand(
+                    request.BankCode,
+                    request.PsuId,
+                    request.PsuIdType,
+                    request.PsuCorporateId,
+                    request.Iban,
+                    request.TcAccepted,
+                    // Furnizorul cere IP-ul utilizatorului real, nu al serverului: fără el, banca
+                    // ne limitează la patru interogări pe zi. Îl citim aici, nu în handler —
+                    // stratul de aplicație n-are de ce să știe de HTTP.
+                    httpContext.Connection.RemoteIpAddress?.ToString()),
                 cancellationToken);
-            return result.Match(Results.Ok, CustomResults.Problem);
-        });
-
-        // Cazul ambiguu al revendicării: utilizatorul spune care conexiune e a lui.
-        group.MapPost("connection/choose", async (
-            ChooseConnectionRequest request,
-            ICommandHandler<ChooseBankConnectionCommand, BankConnectionResponse> handler,
-            CancellationToken cancellationToken) =>
-        {
-            Result<BankConnectionResponse> result = await handler.Handle(
-                new ChooseBankConnectionCommand(request.ProviderConnectionId),
-                cancellationToken);
-
             return result.Match(Results.Ok, CustomResults.Problem);
         });
 

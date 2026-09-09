@@ -28,8 +28,12 @@ public sealed class BankAccountSyncService(
             : today.AddDays(-Math.Max(1, connection.MaxHistoricalDays));
 
         BankTransactionsPage page = await provider.GetTransactionsAsync(
+            connection.InstitutionId,
+            connection.ProviderConsentId,
             account.ProviderAccountId,
             dateFrom,
+            // Fără capăt de sus: intervalul e legat de paginare, iar o dată de final calculată
+            // acum ar tăia tranzacțiile apărute cât ține sincronizarea.
             dateTo: null,
             cancellationToken);
 

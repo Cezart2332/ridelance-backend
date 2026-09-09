@@ -4,10 +4,16 @@ using SharedKernel;
 
 namespace Application.Banking.Queries;
 
+/// <param name="RequiresPsuId">Banca cere numele de utilizator de la ea înainte de acord.</param>
+/// <param name="RequiresPsuIdType">Banca cere să spunem dacă e cont de persoană fizică sau de firmă.</param>
+/// <param name="RequiresIban">Banca cere IBAN-ul contului pentru care se dă acordul.</param>
 public sealed record BankInstitutionResponse(
     string Id,
     string Name,
-    string? Logo);
+    string? Logo,
+    bool RequiresPsuId,
+    bool RequiresPsuIdType,
+    bool RequiresIban);
 
 public sealed record GetBankInstitutionsQuery : IQuery<List<BankInstitutionResponse>>;
 
@@ -28,10 +34,11 @@ internal sealed class GetBankInstitutionsQueryHandler(IBankDataProvider provider
         try
         {
             IReadOnlyList<BankInstitutionInfo> institutions =
-                await provider.ListInstitutionsAsync("ro", cancellationToken);
+                await provider.ListInstitutionsAsync(cancellationToken);
 
             return institutions
-                .Select(i => new BankInstitutionResponse(i.Id, i.Name, i.Logo))
+                .Select(i => new BankInstitutionResponse(
+                    i.Id, i.Name, i.Logo, i.RequiresPsuId, i.RequiresPsuIdType, i.RequiresIban))
                 .ToList();
         }
         catch (BankDataProviderException ex)

@@ -9,36 +9,51 @@ public sealed class BankConnection : Entity
     public Guid UserId { get; set; }
 
     /// <summary>
-    /// Providerul care deține conexiunea (ex. „Fintable"). Rândurile rămase de la un provider
+    /// Providerul care deține conexiunea (ex. „SmartAccounts"). Rândurile rămase de la un provider
     /// anterior se recunosc după el — nu se convertesc, pentru că nu au echivalent.
     /// </summary>
     public string Provider { get; set; } = string.Empty;
 
+    /// <summary>Codul băncii la furnizor („BT", „BCR", …), parte din adresa oricărui apel.</summary>
     public string InstitutionId { get; set; } = string.Empty;
     public string InstitutionName { get; set; } = string.Empty;
     public string? InstitutionLogoUrl { get; set; }
 
-    /// <summary>Provider requisition id, encrypted at rest via ISecretProtector.</summary>
-    public string ProviderRequisitionId { get; set; } = string.Empty;
+    /// <summary>
+    /// Identificatorul consimțământului la furnizor, în clar.
+    ///
+    /// În clar fiindcă după el se caută rândul de fiecare dată când furnizorul răspunde, iar
+    /// cifrarea noastră folosește nonce aleator — același identificator ar da alt text la fiecare
+    /// scriere, deci n-ar mai fi de căutat după el. Singur nu deschide nimic: apelurile cer și
+    /// certificatul de client, și tokenurile de mai jos.
+    /// </summary>
+    public string ProviderConsentId { get; set; } = string.Empty;
 
-    /// <summary>Provider end-user agreement id, encrypted at rest via ISecretProtector.</summary>
-    public string? ProviderAgreementId { get; set; }
+    /// <summary>Tokenul de acces al consimțământului, criptat. Ține 5 minute.</summary>
+    public string? AccessTokenEncrypted { get; set; }
 
     /// <summary>
-    /// Referință internă a conexiunii. La providerii cu redirect se întorcea prin `?ref=`;
-    /// la unul care nu redirecționează rămâne doar cheia noastră de corelare.
+    /// Tokenul de reîmprospătare, criptat. Ține 90 de zile și se rotește la fiecare folosire — cel
+    /// emis ultima dată e singurul valid, deci se salvează imediat ce vine, nu la final.
+    /// </summary>
+    public string? RefreshTokenEncrypted { get; set; }
+
+    public DateTime? AccessTokenExpiresAtUtc { get; set; }
+
+    /// <summary>Ultima stare a consimțământului văzută la bancă („received", „valid", „expired", …).</summary>
+    public string? ConsentStatus { get; set; }
+
+    /// <summary>
+    /// Referința noastră, pusă în adresa de retur trimisă furnizorului. Ea leagă omul care se
+    /// întoarce din pagina băncii de conexiunea care îl aștepta.
     /// </summary>
     public string Reference { get; set; } = string.Empty;
 
-    /// <summary>Când expiră linkul de conectare mintat. După el, o conexiune nerevendicată e pierdută.</summary>
-    public DateTime? LinkExpiresAtUtc { get; set; }
-
     /// <summary>
-    /// Conexiunile care existau deja la provider în momentul mintării linkului, ca listă JSON.
-    /// Diferența față de lista curentă dă candidații la revendicare — singurul mecanism
-    /// disponibil, de vreme ce linkul nu poate purta o referință de-a noastră.
+    /// Până când e valabilă adresa de autorizare a băncii. Trecută de ea fără ca utilizatorul să
+    /// termine, conexiunea se ia de la capăt.
     /// </summary>
-    public string? KnownConnectionIdsJson { get; set; }
+    public DateTime? LinkExpiresAtUtc { get; set; }
 
     public BankConnectionStatus Status { get; set; }
     public DateTime? ConsentExpiresAtUtc { get; set; }
