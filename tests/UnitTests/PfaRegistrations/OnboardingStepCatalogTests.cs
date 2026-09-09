@@ -1,4 +1,5 @@
 using Application.PfaRegistrations.Onboarding;
+using Domain.Documents;
 using Domain.PfaRegistrations;
 using Shouldly;
 using Xunit;
@@ -432,6 +433,75 @@ public class OnboardingStepCatalogTests
 
     private static OnboardingEligibilityProfile EligibleProfile() =>
         new() { Id = Guid.NewGuid(), Status = EligibilityStatus.Eligible };
+
+    /* ── Partea șoferului la pasul 2, pe ramura „am deja PFA" ── */
+
+    /// <summary>
+    /// Cu un singur certificat, pasul e încă al șoferului.
+    ///
+    /// Contează în două locuri deodată: secțiunea nu trece în „așteaptă validarea" (deci ecranul de
+    /// așteptare nu se pune peste certificate și rezumat), iar adminul nu poate aproba dosarul —
+    /// aprobarea închide pasul, iar un pas închis nu mai acceptă scrieri, deci constatatorul n-ar
+    /// mai avea pe unde intra niciodată.
+    /// </summary>
+    [Fact]
+    public void PfaUserPartDone_WithOnlyTheRegistrationCertificate_IsFalse()
+    {
+        OnboardingStepCatalog
+            .PfaUserPartDone(Registration(), [Uploaded(DocumentCategory.CertificatInregistrare)])
+            .ShouldBeFalse();
+    }
+
+    [Fact]
+    public void PfaUserPartDone_WithBothCertificates_IsTrue()
+    {
+        OnboardingStepCatalog
+            .PfaUserPartDone(
+                Registration(),
+                [
+                    Uploaded(DocumentCategory.CertificatInregistrare),
+                    Uploaded(DocumentCategory.CertificatConstatator),
+                ])
+            .ShouldBeTrue();
+    }
+
+    /// <summary>Un certificat respins nu contează ca încărcat — altfel poarta s-ar deschide pe un act refuzat.</summary>
+    [Fact]
+    public void PfaUserPartDone_WithARejectedConstatator_IsFalse()
+    {
+        OnboardingStepCatalog
+            .PfaUserPartDone(
+                Registration(),
+                [
+                    Uploaded(DocumentCategory.CertificatInregistrare),
+                    Uploaded(DocumentCategory.CertificatConstatator, DocumentStatus.Rejected),
+                ])
+            .ShouldBeFalse();
+    }
+
+    /// <summary>Ramura „Nu am PFA" n-are certificate de încărcat: poarta nu i se aplică.</summary>
+    [Fact]
+    public void PfaUserPartDone_OnTheFormationBranch_IsTrue()
+    {
+        var registration = new PfaRegistration
+        {
+            Id = Guid.NewGuid(),
+            RegistrationType = RegistrationType.NuAmPfa,
+        };
+
+        OnboardingStepCatalog.PfaUserPartDone(registration, []).ShouldBeTrue();
+    }
+
+    private static Document Uploaded(
+        DocumentCategory category,
+        DocumentStatus status = DocumentStatus.Verified) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            Category = category,
+            Status = status,
+            UploadedAtUtc = DateTime.UtcNow,
+        };
 
     /// <summary>Dosar „Am PFA” gol: pasul PFA depinde doar de statusul secțiunii.</summary>
     private static PfaRegistration Registration() =>
