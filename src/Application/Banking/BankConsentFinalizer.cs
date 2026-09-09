@@ -66,28 +66,30 @@ public sealed class BankConsentFinalizer(
                 connection.ProviderConsentId,
                 cancellationToken);
         }
-        catch (BankDataConsentExpiredException ex)
+        catch (BankDataConsentExpiredException)
         {
-            connection.Status = BankConnectionStatus.Expired;
-            connection.ErrorMessage = ex.Message;
-            await context.SaveChangesAsync(cancellationToken);
-            return connection.Status;
+            /*
+             * Cât timp utilizatorul nu a terminat autorizarea la bancă, furnizorul răspunde 401 la
+             * orice întrebare despre consimțământ — nu „în așteptare", ci direct refuz. Verificat pe
+             * sandbox: un consimțământ proaspăt deschis, cu token valid, dă 401 până la semnătura
+             * omului.
+             *
+             * Deci aici refuzul înseamnă „încă n-a terminat", nu „acordul e mort". Conexiunea asta
+             * n-a fost niciodată legată; dacă am marca-o expirată, ar muri la prima întrebare pe
+             * care o pune pagina, la două secunde după ce l-am trimis la bancă. Singurul lucru care
+             * o încheie e trecerea termenului, tratată mai jos.
+             *
+             * Pentru o conexiune deja legată, același refuz e citit corect ca acces pierdut — dar
+             * asta se întâmplă în jobul de sincronizare, nu aici.
+             */
+            return await StillWaitingAsync(connection, cancellationToken);
         }
 
         connection.ConsentStatus = state.Status;
 
         if (state.Status is null || !LiveConsentStatuses.Contains(state.Status, StringComparer.OrdinalIgnoreCase))
         {
-            // Încă nu a terminat autorizarea. Se aruncă doar dacă a trecut și termenul adresei:
-            // altfel un utilizator care lasă tabul băncii deschis o oră ar pierde conexiunea.
-            if (connection.LinkExpiresAtUtc is { } expiry && expiry < DateTime.UtcNow)
-            {
-                connection.Status = BankConnectionStatus.Error;
-                connection.ErrorMessage = "Autorizarea la bancă nu a fost finalizată la timp. Reia conectarea.";
-            }
-
-            await context.SaveChangesAsync(cancellationToken);
-            return connection.Status;
+            return await StillWaitingAsync(connection, cancellationToken);
         }
 
         connection.Status = BankConnectionStatus.Linked;
@@ -100,6 +102,26 @@ public sealed class BankConsentFinalizer(
 
         await LinkAccountsAsync(connection, cancellationToken);
 
+        return connection.Status;
+    }
+
+    /// <summary>
+    /// Autorizarea nu s-a terminat încă.
+    ///
+    /// Conexiunea rămâne în așteptare până trece termenul adresei băncii — altfel cineva care lasă
+    /// tabul deschis un sfert de oră, cât caută parola, ar găsi conectarea abandonată la întoarcere.
+    /// </summary>
+    private async Task<BankConnectionStatus> StillWaitingAsync(
+        BankConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (connection.LinkExpiresAtUtc is { } expiry && expiry < DateTime.UtcNow)
+        {
+            connection.Status = BankConnectionStatus.Error;
+            connection.ErrorMessage = "Autorizarea la bancă nu a fost finalizată la timp. Reia conectarea.";
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
         return connection.Status;
     }
 

@@ -113,7 +113,13 @@ public sealed class SmartAccountsProviderTests
 
         state.Status.ShouldBe("valid");
         handler.Requests[0].RequestUri!.ToString().ShouldContain("refreshToken");
-        handler.Requests[0].RequestUri!.ToString().ShouldContain("refresh_token=ref-1");
+
+        // În CORP, ca formular — nu în query, cum spune OpenAPI-ul lor. Sandboxul răspunde 401 la
+        // varianta din query și la cea urlencoded; doar multipartul întoarce o pereche nouă.
+        handler.Requests[0].RequestUri!.Query.ShouldNotContain("refresh_token");
+        handler.Bodies[0].ShouldContain("ref-1");
+        handler.Bodies[0].ShouldContain("ridelance");
+        handler.Requests[0].Content!.Headers.ContentType!.MediaType.ShouldBe("multipart/form-data");
 
         // Rotația e salvată imediat: tokenul vechi de reîmprospătare e deja invalid la ei, deci un
         // proces care ar cădea între reînnoire și final ar rămâne cu o pereche moartă.
@@ -262,6 +268,8 @@ public sealed class SmartAccountsProviderTests
 
         public List<HttpRequestMessage> Requests { get; } = [];
 
+        public List<string> Bodies { get; } = [];
+
         public StubHandler Enqueue(string json)
         {
             _responses.Enqueue(json);
@@ -273,6 +281,8 @@ public sealed class SmartAccountsProviderTests
             CancellationToken cancellationToken)
         {
             Requests.Add(request);
+            // Corpul se citește acum: după ce pleacă răspunsul, conținutul e deja eliberat.
+            Bodies.Add(request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult() ?? string.Empty);
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {

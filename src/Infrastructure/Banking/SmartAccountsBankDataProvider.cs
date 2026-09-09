@@ -350,12 +350,23 @@ internal sealed class SmartAccountsBankDataProvider(
         BankConsentTokens current,
         CancellationToken cancellationToken)
     {
+        // `client_id` și `refresh_token` merg în CORP, ca multipart — nu în query, cum spune
+        // OpenAPI-ul lor, și nici urlencoded. Ambele variante primesc 401 de la sandbox; doar
+        // multipartul întoarce o pereche nouă. Verificat direct, altfel reînnoirea ar fi picat
+        // tăcut abia după primele cinci minute ale unei conexiuni.
+        using var refreshToken = new StringContent(current.RefreshToken);
+        using var clientId = new StringContent(_options.ClientId);
+        using var form = new MultipartFormDataContent
+        {
+            { refreshToken, "refresh_token" },
+            { clientId, "client_id" },
+        };
+
         JsonElement payload = SmartAccountsJson.Payload(await SendAsync(
             HttpMethod.Post,
-            $"{_options.MtlsBaseUrl.TrimEnd('/')}/gateway/authenticate/rest/api/refreshToken" +
-            $"?client_id={Uri.EscapeDataString(_options.ClientId)}" +
-            $"&refresh_token={Uri.EscapeDataString(current.RefreshToken)}",
+            $"{_options.MtlsBaseUrl.TrimEnd('/')}/gateway/authenticate/rest/api/refreshToken",
             accessToken: null,
+            body: form,
             headers:
             [
                 ("access_token", current.AccessToken),
@@ -502,10 +513,13 @@ internal sealed class SmartAccountsBankDataProvider(
             request.Headers.TryAddWithoutValidation(name, value);
         }
 
-        if (body is not null)
+        request.Content = body switch
         {
-            request.Content = JsonContent.Create(body);
-        }
+            null => null,
+            // Reînnoirea tokenului trimite formular, nu JSON; restul apelurilor trimit JSON.
+            HttpContent content => content,
+            _ => JsonContent.Create(body),
+        };
 
         HttpResponseMessage response;
 
