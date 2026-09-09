@@ -346,7 +346,7 @@ public class OnboardingStepCatalogTests
     }
 
     [Fact]
-    public void FiscalUserPartComplete_NeedsVatBankAndOblio()
+    public void FiscalUserPartComplete_NeedsVatAndOblio_ButNotABankAccount()
     {
         OnboardingStepCatalog.FiscalUserPartComplete(Registration()).ShouldBeFalse();
         OnboardingStepCatalog.FiscalUserPartComplete(FiscalRegistration()).ShouldBeTrue();
@@ -354,6 +354,13 @@ public class OnboardingStepCatalogTests
         PfaRegistration withoutOblio = FiscalRegistration();
         withoutOblio.OblioAccount = null;
         OnboardingStepCatalog.FiscalUserPartComplete(withoutOblio).ShouldBeFalse();
+
+        // Ramura „nu am cont, am nevoie de unul" trimite omul la bancă, iar contul apare zile mai
+        // târziu. Cerut aici, ținea pasul deschis la nesfârșit: butonul de trimitere la verificare
+        // nu apărea, iar validarea adminului nu avea ce închide.
+        PfaRegistration withoutBank = FiscalRegistration();
+        withoutBank.BankAccountDeclaration = null;
+        OnboardingStepCatalog.FiscalUserPartComplete(withoutBank).ShouldBeTrue();
     }
 
     /// <summary>Dosar ajuns la pasul 5: fiscal închis de admin, dosarul ARR depus și autorizația emisă.</summary>

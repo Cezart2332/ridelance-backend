@@ -150,6 +150,11 @@ public static class OnboardingStateBuilder
             { Status: PfaRegistrationStatus.Rejected } => OnboardingSectionStatus.Rejected,
             // Avansul se cere pe ambele ramuri: până e plătit, pasul e al șoferului.
             _ when !hasPaidInfiintare => OnboardingSectionStatus.InProgress,
+            // Și până își încarcă certificatele. Un pas predat nu mai acceptă scrieri (RL-01), iar
+            // fără verificarea asta se preda în secunda în care omul răspundea „Da, am PFA" — adică
+            // exact înaintea ecranelor pe care trebuia să le completeze.
+            _ when !OnboardingStepCatalog.PfaUserPartDone(registration, documents) =>
+                OnboardingSectionStatus.InProgress,
             _ => OnboardingSectionStatus.AwaitingValidation,
         };
 
@@ -178,7 +183,7 @@ public static class OnboardingStateBuilder
                 row?.ValidatedAtUtc));
         }
 
-        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(registration, pfaStatus, eligibility);
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(registration, pfaStatus, eligibility, documents);
 
         // „Onboarding complet" = toți cei 6 pași finalizați (nu doar cele 3 secțiuni de documente).
         // Asta gateuiește redirectul spre plata abonamentului.
