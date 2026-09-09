@@ -1,4 +1,5 @@
 using Application.PfaRegistrations.Onboarding.Platforms;
+using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.PfaRegistrations.CompanyFormation;
 
@@ -119,10 +120,22 @@ public static class OnboardingStepCatalog
     public static string LabelOf(OnboardingStepKey key) =>
         Steps.Single(s => s.Key == key).Label;
 
+    /// <summary>
+    /// Documentele cu care șoferul își încheie partea de la pasul 1. Verdictul rămâne al nostru —
+    /// verificarea rulează în fundal și îl anunțăm dacă e ceva de refăcut.
+    /// </summary>
+    private static readonly DocumentCategory[][] EligibilityDocuments =
+    [
+        [DocumentCategory.CarteIdentitate],
+        [DocumentCategory.PermisConducere],
+        [DocumentCategory.AtestatSofer, DocumentCategory.AtestatTransport],
+    ];
+
     public static List<OnboardingStepDto> BuildSteps(
         PfaRegistration? registration,
         OnboardingSectionStatus pfaStatus,
-        OnboardingEligibilityProfile? eligibility)
+        OnboardingEligibilityProfile? eligibility,
+        IReadOnlyList<Document>? documents = null)
     {
         // 1) Statusul „propriu” al fiecărui pas, înainte de gating.
         string[] own =
@@ -160,7 +173,11 @@ public static class OnboardingStepCatalog
         // Partea șoferului, separat de verdictul adminului. Asta deschide pasul următor.
         bool[] userDone =
         [
-            own[0] == StatusCompleted,
+            // Pasul 1 se încheie când documentele sunt încărcate, nu când OCR-ul a reușit să
+            // citească din ele. Altfel un dosar cu toate actele la locul lor rămâne blocat până
+            // când un model se descurcă cu o poză — iar verdictul oricum vine după, prin
+            // notificare. Singurul lucru care ține pe loc e un refuz ferm.
+            own[0] == StatusCompleted || EligibilityUserPartDone(eligibility, documents),
             // Dosarul PFA e depus: predat spre validare sau deja validat. Ramura „Nu am PFA" e
             // acoperită de `PfaStatusOf`, care ține pasul în `InProgress` până se semnează dosarul
             // de înființare — deci nici aici nu trece mai devreme.
@@ -243,6 +260,52 @@ public static class OnboardingStepCatalog
         _ => StatusInProgress,
     };
 
+    /// <summary>
+    /// Șoferul și-a încărcat cele trei acte de la pasul 1 și niciunul nu l-a descalificat.
+    ///
+    /// Fără lista de documente (apelanții care nu o au) rămâne pe verdictul profilului — adică pe
+    /// comportamentul dinainte, nu pe o presupunere optimistă.
+    /// </summary>
+    public static bool EligibilityUserPartDone(
+        OnboardingEligibilityProfile? profile,
+        IReadOnlyList<Document>? documents)
+    {
+        if (documents is null || profile?.Status == EligibilityStatus.Ineligible)
+        {
+            return false;
+        }
+
+        return Array.TrueForAll(
+            EligibilityDocuments,
+            categories => documents.Any(d =>
+                categories.Contains(d.Category) && d.Status != DocumentStatus.Rejected));
+    }
+
+    /// <summary>
+    /// Partea șoferului la pasul 2, pe ramura „am deja PFA": cele două certificate de la ONRC.
+    ///
+    /// Contează fiindcă pasul trece la noi de îndată ce dosarul e deschis, iar de acolo nu mai
+    /// acceptă scrieri (RL-01). Fără verificarea asta, dosarul se preda în secunda în care omul
+    /// răspundea „Da" — înainte să apuce să încarce certificatele.
+    /// </summary>
+    public static bool PfaUserPartDone(PfaRegistration? registration, IReadOnlyList<Document>? documents)
+    {
+        if (registration is null)
+        {
+            return false;
+        }
+
+        if (registration.RegistrationType != RegistrationType.AmPfa || documents is null)
+        {
+            return true;
+        }
+
+        return documents.Any(d => d.Category == DocumentCategory.CertificatInregistrare
+                && d.Status != DocumentStatus.Rejected)
+            && documents.Any(d => d.Category == DocumentCategory.CertificatConstatator
+                && d.Status != DocumentStatus.Rejected);
+    }
+
     private static string PfaStatusOf(PfaRegistration? registration, OnboardingSectionStatus pfaStatus)
     {
         string status = pfaStatus switch
@@ -268,13 +331,16 @@ public static class OnboardingStepCatalog
     }
 
     /// <summary>
-    /// Partea pe care o poate face singur șoferul: răspunsul la TVA, contul bancar declarat și
-    /// consimțămintele Oblio. Verificarea contului și pachetul de semnături nu intră aici — alea
-    /// sunt ale adminului.
+    /// Partea pe care o poate face singur șoferul la pasul fiscal: răspunsul la TVA și
+    /// consimțămintele Oblio. Pachetul de semnături e al adminului și rămâne în afara ei.
+    ///
+    /// Contul bancar NU mai intră aici. Ramura „nu am cont, am nevoie de unul" trimite omul la
+    /// bancă, iar contul apare zile mai târziu — până atunci pasul rămânea neterminat, butonul de
+    /// trimitere la verificare nu apărea, iar validarea adminului nu avea ce închide. Contul se
+    /// cere oricum înainte de primele încasări, doar că nu de aici.
     /// </summary>
     public static bool FiscalUserPartComplete(PfaRegistration? r) =>
-        r?.BankAccountDeclaration is not null
-        && r.OblioAccount?.AllConsentsAccepted == true
+        r?.OblioAccount?.AllConsentsAccepted == true
         // Doar un răspuns ferm contează. „DontKnow” e o valoare istorică: dosarele vechi rămân
         // deschise până când clientul răspunde Da/Nu.
         && r.FiscalProfile?.VatAnswer is VatAnswer.Yes or VatAnswer.No;
