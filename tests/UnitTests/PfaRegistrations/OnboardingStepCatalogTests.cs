@@ -298,6 +298,28 @@ public class OnboardingStepCatalogTests
         steps[3].Status.ShouldBe(InProgress);
     }
 
+    /// <summary>
+    /// Regresie: pasul 3 se închidea doar pentru contul confirmat prin Open Banking. Cine declara
+    /// contul de mână rămânea blocat cu toate bifele puse și cu secțiunea validată de admin.
+    /// </summary>
+    [Fact]
+    public void Fiscal_WithManuallyDeclaredBankAccount_StillClosesAfterAdminValidates()
+    {
+        PfaRegistration registration = FiscalRegistration();
+        registration.BankAccountDeclaration!.Status.ShouldBe(BankDeclarationStatus.Pending);
+        registration.SignaturePacket = new OnboardingSignaturePacket
+        {
+            Id = Guid.NewGuid(),
+            Status = SignaturePacketStatus.Completed,
+            SignedAtUtc = DateTime.UtcNow,
+        };
+
+        List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
+
+        steps[2].Status.ShouldBe(Completed);
+        steps[3].Status.ShouldBe(InProgress);
+    }
+
     [Fact]
     public void Fiscal_WhenAdminRejects_ReturnsToUserAsRejected()
     {
@@ -373,10 +395,14 @@ public class OnboardingStepCatalogTests
     {
         PfaRegistration registration = Registration();
         registration.FiscalProfile = new PfaFiscalProfile { Id = Guid.NewGuid(), VatAnswer = VatAnswer.No };
+        // Contul declarat de mână, cu extrasul încărcat: drumul obișnuit. Fixtura cerea înainte
+        // `Verified`, un status pe care îl pune doar potrivirea cu un cont legat prin Open Banking
+        // — așa a trecut testul ani de zile peste un pas pe care nimeni nu-l putea închide.
         registration.BankAccountDeclaration = new PfaBankAccountDeclaration
         {
             Id = Guid.NewGuid(),
-            Status = BankDeclarationStatus.Verified,
+            Source = BankDeclarationSource.Manual,
+            Status = BankDeclarationStatus.Pending,
         };
         registration.OblioAccount = new PfaOblioAccount
         {

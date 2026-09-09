@@ -290,8 +290,12 @@ public static class OnboardingStepCatalog
 
         // Închiderea pasului cere și pachetul de semnături alocat de admin — altfel șoferul ar
         // trece mai departe fără împuternicirile cu care depunem dosarele în numele lui.
+        //
+        // Contul bancar nu se mai cere `Verified`: statusul ăla îl pune un singur lucru, potrivirea
+        // IBAN-ului declarat cu un cont legat prin Open Banking. Cine declară contul de mână și
+        // încarcă extrasul — drumul obișnuit — rămânea pe `Pending` orice ar fi făcut adminul, deci
+        // pasul nu se putea închide niciodată. Verificarea omului e chiar validarea secțiunii.
         if (packet?.Status == SignaturePacketStatus.Completed
-            && r.BankAccountDeclaration?.Status == BankDeclarationStatus.Verified
             && FiscalUserPartComplete(r))
         {
             return StatusCompleted;
