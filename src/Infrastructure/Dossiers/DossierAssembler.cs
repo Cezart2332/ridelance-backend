@@ -34,27 +34,17 @@ internal static class DossierAssembler
     private const double NormalizedMarginPt = 42;
 
     /// <summary>
-    /// Înălțimea maximă a casetei de imagine, ca o poză portret să nu împingă conținutul peste
-    /// pagină. Lățimea o dă containerul; înălțimea trebuie declarată explicit.
-    /// </summary>
-    private const float ImageBoxHeightMm = 240;
-
-    /// <summary>
-    /// Întoarce coperta cu atașamentele lipite după ea. Un atașament ilizibil NU pică dosarul —
-    /// primește în loc o pagină care spune că trebuie anexat manual.
+    /// Lipește documentele încărcate, în ordine, într-un singur PDF. Un atașament ilizibil NU pică
+    /// dosarul — primește în loc o pagină care spune că trebuie anexat manual.
+    ///
+    /// Fără copertă: la ghișeu se depun actele, iar o filă cu antetul nostru și cu date pe care
+    /// funcționarul le are deja în formular era o pagină de aruncat înaintea fiecărui dosar.
     /// </summary>
     public static byte[] Assemble(
-        byte[] coverPdf,
         IReadOnlyList<DossierAttachment> attachments,
         bool watermarkAsTest = false)
     {
-        if (attachments.Count == 0 && !watermarkAsTest)
-        {
-            return coverPdf;
-        }
-
         using var output = new PdfDocument();
-        AppendPdf(output, coverPdf);
 
         long budget = MaxAttachmentBytes;
 
@@ -81,6 +71,15 @@ internal static class DossierAssembler
                     attachment.Label,
                     "Documentul nu a putut fi atașat automat. Anexează-l manual la dosar."));
             }
+        }
+
+        // PdfSharp nu poate salva un document fără pagini, iar un fișier gol e mai rău decât o
+        // filă care spune de ce e gol.
+        if (output.PageCount == 0)
+        {
+            AppendPdf(output, SkippedPage(
+                "Dosar gol",
+                "Nu există niciun document încărcat pentru dosarul acesta."));
         }
 
         if (watermarkAsTest)
@@ -234,31 +233,55 @@ internal static class DossierAssembler
     }
 
     /// <summary>
-    /// Singurul loc din care se randează o imagine în dosar. Caseta are aceeași lățime și aceeași
-    /// înălțime maximă indiferent de poză: o landscape lasă spațiu sus/jos, una portret lasă
-    /// spațiu stânga/dreapta, iar paginile arată uniform chiar dacă rapoartele diferă.
+    /// Singurul loc din care se randează o imagine în dosar.
+    ///
+    /// Două lucruri pe care le face acum și nu le făcea:
+    ///
+    /// Pagina ia orientarea pozei. Un act fotografiat pe lat intra pe o pagină portret, într-o
+    /// casetă de 240mm înălțime, și ieșea o poză mică în jumătatea de sus a unei file goale.
+    ///
+    /// Și respectă EXIF-ul. Telefoanele scriu pixelii în portret și lasă în EXIF indicația
+    /// „rotește la afișare"; PDF-ul n-are așa ceva, deci actul ajungea culcat. Rotația se aplică
+    /// aici, o dată, la desenare.
     ///
     /// <c>FitArea</c> peste tot. <c>FitWidth</c>/<c>FitHeight</c> sunt interzise: fiecare din ele
     /// garantează depășirea pe cealaltă axă.
     /// </summary>
-    private static byte[] ImagePage(DossierAttachment attachment) =>
-        Page(attachment.Label, content => content
-            .Border(1).BorderColor(Colors.Grey.Lighten2)
-            .Padding(4)
-            .AlignCenter().AlignMiddle()
-            .MaxHeight(ImageBoxHeightMm, Unit.Millimetre)
-            .Image(attachment.Content)
-            .FitArea());
+    private static byte[] ImagePage(DossierAttachment attachment)
+    {
+        var info = ImageInfo.Read(attachment.Content);
+
+        return Page(
+            attachment.Label,
+            content => Rotated(content, info.Orientation)
+                .AlignCenter().AlignMiddle()
+                .Image(attachment.Content)
+                .FitArea(),
+            info.IsLandscape);
+    }
+
+    /// <summary>
+    /// Aplică rotația cerută de EXIF. Valorile cu oglindire (2, 4, 5, 7) apar practic doar din
+    /// editări greșite; le tratăm ca pe rotația lor simplă — mai bine un act întors corect decât
+    /// unul oglindit „exact".
+    /// </summary>
+    private static IContainer Rotated(IContainer container, int orientation) => orientation switch
+    {
+        3 or 4 => container.RotateLeft().RotateLeft(),
+        5 or 6 => container.RotateRight(),
+        7 or 8 => container.RotateLeft(),
+        _ => container,
+    };
 
     private static byte[] SkippedPage(string label, string reason) =>
         Page(label, content => content.Text(reason).FontColor(Colors.Red.Darken2));
 
-    private static byte[] Page(string label, Action<IContainer> body) =>
+    private static byte[] Page(string label, Action<IContainer> body, bool landscape = false) =>
         Document.Create(container =>
         {
             container.Page(page =>
             {
-                page.Size(PageSizes.A4);
+                page.Size(landscape ? PageSizes.A4.Landscape() : PageSizes.A4);
                 page.Margin(1.5f, Unit.Centimetre);
                 page.DefaultTextStyle(x => x.FontSize(11).FontColor(Colors.Grey.Darken4));
 

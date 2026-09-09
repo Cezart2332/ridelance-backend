@@ -36,7 +36,6 @@ public sealed class DossierAssemblerTests
         byte[] oversized = PdfWithPages(widthPt: 1650, heightPt: 1237, pages: 1);
 
         byte[] dossier = DossierAssembler.Assemble(
-            Cover(),
             [new DossierAttachment("Talon", "application/pdf", oversized)]);
 
         AllPagesShouldBeA4(dossier);
@@ -45,18 +44,16 @@ public sealed class DossierAssemblerTests
     [Fact]
     public void Assemble_NormalizesForeignScansAndKeepsEveryPage()
     {
-        // Un scan Letter de 3 pagini: opis + 3 pagini normalizate.
+        // Un scan Letter de 3 pagini ⇒ exact 3 pagini în dosar.
         //
-        // Erau 5 înainte, pentru că fiecare document primea și o pagină separator. Regula nouă
-        // (spec fix-uri §9) e „un document sursă = exact numărul lui de pagini", deci separatorul
-        // a dispărut și numărul scade la 4.
+        // Erau 5 la început (separator per document), apoi 4 (opis + 3). Regula e „un document
+        // sursă = exact numărul lui de pagini", iar acum nici opisul nu mai există.
         byte[] letterScan = PdfWithPages(widthPt: 612, heightPt: 792, pages: 3);
 
         byte[] dossier = DossierAssembler.Assemble(
-            Cover(),
             [new DossierAttachment("Cazier", "application/pdf", letterScan)]);
 
-        PagesOf(dossier).Count.ShouldBe(4);
+        PagesOf(dossier).Count.ShouldBe(3);
         AllPagesShouldBeA4(dossier);
     }
 
@@ -67,10 +64,9 @@ public sealed class DossierAssemblerTests
         byte[] scan = PdfWithPages(widthPt: 612, heightPt: 792, pages: 2, blankTrailingPages: 2);
 
         byte[] dossier = DossierAssembler.Assemble(
-            Cover(),
             [new DossierAttachment("Cazier", "application/pdf", scan)]);
 
-        PagesOf(dossier).Count.ShouldBe(3);
+        PagesOf(dossier).Count.ShouldBe(2);
     }
 
     [Fact]
@@ -86,10 +82,9 @@ public sealed class DossierAssemblerTests
         document.Save(stream);
 
         byte[] dossier = DossierAssembler.Assemble(
-            Cover(),
             [new DossierAttachment("Contract", "application/pdf", stream.ToArray())]);
 
-        PagesOf(dossier).Count.ShouldBe(4);
+        PagesOf(dossier).Count.ShouldBe(3);
     }
 
     [Fact]
@@ -99,12 +94,10 @@ public sealed class DossierAssemblerTests
         byte[] wide = PdfWithPages(widthPt: 1000, heightPt: 500, pages: 1);
 
         byte[] dossier = DossierAssembler.Assemble(
-            Cover(),
             [new DossierAttachment("Contract", "application/pdf", wide)]);
 
-        // Indexul 1: opisul e pe 0, iar pagina atașamentului vine imediat după — nu mai există
-        // separator între ele.
-        (double Width, double Height) attachmentPage = PagesOf(dossier)[1];
+        // Prima pagină E documentul: dosarul nu mai are copertă.
+        (double Width, double Height) attachmentPage = PagesOf(dossier)[0];
         attachmentPage.Width.ShouldBeGreaterThan(attachmentPage.Height);
         AllPagesShouldBeA4(dossier);
     }
@@ -115,20 +108,21 @@ public sealed class DossierAssemblerTests
         byte[] corrupt = [0x25, 0x50, 0x44, 0x46, 0x00, 0x01, 0x02, 0x03];
 
         byte[] dossier = DossierAssembler.Assemble(
-            Cover(),
             [new DossierAttachment("Fișier corupt", "application/pdf", corrupt)]);
 
-        // Copertă + pagina care spune că trebuie anexat manual. Dosarul nu crapă.
-        PagesOf(dossier).Count.ShouldBe(2);
+        // Pagina care spune că trebuie anexat manual, în locul documentului. Dosarul nu crapă.
+        PagesOf(dossier).Count.ShouldBe(1);
         AllPagesShouldBeA4(dossier);
     }
 
     [Fact]
-    public void Assemble_WithoutAttachments_ReturnsTheCoverUnchanged()
+    public void Assemble_WithoutAttachments_SaysSoInsteadOfProducingAnEmptyFile()
     {
-        byte[] cover = Cover();
+        // PdfSharp nu poate salva un document fără pagini, iar un fișier gol descărcat de client
+        // e mai rău decât o filă care spune de ce e gol.
+        byte[] dossier = DossierAssembler.Assemble([]);
 
-        DossierAssembler.Assemble(cover, []).ShouldBe(cover);
+        PagesOf(dossier).Count.ShouldBe(1);
     }
 
     private static void AllPagesShouldBeA4(byte[] pdf)
@@ -152,15 +146,6 @@ public sealed class DossierAssemblerTests
         return [.. Enumerable.Range(0, document.PageCount)
             .Select(i => (document.Pages[i].Width.Point, document.Pages[i].Height.Point))];
     }
-
-    /// <summary>Coperta generată de QuestPDF, ca în fluxul real.</summary>
-    private static byte[] Cover() =>
-        Document.Create(container => container.Page(page =>
-        {
-            page.Size(PageSizes.A4);
-            page.Margin(1.5f, Unit.Centimetre);
-            page.Content().Text("Dosar de test");
-        })).GeneratePdf();
 
     /// <summary>
     /// Un PDF cu pagini de dimensiunea cerută — sursele reale nu sunt A4.

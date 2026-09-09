@@ -15,11 +15,14 @@ namespace UnitTests.PfaRegistrations;
 ///
 /// Testul e cerut explicit de spec pentru că fix-ul a regresat: un separator adăugat înaintea
 /// fiecărui PDF umfla dosarul cu o pagină per document, iar la ghișeu asta se vede.
+///
+/// De la scoaterea copertei, dosarul e format DOAR din paginile documentelor — nu mai există
+/// nicio filă generată de noi.
 /// </summary>
 public sealed class ArrDossierPageCountTests
 {
-    /// <summary>Opisul: singura pagină din dosar care nu vine dintr-un document încărcat.</summary>
-    private const int IndexPages = 1;
+    /// <summary>Dosarul nu mai are nicio pagină în afara documentelor încărcate.</summary>
+    private const int IndexPages = 0;
 
     static ArrDossierPageCountTests() => QuestPDF.Settings.License = LicenseType.Community;
 
@@ -55,11 +58,13 @@ public sealed class ArrDossierPageCountTests
     }
 
     [Fact]
-    public void GenerateArrDossier_WithoutAttachments_IsIndexOnly()
+    public void GenerateArrDossier_WithoutAttachments_SaysSoOnOnePage()
     {
+        // Un PDF fără pagini nu se poate salva, iar un fișier gol descărcat de client e mai rău
+        // decât o filă care spune de ce e gol.
         byte[] dossier = new ArrDossierGenerator().GenerateArrDossier(DataWith([]));
 
-        PageCountOf(dossier).ShouldBe(IndexPages);
+        PageCountOf(dossier).ShouldBe(1);
     }
 
     private static ArrDossierData DataWith(IReadOnlyList<DossierAttachment> attachments) =>
