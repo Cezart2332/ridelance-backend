@@ -96,21 +96,48 @@ internal static class DossierAssembler
     /// Filigran „TEST" pe fiecare pagină, în diagonală. Se aplică la final, peste tot ce s-a
     /// asamblat: un dosar de test nu are voie să treacă drept unul depozabil, indiferent pe ce
     /// pagină se uită cineva (spec fix-uri §13.5).
+    ///
+    /// Cuvântul se compune cu QuestPDF, nu cu <c>XFont</c>. PdfSharp cere un font de sistem, iar
+    /// containerul n-are niciunul sub numele cerut: <c>new XFont("Helvetica", …)</c> arunca
+    /// „No appropriate font found", adică orice dosar generat într-o sesiune de test pica cu 500.
+    /// QuestPDF își poartă fontul cu el, deci filigranul nu mai depinde de ce e instalat pe mașină.
     /// </summary>
     private static void StampTestWatermark(PdfDocument document)
     {
-        var font = new XFont("Helvetica", 72, XFontStyleEx.Bold);
-        XBrush brush = new XSolidBrush(XColor.FromArgb(48, 200, 0, 0));
+        using var overlay = new MemoryStream(WatermarkOverlay());
+        using var form = XPdfForm.FromStream(overlay);
 
         foreach (PdfPage page in document.Pages)
         {
             using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Append);
 
-            gfx.TranslateTransform(page.Width.Point / 2, page.Height.Point / 2);
-            gfx.RotateTransform(-35);
-            gfx.DrawString("TEST", font, brush, new XPoint(0, 0), XStringFormats.Center);
+            // Întins pe toată pagina: filigranul acoperă la fel și A4-ul portret, și cel landscape.
+            gfx.DrawImage(form, 0, 0, page.Width.Point, page.Height.Point);
         }
     }
+
+    /// <summary>
+    /// O pagină transparentă cu un singur cuvânt, în diagonală. Transparentă chiar contează: se
+    /// desenează PESTE actul deja pus în pagină, iar un fundal alb l-ar acoperi.
+    /// </summary>
+    private static byte[] WatermarkOverlay() =>
+        Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.PageColor(Colors.Transparent);
+
+                page.Content()
+                    .AlignCenter().AlignMiddle()
+                    .Rotate(-35)
+                    .Text("TEST")
+                    .FontSize(96)
+                    .Bold()
+                    // Roșu foarte transparent: se vede pe orice fundal, dar nu ascunde actul.
+                    .FontColor(Color.FromARGB(0x30, 0xC8, 0x00, 0x00));
+            });
+        }).GeneratePdf();
 
     /// <summary>
     /// Regula dosarului, din specul de fix-uri §9: <b>un document sursă = exact numărul lui de

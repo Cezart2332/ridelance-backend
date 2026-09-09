@@ -125,6 +125,56 @@ public sealed class DossierAssemblerTests
         PagesOf(dossier).Count.ShouldBe(1);
     }
 
+    /// <summary>
+    /// Filigranul „TEST" nu are voie să depindă de fonturile mașinii.
+    ///
+    /// Regresia, raportată ca 500 la generarea dosarului: filigranul se desena cu
+    /// <c>new XFont("Helvetica", …)</c>, iar PdfSharp cere pentru asta un font instalat. În
+    /// containerul de producție nu există niciunul sub numele ăsta, deci ORICE dosar dintr-o
+    /// sesiune de test pica cu „No appropriate font found" — nu doar filigranul, tot dosarul.
+    /// </summary>
+    [Fact]
+    public void Assemble_StampsTheTestWatermarkWithoutASystemFont()
+    {
+        byte[] scan = PdfWithPages(widthPt: 612, heightPt: 792, pages: 2);
+
+        byte[] dossier = DossierAssembler.Assemble(
+            [new DossierAttachment("Cazier", "application/pdf", scan)],
+            watermarkAsTest: true);
+
+        PagesOf(dossier).Count.ShouldBe(2);
+        AllPagesShouldBeA4(dossier);
+    }
+
+    /// <summary>
+    /// Și ajunge pe FIECARE pagină: un dosar de test nu are voie să treacă drept unul depozabil,
+    /// indiferent pe ce filă se uită cineva. Se numără formele desenate pe pagină — cu filigran e
+    /// exact una în plus față de același dosar fără el.
+    /// </summary>
+    [Fact]
+    public void Assemble_StampsEveryPageOfATestDossier()
+    {
+        byte[] scan = PdfWithPages(widthPt: 612, heightPt: 792, pages: 3);
+        DossierAttachment[] attachments = [new("Cazier", "application/pdf", scan)];
+
+        List<int> plain = XObjectCountsOf(DossierAssembler.Assemble(attachments));
+        List<int> stamped = XObjectCountsOf(
+            DossierAssembler.Assemble(attachments, watermarkAsTest: true));
+
+        stamped.Count.ShouldBe(plain.Count);
+        stamped.ShouldBe([.. plain.Select(count => count + 1)]);
+    }
+
+    /// <summary>Câte forme (XObject) sunt referite pe fiecare pagină.</summary>
+    private static List<int> XObjectCountsOf(byte[] pdf)
+    {
+        using var stream = new MemoryStream(pdf);
+        using PdfDocument document = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
+
+        return [.. Enumerable.Range(0, document.PageCount).Select(i =>
+            document.Pages[i].Resources.Elements.GetDictionary("/XObject")?.Elements.Count ?? 0)];
+    }
+
     private static void AllPagesShouldBeA4(byte[] pdf)
     {
         foreach ((double width, double height) in PagesOf(pdf))
