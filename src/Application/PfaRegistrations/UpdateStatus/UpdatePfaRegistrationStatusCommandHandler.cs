@@ -2,6 +2,8 @@ using Application.Abstractions;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
+using Application.PfaRegistrations.Onboarding;
+using Domain.Documents;
 using Domain.Notifications;
 using Domain.PfaRegistrations;
 using Domain.Users;
@@ -42,6 +44,24 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(
 
         if (command.NewStatus == PfaRegistrationStatus.Approved)
         {
+            // Aprobarea închide pasul PFA, iar un pas închis nu mai acceptă scrieri (RL-01). Pe
+            // ramura „Am PFA" asta însemna că un dosar aprobat înainte ca șoferul să-și fi încărcat
+            // certificatul constatator îl lăsa fără nicio cale de a-l mai încărca: ecranul dispărea,
+            // uploadul era refuzat, iar dosarul rămânea incomplet la ARR. Deci nu se aprobă înainte.
+            List<Document> certificates = await context.Documents
+                .Where(d => d.UserId == registration.UserId
+                    && (d.Category == DocumentCategory.CertificatInregistrare
+                        || d.Category == DocumentCategory.CertificatConstatator))
+                .ToListAsync(cancellationToken);
+
+            if (!OnboardingStepCatalog.PfaUserPartDone(registration, certificates))
+            {
+                return Result.Failure(Error.Failure(
+                    "PfaRegistration.UserPartIncomplete",
+                    "Șoferul nu a încărcat încă ambele certificate ONRC (înregistrare și constatator). "
+                    + "Aprobarea acum i-ar închide pasul fără ele."));
+            }
+
             if (string.IsNullOrWhiteSpace(command.Cui))
             {
                 return Result.Failure(Error.Failure("PfaRegistration.CuiRequired", "CUI-ul este obligatoriu pentru aprobare."));
@@ -55,15 +75,14 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(
 
             // La „Am PFA" certificatul e deja încărcat de user în pasul 1, deci adminul nu mai
             // trebuie să-l urce încă o dată; îl cere doar când chiar lipsește (cazul „Nu am PFA").
-            Domain.Documents.Document? document = command.DocumentId is not null
+            Document? document = command.DocumentId is not null
                 ? await context.Documents
                     .SingleOrDefaultAsync(d => d.Id == command.DocumentId, cancellationToken)
-                : await context.Documents
-                    .Where(d => d.UserId == registration.UserId
-                        && d.Category == Domain.Documents.DocumentCategory.CertificatInregistrare
-                        && d.Status != Domain.Documents.DocumentStatus.Rejected)
+                : certificates
+                    .Where(d => d.Category == DocumentCategory.CertificatInregistrare
+                        && d.Status != DocumentStatus.Rejected)
                     .OrderByDescending(d => d.UploadedAtUtc)
-                    .FirstOrDefaultAsync(cancellationToken);
+                    .FirstOrDefault();
 
             if (document == null)
             {
@@ -74,8 +93,8 @@ internal sealed class UpdatePfaRegistrationStatusCommandHandler(
 
             // Link document and update its metadata
             document.PfaRegistrationId = registration.Id;
-            document.Category = Domain.Documents.DocumentCategory.CertificatInregistrare;
-            document.Status = Domain.Documents.DocumentStatus.Verified;
+            document.Category = DocumentCategory.CertificatInregistrare;
+            document.Status = DocumentStatus.Verified;
             
             registration.Cui = command.Cui;
         }
