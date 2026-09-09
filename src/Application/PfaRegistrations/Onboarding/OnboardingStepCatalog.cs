@@ -354,15 +354,18 @@ public static class OnboardingStepCatalog
 
         OnboardingSignaturePacket? packet = r.SignaturePacket;
 
-        // Închiderea pasului cere și pachetul de semnături alocat de admin — altfel șoferul ar
-        // trece mai departe fără împuternicirile cu care depunem dosarele în numele lui.
+        // Pasul se închide pe verdictul adminului, și numai pe el.
         //
-        // Contul bancar nu se mai cere `Verified`: statusul ăla îl pune un singur lucru, potrivirea
-        // IBAN-ului declarat cu un cont legat prin Open Banking. Cine declară contul de mână și
-        // încarcă extrasul — drumul obișnuit — rămânea pe `Pending` orice ar fi făcut adminul, deci
-        // pasul nu se putea închide niciodată. Verificarea omului e chiar validarea secțiunii.
-        if (packet?.Status == SignaturePacketStatus.Completed
-            && FiscalUserPartComplete(r))
+        // Cerea până acum și `FiscalUserPartComplete` pe deasupra, ceea ce însemna că „Validează
+        // secțiunea" nu închidea nimic dacă lipsea răspunsul la TVA sau un consimțământ Oblio:
+        // adminul apăsa, primea „pasul următor al clientului este deblocat", iar clientul rămânea
+        // exact unde era, fără ca cineva să vadă de ce. Adminul se uită la dosar când validează;
+        // dacă ceva lipsește, are butonul de respingere, cu motiv.
+        //
+        // Contul bancar nu se cere `Verified`: statusul ăla îl pune un singur lucru, potrivirea
+        // IBAN-ului declarat cu un cont legat prin Open Banking. Cine declară contul de mână —
+        // drumul obișnuit — rămânea pe `Pending` orice ar fi făcut adminul.
+        if (packet?.Status == SignaturePacketStatus.Completed)
         {
             return StatusCompleted;
         }
