@@ -21,6 +21,33 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      # OpenCV, folosit la plăcuțele de înmatriculare și la curățarea pozelor din dosare, vine ca
+      # bibliotecă nativă. `libOpenCvSharpExtern.so` cere la încărcare libjpeg 8, libpng16,
+      # libopenjp2 7, libtiff 5 și OpenEXR 2.5 — citite din antetul ELF al fișierului, nu ghicite.
+      #
+      # Noble are libtiff 6, nu 5, și n-are deloc OpenEXR 2.5. Amândouă se rezolvă exact ca în
+      # Dockerfile: o legătură simbolică pentru libtiff și bibliotecile OpenEXR luate dintr-un
+      # container jammy. Fără ele, testele pe imagini se raportează sărite, cu motivul la vedere.
+      - name: OpenCV native deps
+        # Pregătire de mediu, nu cod: dacă pică (pachet redenumit, jammy indisponibil), testele pe
+        # imagini se sar singure, iar restul suitei merge mai departe. Pasul rămâne marcat roșu, ca
+        # să se vadă că mediul are o problemă.
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libjpeg-turbo8 libpng16-16t64 libtiff6 libopenjp2-7
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libtiff.so.6 /usr/lib/x86_64-linux-gnu/libtiff.so.5
+          mkdir -p /tmp/openexr
+          docker run --rm -v /tmp/openexr:/out ubuntu:22.04 bash -c "\
+            apt-get update -qq && apt-get install -y --no-install-recommends libopenexr25 && \
+            cp -a /usr/lib/x86_64-linux-gnu/libIlm*.so.25* \
+                  /usr/lib/x86_64-linux-gnu/libIex*.so.25* \
+                  /usr/lib/x86_64-linux-gnu/libImath*.so.25* \
+                  /usr/lib/x86_64-linux-gnu/libHalf*.so.25* /out/"
+          sudo cp -a /tmp/openexr/. /usr/lib/x86_64-linux-gnu/
+          sudo ldconfig
+
       - name: Restore
         run: dotnet restore CleanArchitecture.slnx
 
