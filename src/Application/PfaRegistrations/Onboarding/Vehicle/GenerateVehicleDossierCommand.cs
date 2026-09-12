@@ -102,9 +102,7 @@ internal sealed class GenerateVehicleDossierCommandHandler(
             badgeLines,
             badgesTotal,
             included,
-            nowUtc,
-            // Dosarele produse într-o sesiune de test poartă filigran, ca să nu ajungă la ghișeu.
-            registration.IsDevSession);
+            nowUtc);
 
         byte[] pdf = dossierGenerator.GenerateVehicleDossier(data);
 

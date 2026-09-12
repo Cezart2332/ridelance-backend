@@ -47,6 +47,15 @@ public sealed class Document : Entity
     /// <summary>Documentul are câmpuri sub prag și așteaptă verificare manuală (nu blochează fluxul).</summary>
     public bool AiRequiresManualReview { get; set; }
 
+    /// <summary>
+    /// Cu câte grade trebuie rotită poza, în sensul acelor de ceasornic, ca actul să apară drept:
+    /// 0, 90, 180 sau 270. O citește modelul care oricum verifică documentul.
+    ///
+    /// Se folosește la generarea dosarelor. Nu se poate deduce din pixeli — distribuția cernelii
+    /// spune dacă rândurile sunt orizontale, dar nu spune unde e susul.
+    /// </summary>
+    public int AiRotationDegrees { get; set; }
+
     // Legături/atribute adăugate progresiv de pașii noi de onboarding
     /// <summary>Vehiculul clientului de care ține documentul (fără FK încă — se adaugă la Pasul 5).</summary>
     public Guid? PfaVehicleId { get; set; }

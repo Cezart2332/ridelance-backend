@@ -101,11 +101,16 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         "1) dacă documentul corespunde tipului așteptat (nu alt tip de document, nu o poză goală sau fără legătură); " +
         "2) dacă este lizibil și complet (nu tăiat, nu prea neclar pentru a fi citit); " +
         "3) data eliberării/emiterii, dacă apare pe document; " +
-        "4) data expirării/valabilității, dacă apare pe document. " +
+        "4) data expirării/valabilității, dacă apare pe document; " +
+        "5) cum stă documentul în imagine. " +
         "NU evalua dacă documentul este expirat, valabil, recent sau vechi. NU compara datele de pe document cu " +
         "prezentul — nu cunoști data curentă, iar acest lucru se verifică ulterior, în afara ta. " +
         "Raportează datele exact cum apar pe document, fără să le corectezi și fără să le respingi ca improbabile. " +
         "Toate datele se normalizează în format ISO 8601, adică YYYY-MM-DD (exemplu: 15.09.2025 devine 2025-09-15). " +
+        "Pentru \"rotation\" spune cu câte grade trebuie rotită imaginea ÎN SENSUL ACELOR DE CEASORNIC pentru ca " +
+        "textul actului să se citească normal, de la stânga la dreapta: 0 dacă e deja drept, 90 dacă textul urcă " +
+        "de jos în sus (capul actului e în stânga), 180 dacă e cu susul în jos, 270 dacă textul coboară " +
+        "(capul actului e în dreapta). Alte valori nu sunt acceptate; dacă nu ești sigur, întoarce 0. " +
         "Dacă o dată nu apare pe document sau nu poate fi citită cu certitudine, întoarce null pentru ea — nu ghici. " +
         "NU include în răspuns date personale sensibile (CNP, serie și număr de act). " +
         "Răspunde STRICT cu un obiect JSON valid, fără niciun alt text, în exact acest format: " +
@@ -114,6 +119,7 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         "\"detected_type\": \"ce document este de fapt, pe scurt\", " +
         "\"reason\": \"explicație scurtă în română, max 200 de caractere, pe înțelesul clientului\", " +
         "\"overall_confidence\": number între 0 și 1, " +
+        "\"rotation\": 0, 90, 180 sau 270, " +
         "\"fields\": { \"cheie_camp\": {\"value\": \"text sau null\", \"confidence\": number între 0 și 1}, ... }}. " +
         "Extrage în \"fields\" DOAR câmpurile cerute în mesajul utilizatorului; dacă nu sunt cerute câmpuri, întoarce \"fields\": {}. " +
         "NU pune NICIODATĂ în \"fields\" CNP, serie sau număr de act de identitate. " +
@@ -148,7 +154,8 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
             IReadOnlyList<AiFieldResult> fields = ParseFields(root);
 
             return new DocumentAiAnalysisResult(
-                matches, readable, issuedOn, expiresAt, detectedType, reason, fields, overallConfidence);
+                matches, readable, issuedOn, expiresAt, detectedType, reason, fields, overallConfidence,
+                ParseRotation(root));
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
         {
@@ -157,6 +164,18 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
                 "Ai.InvalidResponse",
                 "Răspunsul serviciului AI nu a putut fi interpretat."));
         }
+    }
+
+    /// <summary>
+    /// Rotația, acceptată doar în cele patru valori cu sens. Orice altceva — un unghi fin, un
+    /// text, lipsa câmpului — înseamnă 0: mai bine un act necotit decât unul rotit aiurea.
+    /// </summary>
+    private static int ParseRotation(JsonElement root)
+    {
+        double? value = GetDouble(root, "rotation");
+        int degrees = value is null ? 0 : (int)Math.Round(value.Value);
+
+        return degrees is 90 or 180 or 270 ? degrees : 0;
     }
 
     private static List<AiFieldResult> ParseFields(JsonElement root)

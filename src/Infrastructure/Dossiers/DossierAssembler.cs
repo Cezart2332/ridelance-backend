@@ -40,9 +40,7 @@ internal static class DossierAssembler
     /// Fără copertă: la ghișeu se depun actele, iar o filă cu antetul nostru și cu date pe care
     /// funcționarul le are deja în formular era o pagină de aruncat înaintea fiecărui dosar.
     /// </summary>
-    public static byte[] Assemble(
-        IReadOnlyList<DossierAttachment> attachments,
-        bool watermarkAsTest = false)
+    public static byte[] Assemble(IReadOnlyList<DossierAttachment> attachments)
     {
         using var output = new PdfDocument();
 
@@ -82,62 +80,10 @@ internal static class DossierAssembler
                 "Nu există niciun document încărcat pentru dosarul acesta."));
         }
 
-        if (watermarkAsTest)
-        {
-            StampTestWatermark(output);
-        }
-
         using var stream = new MemoryStream();
         output.Save(stream);
         return stream.ToArray();
     }
-
-    /// <summary>
-    /// Filigran „TEST" pe fiecare pagină, în diagonală. Se aplică la final, peste tot ce s-a
-    /// asamblat: un dosar de test nu are voie să treacă drept unul depozabil, indiferent pe ce
-    /// pagină se uită cineva (spec fix-uri §13.5).
-    ///
-    /// Cuvântul se compune cu QuestPDF, nu cu <c>XFont</c>. PdfSharp cere un font de sistem, iar
-    /// containerul n-are niciunul sub numele cerut: <c>new XFont("Helvetica", …)</c> arunca
-    /// „No appropriate font found", adică orice dosar generat într-o sesiune de test pica cu 500.
-    /// QuestPDF își poartă fontul cu el, deci filigranul nu mai depinde de ce e instalat pe mașină.
-    /// </summary>
-    private static void StampTestWatermark(PdfDocument document)
-    {
-        using var overlay = new MemoryStream(WatermarkOverlay());
-        using var form = XPdfForm.FromStream(overlay);
-
-        foreach (PdfPage page in document.Pages)
-        {
-            using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Append);
-
-            // Întins pe toată pagina: filigranul acoperă la fel și A4-ul portret, și cel landscape.
-            gfx.DrawImage(form, 0, 0, page.Width.Point, page.Height.Point);
-        }
-    }
-
-    /// <summary>
-    /// O pagină transparentă cu un singur cuvânt, în diagonală. Transparentă chiar contează: se
-    /// desenează PESTE actul deja pus în pagină, iar un fundal alb l-ar acoperi.
-    /// </summary>
-    private static byte[] WatermarkOverlay() =>
-        Document.Create(container =>
-        {
-            container.Page(page =>
-            {
-                page.Size(PageSizes.A4);
-                page.PageColor(Colors.Transparent);
-
-                page.Content()
-                    .AlignCenter().AlignMiddle()
-                    .Rotate(-35)
-                    .Text("TEST")
-                    .FontSize(96)
-                    .Bold()
-                    // Roșu foarte transparent: se vede pe orice fundal, dar nu ascunde actul.
-                    .FontColor(Color.FromARGB(0x30, 0xC8, 0x00, 0x00));
-            });
-        }).GeneratePdf();
 
     /// <summary>
     /// Regula dosarului, din specul de fix-uri §9: <b>un document sursă = exact numărul lui de
@@ -178,6 +124,15 @@ internal static class DossierAssembler
 
         for (int i = 1; i <= lastPage; i++)
         {
+            // O pagină care nu e decât o poză se reface din poză: așa ajunge și ea prin curățare,
+            // nu doar pozele încărcate direct.
+            byte[]? photo = SoloImage(reader.Pages[i - 1]);
+            if (photo is not null)
+            {
+                AppendPdf(output, PhotoPage(photo, attachment.RotationDegrees));
+                continue;
+            }
+
             form.PageNumber = i;
             AppendNormalizedToA4(output, form);
         }
@@ -274,36 +229,77 @@ internal static class DossierAssembler
     /// <c>FitArea</c> peste tot. <c>FitWidth</c>/<c>FitHeight</c> sunt interzise: fiecare din ele
     /// garantează depășirea pe cealaltă axă.
     /// </summary>
-    private static byte[] ImagePage(DossierAttachment attachment)
+    private static byte[] ImagePage(DossierAttachment attachment) =>
+        PhotoPage(attachment.Content, attachment.RotationDegrees, attachment.Label);
+
+    /// <summary>
+    /// O poză, curățată și pusă pe pagina ei.
+    ///
+    /// Rotația și decupajul se fac pe pixeli, în <see cref="DocumentImage"/>, nu pe container:
+    /// aici trebuie știute laturile finale ca să se aleagă orientarea paginii, iar o rotire făcută
+    /// la desenare le-ar lăsa pe cele vechi. Ce iese e actul fără fundal, drept.
+    /// </summary>
+    private static byte[] PhotoPage(byte[] content, int rotationDegrees, string? label = null)
     {
-        var info = ImageInfo.Read(attachment.Content);
+        var original = ImageInfo.Read(content);
+        byte[] tidied = DocumentImage.Tidy(content, original.Orientation, rotationDegrees);
+        var info = ImageInfo.Read(tidied);
 
         return Page(
-            attachment.Label,
-            content => Rotated(content, info.Orientation)
-                .AlignCenter().AlignMiddle()
-                .Image(attachment.Content)
-                .FitArea(),
+            label,
+            body => body.AlignCenter().AlignMiddle().Image(tidied).FitArea(),
             info.IsLandscape);
     }
 
     /// <summary>
-    /// Aplică rotația cerută de EXIF. Valorile cu oglindire (2, 4, 5, 7) apar practic doar din
-    /// editări greșite; le tratăm ca pe rotația lor simplă — mai bine un act întors corect decât
-    /// unul oglindit „exact".
+    /// Poza dintr-o pagină de PDF care nu conține altceva — adică exact ce produce aplicația când
+    /// combină fotografiile într-un PDF înainte de upload (<c>src/utils/imagesToPdf.ts</c>).
+    ///
+    /// Contează pentru că pe drumul ăsta vin mai toate pozele: fără extragere, actul rămâne
+    /// îngropat într-o pagină pe care n-o putem decupa, cu tot fundalul lui.
+    ///
+    /// Null când pagina are text, mai multe imagini sau o codificare pe care n-o putem scoate
+    /// întreagă — atunci pagina intră în dosar așa cum e.
     /// </summary>
-    private static IContainer Rotated(IContainer container, int orientation) => orientation switch
+    private static byte[]? SoloImage(PdfPage page)
     {
-        3 or 4 => container.RotateLeft().RotateLeft(),
-        5 or 6 => container.RotateRight(),
-        7 or 8 => container.RotateLeft(),
-        _ => container,
-    };
+        try
+        {
+            PdfDictionary resources = page.Resources;
+            if (resources.Elements.ContainsKey("/Font"))
+            {
+                return null;
+            }
+
+            PdfDictionary? xobjects = resources.Elements.GetDictionary("/XObject");
+            if (xobjects is null || xobjects.Elements.Count != 1)
+            {
+                return null;
+            }
+
+            string key = xobjects.Elements.Keys.First();
+            if (xobjects.Elements.GetObject(key) is not PdfDictionary image
+                || image.Elements.GetName("/Subtype") != "/Image"
+                || image.Stream is null)
+            {
+                return null;
+            }
+
+            // Doar JPEG: fluxul e chiar fișierul, deci se poate scoate fără să-l recompunem.
+            string filter = image.Elements["/Filter"]?.ToString() ?? string.Empty;
+
+            return filter.Contains("DCTDecode", StringComparison.Ordinal) ? image.Stream.Value : null;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
 
     private static byte[] SkippedPage(string label, string reason) =>
         Page(label, content => content.Text(reason).FontColor(Colors.Red.Darken2));
 
-    private static byte[] Page(string label, Action<IContainer> body, bool landscape = false) =>
+    private static byte[] Page(string? label, Action<IContainer> body, bool landscape = false) =>
         Document.Create(container =>
         {
             container.Page(page =>
@@ -312,7 +308,13 @@ internal static class DossierAssembler
                 page.Margin(1.5f, Unit.Centimetre);
                 page.DefaultTextStyle(x => x.FontSize(11).FontColor(Colors.Grey.Darken4));
 
-                page.Header().PaddingBottom(10).Text(label).SemiBold().FontSize(13);
+                // Fără etichetă pentru paginile scoase dintr-un PDF: acolo regula e „o pagină
+                // sursă = o pagină", iar un antet ar fi text adăugat de noi peste actul depus.
+                if (label is not null)
+                {
+                    page.Header().PaddingBottom(10).Text(label).SemiBold().FontSize(13);
+                }
+
                 body(page.Content());
             });
         })

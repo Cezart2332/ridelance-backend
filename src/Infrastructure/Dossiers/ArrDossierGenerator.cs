@@ -17,12 +17,12 @@ internal sealed class ArrDossierGenerator : IDossierGenerator
     public byte[] GenerateArrDossier(ArrDossierData data)
     {
         ArgumentNullException.ThrowIfNull(data);
-        return DossierAssembler.Assemble(data.IncludedDocuments, data.IsTest);
+        return DossierAssembler.Assemble(data.IncludedDocuments);
     }
 
     public byte[] GenerateVehicleDossier(VehicleDossierData data)
     {
         ArgumentNullException.ThrowIfNull(data);
-        return DossierAssembler.Assemble(data.IncludedDocuments, data.IsTest);
+        return DossierAssembler.Assemble(data.IncludedDocuments);
     }
 }
