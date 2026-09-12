@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using Application.Abstractions.Messaging;
 using Application.Banking.Commands;
 using Application.Banking.Queries;
@@ -23,6 +25,46 @@ internal sealed class BankEndpoints : IEndpoint
         string? PsuCorporateId,
         string? Iban,
         bool TcAccepted);
+
+    /// <summary>
+    /// IP-ul clientului, în forma pe care o acceptă Smart Accounts: IPv4 punctat, atât.
+    ///
+    /// Două lucruri stricau asta în producție, dar nu și local:
+    ///
+    /// Socketul Kestrel e dual-stack, deci un client IPv4 apare ca IPv6 mapat
+    /// (<c>::ffff:10.0.1.23</c>). Trimis așa, furnizorul răspunde 400 cu
+    /// „INVALID FORMAT PSU-IP-ADDRESS" — verificat pe sandbox, pe toate băncile.
+    ///
+    /// Și în spatele unui proxy, adresa conexiunii e a proxy-ului, nu a omului. Adevărata adresă
+    /// vine în <c>X-Forwarded-For</c>, prima din listă.
+    ///
+    /// Antetul e pus de proxy și poate fi falsificat de client, dar aici nu decide nimic: se duce
+    /// mai departe la bancă, unde ține doar de limitarea numărului de interogări.
+    /// </summary>
+    private static string? PsuIpAddress(HttpContext httpContext)
+    {
+        string? forwarded = httpContext.Request.Headers["X-Forwarded-For"]
+            .FirstOrDefault()?
+            .Split(',')[0]
+            .Trim();
+
+        return Ipv4(forwarded) ?? Ipv4(httpContext.Connection.RemoteIpAddress?.ToString());
+    }
+
+    private static string? Ipv4(string? candidate)
+    {
+        if (!IPAddress.TryParse(candidate, out IPAddress? address))
+        {
+            return null;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        return address.AddressFamily == AddressFamily.InterNetwork ? address.ToString() : null;
+    }
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -62,10 +104,9 @@ internal sealed class BankEndpoints : IEndpoint
                     request.PsuCorporateId,
                     request.Iban,
                     request.TcAccepted,
-                    // Furnizorul cere IP-ul utilizatorului real, nu al serverului: fără el, banca
-                    // ne limitează la patru interogări pe zi. Îl citim aici, nu în handler —
-                    // stratul de aplicație n-are de ce să știe de HTTP.
-                    httpContext.Connection.RemoteIpAddress?.ToString()),
+                    // Furnizorul cere IP-ul utilizatorului real, nu al serverului. Îl citim aici,
+                    // nu în handler — stratul de aplicație n-are de ce să știe de HTTP.
+                    PsuIpAddress(httpContext)),
                 cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         });

@@ -599,7 +599,7 @@ internal sealed class SmartAccountsBankDataProvider(
         }
     }
 
-    private static string ExtractErrorMessage(string payload)
+    internal static string ExtractErrorMessage(string payload)
     {
         if (string.IsNullOrWhiteSpace(payload))
         {
@@ -611,12 +611,22 @@ internal sealed class SmartAccountsBankDataProvider(
             using var document = JsonDocument.Parse(payload);
             JsonElement root = document.RootElement;
 
-            string? message = SmartAccountsJson.String(root, "messageStatus", "message", "error")
-                ?? SmartAccountsJson.String(root, "moreDetails");
+            // Detaliul înaintea etichetei. `messageStatus` e mereu „Bad request", pe orice fel de
+            // greșeală, iar cât timp îl preferam pe el, eroarea nu spunea nimic despre cauză: lipsa
+            // adresei de retur, un IBAN greșit și un IP într-un format nepotrivit arătau la fel.
+            // Adevăratul motiv stă în `moreDetails`, care e un obiect cu un `text` înăuntru — deci
+            // nici nu putea fi citit ca șir.
+            string? detail = Detail(root);
+            string? label = SmartAccountsJson.String(root, "messageStatus", "message", "error");
 
-            if (message is not null)
+            if (detail is not null)
             {
-                return message;
+                return label is null ? detail : $"{label} — {detail}";
+            }
+
+            if (label is not null)
+            {
+                return label;
             }
         }
         catch (JsonException)
@@ -626,6 +636,32 @@ internal sealed class SmartAccountsBankDataProvider(
 
         return payload.Length > 300 ? payload[..300] : payload;
     }
+
+    /// <summary>
+    /// Motivul propriu-zis. Vine fie ca text, fie ca obiect cu un <c>text</c> înăuntru, iar acolo
+    /// uneori e un JSON reîmpachetat ca șir — de aceea se caută și în adâncime, nu doar la
+    /// suprafață.
+    /// </summary>
+    private static string? Detail(JsonElement root)
+    {
+        if (!root.TryGetProperty("moreDetails", out JsonElement details))
+        {
+            return null;
+        }
+
+        string? text = details.ValueKind == JsonValueKind.String
+            ? details.GetString()
+            : SmartAccountsJson.String(details, "text", "detail", "title", "message");
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return details.ValueKind == JsonValueKind.Object ? details.GetRawText() : null;
+        }
+
+        return Truncate(text.Trim());
+    }
+
+    private static string Truncate(string text) => text.Length > 300 ? text[..300] : text;
 
     private static void Collect(JsonElement container, string property, bool isPending, List<BankTransactionInfo> into)
     {
