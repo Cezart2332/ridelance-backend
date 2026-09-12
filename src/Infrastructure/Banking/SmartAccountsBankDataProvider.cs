@@ -446,9 +446,15 @@ internal sealed class SmartAccountsBankDataProvider(
     {
         string token = await AccessTokenForAsync(consentId, cancellationToken);
 
+        // Antetul cu IP-ul clientului se pune aici, o dată pentru toate apelurile pe consimțământ:
+        // furnizorul îl cere la fiecare, nu doar la deschidere. Fără el răspunde 400 „EMPTY OR
+        // MISSING PSU-IP-ADDRESS" — și la citirea stării, și la conturi, și la tranzacții.
+        IReadOnlyList<(string Name, string Value)> withPsuIp =
+            await WithPsuIpAsync(consentId, headers, cancellationToken);
+
         try
         {
-            return await SendAsync(method, url, token, body, headers, expectBody, tolerateNotFound, cancellationToken);
+            return await SendAsync(method, url, token, body, withPsuIp, expectBody, tolerateNotFound, cancellationToken);
         }
         catch (BankDataUnauthorizedException)
         {
@@ -475,7 +481,7 @@ internal sealed class SmartAccountsBankDataProvider(
             try
             {
                 return await SendAsync(
-                    method, url, renewed.AccessToken, body, headers, expectBody, tolerateNotFound, cancellationToken);
+                    method, url, renewed.AccessToken, body, withPsuIp, expectBody, tolerateNotFound, cancellationToken);
             }
             catch (BankDataUnauthorizedException)
             {
@@ -483,6 +489,33 @@ internal sealed class SmartAccountsBankDataProvider(
                     "Acordul dat băncii nu mai e valabil. Reconectează banca.");
             }
         }
+    }
+
+    /// <summary>
+    /// Anteturile cerute, plus IP-ul clientului salvat pe conexiune — dacă apelantul nu l-a pus deja.
+    ///
+    /// Conexiunile deschise înainte ca el să fie păstrat n-au niciunul; acolo apelul va eșua cu
+    /// mesajul furnizorului, care spune exact ce lipsește. Se repară singur la prima deschidere a
+    /// paginii de bancă, unde IP-ul viu se scrie pe rând.
+    /// </summary>
+    private async Task<IReadOnlyList<(string Name, string Value)>> WithPsuIpAsync(
+        string consentId,
+        IReadOnlyList<(string Name, string Value)>? headers,
+        CancellationToken cancellationToken)
+    {
+        if (headers?.Any(h => string.Equals(h.Name, "PSU-IP-Address", StringComparison.OrdinalIgnoreCase)) == true)
+        {
+            return headers;
+        }
+
+        string? psuIp = await tokenStore.GetPsuIpAddressAsync(consentId, cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(psuIp))
+        {
+            return headers ?? [];
+        }
+
+        return [.. headers ?? [], ("PSU-IP-Address", psuIp)];
     }
 
     private async Task<JsonElement> SendAsync(

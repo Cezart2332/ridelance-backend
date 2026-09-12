@@ -20,6 +20,7 @@ internal sealed class BankConnectionConfiguration : IEntityTypeConfiguration<Ban
         builder.Property(bc => bc.InstitutionId).HasMaxLength(128).IsRequired();
         builder.Property(bc => bc.InstitutionName).HasMaxLength(256).IsRequired();
         builder.Property(bc => bc.InstitutionLogoUrl).HasMaxLength(512);
+        builder.Property(bc => bc.PsuIpAddress).HasMaxLength(45);
         builder.Property(bc => bc.ProviderConsentId).HasMaxLength(128).IsRequired();
         builder.Property(bc => bc.AccessTokenEncrypted).HasMaxLength(2048);
         builder.Property(bc => bc.RefreshTokenEncrypted).HasMaxLength(2048);

@@ -82,11 +82,13 @@ internal sealed class BankEndpoints : IEndpoint
         });
 
         group.MapGet("connection", async (
+            HttpContext httpContext,
             IQueryHandler<GetBankConnectionQuery, BankConnectionResponse?> handler,
             CancellationToken cancellationToken) =>
         {
-            Result<BankConnectionResponse?> result =
-                await handler.Handle(new GetBankConnectionQuery(), cancellationToken);
+            Result<BankConnectionResponse?> result = await handler.Handle(
+                new GetBankConnectionQuery(PsuIpAddress(httpContext)),
+                cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         });
 

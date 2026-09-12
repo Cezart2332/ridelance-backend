@@ -20,6 +20,15 @@ public sealed class BankConnection : Entity
     public string? InstitutionLogoUrl { get; set; }
 
     /// <summary>
+    /// IP-ul clientului, de la deschiderea consimțământului.
+    ///
+    /// Furnizorul cere antetul PSU-IP-Address la FIECARE apel pe consimțământ, nu doar la
+    /// deschidere: fără el răspunde 400 „EMPTY OR MISSING PSU-IP-ADDRESS" și la citirea stării, și
+    /// la conturi. Jobul de sincronizare n-are cerere HTTP din care să-l ia, deci îl păstrăm aici.
+    /// </summary>
+    public string? PsuIpAddress { get; set; }
+
+    /// <summary>
     /// Identificatorul consimțământului la furnizor, în clar.
     ///
     /// În clar fiindcă după el se caută rândul de fiecare dată când furnizorul răspunde, iar

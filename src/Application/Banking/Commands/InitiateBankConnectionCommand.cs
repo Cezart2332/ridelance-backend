@@ -163,6 +163,9 @@ internal sealed class InitiateBankConnectionCommandHandler(
         connection.ProviderConsentId = consent.ConsentId;
         connection.ConsentStatus = consent.ConsentStatus;
         connection.Reference = reference;
+        // Se păstrează pentru apelurile de după: furnizorul cere antetul PSU-IP-Address la fiecare,
+        // iar jobul de sincronizare n-are cerere HTTP din care să-l ia.
+        connection.PsuIpAddress = command.PsuIpAddress;
         connection.Status = BankConnectionStatus.Created;
         // Autorizarea la bancă are termen. Fără unul presupus, o conectare abandonată ar lăsa
         // pagina în „se așteaptă confirmarea" pentru totdeauna.

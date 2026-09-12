@@ -24,7 +24,13 @@ public sealed record BankConnectionResponse(
     List<BankAccountResponse> Accounts,
     DateTime? LinkExpiresAtUtc);
 
-public sealed record GetBankConnectionQuery : IQuery<BankConnectionResponse?>;
+/// <param name="PsuIpAddress">
+/// IP-ul clientului din cererea curentă. Furnizorul cere antetul PSU-IP-Address la fiecare apel pe
+/// consimțământ, iar aici e singurul loc unde avem unul viu: pagina întreabă de starea conexiunii
+/// cât timp așteaptă autorizarea. Se scrie pe rând, ca jobul de sincronizare — care n-are cerere
+/// HTTP — să aibă de unde-l lua.
+/// </param>
+public sealed record GetBankConnectionQuery(string? PsuIpAddress = null) : IQuery<BankConnectionResponse?>;
 
 /// <summary>
 /// Starea conexiunii bancare a utilizatorului curent.
@@ -51,6 +57,14 @@ internal sealed class GetBankConnectionQueryHandler(
         if (connection is null)
         {
             return Result.Success<BankConnectionResponse?>(null);
+        }
+
+        // Conexiunile deschise înainte ca IP-ul să fie păstrat n-au niciunul, iar fără el apelurile
+        // către furnizor sunt refuzate. Se repară singure aici, la prima deschidere a paginii.
+        if (!string.IsNullOrWhiteSpace(query.PsuIpAddress) && connection.PsuIpAddress != query.PsuIpAddress)
+        {
+            connection.PsuIpAddress = query.PsuIpAddress;
+            await context.SaveChangesAsync(cancellationToken);
         }
 
         if (connection.Status is BankConnectionStatus.Created or BankConnectionStatus.Pending)
