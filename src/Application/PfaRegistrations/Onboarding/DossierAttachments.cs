@@ -60,7 +60,8 @@ internal static class DossierAttachments
                 continue;
             }
 
-            attachments.Add(new DossierAttachment(requirement.Label, document.ContentType, content));
+            attachments.Add(new DossierAttachment(
+                requirement.Label, document.ContentType, content, document.AiRotationDegrees));
         }
 
         return attachments;

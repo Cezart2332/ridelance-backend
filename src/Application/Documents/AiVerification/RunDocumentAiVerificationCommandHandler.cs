@@ -112,6 +112,9 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         document.AiDetectedType = Truncate(result.DetectedType, 256);
         document.AiSummary = Truncate(result.Reason, 1024);
         document.AiProcessedAtUtc = DateTime.UtcNow;
+        // Se reține chiar dacă documentul pică verificarea: dosarul se generează și din acte pe
+        // care noi le-am respins, iar orientarea rămâne corectă indiferent de verdict.
+        document.AiRotationDegrees = result.RotationDegrees;
 
         if (result.ExpiresAt.HasValue)
         {

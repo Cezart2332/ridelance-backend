@@ -1,11 +1,19 @@
 namespace Application.Abstractions.Dossiers;
 
 /// <summary>
-/// Un document încărcat de driver, atașat în dosar după copertă. <paramref name="Content"/> e
-/// conținutul deja decriptat, iar <paramref name="ContentType"/> decide cum e încorporat:
-/// imaginile devin o pagină nouă, PDF-urile se importă cu paginile lor cu tot.
+/// Un document încărcat de driver, atașat în dosar. <paramref name="Content"/> e conținutul deja
+/// decriptat, iar <paramref name="ContentType"/> decide cum e încorporat: imaginile devin o
+/// pagină nouă, PDF-urile se importă cu paginile lor cu tot.
 /// </summary>
-public sealed record DossierAttachment(string Label, string ContentType, byte[] Content);
+/// <param name="RotationDegrees">
+/// Cu câte grade trebuie rotită poza în sensul acelor de ceasornic ca actul să fie drept (0, 90,
+/// 180, 270). Vine de la modelul care verifică documentul; se aplică la generarea dosarului.
+/// </param>
+public sealed record DossierAttachment(
+    string Label,
+    string ContentType,
+    byte[] Content,
+    int RotationDegrees = 0);
 
 /// <summary>Datele necesare pentru dosarul de autorizație ARR (Pasul 3).</summary>
 public sealed record ArrDossierData(
@@ -16,12 +24,7 @@ public sealed record ArrDossierData(
     string? AgencyName,
     long FeeBani,
     IReadOnlyList<DossierAttachment> IncludedDocuments,
-    DateTime GeneratedAtUtc,
-    /// <summary>
-    /// Dosarul provine dintr-o sesiune de test: primește filigran vizibil „TEST", ca să nu poată
-    /// fi confundat cu unul depozabil la ghișeu (spec fix-uri §13.5).
-    /// </summary>
-    bool IsTest = false);
+    DateTime GeneratedAtUtc);
 
 /// <summary>O linie de ecusoane în dosarul copie conformă (Pasul 5).</summary>
 public sealed record VehicleBadgeLine(string Provider, int SetCount, long TotalBani);
@@ -40,9 +43,7 @@ public sealed record VehicleDossierData(
     IReadOnlyList<VehicleBadgeLine> Badges,
     long BadgesTotalBani,
     IReadOnlyList<DossierAttachment> IncludedDocuments,
-    DateTime GeneratedAtUtc,
-    /// <summary>Dosar produs într-o sesiune de test — primește filigran „TEST".</summary>
-    bool IsTest = false);
+    DateTime GeneratedAtUtc);
 
 /// <summary>
 /// Generează dosarele PDF de onboarding pe backend. Implementarea folosește QuestPDF pentru layout

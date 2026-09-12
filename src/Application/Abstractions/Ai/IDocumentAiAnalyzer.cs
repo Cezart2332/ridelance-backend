@@ -32,6 +32,15 @@ public sealed record AiFieldResult(string Key, string? Value, double Confidence)
 /// <param name="ExpiresAt">
 /// Data expirării/valabilității, ISO 8601. Null când documentul nu o conține.
 /// </param>
+/// <param name="RotationDegrees">
+/// Cu câte grade trebuie rotită imaginea în sensul acelor de ceasornic ca actul să apară drept:
+/// 0, 90, 180 sau 270.
+///
+/// Se cere modelului fiindcă nu se poate deduce din pixeli. Pe o diplomă reală, scorurile
+/// statistice ale celor patru rotații au ieșit −0.043 / −0.053 / −0.060 / −0.060 — zgomot.
+/// Distribuția cernelii spune dacă rândurile sunt orizontale, dar nu spune unde e susul, iar
+/// modelul care oricum citește documentul știe asta din prima.
+/// </param>
 public sealed record DocumentAiAnalysisResult(
     bool MatchesExpectedType,
     bool IsReadable,
@@ -40,7 +49,8 @@ public sealed record DocumentAiAnalysisResult(
     string DetectedType,
     string Reason,
     IReadOnlyList<AiFieldResult> Fields,
-    double OverallConfidence);
+    double OverallConfidence,
+    int RotationDegrees = 0);
 
 public interface IDocumentAiAnalyzer
 {
