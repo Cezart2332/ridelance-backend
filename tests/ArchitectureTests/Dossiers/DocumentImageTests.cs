@@ -17,7 +17,7 @@ namespace ArchitectureTests.Dossiers;
 /// </summary>
 public sealed class DocumentImageTests
 {
-    [Fact]
+    [OpenCvFact]
     public void PhotoOnAColouredTable_KeepsOnlyTheDocument()
     {
         // Un act cenușiu, cu scris, pe o masă maro — buletinul fotografiat acasă.
@@ -31,7 +31,7 @@ public sealed class DocumentImageTests
         result.Height.ShouldBeInRange(400, 530);
     }
 
-    [Fact]
+    [OpenCvFact]
     public void ScanWithABlankBand_LosesTheBand()
     {
         // Actul pe hârtie gălbuie, cu o treime din geam rămasă albă lângă el — scanul de diplomă.
@@ -51,7 +51,7 @@ public sealed class DocumentImageTests
     /// de siguranță ar tăia exact pe dos: ar păstra banda și ar arunca diploma. Plasa e scrisul —
     /// hârtia goală n-are cerneală.
     /// </summary>
-    [Fact]
+    [OpenCvFact]
     public void BlankPaperNextToTheDocument_IsNotMistakenForIt()
     {
         using Mat scan = Scene(1500, 1000, background: new Scalar(250, 250, 250), document: new Rect(450, 40, 1010, 920), paper: new Scalar(150, 220, 250));
@@ -65,7 +65,7 @@ public sealed class DocumentImageTests
         Cv2.Mean(middle).Val0.ShouldBeLessThan(220);
     }
 
-    [Theory]
+    [OpenCvTheory]
     [InlineData(90)]
     [InlineData(270)]
     public void QuarterTurn_SwapsTheSides(int degrees)
@@ -80,7 +80,7 @@ public sealed class DocumentImageTests
         turned.Height.ShouldBe(straight.Width);
     }
 
-    [Fact]
+    [OpenCvFact]
     public void HalfTurn_KeepsTheSides()
     {
         using Mat scan = Scene(1200, 800, background: new Scalar(250, 250, 250), document: new Rect(40, 40, 1120, 720), paper: new Scalar(150, 220, 250));
@@ -94,7 +94,7 @@ public sealed class DocumentImageTests
     }
 
     /// <summary>Un fișier pe care nu-l putem citi rămâne cum a venit — dosarul nu pică pentru atât.</summary>
-    [Fact]
+    [OpenCvFact]
     public void UnreadableContent_IsReturnedUntouched()
     {
         byte[] rubbish = [0x00, 0x01, 0x02, 0x03, 0x04];
@@ -106,7 +106,7 @@ public sealed class DocumentImageTests
     /// O poză din care nu e nimic de scos nu se recomprimă degeaba: actul umple deja cadrul, cu
     /// scrisul până aproape de margine.
     /// </summary>
-    [Fact]
+    [OpenCvFact]
     public void DocumentThatAlreadyFillsTheFrame_IsLeftAlone()
     {
         byte[] photo = Encode(Scene(
