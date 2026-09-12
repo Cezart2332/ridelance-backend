@@ -17,4 +17,12 @@ public interface IBankConsentTokenStore
     Task<BankConsentTokens?> GetAsync(string consentId, CancellationToken cancellationToken = default);
 
     Task SaveAsync(string consentId, BankConsentTokens tokens, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// IP-ul clientului de pe consimțământ, pentru antetul PSU-IP-Address.
+    ///
+    /// Furnizorul îl cere la fiecare apel, nu doar la deschidere, iar jobul de sincronizare n-are
+    /// cerere HTTP din care să-l ia — deci vine tot de pe rândul conexiunii, ca tokenurile.
+    /// </summary>
+    Task<string?> GetPsuIpAddressAsync(string consentId, CancellationToken cancellationToken = default);
 }

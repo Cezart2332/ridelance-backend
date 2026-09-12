@@ -46,6 +46,13 @@ internal sealed class BankConsentTokenStore(
             row.AccessTokenExpiresAtUtc ?? DateTime.UtcNow);
     }
 
+    public Task<string?> GetPsuIpAddressAsync(string consentId, CancellationToken cancellationToken = default) =>
+        context.BankConnections
+            .AsNoTracking()
+            .Where(c => c.ProviderConsentId == consentId)
+            .Select(c => c.PsuIpAddress)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public async Task SaveAsync(
         string consentId,
         BankConsentTokens tokens,

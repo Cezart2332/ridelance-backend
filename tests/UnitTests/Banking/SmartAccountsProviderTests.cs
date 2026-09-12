@@ -93,6 +93,52 @@ public sealed class SmartAccountsProviderTests
             () => Provider(handler, store).GetConsentAsync("BT", "4211"));
     }
 
+    /// <summary>
+    /// Antetul cu IP-ul clientului merge pe FIECARE apel pe consimțământ, nu doar la deschidere.
+    ///
+    /// Regresia, căzută în producție: citirea stării îl omitea, iar furnizorul răspundea 400 „EMPTY
+    /// OR MISSING PSU-IP-ADDRESS" — verificat pe sandbox și pe consent, și pe status, și pe conturi.
+    /// Se ia de pe conexiune, fiindcă jobul de sincronizare n-are cerere HTTP din care să-l scoată.
+    /// </summary>
+    [Fact]
+    public async Task Every_consent_call_carries_the_client_ip()
+    {
+        StubHandler handler = new StubHandler()
+            .Enqueue("""
+                {"status":200,"messageStatus":"Success","payload":{"consentStatus":"valid",
+                 "validUntil":"2026-12-31T00:00:00Z"}}
+                """);
+
+        var store = new StubTokenStore(new BankConsentTokens("acc-1", "ref-1", DateTime.UtcNow.AddMinutes(4)))
+        {
+            PsuIpAddress = "86.120.1.1",
+        };
+
+        await Provider(handler, store).GetConsentAsync("BT", "4211");
+
+        handler.Requests[0].Headers.GetValues("PSU-IP-Address").ShouldBe(["86.120.1.1"]);
+    }
+
+    /// <summary>O conexiune deschisă înainte ca IP-ul să fie păstrat nu pică aici, ci la furnizor, cu mesajul lui.</summary>
+    [Fact]
+    public async Task Without_a_stored_ip_the_call_still_goes_out()
+    {
+        StubHandler handler = new StubHandler()
+            .Enqueue("""
+                {"status":200,"messageStatus":"Success","payload":{"consentStatus":"valid",
+                 "validUntil":"2026-12-31T00:00:00Z"}}
+                """);
+
+        var store = new StubTokenStore(new BankConsentTokens("acc-1", "ref-1", DateTime.UtcNow.AddMinutes(4)))
+        {
+            PsuIpAddress = null,
+        };
+
+        await Provider(handler, store).GetConsentAsync("BT", "4211");
+
+        handler.Requests[0].Headers.Contains("PSU-IP-Address").ShouldBeFalse();
+    }
+
     [Fact]
     public async Task ExpiredAccessToken_IsRenewedAndTheRotationIsSavedBeforeTheCall()
     {
@@ -253,6 +299,12 @@ public sealed class SmartAccountsProviderTests
 
         public Task<BankConsentTokens?> GetAsync(string consentId, CancellationToken cancellationToken = default) =>
             Task.FromResult(_tokens);
+
+        public Task<string?> GetPsuIpAddressAsync(string consentId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(PsuIpAddress);
+
+        /// <summary>IP-ul de pe conexiune, ca la un client real. Null imită o conexiune veche.</summary>
+        public string? PsuIpAddress { get; init; } = "86.120.1.1";
 
         public Task SaveAsync(string consentId, BankConsentTokens tokens, CancellationToken cancellationToken = default)
         {
