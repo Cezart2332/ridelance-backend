@@ -24,8 +24,21 @@ public sealed record BankTransactionsResponse(
     decimal TotalIn,
     decimal TotalOut);
 
-public sealed record GetBankTransactionsQuery(int? Year, int? Month, int Page, int PageSize)
-    : IQuery<BankTransactionsResponse>;
+/// <summary>
+/// Tranzacțiile dintr-un interval, paginate.
+///
+/// Intervalul vine gata calculat din interfață, nu ca „an + lună" ca până acum: selectorul de
+/// perioadă are patru trepte (zi, săptămână, lună, an), iar an+lună nu le poate exprima pe toate.
+/// Fără interval se întorc toate.
+///
+/// <paramref name="TargetUserId"/> e pentru contabil: fără el se citește contul propriu.
+/// </summary>
+public sealed record GetBankTransactionsQuery(
+    DateOnly? From,
+    DateOnly? To,
+    int Page,
+    int PageSize,
+    Guid? TargetUserId = null) : IQuery<BankTransactionsResponse>;
 
 internal sealed class GetBankTransactionsQueryHandler(
     IApplicationDbContext context,
@@ -36,7 +49,15 @@ internal sealed class GetBankTransactionsQueryHandler(
         GetBankTransactionsQuery query,
         CancellationToken cancellationToken)
     {
-        Guid userId = userContext.UserId;
+        Result<Guid> owner = await BankAccess.ResolveAsync(
+            context, userContext.UserId, query.TargetUserId, cancellationToken);
+
+        if (owner.IsFailure)
+        {
+            return Result.Failure<BankTransactionsResponse>(owner.Error);
+        }
+
+        Guid userId = owner.Value;
 
         int pageSize = Math.Clamp(query.PageSize, 1, 100);
         int page = Math.Max(query.Page, 1);
@@ -45,12 +66,15 @@ internal sealed class GetBankTransactionsQueryHandler(
             .AsNoTracking()
             .Where(bt => bt.UserId == userId);
 
-        if (query.Year is int year && query.Month is int month)
+        // Capete inclusive: „luna martie" înseamnă și 31 martie.
+        if (query.From is DateOnly from)
         {
-            var from = new DateOnly(year, Math.Clamp(month, 1, 12), 1);
-            DateOnly to = from.AddMonths(1);
-            transactions = transactions.Where(bt =>
-                bt.BookingDate != null && bt.BookingDate >= from && bt.BookingDate < to);
+            transactions = transactions.Where(bt => bt.BookingDate != null && bt.BookingDate >= from);
+        }
+
+        if (query.To is DateOnly to)
+        {
+            transactions = transactions.Where(bt => bt.BookingDate != null && bt.BookingDate <= to);
         }
 
         int totalCount = await transactions.CountAsync(cancellationToken);

@@ -70,16 +70,33 @@ internal sealed class BankEndpoints : IEndpoint
             return result.Match(Results.Ok, CustomResults.Problem);
         });
 
+        // `from`/`to` sunt date calendaristice, inclusive la ambele capete; `userId` e pentru
+        // contabil, care își vede clientul (dreptul se verifică în handler, nu aici).
         group.MapGet("transactions", async (
-            int? year,
-            int? month,
+            DateOnly? from,
+            DateOnly? to,
             int? page,
             int? pageSize,
+            Guid? userId,
             IQueryHandler<GetBankTransactionsQuery, BankTransactionsResponse> handler,
             CancellationToken cancellationToken) =>
         {
             Result<BankTransactionsResponse> result = await handler.Handle(
-                new GetBankTransactionsQuery(year, month, page ?? 1, pageSize ?? 25),
+                new GetBankTransactionsQuery(from, to, page ?? 1, pageSize ?? 25, userId),
+                cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        });
+
+        group.MapGet("activity", async (
+            DateOnly from,
+            DateOnly to,
+            string? bucket,
+            Guid? userId,
+            IQueryHandler<GetBankActivityQuery, BankActivityResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<BankActivityResponse> result = await handler.Handle(
+                new GetBankActivityQuery(from, to, bucket ?? "day", userId),
                 cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         });
