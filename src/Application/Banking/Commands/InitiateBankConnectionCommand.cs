@@ -159,7 +159,7 @@ internal sealed class InitiateBankConnectionCommandHandler(
         connection.Provider = provider.ProviderName;
         connection.InstitutionId = bank.Id;
         connection.InstitutionName = bank.Name;
-        connection.InstitutionLogoUrl = bank.Logo;
+        connection.InstitutionLogoUrl = StorableLogo(bank.Logo);
         connection.ProviderConsentId = consent.ConsentId;
         connection.ConsentStatus = consent.ConsentStatus;
         connection.Reference = reference;
@@ -183,6 +183,28 @@ internal sealed class InitiateBankConnectionCommandHandler(
 
         return new InitiateBankConnectionResponse(consent.AuthorizationAddress, connection.LinkExpiresAtUtc);
     }
+
+    /// <summary>Cât ține coloana <c>institution_logo_url</c>.</summary>
+    private const int LogoColumnLength = 512;
+
+    /// <summary>
+    /// Logo-ul, dacă e chiar o adresă și încape în coloană. Altfel nimic.
+    ///
+    /// Smart Accounts nu întoarce o adresă, ci imaginea însăși, ca <c>data:image/svg;base64,…</c>
+    /// — de ordinul zecilor de kiloocteți (ING: 190 KB, cel mai mic, Revolut: 1,2 KB; niciunul sub
+    /// 512). Scris în coloană, Postgres refuza tot rândul cu „22001: value too long", deci
+    /// conectarea băncii pica la salvare, după ce consimțământul fusese deja deschis la ei.
+    ///
+    /// Nu se lărgește coloana: ar însemna aceeași imagine copiată în rândul fiecărui client. Cine
+    /// are nevoie de logo îl ia din lista de bănci, unde vine oricum la fiecare afișare.
+    /// </summary>
+    internal static string? StorableLogo(string? logo) =>
+        logo is not null
+        && logo.Length <= LogoColumnLength
+        && (logo.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || logo.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            ? logo
+            : null;
 
     /// <summary>
     /// Câte zile de istoric cerem la prima sincronizare.
