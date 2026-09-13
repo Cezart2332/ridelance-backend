@@ -53,8 +53,12 @@ internal static class OnboardingChecklistBuilder
                     requirement.AcceptedCategories[0].ToString(),
                     requirement.Label,
                     StateOf(newest),
-                    // Motivul respingerii se afișează pe rând, nu într-un tooltip.
-                    newest?.Status == DocumentStatus.Rejected ? newest.AiSummary : null));
+                    // Motivul respingerii se afișează pe rând, nu într-un tooltip. Cel scris de om
+                    // bate verdictul automat; iar fără niciunul, rândul tot spune ce e de făcut —
+                    // un „Respins" gol lăsa șoferul să ghicească.
+                    newest?.Status == DocumentStatus.Rejected
+                        ? newest.ReviewNote ?? newest.AiSummary ?? "Respins de echipa RIDElance. Încarcă o variantă nouă."
+                        : null));
             }
         }
 

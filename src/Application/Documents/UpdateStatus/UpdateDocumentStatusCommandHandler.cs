@@ -44,6 +44,17 @@ internal sealed class UpdateDocumentStatusCommandHandler(
 
         DocumentStatus previousStatus = document.Status;
         document.Status = command.Status;
+        // Motivul ține doar cât documentul e respins: o aprobare ulterioară îl șterge, altfel ar
+        // rămâne afișat lângă un document acceptat.
+        if (command.Status != DocumentStatus.Rejected)
+        {
+            document.ReviewNote = null;
+        }
+        else if (!string.IsNullOrWhiteSpace(command.Note))
+        {
+            string note = command.Note.Trim();
+            document.ReviewNote = note.Length > 1024 ? note[..1024] : note;
+        }
 
         bool notifyRejection = command.Status == DocumentStatus.Rejected &&
                                previousStatus != DocumentStatus.Rejected &&
@@ -57,7 +68,9 @@ internal sealed class UpdateDocumentStatusCommandHandler(
             {
                 Id = Guid.NewGuid(),
                 UserId = document.UserId,
-                Text = $"Documentul „{documentLabel}” a fost respins de echipa RIDElance. Încarcă o variantă nouă.",
+                Text = document.ReviewNote is null
+                    ? $"Documentul „{documentLabel}” a fost respins de echipa RIDElance. Încarcă o variantă nouă."
+                    : $"Documentul „{documentLabel}” a fost respins: {document.ReviewNote} Încarcă o variantă nouă.",
                 Type = NotificationTypes.DocumentStatusUpdate,
                 SectionKey = document.Category.ToString(),
                 IsRead = false,
@@ -69,13 +82,13 @@ internal sealed class UpdateDocumentStatusCommandHandler(
 
         if (notifyRejection)
         {
-            await NotifyOwnerAsync(document.User, documentLabel, cancellationToken);
+            await NotifyOwnerAsync(document.User, documentLabel, document.ReviewNote, cancellationToken);
         }
 
         return Result.Success();
     }
 
-    private async Task NotifyOwnerAsync(User owner, string documentLabel, CancellationToken cancellationToken)
+    private async Task NotifyOwnerAsync(User owner, string documentLabel, string? note, CancellationToken cancellationToken)
     {
         Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase)
             ? parsedBase
@@ -119,7 +132,7 @@ internal sealed class UpdateDocumentStatusCommandHandler(
                 $"Documentul „{documentLabel}” încărcat în contul tău RIDElance a fost respins de echipa noastră.",
                 "Te rugăm să încarci o variantă corectă a documentului pentru a putea continua verificarea.",
             ],
-            null,
+            note,
             "Încarcă documentul din nou",
             deepLinkUri);
 

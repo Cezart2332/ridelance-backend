@@ -10,4 +10,6 @@ public sealed record EligibilityProfileResponse(
     bool HasDriverCertificate,
     DateOnly? DriverCertificateExpiresOn,
     string Status,
-    IReadOnlyList<string> Reasons);
+    IReadOnlyList<string> Reasons,
+    // Motivul respingerii din admin, cât timp respingerea e în vigoare.
+    string? AdminReviewNote = null);

@@ -14,6 +14,9 @@ internal sealed class UpdateStatus : IEndpoint
     public sealed class UpdateStatusRequest
     {
         public string Status { get; set; } = string.Empty;
+
+        /// <summary>Motivul respingerii, afișat șoferului. Opțional.</summary>
+        public string? Note { get; set; }
     }
 
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -30,7 +33,7 @@ internal sealed class UpdateStatus : IEndpoint
                 return Results.BadRequest(new { Error = "Invalid status value." });
             }
 
-            var command = new UpdateDocumentStatusCommand(id, userContext.UserId, parsedStatus);
+            var command = new UpdateDocumentStatusCommand(id, userContext.UserId, parsedStatus, request.Note);
 
             Result result = await handler.Handle(command, cancellationToken);
 

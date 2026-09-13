@@ -33,6 +33,13 @@ public sealed class OnboardingEligibilityProfile : Entity
     public EligibilityStatus Status { get; set; } = EligibilityStatus.Pending;
     public string? StatusReason { get; set; }
 
+    // Verdictul omului. `Status` e evaluarea automată din datele extrase; pasul se bifează abia
+    // când îl validează cineva din admin, indiferent ce a reușit OCR-ul să citească.
+    public DateTime? AdminValidatedAtUtc { get; set; }
+    public Guid? AdminValidatedByUserId { get; set; }
+    public DateTime? AdminRejectedAtUtc { get; set; }
+    public string? AdminReviewNote { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 

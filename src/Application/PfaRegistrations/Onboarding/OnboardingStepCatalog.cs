@@ -104,7 +104,11 @@ public static class OnboardingStepCatalog
         string wireKey = WireKeyOf(key);
         OnboardingStepDto? step = steps.FirstOrDefault(s => s.Key == wireKey);
 
-        return step?.State is States.Available or States.InProgress or States.Rejected;
+        // Un pas în verificare rămâne al șoferului cât timp adminul nu l-a validat: validarea se
+        // face în paralel cu restul onboardingului, deci o corectură făcută între timp e exact ce
+        // vrem să vadă adminul. Excepția e dosarul PFA — odată predat, îl depunem noi (RL-01).
+        return step?.State is States.Available or States.InProgress or States.Rejected
+            || step?.State == States.PendingAdmin && key != OnboardingStepKey.Pfa;
     }
 
     /// <summary>Pasul cerut e finalizat. Pereche cu <see cref="IsWritableByUser"/>, aceeași sursă.</summary>
@@ -140,7 +144,7 @@ public static class OnboardingStepCatalog
         // 1) Statusul „propriu” al fiecărui pas, înainte de gating.
         string[] own =
         [
-            EligibilityStatusOf(eligibility),
+            EligibilityStatusOf(eligibility, documents),
             PfaStatusOf(registration, pfaStatus),
             FiscalStatusOf(registration),
             ArrStatusOf(registration),
@@ -161,7 +165,7 @@ public static class OnboardingStepCatalog
 
         bool[] rejected =
         [
-            eligibility?.Status == EligibilityStatus.Ineligible,
+            eligibility?.Status == EligibilityStatus.Ineligible || EligibilityAdminRejectionOpen(eligibility, documents),
             pfaStatus == OnboardingSectionStatus.Rejected,
             registration?.SignaturePacket?.Status == SignaturePacketStatus.Rejected,
             SectionRejected(registration, OnboardingSectionKey.AutorizatieTransport),
@@ -177,19 +181,30 @@ public static class OnboardingStepCatalog
             // citească din ele. Altfel un dosar cu toate actele la locul lor rămâne blocat până
             // când un model se descurcă cu o poză — iar verdictul oricum vine după, prin
             // notificare. Singurul lucru care ține pe loc e un refuz ferm.
-            own[0] == StatusCompleted || EligibilityUserPartDone(eligibility, documents),
+            // O respingere din admin, încă necorectată, întoarce pasul la șofer: altfel ar rămâne
+            // „terminat" și n-ar mai fi trimis înapoi în el.
+            own[0] == StatusCompleted
+                || (own[0] == StatusAwaitingValidation || EligibilityUserPartDone(eligibility, documents))
+                    && !EligibilityAdminRejectionOpen(eligibility, documents),
             // Dosarul PFA e depus: predat spre validare sau deja validat. Ramura „Nu am PFA" e
             // acoperită de `PfaStatusOf`, care ține pasul în `InProgress` până se semnează dosarul
             // de înființare — deci nici aici nu trece mai devreme.
             own[1] is StatusAwaitingValidation or StatusCompleted,
-            // Excepția RL-02: pachetul de semnături e al adminului, iar împuternicirea din el e
-            // actul cu care se depune dosarul ARR. Fără el, pasul următor n-are ce depune.
-            own[2] == StatusCompleted,
+            // Șoferul a trimis pasul fiscal la verificare. Pachetul de semnături vine de la noi, pe
+            // email, dar nu mai ține pe loc restul onboardingului: omul completează mai departe
+            // cât îl pregătim, iar adminul validează pașii în paralel.
+            own[2] is StatusAwaitingValidation or StatusCompleted,
             // Dosarul ARR e depus; autorizația o emite ARR, nu șoferul.
-            registration?.ArrAuthorizationRequest?.SubmittedAtUtc is not null,
+            own[3] == StatusCompleted
+                || registration?.ArrAuthorizationRequest?.SubmittedAtUtc is not null
+                    && !SectionRejected(registration, OnboardingSectionKey.AutorizatieTransport),
             PlatformsUserPartDone(registration),
-            // Ultimul pas: n-are succesor de deblocat.
-            false,
+            // Ultimul pas n-are succesor de deblocat, dar semnalul contează: fără el, șoferul
+            // n-ar ajunge niciodată la ecranul de final, ci ar fi trimis înapoi în pasul ăsta.
+            own[5] == StatusCompleted
+                || LatestCopyRequest(registration)?.SubmittedAtUtc is not null
+                    && !SectionRejected(registration, OnboardingSectionKey.CopieConforma)
+                    && !SectionRejected(registration, OnboardingSectionKey.Vehicul),
         ];
 
         // 2) Deblocare liniară: un pas rămâne blocat cât timp predecesorul lui nu e gata de predat.
@@ -254,11 +269,41 @@ public static class OnboardingStepCatalog
     private static bool HasStartedFiscal(PfaRegistration? r) =>
         r?.FiscalProfile is not null || r?.BankAccountDeclaration is not null || r?.OblioAccount is not null;
 
-    private static string EligibilityStatusOf(OnboardingEligibilityProfile? profile) => profile?.Status switch
+    /// <summary>
+    /// Pasul 1 se bifează doar pe validarea din admin. Evaluarea automată (`Status`) vine din
+    /// datele extrase, iar datele extrase nu decid nimic: cu actele încărcate, pasul stă în
+    /// verificare (clepsidra) până se uită cineva.
+    /// </summary>
+    private static string EligibilityStatusOf(OnboardingEligibilityProfile? profile, IReadOnlyList<Document>? documents)
     {
-        EligibilityStatus.Eligible => StatusCompleted,
-        _ => StatusInProgress,
-    };
+        if (profile?.AdminValidatedAtUtc is not null)
+        {
+            return StatusCompleted;
+        }
+
+        if (EligibilityAdminRejectionOpen(profile, documents))
+        {
+            return StatusInProgress;
+        }
+
+        return EligibilityUserPartDone(profile, documents) ? StatusAwaitingValidation : StatusInProgress;
+    }
+
+    /// <summary>
+    /// Adminul a respins pasul 1, iar șoferul n-a reîncărcat încă niciun act după respingere. Un act
+    /// nou încărcat după respingere redeschide verificarea — altfel respingerea n-ar avea ieșire.
+    /// </summary>
+    public static bool EligibilityAdminRejectionOpen(OnboardingEligibilityProfile? profile, IReadOnlyList<Document>? documents)
+    {
+        if (profile?.AdminRejectedAtUtc is not DateTime rejectedAt || profile.AdminValidatedAtUtc is not null)
+        {
+            return false;
+        }
+
+        return documents is null || !documents.Any(d =>
+            EligibilityDocuments.Any(categories => categories.Contains(d.Category))
+            && d.UploadedAtUtc > rejectedAt);
+    }
 
     /// <summary>
     /// Șoferul și-a încărcat cele trei acte de la pasul 1 și niciunul nu l-a descalificat.
@@ -381,11 +426,35 @@ public static class OnboardingStepCatalog
             : StatusInProgress;
     }
 
+    /// <summary>
+    /// Pasul ARR se bifează când adminul validează secțiunea „Autorizație transport" — sau când
+    /// autorizația emisă e înregistrată. Înainte doar a doua variantă conta, iar „Validează" din
+    /// admin scria pe secțiune fără ca pasul să se schimbe: adminul vedea „validat", șoferul nu.
+    /// </summary>
     private static string ArrStatusOf(PfaRegistration? r)
     {
-        ArrAuthorizationStatus? status = r?.ArrAuthorizationRequest?.Status;
-        return status == ArrAuthorizationStatus.Issued ? StatusCompleted : StatusInProgress;
+        if (r?.ArrAuthorizationRequest?.Status == ArrAuthorizationStatus.Issued
+            || SectionValidated(r, OnboardingSectionKey.AutorizatieTransport))
+        {
+            return StatusCompleted;
+        }
+
+        if (SectionRejected(r, OnboardingSectionKey.AutorizatieTransport))
+        {
+            return StatusInProgress;
+        }
+
+        return r?.ArrAuthorizationRequest?.SubmittedAtUtc is not null ? StatusAwaitingValidation : StatusInProgress;
     }
+
+    private static bool SectionValidated(PfaRegistration? registration, OnboardingSectionKey key) =>
+        registration?.OnboardingSections
+            .SingleOrDefault(s => s.SectionKey == key)?.Status == OnboardingSectionStatus.Validated;
+
+    private static VehicleCopyRequest? LatestCopyRequest(PfaRegistration? r) =>
+        r?.Vehicles
+            .OrderByDescending(v => v.CreatedAtUtc)
+            .FirstOrDefault()?.CopyRequest;
 
     /// <summary>
     /// Șoferul a terminat partea lui de pas 5: a ales cel puțin o platformă și a completat
@@ -405,6 +474,10 @@ public static class OnboardingStepCatalog
         return selected.Count > 0 && selected.TrueForAll(PlatformShared.UserPartComplete);
     }
 
+    /// <summary>
+    /// Pasul Uber &amp; Bolt se bifează când adminul activează conturile alese. Cu datele completate
+    /// de șofer, stă în verificare — înainte se bifa singur, fără ca cineva să se fi uitat.
+    /// </summary>
     private static string PlatformsStatusOf(PfaRegistration? r)
     {
         if (r is null)
@@ -412,32 +485,37 @@ public static class OnboardingStepCatalog
             return StatusInProgress;
         }
 
-        if (PlatformsUserPartDone(r))
-        {
-            return StatusCompleted;
-        }
-
         var selected = r.PlatformAccounts
             .Where(p => p.IsSelectedByUser)
             .ToList();
 
-        return selected.Count > 0
-            && selected.TrueForAll(p => p.OnboardingStatus == PfaPlatformOnboardingStatus.Active)
-                ? StatusCompleted
-                : StatusInProgress;
-    }
-
-    private static string VehicleStatusOf(PfaRegistration? r)
-    {
-        PfaVehicle? vehicle = r?.Vehicles
-            .OrderByDescending(v => v.CreatedAtUtc)
-            .FirstOrDefault();
-
-        if (vehicle?.CopyRequest?.Status == VehicleCopyRequestStatus.Issued)
+        if (selected.Count > 0 && selected.TrueForAll(p => p.OnboardingStatus == PfaPlatformOnboardingStatus.Active))
         {
             return StatusCompleted;
         }
 
-        return StatusInProgress;
+        return PlatformsUserPartDone(r) ? StatusAwaitingValidation : StatusInProgress;
+    }
+
+    /// <summary>
+    /// Ultimul pas se bifează când adminul validează ambele secțiuni (copia conformă și documentele
+    /// mașinii) — sau când copia conformă emisă e înregistrată. Dosarul depus îl pune în verificare.
+    /// </summary>
+    private static string VehicleStatusOf(PfaRegistration? r)
+    {
+        VehicleCopyRequest? copy = LatestCopyRequest(r);
+
+        if (copy?.Status == VehicleCopyRequestStatus.Issued
+            || SectionValidated(r, OnboardingSectionKey.CopieConforma) && SectionValidated(r, OnboardingSectionKey.Vehicul))
+        {
+            return StatusCompleted;
+        }
+
+        if (SectionRejected(r, OnboardingSectionKey.CopieConforma) || SectionRejected(r, OnboardingSectionKey.Vehicul))
+        {
+            return StatusInProgress;
+        }
+
+        return copy?.SubmittedAtUtc is not null ? StatusAwaitingValidation : StatusInProgress;
     }
 }

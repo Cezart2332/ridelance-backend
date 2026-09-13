@@ -2,6 +2,7 @@ using System.Globalization;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Cars;
 using Application.Rentals;
 using Domain.Cars;
 using Domain.Documents;
@@ -142,6 +143,8 @@ internal sealed class GetSrlHomeQueryHandler(
             expiringDocuments.Count,
             scheduled.Count,
             attention.Take(MaxAttentionItems).ToList(),
-            rows));
+            rows,
+            // Din lista deja încărcată, cu aceeași regulă ca `ListingQuota.CountUsedAsync`.
+            ListingQuota.From(cars.Count(c => c.ListingStatus == ListingStatus.Published))));
     }
 }

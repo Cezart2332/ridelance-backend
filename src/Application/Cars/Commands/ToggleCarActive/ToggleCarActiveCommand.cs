@@ -54,15 +54,8 @@ internal sealed class ToggleCarActiveCommandHandler(
                 "Anunțul trebuie aprobat de administrator înainte de a fi activat."));
         }
 
-        if (userResult.Value.Role == UserRole.CarPoster && car.PaymentStatus != CarListingPaymentStatus.Paid)
-        {
-            return Result.Failure<CarListingStateDto>(Error.Problem(
-                "Car.PaymentRequired",
-                "Anunțul trebuie să aibă plata activă înainte de a fi vizibil."));
-        }
-
         // Comută intenția proprietarului, nu vizibilitatea. Ce se vede în marketplace rămâne
-        // derivat din intenție + aprobare + plată; aici se decide doar dacă anunțul e oferit.
+        // derivat din intenție + aprobare; aici se decide doar dacă anunțul e oferit.
         //
         // Din `Draft` se trece în `Published` — un anunț nepublicat încă, pus pe pauză, ar fi
         // însemnat retragerea a ceva ce n-a fost niciodată pe piață. `Archived` nu se întoarce de
@@ -74,9 +67,22 @@ internal sealed class ToggleCarActiveCommandHandler(
                 "Anunțul e arhivat. Scoate-l din arhivă înainte să-l publici."));
         }
 
-        car.ListingStatus = car.ListingStatus == ListingStatus.Published
-            ? ListingStatus.Paused
-            : ListingStatus.Published;
+        bool publishing = car.ListingStatus != ListingStatus.Published;
+
+        // Anunțurile flotei sunt incluse în abonament, până la o limită. Retragerea e mereu
+        // permisă; publicarea doar cât mai e loc.
+        if (publishing && userResult.Value.Role == UserRole.CarPoster)
+        {
+            int used = await ListingQuota.CountUsedAsync(context, userResult.Value.Id, car.Id, cancellationToken);
+            if (used >= ListingAllowance.IncludedInFleetPlan)
+            {
+                return Result.Failure<CarListingStateDto>(Error.Problem(
+                    "Car.ListingLimitReached",
+                    $"Ai folosit toate cele {ListingAllowance.IncludedInFleetPlan} anunțuri active incluse în abonament. Retrage un anunț ca să-l publici pe acesta."));
+            }
+        }
+
+        car.ListingStatus = publishing ? ListingStatus.Published : ListingStatus.Paused;
         car.UpdatedAtUtc = DateTime.UtcNow;
         await scoreService.RecalculateAsync(car, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);

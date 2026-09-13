@@ -197,6 +197,41 @@ internal sealed class Onboarding : IEndpoint
         .HasPermission("pfa:view")
         .WithTags(Tags.PfaRegistrations);
 
+        // Adminul validează pasul de eligibilitate
+        app.MapPut("pfa-registrations/{id:guid}/eligibility/validate", async (
+            Guid id,
+            IUserContext userContext,
+            ICommandHandler<ReviewEligibilityCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(
+                new ReviewEligibilityCommand(id, userContext.UserId, Approve: true, Note: null),
+                cancellationToken);
+
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:manage")
+        .WithTags(Tags.PfaRegistrations);
+
+        // Adminul respinge pasul de eligibilitate (cu motiv obligatoriu)
+        app.MapPut("pfa-registrations/{id:guid}/eligibility/reject", async (
+            Guid id,
+            RejectRequest request,
+            IUserContext userContext,
+            ICommandHandler<ReviewEligibilityCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(
+                new ReviewEligibilityCommand(id, userContext.UserId, Approve: false, Note: request.Note),
+                cancellationToken);
+
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:manage")
+        .WithTags(Tags.PfaRegistrations);
+
         // Adminul validează o secțiune
         app.MapPut("pfa-registrations/{id:guid}/sections/{key}/validate", async (
             Guid id,

@@ -32,7 +32,8 @@ internal sealed class GetDocumentsByUserQueryHandler(IApplicationDbContext conte
                 d.AiExtractedExpiresAtUtc,
                 d.AiRequiresManualReview,
                 d.Origin.ToString(),
-                d.Origin == DocumentOrigin.UserUpload))
+                d.Origin == DocumentOrigin.UserUpload,
+                d.ReviewNote))
             .ToListAsync(cancellationToken);
 
         return documents;

@@ -1,3 +1,5 @@
+using Application.Cars;
+
 namespace Application.SrlDashboard;
 
 /// <param name="Severity">`danger`, `warning` sau `info` — decisă pe server, ca UI-ul să nu-și
@@ -30,4 +32,5 @@ public sealed record SrlHomeDto(
     int DocumentsExpiringSoon,
     int ScheduledMaintenance,
     List<AttentionItemDto> Attention,
-    List<ActiveRentalRowDto> ActiveRentalRows);
+    List<ActiveRentalRowDto> ActiveRentalRows,
+    ListingQuotaDto ListingQuota);

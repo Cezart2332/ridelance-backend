@@ -39,15 +39,27 @@ internal sealed class ValidateOnboardingSectionCommandHandler(
         OnboardingSectionApproval? section = registration.OnboardingSections
             .SingleOrDefault(s => s.SectionKey == command.SectionKey);
 
+        // Rândul secțiunii nu mai apare de la sine: pașii nu se mai trimit pe secțiuni, ci prin
+        // dosarele lor (ARR, copie conformă). Fără rând, secțiunea arăta „Blocat" în admin și nu
+        // avea buton de validare — deci adminul n-avea cum închide pasul. Îl creăm aici.
         if (section is null)
         {
-            return Result.Failure(OnboardingErrors.SectionNotFound);
+            section = new OnboardingSectionApproval
+            {
+                Id = Guid.NewGuid(),
+                PfaRegistrationId = registration.Id,
+                SectionKey = command.SectionKey,
+                Status = OnboardingSectionStatus.InProgress,
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+            context.OnboardingSectionApprovals.Add(section);
         }
 
-        // Adminul poate valida și direct din InProgress (înainte ca userul să apese „Trimite”).
-        if (section.Status is not (OnboardingSectionStatus.AwaitingValidation or OnboardingSectionStatus.InProgress))
+        // Validarea e verdictul adminului, deci merge din orice stare: blocată, în lucru, în
+        // verificare sau respinsă și rezolvată pe alt canal. Una deja validată nu se re-notifică.
+        if (section.Status == OnboardingSectionStatus.Validated)
         {
-            return Result.Failure(OnboardingErrors.NotAwaitingValidation);
+            return Result.Success();
         }
 
         section.Status = OnboardingSectionStatus.Validated;

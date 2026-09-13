@@ -36,6 +36,7 @@ internal sealed class GetEligibilityProfileQueryHandler(IApplicationDbContext co
             profile.HasDriverCertificate,
             profile.DriverCertificateExpiresOn,
             profile.Status.ToString(),
-            reasons));
+            reasons,
+            profile.AdminRejectedAtUtc is not null && profile.AdminValidatedAtUtc is null ? profile.AdminReviewNote : null));
     }
 }

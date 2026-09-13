@@ -130,6 +130,9 @@ public static class OnboardingDevFixtures
         profile.HasDriverCertificate = true;
         profile.DriverCertificateExpiresOn ??= DateOnly.FromDateTime(nowUtc.AddYears(2));
         profile.Status = EligibilityStatus.Eligible;
+        // Pasul se bifează doar pe validarea din admin; fixture-ul o simulează.
+        profile.AdminValidatedAtUtc ??= nowUtc;
+        profile.AdminRejectedAtUtc = null;
         profile.UpdatedAtUtc = nowUtc;
 
         return profile;
