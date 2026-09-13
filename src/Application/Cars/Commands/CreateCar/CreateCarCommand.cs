@@ -65,7 +65,6 @@ internal sealed class CreateCarCommandHandler(
             : CarListingSource.External;
 
         bool isAdmin = user.Role == UserRole.Admin;
-        bool requiresPayment = user.Role == UserRole.CarPoster;
         var carId = Guid.NewGuid();
         var car = new Car
         {
@@ -90,7 +89,8 @@ internal sealed class CreateCarCommandHandler(
             PostedByUserId = user.Id,
             ListingSource = listingSource,
             ApprovalStatus = isAdmin ? CarApprovalStatus.Approved : CarApprovalStatus.Pending,
-            PaymentStatus = requiresPayment ? CarListingPaymentStatus.Pending : CarListingPaymentStatus.NotRequired,
+            // Anunțurile flotelor sunt incluse în abonament; limita se aplică la publicare.
+            PaymentStatus = CarListingPaymentStatus.NotRequired,
             ListingStatus = isAdmin && command.Active ? ListingStatus.Published : ListingStatus.Draft,
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow,

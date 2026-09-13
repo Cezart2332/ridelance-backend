@@ -75,16 +75,17 @@ public sealed class Car : Entity
     /// <summary>
     /// Se vede anunțul în marketplace?
     ///
-    /// Derivat din cele trei condiții, nu stocat. Ca boolean scris în baza de date, răspunsul ăsta
-    /// trebuia recalculat de mână în unsprezece locuri — la aprobare, la respingere, la creare, la
-    /// editare, la fiecare eveniment Stripe — și oricare uitat lăsa un anunț plătit invizibil sau
-    /// unul neplătit pe piață. `ListingStatus` spune ce vrea proprietarul; celelalte două spun dacă
-    /// are voie.
+    /// Derivat, nu stocat. Ca boolean scris în baza de date, răspunsul ăsta trebuia recalculat de
+    /// mână la aprobare, la respingere, la creare, la editare — și oricare uitat lăsa un anunț
+    /// greșit pe piață. `ListingStatus` spune ce vrea proprietarul; aprobarea spune dacă are voie.
+    ///
+    /// Plata nu mai intră în calcul: anunțurile flotelor sunt incluse în abonament, până la
+    /// <see cref="ListingAllowance.IncludedInFleetPlan" /> active (vezi <see cref="ListingAllowance" />).
+    /// `PaymentStatus` rămâne doar pentru istoricul anunțurilor plătite separat, înainte de schimbare.
     /// </summary>
     public bool Active =>
         ListingStatus == ListingStatus.Published
-        && ApprovalStatus == CarApprovalStatus.Approved
-        && PaymentStatus is CarListingPaymentStatus.Paid or CarListingPaymentStatus.NotRequired;
+        && ApprovalStatus == CarApprovalStatus.Approved;
 
     // Listing metadata
     public Guid? PostedByUserId { get; set; }

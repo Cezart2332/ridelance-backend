@@ -32,6 +32,12 @@ public sealed class Document : Entity
     public DateTime? ExpiresAtUtc { get; set; }
     public DocumentAiStatus AiStatus { get; set; } = DocumentAiStatus.None;
     public string? AiSummary { get; set; }
+
+    /// <summary>
+    /// Motivul respingerii scris de admin sau contabil. Fără el, documentul respins de un om
+    /// ajungea la șofer doar ca „Respins", fără nicio explicație de ce.
+    /// </summary>
+    public string? ReviewNote { get; set; }
     public string? AiDetectedType { get; set; }
     public DateTime? AiExtractedExpiresAtUtc { get; set; }
     public DateTime? AiProcessedAtUtc { get; set; }

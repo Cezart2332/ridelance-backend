@@ -38,16 +38,26 @@ internal sealed class ApproveCarListingCommandHandler(
 
         if (command.Approve)
         {
-            if (car.PaymentStatus != CarListingPaymentStatus.NotRequired &&
-                car.PaymentStatus != CarListingPaymentStatus.Paid)
+            car.ApprovalStatus = CarApprovalStatus.Approved;
+
+            // Aprobarea publică anunțul doar dacă flota mai are loc în abonament. Altfel rămâne
+            // aprobat, dar nepublicat: proprietarul îl publică singur după ce retrage altul.
+            bool hasRoom = true;
+            if (car.PostedByUserId is Guid ownerId)
             {
-                return Result.Failure(Error.Problem(
-                    "Car.PaymentRequired",
-                    "Anunțul trebuie plătit înainte de aprobare."));
+                bool ownerIsFleet = await context.Users
+                    .AnyAsync(u => u.Id == ownerId && u.Role == UserRole.CarPoster, cancellationToken);
+                if (ownerIsFleet)
+                {
+                    int used = await ListingQuota.CountUsedAsync(context, ownerId, car.Id, cancellationToken);
+                    hasRoom = used < ListingAllowance.IncludedInFleetPlan;
+                }
             }
 
-            car.ApprovalStatus = CarApprovalStatus.Approved;
-            car.ListingStatus = ListingStatus.Published;
+            if (hasRoom)
+            {
+                car.ListingStatus = ListingStatus.Published;
+            }
         }
         else
         {

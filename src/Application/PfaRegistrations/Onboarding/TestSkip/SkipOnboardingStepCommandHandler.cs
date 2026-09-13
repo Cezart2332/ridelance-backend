@@ -103,6 +103,9 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
         profile.CategoryBObtainedOn ??= DateOnly.FromDateTime(now.AddYears(-5));
         profile.HasDriverCertificate = true;
         profile.Status = EligibilityStatus.Eligible;
+        // Pasul se bifează doar pe validarea din admin; sărirea o simulează.
+        profile.AdminValidatedAtUtc ??= now;
+        profile.AdminRejectedAtUtc = null;
         profile.UpdatedAtUtc = now;
     }
 

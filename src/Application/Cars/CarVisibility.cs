@@ -17,7 +17,5 @@ public static class CarVisibility
 {
     public static readonly Expression<Func<Car, bool>> IsPublic = car =>
         car.ListingStatus == ListingStatus.Published
-        && car.ApprovalStatus == CarApprovalStatus.Approved
-        && (car.PaymentStatus == CarListingPaymentStatus.Paid
-            || car.PaymentStatus == CarListingPaymentStatus.NotRequired);
+        && car.ApprovalStatus == CarApprovalStatus.Approved;
 }

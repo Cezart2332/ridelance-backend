@@ -29,4 +29,6 @@ public sealed record DocumentSummary(
     /// Se arată șoferului în onboarding. Calculat pe server (RL-07) — frontendul filtrează
     /// exclusiv după el, fără reguli proprii.
     /// </summary>
-    bool IsUserFacing = true);
+    bool IsUserFacing = true,
+    /// <summary>Motivul respingerii scris de un om (admin/contabil), cât timp e respins.</summary>
+    string? ReviewNote = null);

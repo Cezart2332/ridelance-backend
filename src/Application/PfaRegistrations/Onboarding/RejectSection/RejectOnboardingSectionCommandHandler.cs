@@ -50,14 +50,19 @@ internal sealed class RejectOnboardingSectionCommandHandler(
         OnboardingSectionApproval? section = registration.OnboardingSections
             .SingleOrDefault(s => s.SectionKey == command.SectionKey);
 
+        // Ca la validare: rândul secțiunii se creează la nevoie, iar respingerea merge din orice
+        // stare — inclusiv peste o validare dată din greșeală.
         if (section is null)
         {
-            return Result.Failure(OnboardingErrors.SectionNotFound);
-        }
-
-        if (section.Status is not (OnboardingSectionStatus.AwaitingValidation or OnboardingSectionStatus.InProgress))
-        {
-            return Result.Failure(OnboardingErrors.NotAwaitingValidation);
+            section = new OnboardingSectionApproval
+            {
+                Id = Guid.NewGuid(),
+                PfaRegistrationId = registration.Id,
+                SectionKey = command.SectionKey,
+                Status = OnboardingSectionStatus.InProgress,
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+            context.OnboardingSectionApprovals.Add(section);
         }
 
         section.Status = OnboardingSectionStatus.Rejected;
