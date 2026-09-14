@@ -201,10 +201,7 @@ public static class OnboardingStepCatalog
             PlatformsUserPartDone(registration),
             // Ultimul pas n-are succesor de deblocat, dar semnalul contează: fără el, șoferul
             // n-ar ajunge niciodată la ecranul de final, ci ar fi trimis înapoi în pasul ăsta.
-            own[5] == StatusCompleted
-                || LatestCopyRequest(registration)?.SubmittedAtUtc is not null
-                    && !SectionRejected(registration, OnboardingSectionKey.CopieConforma)
-                    && !SectionRejected(registration, OnboardingSectionKey.Vehicul),
+            own[5] == StatusCompleted || VehicleUserPartDone(registration, documents),
         ];
 
         // 2) Deblocare liniară: un pas rămâne blocat cât timp predecesorul lui nu e gata de predat.
@@ -450,6 +447,54 @@ public static class OnboardingStepCatalog
     private static bool SectionValidated(PfaRegistration? registration, OnboardingSectionKey key) =>
         registration?.OnboardingSections
             .SingleOrDefault(s => s.SectionKey == key)?.Status == OnboardingSectionStatus.Validated;
+
+    /// <summary>
+    /// Partea șoferului la ultimul pas: dosarul depus, apoi copia conformă și ecusoanele primite,
+    /// încărcate înapoi.
+    ///
+    /// Regresia pe care o ține pe loc: se considera terminată de îndată ce dosarul era depus. Dar
+    /// copia conformă și ecusoanele vin DUPĂ depunere — ecranele lor apar abia atunci — iar în
+    /// secunda în care apăreau, pasul curent devenea „niciunul" și șoferul era trimis la ecranul „Ai
+    /// terminat onboardingul". Nu le mai vedea deloc.
+    ///
+    /// Ecusoanele se cer doar pentru platformele alese: un ecuson Bolt n-are ce căuta la cineva care
+    /// lucrează numai pe Uber. Fără lista de documente răspunsul e „nu", ca la pasul 1 — nu o
+    /// presupunere optimistă.
+    /// </summary>
+    public static bool VehicleUserPartDone(PfaRegistration? registration, IReadOnlyList<Document>? documents)
+    {
+        if (registration is null
+            || documents is null
+            || LatestCopyRequest(registration)?.SubmittedAtUtc is null
+            || SectionRejected(registration, OnboardingSectionKey.CopieConforma)
+            || SectionRejected(registration, OnboardingSectionKey.Vehicul))
+        {
+            return false;
+        }
+
+        if (!HasUsableDocument(documents, DocumentCategory.CopieConforma))
+        {
+            return false;
+        }
+
+        return registration.PlatformAccounts
+            .Where(p => p.IsSelectedByUser)
+            .Select(p => BadgeCategoryOf(p.Provider))
+            .OfType<DocumentCategory>()
+            .Distinct()
+            .All(category => HasUsableDocument(documents, category));
+    }
+
+    private static bool HasUsableDocument(IReadOnlyList<Document> documents, DocumentCategory category) =>
+        documents.Any(d => d.Category == category && d.Status != DocumentStatus.Rejected);
+
+    /// <summary>Ecusonul fiecărei platforme. Null pentru una fără ecuson, ca să nu ceară nimic în plus.</summary>
+    private static DocumentCategory? BadgeCategoryOf(PfaPlatformProvider provider) => provider switch
+    {
+        PfaPlatformProvider.Uber => DocumentCategory.EcusonUber,
+        PfaPlatformProvider.Bolt => DocumentCategory.EcusonBolt,
+        _ => null,
+    };
 
     private static VehicleCopyRequest? LatestCopyRequest(PfaRegistration? r) =>
         r?.Vehicles
