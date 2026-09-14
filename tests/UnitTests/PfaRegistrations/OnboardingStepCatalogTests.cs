@@ -578,14 +578,89 @@ public class OnboardingStepCatalogTests
     }
 
     /// <summary>
-    /// Dosarul copiei conforme depus încheie partea șoferului pe ultimul pas: fără asta nu exista
-    /// „am terminat", iar ecranul de final nu apărea niciodată.
+    /// Dosarul depus pune ultimul pas în verificare, dar NU încheie partea șoferului: copia conformă
+    /// și ecusoanele vin după depunere, iar ecranele lor apar abia atunci.
+    ///
+    /// Regresia raportată: partea șoferului se considera terminată la depunere, deci în secunda în
+    /// care ecranele copiei conforme și ecusoanelor deveneau vizibile, pasul curent devenea
+    /// „niciunul" și șoferul era trimis la „Ai terminat onboardingul". Nu le mai vedea deloc.
     /// </summary>
     [Fact]
-    public void Vehicle_DossierSubmitted_EndsTheDriversPartAndAwaitsAdmin()
+    public void Vehicle_DossierSubmitted_KeepsTheDriverOnTheStepForCopyAndBadges()
+    {
+        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
+
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
+            registration, OnboardingSectionStatus.Validated, EligibleProfile(), []);
+
+        steps[5].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
+        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBe("vehicle");
+    }
+
+    /// <summary>Cu copia conformă și ecusonul platformei alese încărcate, partea șoferului e gata.</summary>
+    [Fact]
+    public void Vehicle_CopyAndChosenBadgesUploaded_EndsTheDriversPart()
+    {
+        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
+
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
+            registration,
+            OnboardingSectionStatus.Validated,
+            EligibleProfile(),
+            [Uploaded(DocumentCategory.CopieConforma), Uploaded(DocumentCategory.EcusonBolt)]);
+
+        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBeNull();
+        OnboardingStepCatalog.AllCompleted(steps).ShouldBeFalse();
+    }
+
+    /// <summary>Ecusonul unei platforme nealese nu se cere: la cine lucrează doar pe Bolt, Uber nu contează.</summary>
+    [Fact]
+    public void Vehicle_BadgeOfAnUnchosenPlatform_IsNotRequired()
+    {
+        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
+
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
+            registration,
+            OnboardingSectionStatus.Validated,
+            EligibleProfile(),
+            [Uploaded(DocumentCategory.CopieConforma), Uploaded(DocumentCategory.EcusonBolt)]);
+
+        steps[5].UserPartDone.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Vehicle_WithoutTheChosenPlatformsBadge_IsNotDone()
+    {
+        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
+
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
+            registration,
+            OnboardingSectionStatus.Validated,
+            EligibleProfile(),
+            [Uploaded(DocumentCategory.CopieConforma)]);
+
+        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBe("vehicle");
+    }
+
+    /// <summary>O copie conformă respinsă nu închide pasul: trebuie reîncărcată.</summary>
+    [Fact]
+    public void Vehicle_RejectedCopy_IsNotDone()
+    {
+        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
+
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
+            registration,
+            OnboardingSectionStatus.Validated,
+            EligibleProfile(),
+            [Uploaded(DocumentCategory.CopieConforma, DocumentStatus.Rejected), Uploaded(DocumentCategory.EcusonBolt)]);
+
+        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBe("vehicle");
+    }
+
+    private static PfaRegistration SubmittedVehicleDossier(PfaPlatformProvider chosenPlatform)
     {
         PfaRegistration registration = ReadyForPlatforms();
-        registration.PlatformAccounts.Add(CompletePlatformAccount(PfaPlatformProvider.Bolt));
+        registration.PlatformAccounts.Add(CompletePlatformAccount(chosenPlatform));
         registration.Vehicles.Add(new PfaVehicle
         {
             Id = Guid.NewGuid(),
@@ -597,12 +672,7 @@ public class OnboardingStepCatalogTests
                 SubmittedAtUtc = DateTime.UtcNow,
             },
         });
-
-        List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
-
-        steps[5].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
-        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBeNull();
-        OnboardingStepCatalog.AllCompleted(steps).ShouldBeFalse();
+        return registration;
     }
 
     [Fact]
