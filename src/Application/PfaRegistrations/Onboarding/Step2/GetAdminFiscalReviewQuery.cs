@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Security;
 using Domain.Banking;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,15 @@ public sealed record AdminBankSummary(
     IReadOnlyList<AdminBankAccountSummary> Accounts);
 
 /// <summary>Tot ce a făcut clientul la pasul 3, pentru verificarea din admin.</summary>
-public sealed record AdminFiscalReviewResponse(Step2StateResponse Step2, AdminBankSummary? Bank);
+/// <param name="DeclaredIban">
+/// IBAN-ul declarat, întreg — nu mascat ca pe ecranul clientului. Adminul îl verifică pe extras
+/// sau în bancă, iar cu mască nu avea ce compara. Conturile legate prin open banking vin doar
+/// mascate de la furnizor, deci pentru ele nu există o valoare întreagă de arătat.
+/// </param>
+public sealed record AdminFiscalReviewResponse(
+    Step2StateResponse Step2,
+    AdminBankSummary? Bank,
+    string? DeclaredIban);
 
 /// <summary>
 /// Pasul 3 văzut din admin: răspunsul la TVA, banca legată și contul Oblio.
@@ -32,7 +41,8 @@ public sealed record GetAdminFiscalReviewQuery(Guid RegistrationId) : IQuery<Adm
 
 internal sealed class GetAdminFiscalReviewQueryHandler(
     IApplicationDbContext context,
-    IQueryHandler<GetStep2StateQuery, Step2StateResponse> step2)
+    IQueryHandler<GetStep2StateQuery, Step2StateResponse> step2,
+    ISecretProtector secretProtector)
     : IQueryHandler<GetAdminFiscalReviewQuery, AdminFiscalReviewResponse>
 {
     public async Task<Result<AdminFiscalReviewResponse>> Handle(
@@ -72,6 +82,16 @@ internal sealed class GetAdminFiscalReviewQueryHandler(
                     .Where(a => a.IsActive)
                     .Select(a => new AdminBankAccountSummary(a.IbanMasked, a.Currency, a.OwnerName))]);
 
-        return new AdminFiscalReviewResponse(state.Value, bank);
+        string? encryptedIban = await context.PfaRegistrations
+            .AsNoTracking()
+            .Where(r => r.Id == query.RegistrationId)
+            .Select(r => r.BankAccountDeclaration!.IbanEncrypted)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        string? declaredIban = string.IsNullOrWhiteSpace(encryptedIban)
+            ? null
+            : secretProtector.Unprotect(encryptedIban);
+
+        return new AdminFiscalReviewResponse(state.Value, bank, declaredIban);
     }
 }

@@ -25,8 +25,11 @@ public sealed record SignatureAuditDto(
     string PayloadHash);
 
 /// <summary>
-/// Dosarul așa cum îl vede operatorul: CNP-ul doar mascat, plus probatoriul semnăturii.
-/// Valoarea în clar se cere separat, cu <see cref="RevealCompanyFormationCnpCommand"/>.
+/// Dosarul așa cum îl vede adminul: cu CNP-ul întreg, plus probatoriul semnăturii.
+///
+/// CNP-ul venea mascat, cu un buton separat de dezvăluire. Adminul îl verifică pe act la fiecare
+/// dosar, deci masca doar adăuga un clic la fiecare verificare. Clientul și contabilul îl văd în
+/// continuare mascat — doar drumul ăsta, închis pe permisiunea de admin, îl decriptează.
 /// </summary>
 public sealed record AdminCompanyFormationResponse(
     CompanyFormationResponse Dosar,
@@ -60,8 +63,7 @@ internal sealed class GetAdminCompanyFormationQueryHandler(
         CompanyFormationSignature? signature = request.Signature;
 
         return Result.Success(new AdminCompanyFormationResponse(
-            // revealCnp: false — operatorul vede masca, nu valoarea.
-            CompanyFormationMapper.ToResponse(request, secretProtector, revealCnp: false),
+            CompanyFormationMapper.ToResponse(request, secretProtector, revealCnp: true),
             request.Consents
                 .OrderBy(c => c.AcceptedAtUtc)
                 .Select(c => new ConsentAuditDto(
