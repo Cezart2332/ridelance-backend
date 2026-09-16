@@ -53,11 +53,23 @@ internal sealed class GenerateArrDossierCommandHandler(
 
         // Documentele deja încărcate (non-respinse) care satisfac cerințele pasului ARR. Sunt
         // atașate în dosar, nu doar bifate — de asta le încărcăm întregi, nu doar categoria.
+        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements =
+            OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport);
+
+        // Dosarul se construiește doar din acte verificate de un om.
+        IReadOnlyList<string> unverified = await DossierAttachments.UnverifiedAsync(
+            context, command.UserId, requirements, cancellationToken);
+
+        if (unverified.Count > 0)
+        {
+            return Result.Failure<ArrStateResponse>(DossierAttachments.NotYetVerified(unverified));
+        }
+
         IReadOnlyList<DossierAttachment> included = await DossierAttachments.CollectAsync(
             context,
             fileEncryptionService,
             command.UserId,
-            OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport),
+            requirements,
             cancellationToken);
 
         if (UserDisplayName.IsMissing(registration.User))

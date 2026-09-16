@@ -10,14 +10,13 @@ namespace Application.PfaRegistrations.Onboarding;
 /// lui (secțiuni de documente + entitățile ghidate). Statusul unui pas NU se stochează — se derivă
 /// mereu aici, la citire. Ordinea și deblocarea (fiecare blocare explică motivul) trăiesc tot aici.
 ///
-/// Ordinea e liniară, dar deblocarea NU mai așteaptă adminul: pasul N se deschide când șoferul și-a
-/// terminat partea din N-1, nu când adminul l-a validat. Înainte, poarta cerea „Completed", iar 5
-/// din 6 pași se închid doar din admin — deci dosarul depus la pasul PFA oprea șoferul zile întregi,
-/// iar pasul 5 nu ducea niciodată la 6. Validarea rămâne obligatorie, dar se face în paralel:
-/// înrolarea (<see cref="AllCompleted"/>) cere în continuare toți pașii finalizați.
+/// Ordinea e liniară și fiecare pas se deblochează pe validarea adminului: pasul N se deschide abia
+/// când un om a verificat și validat pasul N-1. Șoferul își termină partea, pasul trece în
+/// verificare, iar el așteaptă acolo.
 ///
-/// Singura excepție e pachetul de semnături (RL-02): „arr” rămâne blocat până când adminul îl alocă,
-/// fiindcă împuternicirea din pachet e chiar actul cu care se depune dosarul ARR.
+/// A fost o vreme invers — pașii se deschideau de îndată ce șoferul își făcea partea, iar validarea
+/// venea în paralel. S-a renunțat: fiecare pas trebuie verificat înainte să se construiască ceva pe
+/// el, iar dosarele (ARR, copie conformă) se generează doar din acte verificate de om.
 /// </summary>
 public static class OnboardingStepCatalog
 {
@@ -82,15 +81,15 @@ public static class OnboardingStepCatalog
         steps.Count > 0 && steps.All(s => s.Status == StatusCompleted);
 
     /// <summary>
-    /// Cheia pasului la care mai are șoferul ceva de făcut: primul cu partea lui neterminată.
-    /// <c>null</c> când și-a făcut peste tot partea, chiar dacă adminul încă validează.
+    /// Cheia pasului la care se află șoferul: primul pe care adminul nu l-a validat încă.
+    /// <c>null</c> doar când toți pașii sunt validați.
     ///
-    /// NU e „primul nefinalizat": un pas trimis la validare rămâne nefinalizat săptămâni, iar
-    /// frontendul folosește valoarea asta ca țintă de navigare — l-ar fi trimis mereu înapoi în
-    /// pasul pe care tocmai îl predase.
+    /// Fiecare pas se deblochează pe validarea adminului, deci un pas predat spre verificare e și
+    /// singurul loc unde poate sta șoferul — următorul e închis. Înainte se lua primul cu partea
+    /// șoferului neterminată, fiindcă pașii se deschideau fără să aștepte adminul.
     /// </summary>
     public static string? CurrentStepKey(IReadOnlyList<OnboardingStepDto> steps) =>
-        steps.FirstOrDefault(s => !s.UserPartDone)?.Key;
+        steps.FirstOrDefault(s => s.Status != StatusCompleted)?.Key;
 
     /// <summary>
     /// Poate userul să scrie pe pasul cerut? Funcție pură, ca regula să fie testabilă fără bază de
@@ -165,7 +164,12 @@ public static class OnboardingStepCatalog
 
         bool[] rejected =
         [
-            eligibility?.Status == EligibilityStatus.Ineligible || EligibilityAdminRejectionOpen(eligibility, documents),
+            // Verdictul automat „neeligibil" contează abia cu toate actele încărcate. Profilul îl
+            // creează OCR-ul la PRIMUL document și rămâne „neeligibil" până apare atestatul — deci
+            // după buletin pasul apărea respins, cu „încarcă atestatul", înainte ca omul să fi
+            // apucat să-l încarce. Lipsa unui act încă neîncărcat nu e o respingere.
+            EligibilityAdminRejectionOpen(eligibility, documents)
+                || eligibility?.Status == EligibilityStatus.Ineligible && EligibilityDocumentsUploaded(documents),
             pfaStatus == OnboardingSectionStatus.Rejected,
             registration?.SignaturePacket?.Status == SignaturePacketStatus.Rejected,
             SectionRejected(registration, OnboardingSectionKey.AutorizatieTransport),
@@ -204,7 +208,9 @@ public static class OnboardingStepCatalog
             own[5] == StatusCompleted || VehicleUserPartDone(registration, documents),
         ];
 
-        // 2) Deblocare liniară: un pas rămâne blocat cât timp predecesorul lui nu e gata de predat.
+        // 2) Deblocare liniară, pe verdictul adminului: pasul N se deschide abia când adminul a
+        //    validat pasul N-1. Nu mai ajunge ca șoferul să-și fi terminat partea — fiecare pas
+        //    se verifică de un om înainte să treacă mai departe.
         var result = new List<OnboardingStepDto>(Steps.Length);
         bool predecessorOpen = true;
 
@@ -217,11 +223,10 @@ public static class OnboardingStepCatalog
             if (!predecessorOpen && status != StatusCompleted)
             {
                 status = StatusLocked;
-                // Singurul pas care mai blochează după ce șoferul și-a făcut treaba e cel fiscal,
-                // și acolo așteptarea e a noastră — mesajul trebuie s-o spună, nu să-i ceară lui
-                // să termine ceva ce a terminat deja.
-                blockReason = own[order - 1] == StatusAwaitingValidation
-                    ? $"Așteptăm să finalizăm pasul „{Steps[order - 1].Label}”. Te anunțăm când e gata."
+                // Când șoferul și-a făcut deja partea, așteptarea e a noastră — mesajul trebuie s-o
+                // spună, nu să-i ceară să termine ceva ce a terminat.
+                blockReason = userDone[order - 1]
+                    ? $"Verificăm pasul „{Steps[order - 1].Label}”. Te anunțăm când e validat și se deschide acesta."
                     : $"Finalizează întâi pasul „{Steps[order - 1].Label}”.";
             }
 
@@ -236,7 +241,7 @@ public static class OnboardingStepCatalog
                 def.OwnedBy,
                 userDone[order] || status == StatusCompleted));
 
-            predecessorOpen = status == StatusCompleted || userDone[order];
+            predecessorOpen = status == StatusCompleted;
         }
 
         return result;
@@ -312,16 +317,16 @@ public static class OnboardingStepCatalog
         OnboardingEligibilityProfile? profile,
         IReadOnlyList<Document>? documents)
     {
-        if (documents is null || profile?.Status == EligibilityStatus.Ineligible)
-        {
-            return false;
-        }
+        return profile?.Status != EligibilityStatus.Ineligible && EligibilityDocumentsUploaded(documents);
+    }
 
-        return Array.TrueForAll(
+    /// <summary>Cele trei acte de la pasul 1 sunt încărcate și niciunul nu e respins.</summary>
+    public static bool EligibilityDocumentsUploaded(IReadOnlyList<Document>? documents) =>
+        documents is not null
+        && Array.TrueForAll(
             EligibilityDocuments,
             categories => documents.Any(d =>
                 categories.Contains(d.Category) && d.Status != DocumentStatus.Rejected));
-    }
 
     /// <summary>
     /// Partea șoferului la pasul 2, pe ramura „am deja PFA": cele două certificate de la ONRC.

@@ -76,12 +76,12 @@ public class OnboardingStepCatalogTests
     }
 
     /// <summary>
-    /// Bugul raportat: „se blochează la certificatul de înregistrare". Dosarul depus e la admin
-    /// zile întregi, iar poarta veche cerea „Completed" — deci șoferul stătea. Acum pasul următor
-    /// se deschide pe dosarul depus, iar validarea merge în paralel.
+    /// Fiecare pas se deschide pe validarea adminului. Dosarul PFA depus e în verificare, iar
+    /// pasul fiscal rămâne închis până îl validează un om — cu un motiv care spune că așteptarea e
+    /// a noastră, nu că șoferul mai are ceva de făcut.
     /// </summary>
     [Fact]
-    public void BuildSteps_PfaAwaitingValidation_IsPendingAdminButUnlocksFiscal()
+    public void BuildSteps_PfaAwaitingValidation_KeepsFiscalLockedUntilAdminValidates()
     {
         List<OnboardingStepDto> steps = Build(
             Registration(),
@@ -90,16 +90,14 @@ public class OnboardingStepCatalogTests
 
         steps[1].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
         steps[1].UserPartDone.ShouldBeTrue();
-        steps[2].Status.ShouldNotBe(Locked);
-        OnboardingStepCatalog.IsWritableByUser(steps, OnboardingStepKey.Fiscal).ShouldBeTrue();
+        steps[2].Status.ShouldBe(Locked);
+        steps[2].BlockReason.ShouldNotBeNull().ShouldContain("Verificăm");
+        OnboardingStepCatalog.IsWritableByUser(steps, OnboardingStepKey.Fiscal).ShouldBeFalse();
     }
 
-    /// <summary>
-    /// Pasul fiscal trimis la verificare nu mai ține pe loc ARR-ul: pachetul de semnături vine pe
-    /// email cât timp șoferul completează mai departe, iar adminul validează în paralel.
-    /// </summary>
+    /// <summary>Pasul fiscal trimis la verificare ține ARR-ul închis până îl validează adminul.</summary>
     [Fact]
-    public void BuildSteps_FiscalPendingAdmin_UnlocksArr()
+    public void BuildSteps_FiscalPendingAdmin_KeepsArrLocked()
     {
         PfaRegistration registration = FiscalRegistration();
         registration.SignaturePacket = new OnboardingSignaturePacket
@@ -111,23 +109,29 @@ public class OnboardingStepCatalogTests
         List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
 
         steps[2].UserPartDone.ShouldBeTrue();
-        steps[3].Status.ShouldNotBe(Locked);
+        steps[3].Status.ShouldBe(Locked);
     }
 
     /// <summary>
-    /// A doua jumătate a aceluiași bug: pasul 5 nu ducea la 6, fiindcă activarea conturilor în
-    /// Uber/Bolt e a adminului. Credențialele complete sunt de-ajuns ca să meargă mai departe.
+    /// Credențialele complete termină partea șoferului la pasul 5, dar vehiculul se deschide abia
+    /// după ce adminul activează conturile.
     /// </summary>
     [Fact]
-    public void BuildSteps_PlatformsWithCredentials_UnlocksVehicle()
+    public void BuildSteps_PlatformsWithCredentials_OpenVehicleOnlyOnceActivated()
     {
         PfaRegistration registration = ReadyForPlatforms();
-        registration.PlatformAccounts.Add(CompletePlatformAccount(PfaPlatformProvider.Bolt));
+        PfaPlatformAccount account = CompletePlatformAccount(PfaPlatformProvider.Bolt);
+        registration.PlatformAccounts.Add(account);
 
         List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
 
         steps[4].UserPartDone.ShouldBeTrue();
-        steps[5].Status.ShouldNotBe(Locked);
+        steps[5].Status.ShouldBe(Locked);
+
+        account.OnboardingStatus = PfaPlatformOnboardingStatus.Active;
+
+        Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated)[5]
+            .Status.ShouldNotBe(Locked);
     }
 
     [Fact]
@@ -164,15 +168,15 @@ public class OnboardingStepCatalogTests
     }
 
     /// <summary>
-    /// `currentStep` e ținta de navigare din frontend. Dacă ar fi rămas „primul nefinalizat", un
-    /// șofer ajuns la fiscal cu dosarul PFA încă la validare ar fi fost trimis înapoi la PFA.
+    /// `currentStep` e ținta de navigare din frontend. Cu pașii deblocați pe validarea adminului,
+    /// pasul predat spre verificare e singurul loc unde poate sta șoferul — următorul e închis.
     /// </summary>
     [Fact]
-    public void CurrentStepKey_SkipsStepsWaitingOnAdmin()
+    public void CurrentStepKey_StaysOnTheStepWaitingOnAdmin()
     {
         OnboardingStepCatalog
             .CurrentStepKey(Build(Registration(), EligibleProfile(), OnboardingSectionStatus.AwaitingValidation))
-            .ShouldBe("fiscal");
+            .ShouldBe("pfa");
     }
 
     [Fact]
@@ -275,9 +279,9 @@ public class OnboardingStepCatalogTests
         List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
 
         steps[2].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
-        // Pasul rămâne închis doar din admin, dar nu mai e o barieră: ARR-ul se deschide, iar o
-        // corectură pe fiscal cât se așteaptă pachetul e încă permisă.
-        steps[3].Status.ShouldNotBe(Locked);
+        // ARR-ul rămâne închis până validează adminul; o corectură pe fiscal cât se așteaptă
+        // pachetul e însă permisă.
+        steps[3].Status.ShouldBe(Locked);
         OnboardingStepCatalog.IsWritableByUser(steps, OnboardingStepKey.Fiscal).ShouldBeTrue();
     }
 
@@ -479,10 +483,10 @@ public class OnboardingStepCatalogTests
 
     /// <summary>
     /// Actele încărcate pun pasul 1 în verificare, oricât de bine sau prost s-au citit datele.
-    /// Bifa vine doar din admin; iar pasul următor se deschide oricum, ca nimeni să nu aștepte.
+    /// Bifa vine doar din admin, iar pasul PFA se deschide abia după ea.
     /// </summary>
     [Fact]
-    public void Eligibility_WithDocumentsUploaded_IsPendingAdminAndUnlocksPfa()
+    public void Eligibility_WithDocumentsUploaded_IsPendingAdminAndKeepsPfaLocked()
     {
         var profile = new OnboardingEligibilityProfile { Id = Guid.NewGuid(), Status = EligibilityStatus.Eligible };
 
@@ -491,7 +495,37 @@ public class OnboardingStepCatalogTests
 
         steps[0].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
         steps[0].UserPartDone.ShouldBeTrue();
-        steps[1].Status.ShouldNotBe(Locked);
+        steps[1].Status.ShouldBe(Locked);
+    }
+
+    /// <summary>
+    /// Regresia raportată: „încarci buletinul și deja îți spune că trebuie să încarci atestatul".
+    ///
+    /// Profilul de eligibilitate îl creează OCR-ul la primul document și rămâne „neeligibil" până
+    /// apare atestatul, iar pasul se marca respins pe verdictul ăsta. Un act încă neîncărcat nu e o
+    /// respingere: pasul e doar în lucru.
+    /// </summary>
+    [Fact]
+    public void Eligibility_WithOnlyTheIdCard_IsNotRejectedYet()
+    {
+        var profile = new OnboardingEligibilityProfile { Id = Guid.NewGuid(), Status = EligibilityStatus.Ineligible };
+
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
+            null, OnboardingSectionStatus.InProgress, profile, [Uploaded(DocumentCategory.CarteIdentitate)]);
+
+        steps[0].State.ShouldNotBe(OnboardingStepCatalog.States.Rejected);
+    }
+
+    /// <summary>Cu toate actele încărcate, un verdict „neeligibil" chiar e o respingere de arătat.</summary>
+    [Fact]
+    public void Eligibility_IneligibleWithAllDocumentsUploaded_IsRejected()
+    {
+        var profile = new OnboardingEligibilityProfile { Id = Guid.NewGuid(), Status = EligibilityStatus.Ineligible };
+
+        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
+            null, OnboardingSectionStatus.InProgress, profile, EligibilityDocuments());
+
+        steps[0].State.ShouldBe(OnboardingStepCatalog.States.Rejected);
     }
 
     [Fact]
@@ -557,7 +591,7 @@ public class OnboardingStepCatalogTests
         List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
 
         steps[3].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
-        steps[4].Status.ShouldNotBe(Locked);
+        steps[4].Status.ShouldBe(Locked);
     }
 
     /// <summary>Credențialele complete pun pasul în verificare — nu-l mai bifează singure.</summary>
@@ -594,7 +628,7 @@ public class OnboardingStepCatalogTests
             registration, OnboardingSectionStatus.Validated, EligibleProfile(), []);
 
         steps[5].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
-        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBe("vehicle");
+        steps[5].UserPartDone.ShouldBeFalse();
     }
 
     /// <summary>Cu copia conformă și ecusonul platformei alese încărcate, partea șoferului e gata.</summary>
@@ -609,7 +643,9 @@ public class OnboardingStepCatalogTests
             EligibleProfile(),
             [Uploaded(DocumentCategory.CopieConforma), Uploaded(DocumentCategory.EcusonBolt)]);
 
-        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBeNull();
+        steps[5].UserPartDone.ShouldBeTrue();
+        // Partea șoferului e gata, dar pasul rămâne al lui până îl validează adminul.
+        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBe("vehicle");
         OnboardingStepCatalog.AllCompleted(steps).ShouldBeFalse();
     }
 
@@ -639,7 +675,7 @@ public class OnboardingStepCatalogTests
             EligibleProfile(),
             [Uploaded(DocumentCategory.CopieConforma)]);
 
-        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBe("vehicle");
+        steps[5].UserPartDone.ShouldBeFalse();
     }
 
     /// <summary>O copie conformă respinsă nu închide pasul: trebuie reîncărcată.</summary>
@@ -654,13 +690,16 @@ public class OnboardingStepCatalogTests
             EligibleProfile(),
             [Uploaded(DocumentCategory.CopieConforma, DocumentStatus.Rejected), Uploaded(DocumentCategory.EcusonBolt)]);
 
-        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBe("vehicle");
+        steps[5].UserPartDone.ShouldBeFalse();
     }
 
     private static PfaRegistration SubmittedVehicleDossier(PfaPlatformProvider chosenPlatform)
     {
         PfaRegistration registration = ReadyForPlatforms();
-        registration.PlatformAccounts.Add(CompletePlatformAccount(chosenPlatform));
+        // Conturile activate: altfel pasul 5 nu e validat și vehiculul e închis.
+        PfaPlatformAccount account = CompletePlatformAccount(chosenPlatform);
+        account.OnboardingStatus = PfaPlatformOnboardingStatus.Active;
+        registration.PlatformAccounts.Add(account);
         registration.Vehicles.Add(new PfaVehicle
         {
             Id = Guid.NewGuid(),

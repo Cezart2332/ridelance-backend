@@ -3,6 +3,7 @@ using Application.Abstractions.Dossiers;
 using Application.Abstractions.Services;
 using Domain.Documents;
 using Microsoft.EntityFrameworkCore;
+using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding;
 
@@ -13,9 +14,9 @@ namespace Application.PfaRegistrations.Onboarding;
 internal static class DossierAttachments
 {
     /// <summary>
-    /// Pentru fiecare cerință, cel mai recent document din categoriile acceptate — inclusiv
-    /// respins de AI sau de admin. Dosarul e pentru depunere la ghișeu; validarea automată nu
-    /// trebuie să blocheze generarea.
+    /// Pentru fiecare cerință, cel mai recent document din categoriile acceptate. Nu judecă
+    /// statusul — asta o face <see cref="UnverifiedAsync"/> înainte, iar generarea se oprește acolo
+    /// dacă vreun act nu e verificat de om.
     /// Ordinea rezultatului urmează ordinea cerințelor — așa iese dosarul cum îl vrea ARR-ul.
     /// Cerințele fără document încărcat sunt sărite.
     /// </summary>
@@ -65,6 +66,66 @@ internal static class DossierAttachments
         }
 
         return attachments;
+    }
+
+    /// <summary>
+    /// Refuzul de generare, cu actele care îl țin pe loc numite. Mesajul e pentru client: el vede
+    /// ce anume așteaptă, nu doar că „nu se poate".
+    /// </summary>
+    public static Error NotYetVerified(IReadOnlyList<string> labels) => Error.Problem(
+        "Onboarding.Dossier.DocumentsNotVerified",
+        $"Dosarul se poate genera după ce echipa verifică toate actele. Încă în verificare: {string.Join(", ", labels)}.");
+
+    /// <summary>
+    /// Actele care ar intra în dosar, dar n-au fost încă verificate de un om — după etichetă.
+    /// Listă goală înseamnă că dosarul se poate genera.
+    ///
+    /// Dosarul se depune la ghișeu în numele clientului, deci nu se construiește din acte pe care
+    /// nu le-a văzut nimeni: un act în așteptare sau respins îl blochează. Se uită la același act
+    /// pe care l-ar alege <see cref="CollectAsync"/> — cel mai recent pe fiecare cerință — ca
+    /// verificarea și generarea să nu poată ajunge la documente diferite.
+    ///
+    /// Cerințele fără niciun act încărcat nu blochează aici: rămân sărite, ca până acum.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> UnverifiedAsync(
+        IApplicationDbContext context,
+        Guid userId,
+        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements,
+        CancellationToken cancellationToken)
+    {
+        DocumentCategory[] wanted = requirements
+            .SelectMany(req => req.AcceptedCategories)
+            .Distinct()
+            .ToArray();
+
+        List<Document> documents = await context.Documents
+            .AsNoTracking()
+            .Where(d => d.UserId == userId && wanted.Contains(d.Category))
+            .OrderByDescending(d => d.UploadedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        var unverified = new List<string>();
+        var used = new HashSet<Guid>();
+
+        foreach (OnboardingSectionCatalog.DocumentRequirement requirement in requirements)
+        {
+            Document? document = documents.FirstOrDefault(d =>
+                requirement.AcceptedCategories.Contains(d.Category) && !used.Contains(d.Id));
+
+            if (document is null)
+            {
+                continue;
+            }
+
+            used.Add(document.Id);
+
+            if (document.Status != DocumentStatus.Verified)
+            {
+                unverified.Add(requirement.Label);
+            }
+        }
+
+        return unverified;
     }
 
     /// <summary>

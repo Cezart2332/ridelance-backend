@@ -72,6 +72,15 @@ internal sealed class GenerateVehicleDossierCommandHandler(
             .DistinctBy(req => req.Label)
             .ToList();
 
+        // Dosarul se construiește doar din acte verificate de un om.
+        IReadOnlyList<string> unverified = await DossierAttachments.UnverifiedAsync(
+            context, command.UserId, requirements, cancellationToken);
+
+        if (unverified.Count > 0)
+        {
+            return Result.Failure<VehicleStateResponse>(DossierAttachments.NotYetVerified(unverified));
+        }
+
         IReadOnlyList<DossierAttachment> included = await DossierAttachments.CollectAsync(
             context, fileEncryptionService, command.UserId, requirements, cancellationToken);
 
