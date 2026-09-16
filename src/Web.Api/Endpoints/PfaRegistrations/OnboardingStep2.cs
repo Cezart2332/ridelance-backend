@@ -198,6 +198,21 @@ internal sealed class OnboardingStep2 : IEndpoint
         .HasPermission("pfa:manage")
         .WithTags(Tags.PfaRegistrations);
 
+        // Ce a făcut clientul la pasul 3 — TVA, banca legată, Oblio — ca adminul să vadă ce validează.
+        app.MapGet("admin/onboarding/{id:guid}/steps/fiscal", async (
+            Guid id,
+            IQueryHandler<GetAdminFiscalReviewQuery, AdminFiscalReviewResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<AdminFiscalReviewResponse> result =
+                await handler.Handle(new GetAdminFiscalReviewQuery(id), cancellationToken);
+
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:manage")
+        .WithTags(Tags.PfaRegistrations);
+
         // RL-02 — adminul alocă pachetul și închide pasul fiscal. Abia acum se deblochează ARR.
         app.MapPost("admin/onboarding/{id:guid}/steps/signatures/complete", async (
             Guid id,
