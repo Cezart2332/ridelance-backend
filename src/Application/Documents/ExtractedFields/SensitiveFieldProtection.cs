@@ -46,11 +46,35 @@ internal static class SensitiveFieldProtection
         return Mask(sensitivity.Type, normalized);
     }
 
-    /// <summary>Valoarea în clar a unui câmp sensibil, pentru afișarea la cerere în admin.</summary>
+    /// <summary>
+    /// Valoarea în clar a unui câmp sensibil, pentru afișarea în admin. Null când nu se poate
+    /// decripta (cheie schimbată, rând corupt): apelantul rămâne pe mască, nu pică tot răspunsul.
+    /// </summary>
     public static string? Reveal(ExtractedField row, ISecretProtector protector) =>
         string.IsNullOrWhiteSpace(row.EncryptedValue)
             ? row.ConfirmedValue ?? row.AiNormalizedValue
-            : protector.Unprotect(row.EncryptedValue);
+            : TryUnprotect(protector, row.EncryptedValue);
+
+    /// <summary>
+    /// Decriptare care nu aruncă. Un singur câmp care nu se decriptează golea toată lista de date
+    /// din admin — endpointul întorcea eroare, iar panoul nu mai arăta nimic.
+    /// </summary>
+    public static string? TryUnprotect(ISecretProtector protector, string? protectedText)
+    {
+        if (string.IsNullOrWhiteSpace(protectedText))
+        {
+            return null;
+        }
+
+        try
+        {
+            return protector.Unprotect(protectedText);
+        }
+        catch (Exception exception) when (exception is FormatException or System.Security.Cryptography.CryptographicException or ArgumentException)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>

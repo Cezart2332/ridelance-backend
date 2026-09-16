@@ -1,6 +1,7 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Security;
+using Application.Documents.ExtractedFields;
 using Domain.Banking;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
@@ -88,9 +89,7 @@ internal sealed class GetAdminFiscalReviewQueryHandler(
             .Select(r => r.BankAccountDeclaration!.IbanEncrypted)
             .FirstOrDefaultAsync(cancellationToken);
 
-        string? declaredIban = string.IsNullOrWhiteSpace(encryptedIban)
-            ? null
-            : secretProtector.Unprotect(encryptedIban);
+        string? declaredIban = SensitiveFieldProtection.TryUnprotect(secretProtector, encryptedIban);
 
         return new AdminFiscalReviewResponse(state.Value, bank, declaredIban);
     }
