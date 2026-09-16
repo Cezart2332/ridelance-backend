@@ -62,6 +62,10 @@ internal sealed class GetExtractedFieldsAdminQueryHandler(
         }
 
         string? real = SensitiveFieldProtection.Reveal(field, secretProtector);
+        if (real is null)
+        {
+            return masked;
+        }
 
         // Valoarea confirmată de om bate citirea automată, ca în restul aplicației.
         return masked with

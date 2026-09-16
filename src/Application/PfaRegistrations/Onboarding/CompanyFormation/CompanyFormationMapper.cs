@@ -34,9 +34,7 @@ internal static class CompanyFormationMapper
 
     public static PersoanaFizicaDto ToDto(PersoanaFizica p, ISecretProtector protector, bool revealCnp)
     {
-        string? cnp = revealCnp && !string.IsNullOrWhiteSpace(p.CnpEncrypted)
-            ? protector.Unprotect(p.CnpEncrypted)
-            : null;
+        string? cnp = revealCnp ? SensitiveFieldProtection.TryUnprotect(protector, p.CnpEncrypted) : null;
 
         return new PersoanaFizicaDto(
             p.Nume,
