@@ -15,6 +15,34 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
     IUserContext userContext)
     : IQueryHandler<GetAllPfaRegistrationsQuery, PfaRegistrationListResponse>
 {
+    /// <summary>
+    /// Un rând din listă, înainte de abonament. Același pentru un dosar și pentru un cont fără
+    /// dosar, ca ordonarea și paginarea să se facă o singură dată, peste amândouă.
+    /// </summary>
+    private sealed record Row(
+        Guid Id,
+        Guid UserId,
+        string UserEmail,
+        string UserFirstName,
+        string UserLastName,
+        RegistrationType? RegistrationType,
+        PfaRegistrationStatus? Status,
+        DateTime? OnboardingCompletedAtUtc,
+        string? FullName,
+        string? Phone,
+        int? ContractDuration,
+        string? Street,
+        string? Number,
+        string? City,
+        string? County,
+        bool IsOwner,
+        string? Cui,
+        int DocumentCount,
+        bool AwaitingAdminAction,
+        DateTime CreatedAtUtc,
+        DateTime? UserLastActivityAtUtc,
+        DateTime? ChatActivityAtUtc);
+
     public async Task<Result<PfaRegistrationListResponse>> Handle(
         GetAllPfaRegistrationsQuery query,
         CancellationToken cancellationToken)
@@ -25,22 +53,20 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
         User? caller = await context.Users
             .SingleOrDefaultAsync(u => u.Id == userContext.UserId, cancellationToken);
 
-        if (caller?.Role == UserRole.Contabil)
+        bool isContabil = caller?.Role == UserRole.Contabil;
+        if (isContabil)
         {
             queryable = queryable.Where(r => r.AssignedContabilId == userContext.UserId);
         }
 
-        int totalCount = await queryable.CountAsync(cancellationToken);
-
-        var pagedData = await queryable
+        List<Row> rows = await queryable
             .AsNoTracking()
-            .Select(r => new
-            {
+            .Select(r => new Row(
                 r.Id,
                 r.UserId,
-                UserEmail = r.User.Email,
-                UserFirstName = r.User.FirstName,
-                UserLastName = r.User.LastName,
+                r.User.Email,
+                r.User.FirstName,
+                r.User.LastName,
                 r.RegistrationType,
                 r.Status,
                 r.OnboardingCompletedAtUtc,
@@ -53,28 +79,79 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                 r.County,
                 r.IsOwner,
                 r.Cui,
-                DocumentCount = r.Documents.Count,
+                r.Documents.Count,
                 // „Mingea e la noi”: dosar PFA nereviewuit, o secțiune trimisă la validare, sau
                 // pasul fiscal trimis spre alocarea pachetului de semnături (RL-02). Calculat în
                 // SQL, ca filtrul rapid din admin să nu ceară încărcarea grafului per dosar.
-                AwaitingAdminAction =
-                    r.Status == PfaRegistrationStatus.Pending
+                r.Status == PfaRegistrationStatus.Pending
                     || r.OnboardingSections.Any(s => s.Status == OnboardingSectionStatus.AwaitingValidation)
                     || r.SignaturePacket != null
                         && r.SignaturePacket.SubmittedForReviewAtUtc != null
                         && r.SignaturePacket.Status == SignaturePacketStatus.Draft,
                 r.CreatedAtUtc,
-                UserLastActivityAtUtc = r.User.LastActivityAtUtc,
-                ChatActivityAtUtc = context.ChatRooms
+                r.User.LastActivityAtUtc,
+                context.ChatRooms
                     .Where(cr => cr.ClientUserId == r.UserId)
                     .OrderByDescending(cr => cr.LastMessageAtUtc)
                     .Select(cr => (DateTime?)cr.LastMessageAtUtc)
-                    .FirstOrDefault()
-            })
+                    .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
+        // Conturile de client care n-au încă dosar PFA. Dosarul se naște abia la pasul 2, dar
+        // clientul e în înrolare din clipa în care și-a făcut contul — iar pasul 1 (Eligibilitate)
+        // îl validează adminul, deci trebuie să-l vadă înainte să existe dosarul. Fără ei, un
+        // client cu actele încărcate nu apărea nicăieri, iar pasul 2 nu i se deschidea niciodată.
+        //
+        // Contabilul nu-i vede: el primește dosare alocate, iar ăștia n-au încă nimic de alocat.
+        if (!isContabil)
+        {
+            List<Row> accountsWithoutRegistration = await context.Users
+                .AsNoTracking()
+                .Where(u => u.Role == UserRole.Client && !context.PfaRegistrations.Any(r => r.UserId == u.Id))
+                .Select(u => new Row(
+                    // Fără dosar, rândul se adresează prin contul clientului.
+                    u.Id,
+                    u.Id,
+                    u.Email,
+                    u.FirstName,
+                    u.LastName,
+                    null,
+                    null,
+                    null,
+                    null,
+                    u.PhoneNumber,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    null,
+                    context.Documents.Count(d => d.UserId == u.Id),
+                    // Eligibilitatea așteaptă verdictul: acte încărcate, nevalidate, și nici
+                    // respinse după ultima încărcare.
+                    context.Documents.Any(d => d.UserId == u.Id)
+                        && !context.OnboardingEligibilityProfiles.Any(p =>
+                            p.UserId == u.Id
+                            && (p.AdminValidatedAtUtc != null
+                                || p.AdminRejectedAtUtc != null
+                                    && !context.Documents.Any(d => d.UserId == u.Id && d.UploadedAtUtc > p.AdminRejectedAtUtc))),
+                    u.CreatedAtUtc,
+                    u.LastActivityAtUtc,
+                    context.ChatRooms
+                        .Where(cr => cr.ClientUserId == u.Id)
+                        .OrderByDescending(cr => cr.LastMessageAtUtc)
+                        .Select(cr => (DateTime?)cr.LastMessageAtUtc)
+                        .FirstOrDefault()))
+                .ToListAsync(cancellationToken);
+
+            rows.AddRange(accountsWithoutRegistration);
+        }
+
+        int totalCount = rows.Count;
+
         // ponytail: sort in memory because activity is max(login, chat); move to SQL if PFA count grows.
-        pagedData = pagedData
+        var pagedData = rows
             .OrderByDescending(x => GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc) ?? x.CreatedAtUtc)
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
@@ -100,15 +177,19 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                 bool hasSubscription = latestSubscriptions.TryGetValue(x.UserId, out var subscription);
                 string? subscriptionStatusText = hasSubscription ? subscription!.Status.ToString() : null;
                 string? subscriptionPlanText = hasSubscription ? subscription!.Plan.ToString() : null;
-                string accountStatus = ResolveAccountStatus(x.Status, x.OnboardingCompletedAtUtc, hasSubscription ? subscription!.Status : null);
+                bool hasRegistration = x.Status is not null;
+                SubscriptionStatus? latestStatus = hasSubscription ? subscription!.Status : null;
+                string accountStatus = hasRegistration
+                    ? ResolveAccountStatus(x.Status!.Value, x.OnboardingCompletedAtUtc, latestStatus)
+                    : "Cont nou";
 
                 return new PfaRegistrationSummary(
                     x.Id,
                     x.UserId,
                     x.UserEmail,
                     UserDisplayName.Of(x.UserFirstName, x.UserLastName, x.UserEmail),
-                    x.RegistrationType.ToString(),
-                    x.Status.ToString(),
+                    x.RegistrationType?.ToString() ?? string.Empty,
+                    x.Status?.ToString() ?? WithoutRegistrationStatus,
                     accountStatus,
                     subscriptionStatusText,
                     subscriptionPlanText,
@@ -125,12 +206,16 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     x.AwaitingAdminAction,
                     x.CreatedAtUtc,
                     GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc),
-                    x.OnboardingCompletedAtUtc);
+                    x.OnboardingCompletedAtUtc,
+                    hasRegistration);
             })
             .ToList();
 
         return new PfaRegistrationListResponse(items, totalCount);
     }
+
+    /// <summary>Statusul rândurilor fără dosar: nici „Pending” (n-are ce aproba), nici altceva real.</summary>
+    internal const string WithoutRegistrationStatus = "NoRegistration";
 
     private static string ResolveAccountStatus(
         PfaRegistrationStatus pfaStatus,

@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Notifications;
 using Domain.PfaRegistrations;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -35,6 +36,14 @@ internal sealed class ReviewEligibilityCommandHandler(IApplicationDbContext cont
             .Where(r => r.Id == command.RegistrationId)
             .Select(r => (Guid?)r.UserId)
             .FirstOrDefaultAsync(cancellationToken);
+
+        // Eligibilitatea se validează înainte să existe dosarul — el se creează abia la pasul 2,
+        // care se deschide tocmai pe validarea asta. Fără dosar, id-ul primit e al contului.
+        if (userId is null &&
+            await context.Users.AnyAsync(u => u.Id == command.RegistrationId && u.Role == UserRole.Client, cancellationToken))
+        {
+            userId = command.RegistrationId;
+        }
 
         if (userId is null)
         {
