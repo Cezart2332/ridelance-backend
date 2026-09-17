@@ -15,7 +15,8 @@ internal sealed class RefreshTokenEndpoint : IEndpoint
             [FromServices] ICommandHandler<RefreshTokenCommand, RefreshTokenResponse> handler,
             CancellationToken cancellationToken) =>
         {
-            string? refreshToken = httpContext.Request.Cookies["refreshToken"];
+            string? headerToken = NativeClient.RefreshTokenFromHeader(httpContext.Request);
+            string? refreshToken = headerToken ?? httpContext.Request.Cookies["refreshToken"];
 
             if (string.IsNullOrEmpty(refreshToken))
             {
@@ -46,6 +47,18 @@ internal sealed class RefreshTokenEndpoint : IEndpoint
                 Expires = DateTimeOffset.UtcNow.AddDays(7),
                 Path = "/"
             });
+
+            // Tokenul rotit se întoarce în corp doar celui care l-a trimis prin antet (aplicația mobilă).
+            if (headerToken is not null)
+            {
+                return Results.Ok(new
+                {
+                    accessToken = result.Value.AccessToken,
+                    role = result.Value.Role,
+                    userId = result.Value.UserId,
+                    refreshToken = result.Value.RefreshToken
+                });
+            }
 
             return Results.Ok(new
             {

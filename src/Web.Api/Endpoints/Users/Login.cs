@@ -37,6 +37,18 @@ internal sealed class Login : IEndpoint
                 Path = "/"
             });
 
+            // Aplicația mobilă nu primește cookie-ul (vezi NativeClient): tokenul de refresh îi vine în corp.
+            if (NativeClient.IsNative(httpContext.Request))
+            {
+                return Results.Ok(new
+                {
+                    accessToken = result.Value.AccessToken,
+                    role = result.Value.Role,
+                    userId = result.Value.UserId,
+                    refreshToken = result.Value.RefreshToken
+                });
+            }
+
             // Return only the access token, role, and userId in the response body (for Redux)
             return Results.Ok(new
             {
