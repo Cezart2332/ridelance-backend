@@ -80,6 +80,7 @@ public interface IApplicationDbContext
     DbSet<CarImage> CarImages { get; }
     DbSet<CarLead> CarLeads { get; }
     DbSet<CarView> CarViews { get; }
+    DbSet<CarFavorite> CarFavorites { get; }
     DbSet<UserSubscription> UserSubscriptions { get; }
     DbSet<PaymentRecord> PaymentRecords { get; }
     DbSet<ServiceOrder> ServiceOrders { get; }
