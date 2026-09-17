@@ -38,7 +38,11 @@ builder.Services.AddCors(options =>
             "http://localhost:5174",
             "http://localhost:3000",
             "https://ridelance.ro",
-            "https://www.ridelance.ro"
+            "https://www.ridelance.ro",
+            // Aplicația mobilă (Capacitor): Android servește pagina din https://localhost, iOS din
+            // capacitor://localhost.
+            "https://localhost",
+            "capacitor://localhost"
         };
 
         if (!string.IsNullOrEmpty(baseUrl))
