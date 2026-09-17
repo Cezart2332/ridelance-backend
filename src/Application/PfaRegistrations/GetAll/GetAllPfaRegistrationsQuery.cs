@@ -38,4 +38,9 @@ public sealed record PfaRegistrationSummary(
     /// Când s-a înrolat efectiv: toți pașii de onboarding validați. NU e același lucru cu dosarul
     /// PFA aprobat — un dosar aprobat poate avea încă patru pași de parcurs.
     /// </summary>
-    DateTime? OnboardingCompletedAtUtc = null);
+    DateTime? OnboardingCompletedAtUtc = null,
+    /// <summary>
+    /// Fals pentru un cont de client care n-a ajuns încă la pasul 2, unde se creează dosarul. Atunci
+    /// <c>Id</c> e chiar id-ul contului, iar endpointurile de onboarding din admin îl acceptă ca atare.
+    /// </summary>
+    bool HasRegistration = true);

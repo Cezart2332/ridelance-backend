@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Application.Payments;
 using Domain.Documents;
 using Domain.PfaRegistrations;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -40,7 +41,16 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
 
         if (userId is null)
         {
-            return Result.Failure<OnboardingStateResponse>(PfaRegistrationErrors.NotFound(registrationId));
+            // Un client care n-a ajuns la pasul 2 n-are încă dosar, iar lista din admin îl adresează
+            // prin contul lui (vezi `PfaRegistrationSummary.HasRegistration`). Starea lui e cea de
+            // client, calculată fără dosar — exact ce vede el.
+            bool isClientWithoutRegistration = await context.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Id == registrationId && u.Role == UserRole.Client, cancellationToken);
+
+            return isClientWithoutRegistration
+                ? Result.Success(await GetForUserAsync(registrationId, cancellationToken))
+                : Result.Failure<OnboardingStateResponse>(PfaRegistrationErrors.NotFound(registrationId));
         }
 
         OnboardingStateResponse state = await BuildAsync(

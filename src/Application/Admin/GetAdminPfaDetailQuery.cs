@@ -3,6 +3,7 @@ using Application.Abstractions.Messaging;
 using Domain.Documents;
 using Domain.Payments;
 using Domain.PfaRegistrations;
+using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -25,8 +26,13 @@ internal sealed class GetAdminPfaDetailQueryHandler(IApplicationDbContext contex
 
         if (pfa is null)
         {
-            return Result.Failure<AdminPfaDetailResponse>(
-                Error.NotFound("Pfa.NotFound", "Înregistrarea PFA nu a fost găsită."));
+            // Client fără dosar încă (n-a ajuns la pasul 2): lista îl adresează prin cont.
+            AdminPfaDetailResponse? account = await ForAccountWithoutRegistrationAsync(query.PfaRegistrationId, cancellationToken);
+
+            return account is null
+                ? Result.Failure<AdminPfaDetailResponse>(
+                    Error.NotFound("Pfa.NotFound", "Înregistrarea PFA nu a fost găsită."))
+                : account;
         }
 
         UserSubscription? subscription = await context.UserSubscriptions
@@ -123,5 +129,65 @@ internal sealed class GetAdminPfaDetailQueryHandler(IApplicationDbContext contex
             subscription?.BcrDiscountConfirmedAtUtc);
 
         return response;
+    }
+
+    /// <summary>
+    /// Fișa unui client care și-a făcut contul, dar n-a ajuns încă la pasul în care se creează
+    /// dosarul PFA. Are doar ce ține de cont: date de contact, activitate, actele de eligibilitate.
+    /// </summary>
+    private async Task<AdminPfaDetailResponse?> ForAccountWithoutRegistrationAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        User? user = await context.Users
+            .AsNoTracking()
+            .SingleOrDefaultAsync(u => u.Id == userId && u.Role == UserRole.Client, cancellationToken);
+
+        if (user is null)
+        {
+            return null;
+        }
+
+        List<DocumentStatus> documentStatuses = await context.Documents
+            .AsNoTracking()
+            .Where(d => d.UserId == userId)
+            .Select(d => d.Status)
+            .ToListAsync(cancellationToken);
+
+        DateTime? chatActivityAtUtc = await context.ChatRooms
+            .AsNoTracking()
+            .Where(r => r.ClientUserId == userId)
+            .OrderByDescending(r => r.LastMessageAtUtc)
+            .Select(r => (DateTime?)r.LastMessageAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        DateTime? lastActivityAtUtc = GetAdminOverviewQueryHandler.LatestActivity(user.LastActivityAtUtc, chatActivityAtUtc);
+
+        string name = UserDisplayName.Of(user.FirstName, user.LastName, user.Email);
+
+        return new AdminPfaDetailResponse(
+            user.Id,
+            user.Id,
+            name,
+            name,
+            user.Email,
+            user.PhoneNumber ?? "Telefon necompletat",
+            "Cont nou",
+            AdminBillingLabels.PlanLabel(null),
+            GetAdminOverviewQueryHandler.SubscriptionStatusLabel(null),
+            string.Empty,
+            "Fără dosar PFA",
+            lastActivityAtUtc is null ? "Fără activitate" : GetAdminOverviewQueryHandler.RelativeTime(lastActivityAtUtc.Value),
+            null,
+            null,
+            null,
+            null,
+            0,
+            null,
+            GetAdminOverviewQueryHandler.CustomerAge(user.CreatedAtUtc),
+            null,
+            documentStatuses.Count(status => status == DocumentStatus.Rejected),
+            documentStatuses.Count(status => status == DocumentStatus.Pending),
+            string.Empty,
+            []);
     }
 }
