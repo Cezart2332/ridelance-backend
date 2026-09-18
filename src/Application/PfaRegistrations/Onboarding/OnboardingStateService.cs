@@ -146,7 +146,7 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
                 .ToListAsync(cancellationToken)
             : null;
 
-        return OnboardingStateBuilder.Build(
+        OnboardingStateResponse state = OnboardingStateBuilder.Build(
             registration,
             hasPaidInfiintare,
             eligibility,
@@ -154,6 +154,23 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
             documents,
             devSkippedSteps,
             await CountyForArrAsync(documents, cancellationToken));
+
+        if (registration is not null)
+        {
+            return state;
+        }
+
+        // Fără dosar, datele de contact vin direct din cont. Dosarul se creează abia la ecranul
+        // „Date de contact” — exact cel care are nevoie de telefonul contului ca precompletare.
+        var account = await context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.Email, u.PhoneNumber })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return account is null
+            ? state
+            : state with { ContactEmail = account.Email, ContactPhone = account.PhoneNumber };
     }
 
     /// <summary>
