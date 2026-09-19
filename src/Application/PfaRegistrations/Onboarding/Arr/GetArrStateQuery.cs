@@ -19,6 +19,17 @@ internal sealed class GetArrStateQueryHandler(IApplicationDbContext context)
             .OrderByDescending(a => a.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return Result.Success(request is null ? null : ArrShared.ToResponse(request));
+        if (request is null)
+        {
+            return Result.Success<ArrStateResponse?>(null);
+        }
+
+        IReadOnlyList<string> pending = await DossierAttachments.PendingAsync(
+            context,
+            query.UserId,
+            OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport),
+            cancellationToken);
+
+        return Result.Success<ArrStateResponse?>(ArrShared.ToResponse(request) with { DossierPendingReview = pending });
     }
 }

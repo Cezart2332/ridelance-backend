@@ -85,6 +85,33 @@ public sealed class DossierVerificationTests
         error.Description.ShouldContain("Cazier judiciar");
     }
 
+    /// <summary>
+    /// O piesă lipsă ține și ea dosarul pe loc: <c>UnverifiedAsync</c> sărea peste cerințele fără act,
+    /// iar dosarul ieșea incomplet. Lipsurile vin primele, apoi actele neverificate.
+    /// </summary>
+    [Fact]
+    public async Task Missing_documents_block_the_dossier_along_with_unverified_ones()
+    {
+        using ApplicationDbContext db = await With(
+            (DocumentCategory.CazierJudiciar, DocumentStatus.Verified),
+            (DocumentCategory.AvizPsihologic, DocumentStatus.Pending));
+
+        (await DossierAttachments.PendingAsync(db, Client, Requirements, CancellationToken.None))
+            .ShouldBe(["Aviz medical", "Aviz psihologic"]);
+    }
+
+    [Fact]
+    public async Task A_complete_and_verified_set_is_ready()
+    {
+        using ApplicationDbContext db = await With(
+            (DocumentCategory.CazierJudiciar, DocumentStatus.Verified),
+            (DocumentCategory.AdeverintaMedicala, DocumentStatus.Verified),
+            (DocumentCategory.AvizPsihologic, DocumentStatus.Verified));
+
+        (await DossierAttachments.PendingAsync(db, Client, Requirements, CancellationToken.None))
+            .ShouldBeEmpty();
+    }
+
     private static Task<ApplicationDbContext> With(params (DocumentCategory Category, DocumentStatus Status)[] documents) =>
         With(documents.Select(d => (d.Category, d.Status, DateTime.UtcNow)).ToArray());
 

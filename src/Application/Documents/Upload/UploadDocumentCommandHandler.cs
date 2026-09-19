@@ -27,7 +27,10 @@ internal sealed class UploadDocumentCommandHandler(
         "IMAGE/PNG"
     ];
 
-    private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
+    // 25 MB: pozele făcute cu telefoane noi trec ușor de 10 MB, iar actele respinse pe mărime
+    // erau exact cele fotografiate cel mai clar. Kestrel acceptă implicit ~30 MB pe cerere, deci
+    // formularul multipart încape. Modelul care verifică actul primește o copie micșorată.
+    public const long MaxFileSize = 25 * 1024 * 1024;
 
     public async Task<Result<Guid>> Handle(
         UploadDocumentCommand command,

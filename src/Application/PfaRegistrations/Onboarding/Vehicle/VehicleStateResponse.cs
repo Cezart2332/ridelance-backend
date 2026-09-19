@@ -39,4 +39,9 @@ public sealed record VehicleStateResponse(
     IReadOnlyList<VehicleBadgeDto> Badges,
     long CopyFeePerYearBani,
     long BadgeFeePerSetBani,
-    int MaxCopyYears);
+    int MaxCopyYears,
+    /// <summary>
+    /// Actele după care așteaptă generarea dosarului: lipsă sau încă neverificate de echipă. Goală
+    /// când dosarul se poate genera. Aplicația dezactivează butonul și le numește.
+    /// </summary>
+    IReadOnlyList<string>? DossierPendingReview = null);

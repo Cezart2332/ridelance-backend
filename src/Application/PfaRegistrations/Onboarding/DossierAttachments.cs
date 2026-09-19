@@ -129,6 +129,47 @@ internal static class DossierAttachments
     }
 
     /// <summary>
+    /// Ce ține dosarul pe loc: actele cerute care lipsesc cu totul, apoi cele încă neverificate de
+    /// un om. Listă goală înseamnă că dosarul se poate genera.
+    ///
+    /// `UnverifiedAsync` sărea peste cerințele fără act, deci un dosar cu o piesă lipsă trecea — și
+    /// ieșea incomplet la ghișeu. Aceeași listă se trimite și aplicației, ca butonul de generare să
+    /// spună dinainte ce așteaptă, nu abia după apăsare.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> PendingAsync(
+        IApplicationDbContext context,
+        Guid userId,
+        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements,
+        CancellationToken cancellationToken)
+    {
+        DocumentCategory[] wanted = requirements
+            .SelectMany(req => req.AcceptedCategories)
+            .Distinct()
+            .ToArray();
+
+        List<DocumentCategory> present = await context.Documents
+            .AsNoTracking()
+            .Where(d => d.UserId == userId && wanted.Contains(d.Category))
+            .Select(d => d.Category)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var missing = requirements
+            .Where(req => !req.AcceptedCategories.Any(present.Contains))
+            .Select(req => req.Label)
+            .ToList();
+
+        IReadOnlyList<string> unverified = await UnverifiedAsync(context, userId, requirements, cancellationToken);
+
+        return [.. missing, .. unverified];
+    }
+
+    /// <summary>Refuzul de generare cu actele care lipsesc sau așteaptă verificarea.</summary>
+    public static Error NotReady(IReadOnlyList<string> labels) => Error.Problem(
+        "Onboarding.Dossier.DocumentsNotReady",
+        $"Dosarul se poate genera după ce toate actele sunt încărcate și verificate de echipă. Încă așteptăm: {string.Join(", ", labels)}.");
+
+    /// <summary>
     /// Un fișier care nu poate fi decriptat (șters de pe disc, cheie schimbată) nu are voie să
     /// pice generarea dosarului — rămâne doar nemenționat, iar restul dosarului se produce.
     /// </summary>

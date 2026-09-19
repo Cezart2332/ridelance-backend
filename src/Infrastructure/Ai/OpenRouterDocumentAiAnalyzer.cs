@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Application.Abstractions.Ai;
 using Application.Documents.AiVerification;
+using Infrastructure.Dossiers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SharedKernel;
@@ -26,7 +27,9 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         }
 
         bool isPdf = request.ContentType.Contains("pdf", StringComparison.OrdinalIgnoreCase);
-        string dataUrl = $"data:{request.ContentType};base64,{Convert.ToBase64String(request.FileBytes)}";
+        // Pozele mari pleacă micșorate: modelele primesc imagini de câțiva MB (vezi DocumentImage).
+        (byte[] fileBytes, string fileContentType) = DocumentImage.ForAnalysis(request.FileBytes, request.ContentType);
+        string dataUrl = $"data:{fileContentType};base64,{Convert.ToBase64String(fileBytes)}";
 
         object filePart = isPdf
             ? new { type = "file", file = new { filename = request.FileName, file_data = dataUrl } }
