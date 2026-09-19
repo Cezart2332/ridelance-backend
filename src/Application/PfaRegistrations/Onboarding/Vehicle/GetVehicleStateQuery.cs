@@ -33,6 +33,22 @@ internal sealed class GetVehicleStateQueryHandler(
 
         PfaVehicle? vehicle = registration is null ? null : VehicleShared.PrimaryVehicle(registration);
 
-        return Result.Success(VehicleShared.ToResponse(vehicle, copyFee, badgeFee));
+        VehicleStateResponse state = VehicleShared.ToResponse(vehicle, copyFee, badgeFee);
+        if (vehicle is null)
+        {
+            return Result.Success(state);
+        }
+
+        // Aceleași cerințe ca la generare (GenerateVehicleDossierCommand), ca butonul și serverul să
+        // nu poată avea păreri diferite.
+        var requirements = OnboardingSectionCatalog
+            .RequirementsFor(OnboardingSectionKey.CopieConforma)
+            .Concat(OnboardingSectionCatalog.RequirementsForVehicle(vehicle.OwnershipMode))
+            .ToList();
+
+        IReadOnlyList<string> pending = await DossierAttachments.PendingAsync(
+            context, query.UserId, requirements, cancellationToken);
+
+        return Result.Success(state with { DossierPendingReview = pending });
     }
 }

@@ -14,7 +14,7 @@ public static class DocumentErrors
 
     public static readonly Error FileTooLarge = Error.Failure(
         "Documents.FileTooLarge",
-        "The file exceeds the maximum allowed size of 10 MB.");
+        "Fișierul depășește dimensiunea maximă de 25 MB.");
 
     public static readonly Error AccessDenied = Error.Failure(
         "Documents.AccessDenied",

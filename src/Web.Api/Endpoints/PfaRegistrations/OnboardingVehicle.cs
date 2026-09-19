@@ -171,5 +171,20 @@ internal sealed class OnboardingVehicle : IEndpoint
         .RequireAuthorization()
         .HasPermission("pfa:manage")
         .WithTags(Tags.PfaRegistrations);
+
+        // Pasul 6 din admin: perioada copiei conforme, ecusoanele și dosarul, cum le vede clientul.
+        app.MapGet("admin/onboarding/{id:guid}/steps/vehicle", async (
+            Guid id,
+            IQueryHandler<GetAdminVehicleReviewQuery, VehicleStateResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<VehicleStateResponse> result =
+                await handler.Handle(new GetAdminVehicleReviewQuery(id), cancellationToken);
+
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:manage")
+        .WithTags(Tags.PfaRegistrations);
     }
 }

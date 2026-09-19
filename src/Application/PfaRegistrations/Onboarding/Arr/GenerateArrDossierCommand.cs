@@ -57,12 +57,12 @@ internal sealed class GenerateArrDossierCommandHandler(
             OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport);
 
         // Dosarul se construiește doar din acte verificate de un om.
-        IReadOnlyList<string> unverified = await DossierAttachments.UnverifiedAsync(
+        IReadOnlyList<string> unverified = await DossierAttachments.PendingAsync(
             context, command.UserId, requirements, cancellationToken);
 
         if (unverified.Count > 0)
         {
-            return Result.Failure<ArrStateResponse>(DossierAttachments.NotYetVerified(unverified));
+            return Result.Failure<ArrStateResponse>(DossierAttachments.NotReady(unverified));
         }
 
         IReadOnlyList<DossierAttachment> included = await DossierAttachments.CollectAsync(

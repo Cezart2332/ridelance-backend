@@ -14,4 +14,9 @@ public sealed record ArrStateResponse(
     string? AuthorizationNumber,
     DateOnly? AuthorizationIssuedOn,
     DateOnly? AuthorizationExpiresOn,
-    string? AdminNote);
+    string? AdminNote,
+    /// <summary>
+    /// Actele după care așteaptă generarea dosarului: lipsă sau încă neverificate de echipă. Goală
+    /// când dosarul se poate genera. Aplicația dezactivează butonul și le numește.
+    /// </summary>
+    IReadOnlyList<string>? DossierPendingReview = null);

@@ -75,6 +75,65 @@ internal static class DocumentImage
     /// rotația actului în cadru (spusă de model). Se aplică amândouă la început, ca decupajul să
     /// lucreze pe forma finală.
     /// </summary>
+    /// <summary>Peste atâta, poza trimisă modelului se micșorează.</summary>
+    private const int AnalysisMaxBytes = 4 * 1024 * 1024;
+
+    /// <summary>Latura maximă a copiei pentru model: destul pentru un act citit de aproape.</summary>
+    private const int AnalysisMaxSide = 2400;
+
+    /// <summary>
+    /// Copia unei poze mari, pentru modelul care verifică documentul. Originalul rămâne neatins —
+    /// el intră în dosar.
+    ///
+    /// Modelele primesc imagini de câțiva MB, iar o poză de telefon de 15 MB ar fi picat verificarea
+    /// automată exact la actele fotografiate cel mai bine. Eticheta EXIF se aplică pe pixeli înainte
+    /// de micșorare: codarea din nou o pierde, iar unghiul pe care îl întoarce modelul se socotește
+    /// față de actul văzut drept.
+    ///
+    /// La orice eroare se întoarce originalul: o copie nereușită nu are voie să oprească verificarea.
+    /// </summary>
+    public static (byte[] Content, string ContentType) ForAnalysis(byte[] content, string contentType)
+    {
+        bool isImage = contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+        if (!isImage || content.Length <= AnalysisMaxBytes)
+        {
+            return (content, contentType);
+        }
+
+        try
+        {
+            int orientation = ImageInfo.Read(content).Orientation;
+
+            using Mat source = Cv2.ImDecode(content, ImreadModes.Color);
+            if (source.Empty())
+            {
+                return (content, contentType);
+            }
+
+            using Mat upright = Upright(source, orientation, 0);
+            double scale = Math.Min(1.0, (double)AnalysisMaxSide / Math.Max(upright.Width, upright.Height));
+
+            using var resized = new Mat();
+            if (scale < 1.0)
+            {
+                Cv2.Resize(upright, resized, new Size(0, 0), scale, scale, InterpolationFlags.Area);
+            }
+            else
+            {
+                upright.CopyTo(resized);
+            }
+
+            Cv2.ImEncode(".jpg", resized, out byte[] encoded, new ImageEncodingParam(ImwriteFlags.JpegQuality, 85));
+            return encoded.Length > 0 && encoded.Length < content.Length
+                ? (encoded, "image/jpeg")
+                : (content, contentType);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return (content, contentType);
+        }
+    }
+
     private static Mat Upright(Mat source, int orientation, int rotationDegrees)
     {
         using Mat exif = ExifRotated(source, orientation);
