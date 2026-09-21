@@ -43,4 +43,6 @@ public sealed record PfaRegistrationSummary(
     /// Fals pentru un cont de client care n-a ajuns încă la pasul 2, unde se creează dosarul. Atunci
     /// <c>Id</c> e chiar id-ul contului, iar endpointurile de onboarding din admin îl acceptă ca atare.
     /// </summary>
-    bool HasRegistration = true);
+    bool HasRegistration = true,
+    /// <summary>Contul a fost închis. Datele rămân; lista PFA îl arată la „Șterse”.</summary>
+    DateTime? DeletedAtUtc = null);

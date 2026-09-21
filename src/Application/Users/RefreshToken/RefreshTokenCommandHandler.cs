@@ -18,7 +18,8 @@ internal sealed class RefreshTokenCommandHandler(
         User? user = await context.Users
             .SingleOrDefaultAsync(u => u.RefreshToken == command.RefreshToken, cancellationToken);
 
-        if (user is null || user.RefreshTokenExpiryUtc < DateTime.UtcNow)
+        // Un cont închis nu-și mai reînnoiește sesiunea, chiar dacă avea un token valid la închidere.
+        if (user is null || user.RefreshTokenExpiryUtc < DateTime.UtcNow || user.IsDeleted)
         {
             return Result.Failure<RefreshTokenResponse>(UserErrors.InvalidRefreshToken);
         }

@@ -60,6 +60,14 @@ public static class UserErrors
         "Users.InvalidRefreshToken",
         "The refresh token is invalid or has expired.");
 
+    public static readonly Error AccountClosed = Error.Failure(
+        "Users.AccountClosed",
+        "Contul a fost închis. Pentru detalii, scrie-ne la contact@ridelance.ro.");
+
+    public static readonly Error CannotCloseStaffAccount = Error.Problem(
+        "Users.CannotCloseStaffAccount",
+        "Se pot închide doar conturile clienților (PFA și SRL), nu cele ale echipei.");
+
     public static readonly Error InvalidRole = Error.Failure(
         "Users.InvalidRole",
         "The specified role is not valid.");
