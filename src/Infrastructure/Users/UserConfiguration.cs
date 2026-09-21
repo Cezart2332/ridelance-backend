@@ -30,6 +30,9 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         // — coloana există deja în orice tabel Postgres.
         builder.Property<uint>("xmin").IsRowVersion();
 
+        builder.Property(u => u.DeletionReason).HasMaxLength(500);
+        builder.Ignore(u => u.IsDeleted);
+
         builder.Property(u => u.FleetOnboarding).HasColumnType("jsonb")
             .HasConversion(
                 value => System.Text.Json.JsonSerializer.Serialize(value, (System.Text.Json.JsonSerializerOptions?)null),

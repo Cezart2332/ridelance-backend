@@ -25,7 +25,9 @@ public sealed record AdminOverviewResponse(
     IReadOnlyList<AdminServiceSaleRow> ServiceSales,
     AdminCarStats CarStats,
     AdminPfaStats PfaStats,
-    IReadOnlyList<AdminOverviewPfaCard> EnrolledPfas);
+    IReadOnlyList<AdminOverviewPfaCard> EnrolledPfas,
+    AdminSrlStats? SrlStats = null,
+    IReadOnlyList<AdminMetric>? SrlSubscriptions = null);
 
 public sealed record AdminFinancialKpis(
     long TotalCurrentMonthRevenueBani,
@@ -82,7 +84,29 @@ public sealed record AdminPfaStats(
     int Inactive,
     int FailedPayment,
     // PFA-uri cu dosarul aprobat dar onboarding neterminat (nu mai sunt „înrolați" prematur).
-    int InOnboarding = 0);
+    int InOnboarding = 0,
+    // Conturi închise: nu intră la active sau inactive, dar datele lor rămân.
+    int Deleted = 0);
+
+/// <summary>
+/// Firmele (SRL): câte sunt și în ce stare, plus venitul lor — abonamentul de flotă și anunțurile
+/// plătite peste cele incluse. Aceleași definiții ca în lista „SRL înrolate”.
+/// </summary>
+public sealed record AdminSrlStats(
+    int TotalEnrolled,
+    int Active,
+    int Inactive,
+    int Deleted,
+    int InOnboarding,
+    int FailedPayment,
+    long SubscriptionMonthlyRevenueBani,
+    int CarsTotal,
+    int CarsPublished,
+    /// <summary>Anunțuri plătite separat, peste cele incluse în abonament, active acum.</summary>
+    int PaidExtraListings,
+    /// <summary>Încasările din anunțuri plătite separat, în perioada aleasă.</summary>
+    long ExtraListingsRevenueBani,
+    int ExtraListingsPayments);
 
 public sealed record AdminOverviewPfaCard(
     Guid Id,

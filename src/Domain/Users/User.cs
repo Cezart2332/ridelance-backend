@@ -19,6 +19,25 @@ public sealed class User : Entity
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     /// <summary>
+    /// Când a fost închis contul. <see langword="null" /> = cont deschis.
+    /// </summary>
+    /// <remarks>
+    /// Ștergerea e logică, nu fizică: rândul rămâne, cu tot ce ține de el — dosarul PFA,
+    /// documentele, plățile, facturile, închirierile. Ne trebuie pentru contabilitate, pentru
+    /// obligațiile legale de păstrare și ca adminul să vadă istoricul unui fost client. Ce se
+    /// schimbă e accesul: autentificarea și reînnoirea sesiunii sunt refuzate.
+    /// </remarks>
+    public DateTime? DeletedAtUtc { get; set; }
+
+    /// <summary>Adminul care a închis contul.</summary>
+    public Guid? DeletedByUserId { get; set; }
+
+    /// <summary>Motivul notat de admin la închidere.</summary>
+    public string? DeletionReason { get; set; }
+
+    public bool IsDeleted => DeletedAtUtc is not null;
+
+    /// <summary>
     /// Când a fost confirmat emailul. <see langword="null" /> înseamnă neconfirmat.
     /// </summary>
     /// <remarks>

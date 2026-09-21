@@ -29,6 +29,12 @@ internal sealed class LoginUserCommandHandler(
             return Result.Failure<LoginResponse>(UserErrors.InvalidCredentials);
         }
 
+        // Verificat după parolă: altfel mesajul ar spune oricui că adresa are un cont închis.
+        if (user.IsDeleted)
+        {
+            return Result.Failure<LoginResponse>(UserErrors.AccountClosed);
+        }
+
         string accessToken = tokenProvider.Create(user);
         string refreshToken = tokenProvider.CreateRefreshToken();
 

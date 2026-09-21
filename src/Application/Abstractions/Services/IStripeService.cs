@@ -9,6 +9,12 @@ public interface IStripeService
 {
     Task ExpireCheckoutAsync(string sessionId, CancellationToken cancellationToken = default);
     Task ApplySubscriptionCouponAsync(string subscriptionId, string couponId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Oprește imediat un abonament. Folosit la închiderea unui cont: un cont închis nu mai are
+    /// voie să fie taxat, iar o anulare „la finalul perioadei” l-ar mai factura o dată.
+    /// </summary>
+    Task CancelSubscriptionAsync(string subscriptionId, CancellationToken cancellationToken = default);
     /// <summary>
     /// Creates a Stripe Checkout Session for a one-time payment or subscription.
     /// Returns the session client secret for embedded checkout.

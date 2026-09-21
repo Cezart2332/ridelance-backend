@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Admin.Srl;
 using Domain.Cars;
 using Domain.Documents;
 using Domain.Payments;
@@ -124,12 +125,18 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
                 LatestActivity(p.User.LastActivityAtUtc, lastActivityByUserId.GetValueOrDefault(p.UserId))))
             .ToList();
 
+        // Conturile închise rămân în baza de date, dar nu mai sunt clienți activi sau inactivi.
+        static bool IsOpen(PfaRegistration p) => p.User.DeletedAtUtc is null;
+
+        (AdminSrlStats srlStats, IReadOnlyList<AdminMetric> srlSubscriptions) =
+            await BuildSrlAsync(payments, cancellationToken);
+
         var response = new AdminOverviewResponse(
             IsFallback: false,
             GeneratedAtUtc: DateTime.UtcNow,
             FinancialKpis: new AdminFinancialKpis(
                 TotalCurrentMonthRevenueBani: succeededPaymentRevenue + paidServiceRevenue + carMonthlyRevenue,
-                EstimatedMonthlyRecurringRevenueBani: pfaMonthlyRecurringRevenue + carMonthlyRevenue,
+                EstimatedMonthlyRecurringRevenueBani: pfaMonthlyRecurringRevenue + carMonthlyRevenue + srlStats.SubscriptionMonthlyRevenueBani,
                 OneTimeCurrentMonthRevenueBani: payments.Where(p => p.PaymentType == PaymentType.OneTime && p.Status == PaymentStatus.Succeeded).Sum(p => p.AmountBani) + paidServiceRevenue,
                 PartnerCommissionsBani: 0,
                 SuccessfulPayments: payments.Count(p => p.Status == PaymentStatus.Succeeded) + serviceOrders.Count(o => o.Status == ServiceOrderStatus.Paid),
@@ -137,6 +144,8 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
             RevenueCategories:
             [
                 new("Abonamente PFA", pfaMonthlyRecurringRevenue, latestSubscriptions.Count),
+                new("Abonamente SRL", srlStats.SubscriptionMonthlyRevenueBani, srlStats.Active),
+                new("Anunțuri extra SRL", srlStats.ExtraListingsRevenueBani, srlStats.ExtraListingsPayments),
                 new("Anunțuri auto lunare", carMonthlyRevenue, paidActiveCars),
                 new("Servicii individuale", paidServiceRevenue, serviceOrders.Count(o => o.Status == ServiceOrderStatus.Paid)),
                 new("Comisioane parteneri", 0),
@@ -163,17 +172,91 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
                 MonthlyRevenueBani: carMonthlyRevenue),
             PfaStats: new AdminPfaStats(
                 // Înrolat = onboarding complet (OnboardingCompletedAtUtc), nu doar dosar PFA aprobat.
-                TotalEnrolled: pfas.Count(p => p.OnboardingCompletedAtUtc is not null),
-                Active: pfas.Count(p => p.OnboardingCompletedAtUtc is not null && latestSubscriptions.GetValueOrDefault(p.UserId)?.Status is SubscriptionStatus.Active or SubscriptionStatus.ActivePendingBilling),
+                TotalEnrolled: pfas.Count(p => p.OnboardingCompletedAtUtc is not null && IsOpen(p)),
+                Active: pfas.Count(p => p.OnboardingCompletedAtUtc is not null && IsOpen(p) && latestSubscriptions.GetValueOrDefault(p.UserId)?.Status is SubscriptionStatus.Active or SubscriptionStatus.ActivePendingBilling),
                 NewRequests: pfas.Count(p => p.Status == PfaRegistrationStatus.Pending),
                 ClientBlocked: currentMonthIncomes.Count(i => !i.IsProcessed),
-                Inactive: pfas.Count(p => p.OnboardingCompletedAtUtc is not null && latestSubscriptions.GetValueOrDefault(p.UserId) is null),
+                // Inactiv = înrolat, cont deschis, fără abonament activ (niciunul, anulat, expirat).
+                Inactive: pfas.Count(p => p.OnboardingCompletedAtUtc is not null && IsOpen(p) && !(latestSubscriptions.GetValueOrDefault(p.UserId) is { } s && IsActiveSubscription(s.Status))),
                 FailedPayment: latestSubscriptions.Values.Count(s => s.Status == SubscriptionStatus.PastDue),
                 // Dosar aprobat dar onboarding neterminat — vizibili separat, nu pierduți din KPI.
-                InOnboarding: pfas.Count(p => p.Status == PfaRegistrationStatus.Approved && p.OnboardingCompletedAtUtc is null)),
-            EnrolledPfas: enrolledPfas);
+                InOnboarding: pfas.Count(p => p.Status == PfaRegistrationStatus.Approved && p.OnboardingCompletedAtUtc is null && IsOpen(p)),
+                Deleted: pfas.Count(p => !IsOpen(p))),
+            EnrolledPfas: enrolledPfas,
+            SrlStats: srlStats,
+            SrlSubscriptions: srlSubscriptions);
 
         return response;
+    }
+
+    /// <summary>Descrierea cu care se înregistrează plata unui anunț plătit separat.</summary>
+    private const string CarListingPaymentPrefix = "Publicare mașină RIDElance";
+
+    /// <summary>
+    /// Firmele: stări, abonamentul de flotă și anunțurile plătite separat. Regula „înrolat” e cea
+    /// din lista SRL (<see cref="SrlEnrollment" />), ca numerele de aici să bată cu lista.
+    /// </summary>
+    private async Task<(AdminSrlStats Stats, IReadOnlyList<AdminMetric> Subscriptions)> BuildSrlAsync(
+        List<PaymentRecord> periodPayments,
+        CancellationToken cancellationToken)
+    {
+        List<User> firms = await context.Users
+            .AsNoTracking()
+            .Where(u => u.Role == UserRole.CarPoster)
+            .ToListAsync(cancellationToken);
+
+        Guid[] firmIds = firms.Select(u => u.Id).ToArray();
+        HashSet<Guid> firmIdSet = firmIds.ToHashSet();
+
+        var latest = (await context.UserSubscriptions
+                .AsNoTracking()
+                .Where(s => firmIds.Contains(s.UserId))
+                .ToListAsync(cancellationToken))
+            .GroupBy(s => s.UserId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.CreatedAtUtc).First());
+
+        var firmCars = await context.Cars
+            .AsNoTracking()
+            .Where(c => c.PostedByUserId != null && firmIds.Contains(c.PostedByUserId.Value))
+            .Select(c => new { c.ListingStatus, c.PaymentStatus })
+            .ToListAsync(cancellationToken);
+
+        var open = firms.Where(u => !u.IsDeleted).ToList();
+        var enrolled = open.Where(SrlEnrollment.IsEnrolled).ToList();
+        var activeSubscriptions = latest.Values
+            .Where(s => IsActiveSubscription(s.Status) && open.Any(u => u.Id == s.UserId))
+            .ToList();
+
+        var extraPayments = periodPayments
+            .Where(p => p.Status == PaymentStatus.Succeeded
+                && firmIdSet.Contains(p.UserId)
+                && p.Description.StartsWith(CarListingPaymentPrefix, StringComparison.Ordinal))
+            .ToList();
+
+        var stats = new AdminSrlStats(
+            TotalEnrolled: enrolled.Count,
+            Active: enrolled.Count(u => latest.GetValueOrDefault(u.Id) is { } s && IsActiveSubscription(s.Status)),
+            Inactive: enrolled.Count(u => !(latest.GetValueOrDefault(u.Id) is { } s && IsActiveSubscription(s.Status))),
+            Deleted: firms.Count(u => u.IsDeleted),
+            InOnboarding: open.Count(u => !SrlEnrollment.IsEnrolled(u)),
+            FailedPayment: latest.Values.Count(s => s.Status == SubscriptionStatus.PastDue),
+            SubscriptionMonthlyRevenueBani: activeSubscriptions.Sum(s => AdminBillingLabels.MonthlyEstimateBani(s.Plan, s.BillingCycle)),
+            CarsTotal: firmCars.Count,
+            CarsPublished: firmCars.Count(c => c.ListingStatus == ListingStatus.Published),
+            PaidExtraListings: firmCars.Count(c => c.PaymentStatus == CarListingPaymentStatus.Paid && c.ListingStatus == ListingStatus.Published),
+            ExtraListingsRevenueBani: extraPayments.Sum(p => p.AmountBani),
+            ExtraListingsPayments: extraPayments.Count);
+
+        IReadOnlyList<AdminMetric> subscriptions =
+        [
+            new("Abonamente lunare active", activeSubscriptions.Count(s => s.BillingCycle != SubscriptionBillingCycle.Annual)),
+            new("Abonamente anuale active", activeSubscriptions.Count(s => s.BillingCycle == SubscriptionBillingCycle.Annual)),
+            new("Plată eșuată", stats.FailedPayment),
+            new("Anulate", latest.Values.Count(s => s.Status == SubscriptionStatus.Cancelled)),
+            new("Anunțuri extra plătite", stats.PaidExtraListings),
+        ];
+
+        return (stats, subscriptions);
     }
 
     private static List<AdminMetric> BuildPfaSubscriptionMetrics(IEnumerable<UserSubscription> subscriptions)

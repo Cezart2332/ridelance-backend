@@ -41,7 +41,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
         bool AwaitingAdminAction,
         DateTime CreatedAtUtc,
         DateTime? UserLastActivityAtUtc,
-        DateTime? ChatActivityAtUtc);
+        DateTime? ChatActivityAtUtc,
+        DateTime? DeletedAtUtc);
 
     public async Task<Result<PfaRegistrationListResponse>> Handle(
         GetAllPfaRegistrationsQuery query,
@@ -56,7 +57,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
         bool isContabil = caller?.Role == UserRole.Contabil;
         if (isContabil)
         {
-            queryable = queryable.Where(r => r.AssignedContabilId == userContext.UserId);
+            // Contabilul lucrează doar cu clienți activi; un cont închis rămâne vizibil adminului.
+            queryable = queryable.Where(r => r.AssignedContabilId == userContext.UserId && r.User.DeletedAtUtc == null);
         }
 
         List<Row> rows = await queryable
@@ -94,7 +96,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     .Where(cr => cr.ClientUserId == r.UserId)
                     .OrderByDescending(cr => cr.LastMessageAtUtc)
                     .Select(cr => (DateTime?)cr.LastMessageAtUtc)
-                    .FirstOrDefault()))
+                    .FirstOrDefault(),
+                r.User.DeletedAtUtc))
             .ToListAsync(cancellationToken);
 
         // Conturile de client care n-au încă dosar PFA. Dosarul se naște abia la pasul 2, dar
@@ -142,7 +145,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                         .Where(cr => cr.ClientUserId == u.Id)
                         .OrderByDescending(cr => cr.LastMessageAtUtc)
                         .Select(cr => (DateTime?)cr.LastMessageAtUtc)
-                        .FirstOrDefault()))
+                        .FirstOrDefault(),
+                    u.DeletedAtUtc))
                 .ToListAsync(cancellationToken);
 
             rows.AddRange(accountsWithoutRegistration);
@@ -179,9 +183,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                 string? subscriptionPlanText = hasSubscription ? subscription!.Plan.ToString() : null;
                 bool hasRegistration = x.Status is not null;
                 SubscriptionStatus? latestStatus = hasSubscription ? subscription!.Status : null;
-                string accountStatus = hasRegistration
-                    ? ResolveAccountStatus(x.Status!.Value, x.OnboardingCompletedAtUtc, latestStatus)
-                    : "Cont nou";
+                string accountStatus = AccountStatusOf(x, latestStatus);
 
                 return new PfaRegistrationSummary(
                     x.Id,
@@ -207,7 +209,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     x.CreatedAtUtc,
                     GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc),
                     x.OnboardingCompletedAtUtc,
-                    hasRegistration);
+                    hasRegistration,
+                    x.DeletedAtUtc);
             })
             .ToList();
 
@@ -216,6 +219,22 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
 
     /// <summary>Statusul rândurilor fără dosar: nici „Pending” (n-are ce aproba), nici altceva real.</summary>
     internal const string WithoutRegistrationStatus = "NoRegistration";
+
+    private static string AccountStatusOf(Row row, SubscriptionStatus? latestStatus)
+    {
+        // Un cont închis rămâne în listă, cu istoricul lui — dar statusul spune că e închis.
+        if (row.DeletedAtUtc is not null)
+        {
+            return "Închis";
+        }
+
+        if (row.Status is not PfaRegistrationStatus status)
+        {
+            return "Cont nou";
+        }
+
+        return ResolveAccountStatus(status, row.OnboardingCompletedAtUtc, latestStatus);
+    }
 
     private static string ResolveAccountStatus(
         PfaRegistrationStatus pfaStatus,

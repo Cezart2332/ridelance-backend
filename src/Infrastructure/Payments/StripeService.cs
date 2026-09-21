@@ -24,6 +24,9 @@ internal sealed class StripeService : IStripeService
         await new SubscriptionService().UpdateAsync(subscriptionId,
             new SubscriptionUpdateOptions { Discounts = [new SubscriptionDiscountOptions { Coupon = couponId }] },
             new RequestOptions { IdempotencyKey = $"fleet-bcr:{subscriptionId}:{couponId}" }, cancellationToken);
+
+    public async Task CancelSubscriptionAsync(string subscriptionId, CancellationToken cancellationToken = default) =>
+        await new SubscriptionService().CancelAsync(subscriptionId, cancellationToken: cancellationToken);
     /// <summary>
     /// Resolved price IDs, shared across requests because the service itself is scoped.
     /// Keyed by API-key fingerprint so a key swap at runtime cannot serve IDs from the old account.
