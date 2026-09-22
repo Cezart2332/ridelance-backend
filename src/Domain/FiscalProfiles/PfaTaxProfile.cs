@@ -41,6 +41,12 @@ public sealed class PfaTaxProfile : Entity
     public string? PfaRegisteredOnSource { get; set; }
     public DateTime? PfaRegisteredOnObservedAtUtc { get; set; }
 
+    /// <summary>
+    /// Cât are PFA-ul deja pus deoparte pentru taxele anului, spus de el în cardul „Cât să pui
+    /// deoparte”. <c>null</c> = n-a spus; motorul presupune 0 și o scrie în text.
+    /// </summary>
+    public decimal? ExistingReserve { get; set; }
+
     public DateTime? CompletedAtUtc { get; set; }
     public DateTime? EstimatedTaxesUnlockedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

@@ -1,0 +1,13 @@
+{
+  "tax_year": 2026,
+  "rule_version": "2026.1",
+  "min_wage_reference": 4050,
+  "cass_min_threshold": 24300,
+  "cas_threshold_12": 48600,
+  "cas_threshold_24": 97200,
+  "cass_max_base": 291600,
+  "cas_rate": 0.25,
+  "cass_rate": 0.10,
+  "income_tax_rate": 0.10,
+  "source": "https://static.anaf.ro/static/10/Cluj/cj_DU_activ_indep_22apr2026.pdf"
+}

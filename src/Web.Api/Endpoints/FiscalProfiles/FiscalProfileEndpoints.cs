@@ -1,5 +1,6 @@
 using System.Globalization;
 using Application.Abstractions.Messaging;
+using Application.FiscalEstimates;
 using Application.FiscalProfiles;
 using Infrastructure.Authorization;
 using SharedKernel;
@@ -22,6 +23,8 @@ internal sealed class FiscalProfileEndpoints : IEndpoint
     public sealed record StaffEditRequest(FiscalProfileAnswers Answers, string? Reason);
 
     public sealed record DataCorrectionRequest(int? Year, string? Fields, string Details);
+
+    public sealed record ExistingReserveRequest(decimal? Amount);
 
     public sealed record UpdateTaskRequest(string? State, string? CallOutcome, DateTime? RescheduledToUtc, bool AssignToMe);
 
@@ -109,10 +112,39 @@ internal sealed class FiscalProfileEndpoints : IEndpoint
 
         app.MapGet("pfa/me/estimated-taxes/{year:int}", async (
             int year,
-            IQueryHandler<GetEstimatedTaxesStatusQuery, EstimatedTaxesStatusResponse> handler,
+            IQueryHandler<GetEstimatedTaxesQuery, EstimatedTaxesResponse> handler,
             CancellationToken cancellationToken) =>
         {
-            Result<EstimatedTaxesStatusResponse> result = await handler.Handle(new GetEstimatedTaxesStatusQuery(year), cancellationToken);
+            Result<EstimatedTaxesResponse> result =
+                await handler.Handle(new GetEstimatedTaxesQuery(FiscalProfileScope.Pfa, null, year), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(Permissions.ViewOwnProfile)
+        .WithTags(Tag);
+
+        app.MapPut("pfa/me/estimated-taxes/{year:int}/existing-reserve", async (
+            int year,
+            ExistingReserveRequest request,
+            ICommandHandler<SetExistingReserveCommand, EstimatedTaxesResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<EstimatedTaxesResponse> result =
+                await handler.Handle(new SetExistingReserveCommand(year, request.Amount), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(Permissions.ViewOwnProfile)
+        .WithTags(Tag);
+
+        // „Reîncearcă” după o rulare eșuată.
+        app.MapPost("pfa/me/estimated-taxes/{year:int}/recalculate", async (
+            int year,
+            ICommandHandler<RequestEstimateRecalculationCommand, EstimatedTaxesResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<EstimatedTaxesResponse> result =
+                await handler.Handle(new RequestEstimateRecalculationCommand(FiscalProfileScope.Pfa, Guid.Empty, year), cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .RequireAuthorization()
@@ -169,6 +201,33 @@ internal sealed class FiscalProfileEndpoints : IEndpoint
         {
             Result<IReadOnlyList<FiscalProfileRevisionResponse>> result =
                 await handler.Handle(new GetFiscalProfileRevisionsQuery(scope, pfaId, year), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(permission)
+        .WithTags(Tag);
+
+        app.MapGet($"{prefix}/{{pfaId:guid}}/estimated-taxes/{{year:int}}", async (
+            Guid pfaId,
+            int year,
+            IQueryHandler<GetEstimatedTaxesQuery, EstimatedTaxesResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<EstimatedTaxesResponse> result = await handler.Handle(new GetEstimatedTaxesQuery(scope, pfaId, year), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(permission)
+        .WithTags(Tag);
+
+        app.MapPost($"{prefix}/{{pfaId:guid}}/estimated-taxes/{{year:int}}/recalculate", async (
+            Guid pfaId,
+            int year,
+            ICommandHandler<RequestEstimateRecalculationCommand, EstimatedTaxesResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<EstimatedTaxesResponse> result =
+                await handler.Handle(new RequestEstimateRecalculationCommand(scope, pfaId, year), cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .RequireAuthorization()

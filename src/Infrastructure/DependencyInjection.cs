@@ -175,6 +175,7 @@ public static class DependencyInjection
         services.AddHostedService<DocumentAiVerificationJob>();
         services.AddHostedService<CompanyFormationDraftPurgeJob>();
         services.AddHostedService<FiscalProfileReminderJob>();
+        services.AddHostedService<FiscalEstimateRecalculationJob>();
 
         return services;
     }

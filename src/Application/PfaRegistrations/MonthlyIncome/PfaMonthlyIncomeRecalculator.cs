@@ -1,4 +1,5 @@
 using Application.Abstractions.Data;
+using Application.FiscalEstimates;
 using Application.Uber;
 using Domain.Documents;
 using Domain.PfaRegistrations;
@@ -114,6 +115,9 @@ public static class PfaMonthlyIncomeRecalculator
 
         PfaTaxCalculator.TaxResult tax = PfaTaxCalculator.Compute(ytdGrossIncome, ytdExpenses, year);
         income.TaxeEstimate = tax.TotalTax;
+
+        // Venit nou în evidență: taxele estimate ale anului se recalculează.
+        await FiscalEstimateInvalidation.MarkStaleAsync(context, pfaRegistrationId, year, DateTime.UtcNow, cancellationToken);
     }
 
     /// <summary>Bolt payment methods are dash-separated, e.g. "cash-cash", "card-card", "business-card".</summary>
