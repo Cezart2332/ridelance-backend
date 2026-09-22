@@ -80,7 +80,8 @@ internal sealed class GetAllCarsQueryHandler(
                 recentViews.GetValueOrDefault(car.Id),
                 car.PostedByUserId.HasValue ? owners.GetValueOrDefault(car.PostedByUserId.Value) : null,
                 ownerView ? car.RecommendationScore : null,
-                suggestions));
+                suggestions,
+                revealPlate: ownerView || query.AdminMode));
         }
 
         return dtos;

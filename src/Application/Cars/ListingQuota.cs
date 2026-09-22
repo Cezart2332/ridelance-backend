@@ -13,7 +13,10 @@ public sealed record ListingQuotaDto(int Included, int Used, int Remaining);
 /// </summary>
 public static class ListingQuota
 {
-    /// <summary>Câte locuri ocupă acum proprietarul. <paramref name="excludingCarId" /> nu se numără.</summary>
+    /// <summary>
+    /// Câte locuri incluse ocupă acum proprietarul. <paramref name="excludingCarId" /> nu se numără,
+    /// și nici anunțurile extra plătite: fiecare are locul lui, plătit separat.
+    /// </summary>
     public static Task<int> CountUsedAsync(
         IApplicationDbContext context,
         Guid ownerUserId,
@@ -22,6 +25,7 @@ public static class ListingQuota
         context.Cars.CountAsync(
             c => c.PostedByUserId == ownerUserId
                 && c.ListingStatus == ListingStatus.Published
+                && c.PaymentStatus != CarListingPaymentStatus.Paid
                 && (excludingCarId == null || c.Id != excludingCarId),
             cancellationToken);
 

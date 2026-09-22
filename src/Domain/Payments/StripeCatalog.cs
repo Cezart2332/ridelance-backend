@@ -165,6 +165,36 @@ public static class StripeCatalog
             ["billing_unit"] = "posted_car",
         });
 
+    /// <summary>Anunț de flotă peste cele incluse în abonament. Lunar, per mașină.</summary>
+    public static StripeCatalogItem ExtraListingMonthly { get; } = new(
+        "ridelance_srl_extra_listing_monthly_4000_ron",
+        "Anunt extra RIDElance",
+        Pricing.PaidExtras.ExtraListingMonthlyBani,
+        Ron,
+        "month",
+        new Dictionary<string, string>
+        {
+            ["app"] = "ridelance",
+            ["kind"] = "srl_extra_listing",
+            ["audience"] = "car_poster",
+            ["billing_unit"] = "posted_car",
+        });
+
+    /// <summary>Ascunderea numărului de înmatriculare în anunț. O singură dată, per mașină.</summary>
+    public static StripeCatalogItem HiddenPlate { get; } = new(
+        "ridelance_srl_hidden_plate_1500_ron",
+        "Numar de inmatriculare ascuns",
+        Pricing.PaidExtras.HiddenPlateBani,
+        Ron,
+        null,
+        new Dictionary<string, string>
+        {
+            ["app"] = "ridelance",
+            ["kind"] = "srl_hidden_plate",
+            ["audience"] = "car_poster",
+            ["billing_unit"] = "one_time",
+        });
+
     /// <summary>Every item, for tooling that needs to walk the whole catalog.</summary>
     public static IReadOnlyList<StripeCatalogItem> All { get; } =
     [
@@ -179,6 +209,8 @@ public static class StripeCatalog
         SediuSocial,
         StartRide,
         CarListingMonthly,
+        ExtraListingMonthly,
+        HiddenPlate,
     ];
 
     private static readonly Dictionary<string, StripeCatalogItem> MonthlyPlans =

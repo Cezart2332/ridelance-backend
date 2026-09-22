@@ -110,7 +110,9 @@ internal sealed class StripeService : IStripeService
                 ? null
                 : [new SessionDiscountOptions { Coupon = couponId }],
             ReturnUrl = successUrl.Replace("{{CHECKOUT_SESSION_ID}}", "{CHECKOUT_SESSION_ID}"),
-            RedirectOnCompletion = sessionMetadata?.GetValueOrDefault("fleetOnboarding") == "true" ? "if_required" : null,
+            // Onboardingul flotei și opțiunile plătite ale unui anunț rămân în pagină: plata se încheie
+            // într-un dialog, care reîncarcă singur starea, fără o redirecționare care ar pierde contextul.
+            RedirectOnCompletion = sessionMetadata?.GetValueOrDefault("fleetOnboarding") == "true" || sessionMetadata?.GetValueOrDefault("stayOnPage") == "true" ? "if_required" : null,
             CustomerEmail = customerEmail,
             Metadata = meta,
         };

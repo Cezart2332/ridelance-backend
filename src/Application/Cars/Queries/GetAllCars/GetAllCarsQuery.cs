@@ -47,7 +47,9 @@ public sealed record CarDto(
     List<CarImageDto> Images,
     DateTime CreatedAtUtc,
     CarStatsDto Stats,
-    CarListingDetails? Details = null);
+    CarListingDetails? Details = null,
+    /// <summary>Numărul de înmatriculare e ascuns în anunț (plătit).</summary>
+    bool PlateHidden = false);
 
 #pragma warning disable CA1054
 public sealed record CarImageDto(Guid Id, string ImageUrl, int DisplayOrder);

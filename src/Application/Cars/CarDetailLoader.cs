@@ -19,7 +19,8 @@ internal static class CarDetailLoader
     public static async Task<Result<CarDto>> LoadAsync(
         IApplicationDbContext context,
         Expression<Func<Car, bool>> predicate,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? viewerUserId = null)
     {
         Car? car = await context.Cars
             .AsNoTracking()
@@ -66,6 +67,11 @@ internal static class CarDetailLoader
                 .FirstOrDefaultAsync(cancellationToken);
         }
 
-        return CarDtoMapper.ToDto(car, postedByAdmin, viewsLast7Days, owner);
+        // Numărul ascuns îl văd doar proprietarul și adminul.
+        bool revealPlate = viewerUserId is Guid viewer
+            && (viewer == car.PostedByUserId
+                || await context.Users.AsNoTracking().AnyAsync(u => u.Id == viewer && u.Role == UserRole.Admin, cancellationToken));
+
+        return CarDtoMapper.ToDto(car, postedByAdmin, viewsLast7Days, owner, revealPlate: revealPlate);
     }
 }
