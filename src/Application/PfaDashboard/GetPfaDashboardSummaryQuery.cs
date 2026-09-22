@@ -2,11 +2,13 @@ using System.Globalization;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.FiscalEstimates;
 using Application.FiscalProfiles;
 using Application.PfaRegistrations;
 using Domain.Bolt;
 using Domain.Documents;
 using Domain.Expenses;
+using Domain.FiscalEstimates;
 using Domain.FiscalProfiles;
 using Domain.PfaRegistrations;
 using Domain.Uber;
@@ -332,7 +334,103 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
             uberImports.Count > 0,
             new PfaTaxProfileGateResponse(fiscalYear, FiscalProfileService.StatusCode(profileStatus), estimatesLocked));
 
-        return estimatesLocked ? WithoutEstimates(response) : response;
+        if (estimatesLocked)
+        {
+            return WithoutEstimates(response);
+        }
+
+        // Profil confirmat: taxele vin din motorul de taxe estimate, nu din procente generice.
+        // TVA-ul și taxa de nerezident nu sunt configurate (spec taxe §9), deci nu apar deloc.
+        decimal? effectiveRate = await EngineEffectiveRateAsync(pfa!.Id, fiscalYear, cancellationToken);
+        return WithEngineTaxes(response, effectiveRate);
+    }
+
+    /// <summary>
+    /// Cota efectivă din ultima rulare a motorului: taxele anuale estimate (doar componentele
+    /// calculate) ÷ netul anual estimat. Fără rulare curentă sau fără net: <c>null</c>.
+    /// </summary>
+    private async Task<decimal?> EngineEffectiveRateAsync(Guid pfaId, int year, CancellationToken cancellationToken)
+    {
+        FiscalEstimateRun? run = await context.FiscalEstimateRuns
+            .AsNoTracking()
+            .Include(r => r.Calculations)
+            .Where(r => r.PfaRegistrationId == pfaId && r.TaxYear == year)
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .ThenBy(r => r.Stale)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (run is null || run.Stale)
+        {
+            return null;
+        }
+
+        decimal annualTaxes = run.Calculations
+            .Where(c => c.Component is TaxComponents.Cas or TaxComponents.Cass or TaxComponents.IncomeTax
+                && c.Status == TaxStatuses.Estimated)
+            .Sum(c => c.Amount ?? 0);
+        if (!run.Calculations.Any(c => c.Component is TaxComponents.Cas or TaxComponents.Cass or TaxComponents.IncomeTax
+                && c.Status == TaxStatuses.Estimated))
+        {
+            return null;
+        }
+
+        using var assumptions = System.Text.Json.JsonDocument.Parse(run.AssumptionsJson);
+        if (!assumptions.RootElement.TryGetProperty("projection", out System.Text.Json.JsonElement projection)
+            || !projection.TryGetProperty("netAnnualEstimated", out System.Text.Json.JsonElement net)
+            || net.ValueKind != System.Text.Json.JsonValueKind.Number)
+        {
+            return null;
+        }
+
+        decimal netAnnual = net.GetDecimal();
+        return netAnnual > 0 ? annualTaxes / netAnnual : 0;
+    }
+
+    /// <summary>
+    /// Profitul real al perioadei cu taxele motorului, alocate proporțional cu profitul perioadei.
+    /// Fără cotă (motor în calcul sau fără date): profitul după taxe nu se arată deloc.
+    /// </summary>
+    private static PfaDashboardSummaryResponse WithEngineTaxes(PfaDashboardSummaryResponse response, decimal? rate)
+    {
+        var fees = response.Series.FeesAndTaxes
+            .Select(point => point with { VatIntracom = null, BoltNonResident = null })
+            .ToList();
+
+        if (rate is not decimal r || response.RealProfit is null)
+        {
+            return response with
+            {
+                TaxReserve = null,
+                RealProfit = null,
+                Series = response.Series with { FeesAndTaxes = fees, RealProfit = [] },
+            };
+        }
+
+        PfaRealProfitResponse profit = response.RealProfit;
+        decimal taxes = Round(r * Math.Max(0, profit.NetEarnings - profit.DeductibleExpenses));
+        decimal value = profit.NetEarnings - profit.DeductibleExpenses - taxes;
+
+        return response with
+        {
+            TaxReserve = null,
+            RealProfit = profit with
+            {
+                EstimatedTaxes = taxes,
+                Value = value,
+                RetentionRatio = profit.NetEarnings > 0 ? Math.Round(value / profit.NetEarnings, 4) : null,
+            },
+            Series = response.Series with
+            {
+                FeesAndTaxes = fees,
+                RealProfit = response.Series.RealProfit
+                    .Select(point =>
+                    {
+                        decimal pointTaxes = Round(r * Math.Max(0, point.NetEarnings - point.DeductibleExpenses));
+                        return point with { EstimatedTaxes = pointTaxes, Value = point.NetEarnings - point.DeductibleExpenses - pointTaxes };
+                    })
+                    .ToList(),
+            },
+        };
     }
 
     /// <summary>Răspunsul fără nicio estimare de taxe. Comisioanele platformelor rămân: nu sunt taxe.</summary>

@@ -11,6 +11,12 @@ public enum TaxObligationType
     TvaIntracomunitar = 0,
     TaxaNerezident = 1,
     Altele = 2,
+
+    // Contribuțiile și impozitul anual, din Declarația unică. Cele marcate „Plătită” se scad
+    // din „Cât să pui deoparte” (motorul de taxe estimate).
+    Cas = 3,
+    Cass = 4,
+    ImpozitVenit = 5,
 }
 
 /// <summary>

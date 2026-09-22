@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.FiscalEstimates;
 using Domain.FiscalProfiles;
 using Domain.Notifications;
 using Domain.PfaRegistrations;
@@ -33,8 +34,6 @@ public sealed record EditFiscalProfileCommand(
     int? ExpectedRevision) : ICommand<FiscalProfileResponse>;
 
 public sealed record MarkFiscalProfilePromptShownCommand(int Year) : ICommand<FiscalProfileResponse>;
-
-public sealed record GetEstimatedTaxesStatusQuery(int Year) : IQuery<EstimatedTaxesStatusResponse>;
 
 public sealed record GetFiscalProfileRevisionsQuery(FiscalProfileScope Scope, Guid? PfaRegistrationId, int Year)
     : IQuery<IReadOnlyList<FiscalProfileRevisionResponse>>;
@@ -188,6 +187,7 @@ internal sealed class CompleteFiscalProfileCommandHandler(IApplicationDbContext 
         }
 
         FiscalProfileCorrections.OpenIfNeeded(context, pfa.Value, profile, before, answers, now, onConfirmation: true);
+        await FiscalEstimateInvalidation.MarkStaleAsync(context, pfa.Value.Id, command.Year, now, cancellationToken);
 
         if (pfa.Value.AssignedContabilId is Guid contabilId)
         {
@@ -299,6 +299,9 @@ internal sealed class EditFiscalProfileCommandHandler(IApplicationDbContext cont
             FiscalProfileCorrections.OpenIfNeeded(context, pfa.Value, profile, before, answers, service.UtcNow, onConfirmation: false);
         }
 
+        // Orice editare (PFA, admin, contabilitate) schimbă ce intră în calcul.
+        await FiscalEstimateInvalidation.MarkStaleAsync(context, pfa.Value.Id, command.Year, service.UtcNow, cancellationToken);
+
         Result saved = await service.SaveAsync(cancellationToken);
         if (saved.IsFailure)
         {
@@ -333,37 +336,6 @@ internal sealed class MarkFiscalProfilePromptShownCommandHandler(FiscalProfileSe
         }
 
         return await service.ToResponseAsync(pfa.Value, profile, false, cancellationToken);
-    }
-}
-
-internal sealed class GetEstimatedTaxesStatusQueryHandler(IApplicationDbContext context, FiscalProfileService service)
-    : IQueryHandler<GetEstimatedTaxesStatusQuery, EstimatedTaxesStatusResponse>
-{
-    public async Task<Result<EstimatedTaxesStatusResponse>> Handle(GetEstimatedTaxesStatusQuery query, CancellationToken cancellationToken)
-    {
-        if (!FiscalProfileService.IsValidYear(query.Year))
-        {
-            return Result.Failure<EstimatedTaxesStatusResponse>(FiscalProfileService.InvalidYear);
-        }
-
-        Result<PfaRegistration> pfa = await service.ResolveAsync(FiscalProfileScope.Pfa, null, cancellationToken);
-        if (pfa.IsFailure)
-        {
-            return Result.Failure<EstimatedTaxesStatusResponse>(pfa.Error);
-        }
-
-        var profile = await context.PfaTaxProfiles
-            .AsNoTracking()
-            .Where(p => p.PfaRegistrationId == pfa.Value.Id && p.TaxYear == query.Year)
-            .Select(p => new { p.Status, p.EstimatedTaxesUnlockedAtUtc })
-            .SingleOrDefaultAsync(cancellationToken);
-
-        PfaTaxProfileStatus status = profile?.Status ?? PfaTaxProfileStatus.NotStarted;
-        return new EstimatedTaxesStatusResponse(
-            query.Year,
-            status != PfaTaxProfileStatus.Completed,
-            FiscalProfileService.StatusCode(status),
-            profile?.EstimatedTaxesUnlockedAtUtc);
     }
 }
 
@@ -444,6 +416,7 @@ internal sealed class CreateDataCorrectionCommandHandler(IApplicationDbContext c
             CreatedAtUtc = service.UtcNow,
         };
         context.PfaDataCorrectionRequests.Add(correction);
+        await FiscalEstimateInvalidation.MarkStaleAsync(context, pfa.Value.Id, null, service.UtcNow, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
 
         return FiscalProfileCorrections.ToResponse(correction);
@@ -474,6 +447,7 @@ internal sealed class ResolveDataCorrectionCommandHandler(IApplicationDbContext 
             correction.State = DataCorrectionState.Resolved;
             correction.ResolvedAtUtc = service.UtcNow;
             correction.ResolvedByUserId = service.CallerId;
+            await FiscalEstimateInvalidation.MarkStaleAsync(context, correction.PfaRegistrationId, null, service.UtcNow, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
 

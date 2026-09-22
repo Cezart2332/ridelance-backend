@@ -15,6 +15,7 @@ internal sealed class PfaTaxProfileConfiguration : IEntityTypeConfiguration<PfaT
         builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(16);
         builder.Property(p => p.AnswersJson).HasColumnType("jsonb").IsRequired();
         builder.Property(p => p.PfaRegisteredOnSource).HasMaxLength(64);
+        builder.Property(p => p.ExistingReserve).HasPrecision(18, 2);
 
         // Revizia e și ETag-ul: două salvări din aceeași versiune nu trec amândouă.
         builder.Property(p => p.Revision).IsConcurrencyToken();

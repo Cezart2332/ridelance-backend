@@ -14,6 +14,7 @@ public static class FiscalProfileSchema
     public const string ChooseAnswer = "Alege un răspuns.";
     public const string FillDate = "Completează data.";
     public const string FillText = "Completează câmpul.";
+    public const string FillNumber = "Completează suma.";
     public const string UnknownOption = "Răspunsul nu e o opțiune validă.";
 
     private static readonly string[] YesNo = [Yes, No];
@@ -23,6 +24,7 @@ public static class FiscalProfileSchema
         SingleChoice,
         Date,
         Text,
+        Number,
     }
 
     public sealed record Question(
@@ -47,6 +49,7 @@ public static class FiscalProfileSchema
         new("employment", 2, QuestionKind.SingleChoice, ["none", "full", "part"], Always, true, a => a.Employment),
         new("employmentStart", 2, QuestionKind.Date, [], (a, _) => a.Employment is "full" or "part", true, a => a.EmploymentStart),
         new("employmentEnd", 2, QuestionKind.Date, [], (a, _) => a.Employment is "full" or "part", false, a => a.EmploymentEnd),
+        new("salaryAboveCassMin", 2, QuestionKind.SingleChoice, YesNo, (a, _) => a.Employment is "full" or "part", true, a => a.SalaryAboveCassMin),
         new("pensioner", 2, QuestionKind.SingleChoice, YesNo, Always, true, a => a.Pensioner),
         new("pensionerSince", 2, QuestionKind.Date, [], (a, _) => a.Pensioner == Yes, true, a => a.PensionerSince),
         new("student", 2, QuestionKind.SingleChoice, YesNo, Always, true, a => a.Student),
@@ -59,6 +62,8 @@ public static class FiscalProfileSchema
         new("taxPaymentsMade", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.TaxPaymentsMade),
         new("carriedLosses", 3, QuestionKind.SingleChoice, YesNo, (_, c) => c.AskCarriedLosses, true, a => a.CarriedLosses),
         new("cassOptIn", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.CassOptIn),
+        new("casVoluntary", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.CasVoluntary),
+        new("casVoluntaryBase", 3, QuestionKind.Number, [], (a, _) => a.CasVoluntary == Yes, true, a => a.CasVoluntaryBase),
         new("crossBorder", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.CrossBorder),
         new("notes", 3, QuestionKind.Text, [], Always, false, a => a.Notes),
     ];
@@ -89,6 +94,8 @@ public static class FiscalProfileSchema
             TaxPaymentsMade = Clean(answers.TaxPaymentsMade),
             CarriedLosses = Clean(answers.CarriedLosses),
             CassOptIn = Clean(answers.CassOptIn),
+            SalaryAboveCassMin = Clean(answers.SalaryAboveCassMin),
+            CasVoluntary = Clean(answers.CasVoluntary),
             CrossBorder = Clean(answers.CrossBorder),
             Notes = Clean(answers.Notes),
         };
@@ -105,6 +112,8 @@ public static class FiscalProfileSchema
             PriorDocsLocation = IsVisible("priorDocsLocation", a, conditions) ? a.PriorDocsLocation : null,
             EmploymentStart = IsVisible("employmentStart", a, conditions) ? a.EmploymentStart : null,
             EmploymentEnd = IsVisible("employmentEnd", a, conditions) ? a.EmploymentEnd : null,
+            SalaryAboveCassMin = IsVisible("salaryAboveCassMin", a, conditions) ? a.SalaryAboveCassMin : null,
+            CasVoluntaryBase = IsVisible("casVoluntaryBase", a, conditions) ? a.CasVoluntaryBase : null,
             PensionerSince = IsVisible("pensionerSince", a, conditions) ? a.PensionerSince : null,
             OtherIndependentRecords = IsVisible("otherIndependentRecords", a, conditions) ? a.OtherIndependentRecords : null,
             CarriedLosses = IsVisible("carriedLosses", a, conditions) ? a.CarriedLosses : null,
@@ -143,6 +152,7 @@ public static class FiscalProfileSchema
                     {
                         QuestionKind.SingleChoice => ChooseAnswer,
                         QuestionKind.Date => FillDate,
+                        QuestionKind.Number => FillNumber,
                         _ => FillText,
                     };
                 }
@@ -162,6 +172,11 @@ public static class FiscalProfileSchema
             && !errors.ContainsKey("employmentEnd"))
         {
             errors["employmentEnd"] = "Data încetării nu poate fi înainte de data angajării.";
+        }
+
+        if (answers.CasVoluntaryBase is decimal casBase && (casBase <= 0 || casBase > 10_000_000) && !errors.ContainsKey("casVoluntaryBase"))
+        {
+            errors["casVoluntaryBase"] = "Suma trebuie să fie mai mare decât 0.";
         }
 
         if (answers.CorrectionDetails?.Length > 2000)
@@ -204,6 +219,7 @@ public static class FiscalProfileSchema
     {
         null => null,
         DateOnly date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        decimal number => number.ToString(CultureInfo.InvariantCulture),
         string text => text,
         _ => Convert.ToString(value, CultureInfo.InvariantCulture),
     };

@@ -23,7 +23,8 @@ internal sealed class FiscalProfileService(
     IUserContext userContext,
     ICompanyLookupService companyLookup,
     IDateTimeProvider clock,
-    ILogger<FiscalProfileService> logger)
+    ILogger<FiscalProfileService> logger,
+    FiscalEstimates.TaxYearParametersProvider taxParameters)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -175,6 +176,9 @@ internal sealed class FiscalProfileService(
             PriorDocsLocation = null,
             TaxPaymentsMade = null,
             CassOptIn = null,
+            CasVoluntary = null,
+            CasVoluntaryBase = null,
+            SalaryAboveCassMin = null,
             CarriedLosses = null,
             Notes = null,
         };
@@ -291,7 +295,8 @@ internal sealed class FiscalProfileService(
             lastChangedBy,
             facts,
             conditions,
-            corrections);
+            corrections,
+            taxParameters.For(profile.TaxYear)?.CassMinThreshold);
     }
 
     public static string StatusCode(PfaTaxProfileStatus status) => status switch

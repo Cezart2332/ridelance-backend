@@ -2,6 +2,7 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Documents.AiVerification;
+using Application.FiscalEstimates;
 using Domain.PfaRegistrations;
 using Domain.Taxes;
 using Domain.Users;
@@ -118,6 +119,8 @@ internal sealed class UpsertTaxObligationCommandHandler(
         obligation.AmountDue = command.AmountDue;
         obligation.DueDate = command.DueDate;
         obligation.Status = status;
+        // Plățile CAS/CASS/impozit marcate „Plătită” se scad din „Cât să pui deoparte”.
+        await FiscalEstimateInvalidation.MarkStaleAsync(context, command.PfaRegistrationId, command.PeriodYear, DateTime.UtcNow, cancellationToken);
         obligation.DocumentId = command.DocumentId;
         obligation.Note = string.IsNullOrWhiteSpace(command.Note) ? null : command.Note.Trim();
         obligation.UpdatedAtUtc = DateTime.UtcNow;

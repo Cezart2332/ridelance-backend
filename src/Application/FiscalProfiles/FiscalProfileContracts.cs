@@ -39,7 +39,9 @@ public sealed record FiscalProfileResponse(
     FiscalProfileFacts Facts,
     FiscalProfileConditions Conditions,
     /// <summary>Cererile de corectare deschise. Doar pentru staff; PFA-ul le vede ca listă goală.</summary>
-    IReadOnlyList<DataCorrectionResponse> Corrections);
+    IReadOnlyList<DataCorrectionResponse> Corrections,
+    /// <summary>Pragul minim CASS al anului, pentru textul întrebării despre salariu. Din configurație.</summary>
+    decimal? CassMinThreshold);
 
 public sealed record FiscalProfileRevisionResponse(
     int Revision,
@@ -47,16 +49,6 @@ public sealed record FiscalProfileRevisionResponse(
     FiscalProfileActor Actor,
     IReadOnlyList<FiscalProfileFieldChange> Changes,
     string? Reason);
-
-/// <summary>
-/// Răspunsul pentru estimări. Cu profilul necompletat e doar <c>locked</c>: frontendul arată
-/// invitația și nu cere nimic altceva.
-/// </summary>
-public sealed record EstimatedTaxesStatusResponse(
-    int TaxYear,
-    bool Locked,
-    string ProfileStatus,
-    DateTime? UnlockedAtUtc);
 
 /// <summary>Cine face o modificare, din ce dashboard.</summary>
 public enum FiscalProfileScope

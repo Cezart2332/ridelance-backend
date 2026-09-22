@@ -1,6 +1,8 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Services;
+using Application.FiscalEstimates;
 using Application.FiscalProfiles;
+using Domain.FiscalEstimates;
 using Domain.FiscalProfiles;
 using Domain.PfaRegistrations;
 using Domain.Users;
@@ -34,6 +36,7 @@ public sealed class FiscalProfileTests
         OtherIncome = "no",
         TaxPaymentsMade = "no",
         CassOptIn = "no",
+        CasVoluntary = "no",
         CarriedLosses = "no",
         CrossBorder = "no",
     };
@@ -156,7 +159,7 @@ public sealed class FiscalProfileTests
             .Handle(new SaveFiscalProfileDraftCommand(2026, new FiscalProfileAnswers { Employment = "none" }, null), default);
         draft.Value.Status.ShouldBe("DRAFT");
 
-        (await new GetEstimatedTaxesStatusQueryHandler(db, service).Handle(new GetEstimatedTaxesStatusQuery(2026), default))
+        (await new GetEstimatedTaxesQueryHandler(db, service).Handle(new GetEstimatedTaxesQuery(FiscalProfileScope.Pfa, null, 2026), default))
             .Value.Locked.ShouldBeTrue();
 
         Result<FiscalProfileResponse> missingConfirmation = await new CompleteFiscalProfileCommandHandler(db, service)
@@ -169,7 +172,7 @@ public sealed class FiscalProfileTests
         completed.IsSuccess.ShouldBeTrue();
         completed.Value.Status.ShouldBe("COMPLETED");
         completed.Value.EstimatedTaxesUnlockedAtUtc.ShouldBe(Now);
-        (await new GetEstimatedTaxesStatusQueryHandler(db, service).Handle(new GetEstimatedTaxesStatusQuery(2026), default))
+        (await new GetEstimatedTaxesQueryHandler(db, service).Handle(new GetEstimatedTaxesQuery(FiscalProfileScope.Pfa, null, 2026), default))
             .Value.Locked.ShouldBeFalse();
         (await db.AdminCallTasks.SingleAsync()).State.ShouldBe(AdminCallTaskState.ResolvedByCompletion);
         (await db.PfaTaxProfileRevisions.CountAsync()).ShouldBe(1);
@@ -325,6 +328,70 @@ public sealed class FiscalProfileTests
         run.ShouldBe(new FiscalProfileRemindersRun(0, 0));
     }
 
+    // ── Motorul de taxe estimate: rulări ─────────────────────────────────────
+
+    [Fact]
+    public async Task Rularea_porneste_doar_pe_profil_completat_si_expira_la_editare()
+    {
+        await using ApplicationDbContext db = NewDb();
+        (User owner, PfaRegistration pfa) = Seed(db);
+        User admin = AddUser(db, UserRole.Admin);
+        for (int month = 1; month <= 8; month++)
+        {
+            db.PfaMonthlyIncomes.Add(new PfaMonthlyIncome { Id = Guid.NewGuid(), PfaRegistrationId = pfa.Id, Year = 2026, Month = month, VenitBolt = 2_000 });
+        }
+
+        await db.SaveChangesAsync();
+        FiscalProfileService service = Service(db, owner.Id);
+        var recalculate = new RecalculateEstimatedTaxesCommandHandler(
+            db, new FinancialSnapshotProvider(db), new TaxYearParametersProvider(), new TaxEngine2026(), new FixedClock());
+
+        // Ciornă: endpointul e blocat și nu se creează nicio rulare.
+        await new SaveFiscalProfileDraftCommandHandler(service)
+            .Handle(new SaveFiscalProfileDraftCommand(2026, new FiscalProfileAnswers { Employment = "none" }, null), default);
+        (await recalculate.Handle(new RecalculateEstimatedTaxesCommand(pfa.Id, 2026), default)).Value.ShouldBeNull();
+        (await db.FiscalEstimateRuns.CountAsync()).ShouldBe(0);
+
+        await new CompleteFiscalProfileCommandHandler(db, service)
+            .Handle(new CompleteFiscalProfileCommand(2026, Complete(), true, null), default);
+
+        // Confirmat, dar încă necalculat: „se calculează”, fără cifre.
+        EstimatedTaxesResponse pending = (await new GetEstimatedTaxesQueryHandler(db, service)
+            .Handle(new GetEstimatedTaxesQuery(FiscalProfileScope.Pfa, null, 2026), default)).Value;
+        pending.Status.ShouldBe(TaxStatuses.Calculating);
+        pending.Components!.ShouldAllBe(c => c.Amount == null);
+
+        await recalculate.Handle(new RecalculateEstimatedTaxesCommand(pfa.Id, 2026), default);
+        EstimatedTaxesResponse done = (await new GetEstimatedTaxesQueryHandler(db, service)
+            .Handle(new GetEstimatedTaxesQuery(FiscalProfileScope.Pfa, null, 2026), default)).Value;
+        done.Stale.ShouldBeFalse();
+        // 8 luni × 2.000 realizat + media săptămânală din ultimele luni × săptămânile rămase.
+        done.Projection!.NetRealized.ShouldBe(16_000);
+        done.Components!.Single(c => c.Component == TaxComponents.Cass).Status.ShouldBe(TaxStatuses.Estimated);
+        done.Components!.Single(c => c.Component == TaxComponents.PlatformTaxes).Status.ShouldBe(TaxStatuses.NotConfigured);
+        done.Reserve!.Weekly.ShouldNotBeNull();
+        done.Components!.ShouldAllBe(c => c.Breakdown == null);
+
+        // Editarea staff-ului: rularea veche expiră, iar cea nouă poartă revizia nouă.
+        int revisionBefore = (await db.FiscalEstimateRuns.SingleAsync()).ProfileRevision;
+        await new EditFiscalProfileCommandHandler(db, Service(db, admin.Id)).Handle(
+            new EditFiscalProfileCommand(FiscalProfileScope.Admin, pfa.Id, 2026, Complete() with { Student = "yes" }, "Corectat la telefon", revisionBefore),
+            default);
+        (await db.FiscalEstimateRuns.SingleAsync()).Stale.ShouldBeTrue();
+        (await new GetEstimatedTaxesQueryHandler(db, service)
+            .Handle(new GetEstimatedTaxesQuery(FiscalProfileScope.Pfa, null, 2026), default)).Value.Status.ShouldBe(TaxStatuses.Calculating);
+
+        await recalculate.Handle(new RecalculateEstimatedTaxesCommand(pfa.Id, 2026), default);
+        FiscalEstimateRun latest = await db.FiscalEstimateRuns.OrderByDescending(r => r.CreatedAtUtc).ThenByDescending(r => r.ProfileRevision).FirstAsync(r => !r.Stale);
+        latest.ProfileRevision.ShouldBe(revisionBefore + 1);
+
+        EstimatedTaxesResponse staff = (await new GetEstimatedTaxesQueryHandler(db, Service(db, admin.Id))
+            .Handle(new GetEstimatedTaxesQuery(FiscalProfileScope.Admin, pfa.Id, 2026), default)).Value;
+        staff.RuleVersion.ShouldBe("2026.1");
+        staff.Components!.Single(c => c.Component == TaxComponents.Cass).Breakdown.ShouldNotBeNull();
+        staff.Runs!.Count.ShouldBe(2);
+    }
+
     // ── Infrastructură de test ───────────────────────────────────────────────
 
     private static (User Owner, PfaRegistration Pfa) Seed(ApplicationDbContext db, string cui = "12345678")
@@ -361,7 +428,7 @@ public sealed class FiscalProfileTests
     }
 
     private static FiscalProfileService Service(ApplicationDbContext db, Guid userId) =>
-        new(db, new StubUser(userId), new NoLookup(), new FixedClock(), NullLogger<FiscalProfileService>.Instance);
+        new(db, new StubUser(userId), new NoLookup(), new FixedClock(), NullLogger<FiscalProfileService>.Instance, new TaxYearParametersProvider());
 
     private static ApplicationDbContext NewDb() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,

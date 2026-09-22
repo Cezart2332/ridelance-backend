@@ -15,6 +15,9 @@ internal static class TaxObligationMapper
     {
         TaxObligationType.TvaIntracomunitar => "TVA intracomunitar",
         TaxObligationType.TaxaNerezident => "Taxă de nerezident",
+        TaxObligationType.Cas => "CAS (pensie)",
+        TaxObligationType.Cass => "CASS (sănătate)",
+        TaxObligationType.ImpozitVenit => "Impozit pe venit",
         _ => "Altă obligație",
     };
 

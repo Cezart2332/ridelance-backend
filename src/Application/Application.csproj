@@ -11,6 +11,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Parametrii fiscali anuali (motorul de taxe estimate): configurație versionată, nu cod. -->
+    <EmbeddedResource Include="FiscalEstimates/Parameters/*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Domain\Domain.csproj" />
     <ProjectReference Include="..\SharedKernel\SharedKernel.csproj" />
   </ItemGroup>

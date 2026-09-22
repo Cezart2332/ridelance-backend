@@ -20,6 +20,9 @@ public sealed record FiscalProfileAnswers
     public string? Employment { get; init; }
     public DateOnly? EmploymentStart { get; init; }
     public DateOnly? EmploymentEnd { get; init; }
+
+    /// <summary>Salariul brut pe anul fiscal trece de pragul minim CASS (motorul de taxe, spec §1).</summary>
+    public string? SalaryAboveCassMin { get; init; }
     public string? Pensioner { get; init; }
     public DateOnly? PensionerSince { get; init; }
     public string? Student { get; init; }
@@ -33,6 +36,10 @@ public sealed record FiscalProfileAnswers
     public string? TaxPaymentsMade { get; init; }
     public string? CarriedLosses { get; init; }
     public string? CassOptIn { get; init; }
+    public string? CasVoluntary { get; init; }
+
+    /// <summary>Baza CAS aleasă, lei pe an, când e peste minim.</summary>
+    public decimal? CasVoluntaryBase { get; init; }
     public string? CrossBorder { get; init; }
     public string? Notes { get; init; }
 }

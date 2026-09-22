@@ -61,6 +61,11 @@ public static class DependencyInjection
 
         services.AddScoped<FiscalProfiles.FiscalProfileService>();
 
+        // Motorul de taxe estimate: pur și fără stare; parametrii se citesc o dată, la pornire.
+        services.AddSingleton<FiscalEstimates.TaxYearParametersProvider>();
+        services.AddSingleton<FiscalEstimates.ITaxEngine, FiscalEstimates.TaxEngine2026>();
+        services.AddScoped<FiscalEstimates.IFinancialSnapshotProvider, FiscalEstimates.FinancialSnapshotProvider>();
+
         // Aduce și decriptează credențialele Oblio ale proprietarului, într-un singur loc.
         services.AddScoped<Invoicing.OwnerOblioResolver>();
 
