@@ -1,6 +1,7 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
+using Application.Accounting;
 using Application.Notifications.TaxThreshold;
 using Application.PfaRegistrations;
 using Domain.Documents;
@@ -25,14 +26,18 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
     {
         DateTime nowUtc = DateTime.UtcNow;
 
-        if (request.RequireFirstOfMonth && !RecurringDocumentationTexts.IsFirstDayOfMonthInRomania(nowUtc))
+        if (request.RequireCollectionStartDay
+            && !AccountingPeriod.IsCollectionStartDay(DateOnly.FromDateTime(AccountingPeriod.ToRomania(nowUtc))))
         {
             return new SendRecurringDocumentationNotificationsResult(0, 0, 0);
         }
 
+        // Luna cerută acum și fereastra ei (26 – 25). O cerere trimisă oriunde în fereastră
+        // contează ca trimisă pentru luna asta: nu se repetă până se deschide fereastra următoare.
+        (int requestedYear, int requestedMonth) = AccountingPeriod.RequestedMonthUtc(nowUtc);
         (DateTime monthStartUtc, DateTime monthEndUtc) =
-            RecurringDocumentationTexts.GetRomaniaMonthBoundsUtc(nowUtc);
-        (int taxYear, _) = RecurringDocumentationTexts.GetRomaniaYearMonth(nowUtc);
+            AccountingPeriod.CollectionWindowUtc(requestedYear, requestedMonth);
+        int taxYear = requestedYear;
         string notificationText = RecurringDocumentationTexts.BuildNotificationText(nowUtc);
         Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase)
             ? parsedBase

@@ -2,7 +2,7 @@ using System.Globalization;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
-using Application.Notifications.RecurringDocumentation;
+using Application.Accounting;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.Users;
@@ -44,16 +44,18 @@ internal sealed class GetContabilStatsQueryHandler(
                 Error.Failure("Auth.Unauthorized", "Doar contabilii pot accesa aceste statistici."));
         }
 
-        // Reference instant: mid-month of the requested period, or now for the current month.
-        DateTime referenceUtc = query.Year is int y && query.Month is int m && m >= 1 && m <= 12
-            ? new DateTime(y, m, 15, 12, 0, 0, DateTimeKind.Utc)
-            : DateTime.UtcNow;
+        // Luna cerută explicit, altfel luna contabilă deschisă acum: până pe 25 e luna trecută,
+        // de pe 26 luna curentă (vezi `AccountingPeriod`).
+        (int currentYear, int currentMonth) = query.Year is int y && query.Month is int m && m >= 1 && m <= 12
+            ? (y, m)
+            : AccountingPeriod.RequestedMonthUtc(DateTime.UtcNow);
 
-        (DateTime monthStartUtc, DateTime monthEndUtc) = RecurringDocumentationTexts.GetRomaniaMonthBoundsUtc(referenceUtc);
-        (int currentYear, int currentMonth) = RecurringDocumentationTexts.GetRomaniaYearMonth(referenceUtc);
+        // Documentele lunii sunt cele încărcate în fereastra ei — 26 ale lunii până pe 25 ale
+        // lunii următoare —, nu cele din luna calendaristică.
+        (DateTime monthStartUtc, DateTime monthEndUtc) = AccountingPeriod.CollectionWindowUtc(currentYear, currentMonth);
 
         // Month label in Romanian (e.g. "Iunie 2026")
-        string monthLabel = referenceUtc.ToString("MMMM yyyy", new CultureInfo("ro-RO"));
+        string monthLabel = AccountingPeriod.MonthLabel(currentYear, currentMonth);
         // Capitalize first letter of month label
         if (!string.IsNullOrEmpty(monthLabel))
         {

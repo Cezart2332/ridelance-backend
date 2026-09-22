@@ -21,4 +21,7 @@ public static class NotificationTypes
 
     /// <summary>Profilul fiscal anual: reamintiri către PFA și anunțul de completare către contabil.</summary>
     public const string FiscalProfile = "FiscalProfile";
+
+    /// <summary>Notificare scrisă de contabil (sau admin) pentru clientul PFA.</summary>
+    public const string AccountantMessage = "AccountantMessage";
 }
