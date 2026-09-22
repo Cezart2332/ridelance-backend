@@ -1,4 +1,5 @@
 using Application.Abstractions.Messaging;
+using Application.Accounting;
 using Application.Notifications.RecurringDocumentation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -8,7 +9,8 @@ using SharedKernel;
 namespace Infrastructure.BackgroundJobs;
 
 /// <summary>
-/// Sends recurring-documentation reminders to all clients on the 1st of each month at 08:00 Romania time.
+/// Trimite cererea de documente lunare tuturor clienților în ziua în care se deschide fereastra
+/// lunii contabile — pe 26, la 08:00, ora României (vezi <see cref="AccountingPeriod"/>).
 /// </summary>
 internal sealed class RecurringDocumentationNotificationJob(
     IServiceScopeFactory scopeFactory,
@@ -25,7 +27,7 @@ internal sealed class RecurringDocumentationNotificationJob(
         {
             try
             {
-                if (IsFirstOfMonthEightAmRomania())
+                if (IsCollectionStartEightAmRomania())
                 {
                     logger.LogInformation("Sending monthly recurring documentation notifications...");
 
@@ -36,7 +38,7 @@ internal sealed class RecurringDocumentationNotificationJob(
                     Result<SendRecurringDocumentationNotificationsResult> result = await handler.Handle(
                         new SendRecurringDocumentationNotificationsCommand(
                             TargetUserId: null,
-                            RequireFirstOfMonth: true,
+                            RequireCollectionStartDay: true,
                             ForceResend: false),
                         stoppingToken);
 
@@ -61,12 +63,11 @@ internal sealed class RecurringDocumentationNotificationJob(
         }
     }
 
-    private static bool IsFirstOfMonthEightAmRomania()
+    private static bool IsCollectionStartEightAmRomania()
     {
-        var romania = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
-        DateTime nowRomania = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, romania);
+        DateTime nowRomania = AccountingPeriod.ToRomania(DateTime.UtcNow);
 
-        return nowRomania.Day == 1 &&
+        return AccountingPeriod.IsCollectionStartDay(DateOnly.FromDateTime(nowRomania)) &&
                nowRomania.Hour == 8 &&
                nowRomania.Minute == 0;
     }

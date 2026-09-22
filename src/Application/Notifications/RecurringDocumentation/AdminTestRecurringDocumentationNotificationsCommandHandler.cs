@@ -29,7 +29,7 @@ internal sealed class AdminTestRecurringDocumentationNotificationsCommandHandler
         return await sendHandler.Handle(
             new SendRecurringDocumentationNotificationsCommand(
                 TargetUserId: null,
-                RequireFirstOfMonth: false,
+                RequireCollectionStartDay: false,
                 ForceResend: true),
             cancellationToken);
     }
