@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Application.Abstractions.Data;
 using Application.Abstractions.Services;
 using Domain.Documents;
@@ -35,11 +36,20 @@ internal static class StoredSignature
             return null;
         }
 
-        using Stream stream = await encryption.DecryptAndReadAsync(
-            document.EncryptedFilePath, document.EncryptionIv, cancellationToken);
-        using var buffer = new MemoryStream();
-        await stream.CopyToAsync(buffer, cancellationToken);
+        try
+        {
+            using Stream stream = await encryption.DecryptAndReadAsync(
+                document.EncryptedFilePath, document.EncryptionIv, cancellationToken);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, cancellationToken);
 
-        return buffer.ToArray();
+            return buffer.ToArray();
+        }
+        catch (Exception exception) when (exception is CryptographicException or IOException or FormatException)
+        {
+            // Fișierul lipsește sau nu se mai decriptează. Documentul se tipărește cu linia de
+            // semnătură goală: altfel, o semnătură pierdută ar bloca definitiv contractul.
+            return null;
+        }
     }
 }
