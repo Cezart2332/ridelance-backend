@@ -1,4 +1,5 @@
 using Application.Abstractions.Authentication;
+using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
 using Application.FiscalEstimates;
 using Application.FiscalProfiles;
@@ -329,6 +330,60 @@ public sealed class FiscalProfileTests
     }
 
     // ── Motorul de taxe estimate: rulări ─────────────────────────────────────
+
+    /// <summary>
+    /// Bugul raportat: „Estimările nu sunt încă disponibile pentru 2026", deși parametrii anului
+    /// existau. Rularea salvată înainte să apară parametrii era din ziua curentă, deci jobul n-o
+    /// relua până a doua zi. O rulare calculată cu alți parametri decât cei curenți e depășită.
+    /// </summary>
+    [Theory]
+    [InlineData(TaxStatuses.RuleUnavailable, null, true)]
+    [InlineData("OK", "2025.9", true)]
+    [InlineData("OK", "2026.1", false)]
+    [InlineData(TaxStatuses.Error, null, false)]
+    public async Task Jobul_reia_rularile_calculate_cu_alti_parametri(string status, string? ruleVersion, bool expectedDue)
+    {
+        await using ApplicationDbContext db = NewDb();
+        (_, PfaRegistration pfa) = Seed(db);
+        db.PfaTaxProfiles.Add(new PfaTaxProfile
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = pfa.Id,
+            TaxYear = 2026,
+            Status = PfaTaxProfileStatus.Completed,
+        });
+        db.FiscalEstimateRuns.Add(new FiscalEstimateRun
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = pfa.Id,
+            TaxYear = 2026,
+            AsOf = DateOnly.FromDateTime(FiscalProfileService.ToRomania(Now)),
+            Status = status,
+            RuleVersion = ruleVersion,
+            CreatedAtUtc = Now.AddHours(-1),
+        });
+        await db.SaveChangesAsync();
+
+        var recalculate = new RecordingRecalculate();
+        int done = (await new ProcessFiscalEstimateQueueCommandHandler(
+                db, recalculate, new TaxYearParametersProvider(), new FixedClock(),
+                NullLogger<ProcessFiscalEstimateQueueCommandHandler>.Instance)
+            .Handle(new ProcessFiscalEstimateQueueCommand(), default)).Value;
+
+        recalculate.Calls.Count.ShouldBe(expectedDue ? 1 : 0);
+        done.ShouldBe(expectedDue ? 1 : 0);
+    }
+
+    private sealed class RecordingRecalculate : ICommandHandler<RecalculateEstimatedTaxesCommand, Guid?>
+    {
+        public List<RecalculateEstimatedTaxesCommand> Calls { get; } = [];
+
+        public Task<Result<Guid?>> Handle(RecalculateEstimatedTaxesCommand command, CancellationToken cancellationToken)
+        {
+            Calls.Add(command);
+            return Task.FromResult(Result.Success<Guid?>(Guid.NewGuid()));
+        }
+    }
 
     [Fact]
     public async Task Rularea_porneste_doar_pe_profil_completat_si_expira_la_editare()
