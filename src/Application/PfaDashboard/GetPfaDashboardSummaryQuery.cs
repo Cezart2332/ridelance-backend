@@ -165,10 +165,50 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
     IOptions<FiscalPolicyOptions> fiscalOptions)
     : IQueryHandler<GetPfaDashboardSummaryQuery, PfaDashboardSummaryResponse>
 {
-    private static readonly CultureInfo RomanianCulture = CultureInfo.GetCultureInfo("ro-RO");
+    /// <summary>
+    /// Granularitatea graficelor după lungimea perioadei: o săptămână pe zile (Lun–Dum), până la
+    /// două luni pe săptămâni, peste pe luni (Ian–Dec). Cu o bară pe zi, o lună dădea 31 de bare
+    /// subțiri, ilizibile pe telefon.
+    /// </summary>
+    private const int MaxDaysForDailyBuckets = 7;
+    private const int MaxDaysForWeeklyBuckets = 62;
 
-    /// <summary>Peste două luni, granularitatea zilnică devine ilizibilă — se trece pe luni.</summary>
-    private const int MaxDaysForDailyBuckets = 62;
+    private static readonly string[] WeekdayLabels = ["Lun", "Mar", "Mie", "Joi", "Vin", "Sâm", "Dum"];
+    private static readonly string[] MonthLabels = ["Ian", "Feb", "Mar", "Apr", "Mai", "Iun", "Iul", "Aug", "Sep", "Oct", "Noi", "Dec"];
+    private static readonly string[] ShortMonths = ["ian", "feb", "mar", "apr", "mai", "iun", "iul", "aug", "sep", "oct", "noi", "dec"];
+
+    internal static string GranularityFor(int dayCount) => dayCount switch
+    {
+        <= MaxDaysForDailyBuckets => "day",
+        <= MaxDaysForWeeklyBuckets => "week",
+        _ => "month",
+    };
+
+    /// <summary>Săptămânile calendaristice (luni–duminică) atinse de interval, tăiate la margini.</summary>
+    internal static List<PfaDashboardPeriod> WeekBuckets(PfaDashboardPeriod period)
+    {
+        var buckets = new List<PfaDashboardPeriod>();
+        DateOnly cursor = period.From;
+        while (cursor <= period.To)
+        {
+            int daysToSunday = (7 - (int)cursor.DayOfWeek) % 7;
+            DateOnly end = cursor.AddDays(daysToSunday);
+            buckets.Add(new PfaDashboardPeriod(cursor, end > period.To ? period.To : end));
+            cursor = end.AddDays(1);
+        }
+
+        return buckets;
+    }
+
+    /// <summary>Eticheta de pe axă: „Lun”, „1–7 sep” / „29 sep–5 oct”, „Ian”.</summary>
+    internal static string BucketLabel(string granularity, PfaDashboardPeriod bucket) => granularity switch
+    {
+        "day" => WeekdayLabels[((int)bucket.From.DayOfWeek + 6) % 7],
+        "week" => bucket.From.Month == bucket.To.Month
+            ? $"{bucket.From.Day.ToString(CultureInfo.InvariantCulture)}–{bucket.To.Day.ToString(CultureInfo.InvariantCulture)} {ShortMonths[bucket.To.Month - 1]}"
+            : $"{bucket.From.Day.ToString(CultureInfo.InvariantCulture)} {ShortMonths[bucket.From.Month - 1]}–{bucket.To.Day.ToString(CultureInfo.InvariantCulture)} {ShortMonths[bucket.To.Month - 1]}",
+        _ => MonthLabels[bucket.From.Month - 1],
+    };
 
     private readonly FiscalPolicyOptions _fiscal = fiscalOptions.Value;
 
@@ -287,7 +327,7 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
             ? currentReserve
             : BuildReserve(fiscalMonthTotals, annualIncome, annualTaxes);
 
-        string granularity = period.DayCount <= MaxDaysForDailyBuckets ? "day" : "month";
+        string granularity = GranularityFor(period.DayCount);
         PfaDashboardSeriesResponse series = BuildSeries(aggregation, period, granularity, current, currentReserve);
 
         decimal realProfit = TaxReserveCalculator.RealProfit(
@@ -658,15 +698,17 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
         PeriodTotals totals,
         TaxReserveResult reserve)
     {
-        List<PfaDashboardPeriod> buckets = granularity == "day"
-            ? Enumerable.Range(0, period.DayCount)
+        List<PfaDashboardPeriod> buckets = granularity switch
+        {
+            "day" => Enumerable.Range(0, period.DayCount)
                 .Select(offset =>
                 {
                     DateOnly day = period.From.AddDays(offset);
                     return new PfaDashboardPeriod(day, day);
                 })
-                .ToList()
-            : period.SliceMonths()
+                .ToList(),
+            "week" => WeekBuckets(period),
+            _ => period.SliceMonths()
                 .Select(slice =>
                 {
                     var start = new DateOnly(slice.Year, slice.Month, 1);
@@ -675,7 +717,8 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
                         start < period.From ? period.From : start,
                         monthEnd > period.To ? period.To : monthEnd);
                 })
-                .ToList();
+                .ToList(),
+        };
 
         List<PfaNetEarningsPointResponse> netSeries = [];
         List<PfaFeesAndTaxesPointResponse> feeSeries = [];
@@ -687,9 +730,7 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
         {
             PeriodTotals bucketTotals = Aggregate(ctx, bucket);
             string key = bucket.From.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            string label = granularity == "day"
-                ? bucket.From.Day.ToString(CultureInfo.InvariantCulture)
-                : RomanianCulture.DateTimeFormat.AbbreviatedMonthNames[bucket.From.Month - 1];
+            string label = BucketLabel(granularity, bucket);
 
             decimal vat = _fiscal.VatIntracomRate * bucketTotals.Fees;
             decimal nonResident = _fiscal.BoltNonResidentRate * bucketTotals.Bolt.Fees;
