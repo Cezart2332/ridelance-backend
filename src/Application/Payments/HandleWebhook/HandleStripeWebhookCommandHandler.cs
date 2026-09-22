@@ -92,6 +92,13 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
         string mode = session.Mode; // "payment" or "subscription"
 
+        // Numărul ascuns poartă tot un carId, deci se tratează înaintea anunțului plătit.
+        if (session.Metadata?.GetValueOrDefault("paymentKind") == Application.Cars.Commands.PaidExtras.CarPaidExtras.HiddenPlatePaymentKind)
+        {
+            await HandleHiddenPlateCheckoutCompleted(session, userId, ct);
+            return;
+        }
+
         if (session.Metadata?.GetValueOrDefault("paymentKind") == "car_listing" ||
             Guid.TryParse(session.Metadata?.GetValueOrDefault("carId"), out _))
         {
@@ -322,6 +329,42 @@ internal sealed class HandleStripeWebhookCommandHandler(
         }
     }
 
+    /// <summary>Numărul de înmatriculare ascuns, plătit: mașina îl ascunde de acum la orice publicare.</summary>
+    private async Task HandleHiddenPlateCheckoutCompleted(Session session, Guid userId, CancellationToken ct)
+    {
+        if (!Guid.TryParse(session.Metadata?.GetValueOrDefault("carId"), out Guid carId))
+        {
+            return;
+        }
+
+        Car? car = await context.Cars.FirstOrDefaultAsync(c => c.Id == carId && c.PostedByUserId == userId, ct);
+        if (car is null || await context.PaymentRecords.AnyAsync(p => p.StripeSessionId == session.Id, ct))
+        {
+            return;
+        }
+
+        car.PlateHidden = true;
+        car.PlateHiddenPaidAtUtc = DateTime.UtcNow;
+        car.UpdatedAtUtc = DateTime.UtcNow;
+
+        var record = new Domain.Payments.PaymentRecord
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PaymentType = PaymentType.OneTime,
+            Status = PaymentStatus.Succeeded,
+            AmountBani = session.AmountTotal ?? Pricing.PaidExtras.HiddenPlateBani,
+            Description = $"{Application.Cars.Commands.PaidExtras.CarPaidExtras.HiddenPlateDescriptionPrefix} — {car.Brand} {car.Model}",
+            StripePaymentId = session.PaymentIntentId,
+            StripeSessionId = session.Id,
+            CreatedAtUtc = DateTime.UtcNow,
+        };
+        context.PaymentRecords.Add(record);
+
+        await context.SaveChangesAsync(ct);
+        await invoiceGenerator.GenerateForPaymentRecordAsync(record.Id, ct);
+    }
+
     private async Task HandleCarListingCheckoutCompleted(Session session, Guid userId, CancellationToken ct)
     {
         if (!Guid.TryParse(session.Metadata?.GetValueOrDefault("carId"), out Guid carId))
@@ -342,6 +385,12 @@ internal sealed class HandleStripeWebhookCommandHandler(
         car.StripeSubscriptionId = session.SubscriptionId;
         car.PaidAtUtc = DateTime.UtcNow;
         car.UpdatedAtUtc = DateTime.UtcNow;
+
+        // Firma a plătit ca să publice: anunțul aprobat intră în piață pe locul lui plătit.
+        if (car.ApprovalStatus == CarApprovalStatus.Approved && car.ListingStatus != ListingStatus.Archived)
+        {
+            car.ListingStatus = ListingStatus.Published;
+        }
 
         bool paymentRecordExists = await context.PaymentRecords
             .AnyAsync(p => p.StripeSessionId == session.Id, ct);
@@ -672,6 +721,11 @@ internal sealed class HandleStripeWebhookCommandHandler(
         {
             car.PaymentStatus = CarListingPaymentStatus.Cancelled;
             car.UpdatedAtUtc = DateTime.UtcNow;
+            // Fără locul plătit, anunțul rămâne publicat doar dacă încape în cele incluse.
+            if (car.PostedByUserId is Guid ownerId)
+            {
+                await Application.Cars.Commands.PaidExtras.ExtraListingSlot.WithdrawIfOverQuotaAsync(context, car, ownerId, ct);
+            }
 
             await context.SaveChangesAsync(ct);
             return;

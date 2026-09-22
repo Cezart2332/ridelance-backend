@@ -116,6 +116,19 @@ public static class Pricing
     /// s-a deschis. De aceea bifa de la checkout doar înregistrează intenția, iar suma încasată
     /// atunci rămâne întreagă.
     /// </summary>
+    /// <summary>Opțiunile plătite ale anunțurilor de flotă.</summary>
+    public static class PaidExtras
+    {
+        /// <summary>Un anunț peste cele incluse în abonament: 40 lei pe lună, per mașină.</summary>
+        public const long ExtraListingMonthlyBani = 4_000;
+
+        /// <summary>
+        /// Numărul de înmatriculare ascuns în anunț: 15 lei o singură dată, per mașină. Rămâne
+        /// ascuns la orice republicare a aceleiași mașini.
+        /// </summary>
+        public const long HiddenPlateBani = 1_500;
+    }
+
     public static class BcrDiscount
     {
         public const long MonthlyBani = 5_000;

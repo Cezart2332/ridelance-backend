@@ -135,6 +135,27 @@ internal sealed class CloseClientAccountCommandHandler(
             subscription.CancelledAtUtc = now;
         }
 
+        // Și anunțurile extra au abonament propriu, per mașină: se opresc la fel.
+        List<Car> paidCars = await context.Cars
+            .Where(c => c.PostedByUserId == user.Id
+                && c.StripeSubscriptionId != null
+                && (c.PaymentStatus == CarListingPaymentStatus.Paid || c.PaymentStatus == CarListingPaymentStatus.PastDue))
+            .ToListAsync(cancellationToken);
+
+        foreach (Car car in paidCars)
+        {
+            try
+            {
+                await stripe.CancelSubscriptionAsync(car.StripeSubscriptionId!, cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                return Result.Failure<ClientAccountStatusResponse>(ClientAccounts.StripeCancelFailed);
+            }
+
+            car.PaymentStatus = CarListingPaymentStatus.Cancelled;
+        }
+
         // Anunțurile unei firme închise nu mai au ce căuta în marketplace. Pauză, nu arhivare:
         // la redeschidere firma le republică dintr-un click, cu tot istoricul lor.
         List<Car> published = await context.Cars

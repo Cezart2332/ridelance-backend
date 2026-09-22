@@ -50,7 +50,7 @@ internal sealed class ApproveCarListingCommandHandler(
                 if (ownerIsFleet)
                 {
                     int used = await ListingQuota.CountUsedAsync(context, ownerId, car.Id, cancellationToken);
-                    hasRoom = used < ListingAllowance.IncludedInFleetPlan;
+                    hasRoom = used < ListingAllowance.IncludedInFleetPlan || car.PaymentStatus == CarListingPaymentStatus.Paid;
                 }
             }
 

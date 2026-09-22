@@ -106,7 +106,12 @@ public sealed record AdminSrlStats(
     int PaidExtraListings,
     /// <summary>Încasările din anunțuri plătite separat, în perioada aleasă.</summary>
     long ExtraListingsRevenueBani,
-    int ExtraListingsPayments);
+    int ExtraListingsPayments,
+    /// <summary>Mașini cu numărul de înmatriculare ascuns (plătit).</summary>
+    int HiddenPlates = 0,
+    /// <summary>Încasările din numere ascunse, în perioada aleasă.</summary>
+    long HiddenPlatesRevenueBani = 0,
+    int HiddenPlatesPayments = 0);
 
 public sealed record AdminOverviewPfaCard(
     Guid Id,

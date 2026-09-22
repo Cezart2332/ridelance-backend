@@ -146,6 +146,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
                 new("Abonamente PFA", pfaMonthlyRecurringRevenue, latestSubscriptions.Count),
                 new("Abonamente SRL", srlStats.SubscriptionMonthlyRevenueBani, srlStats.Active),
                 new("Anunțuri extra SRL", srlStats.ExtraListingsRevenueBani, srlStats.ExtraListingsPayments),
+                new("Numere ascunse SRL", srlStats.HiddenPlatesRevenueBani, srlStats.HiddenPlatesPayments),
                 new("Anunțuri auto lunare", carMonthlyRevenue, paidActiveCars),
                 new("Servicii individuale", paidServiceRevenue, serviceOrders.Count(o => o.Status == ServiceOrderStatus.Paid)),
                 new("Comisioane parteneri", 0),
@@ -218,7 +219,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
         var firmCars = await context.Cars
             .AsNoTracking()
             .Where(c => c.PostedByUserId != null && firmIds.Contains(c.PostedByUserId.Value))
-            .Select(c => new { c.ListingStatus, c.PaymentStatus })
+            .Select(c => new { c.ListingStatus, c.PaymentStatus, c.PlateHidden })
             .ToListAsync(cancellationToken);
 
         var open = firms.Where(u => !u.IsDeleted).ToList();
@@ -233,6 +234,12 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
                 && p.Description.StartsWith(CarListingPaymentPrefix, StringComparison.Ordinal))
             .ToList();
 
+        var hiddenPlatePayments = periodPayments
+            .Where(p => p.Status == PaymentStatus.Succeeded
+                && firmIdSet.Contains(p.UserId)
+                && p.Description.StartsWith(Application.Cars.Commands.PaidExtras.CarPaidExtras.HiddenPlateDescriptionPrefix, StringComparison.Ordinal))
+            .ToList();
+
         var stats = new AdminSrlStats(
             TotalEnrolled: enrolled.Count,
             Active: enrolled.Count(u => latest.GetValueOrDefault(u.Id) is { } s && IsActiveSubscription(s.Status)),
@@ -245,7 +252,10 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
             CarsPublished: firmCars.Count(c => c.ListingStatus == ListingStatus.Published),
             PaidExtraListings: firmCars.Count(c => c.PaymentStatus == CarListingPaymentStatus.Paid && c.ListingStatus == ListingStatus.Published),
             ExtraListingsRevenueBani: extraPayments.Sum(p => p.AmountBani),
-            ExtraListingsPayments: extraPayments.Count);
+            ExtraListingsPayments: extraPayments.Count,
+            HiddenPlates: firmCars.Count(c => c.PlateHidden),
+            HiddenPlatesRevenueBani: hiddenPlatePayments.Sum(p => p.AmountBani),
+            HiddenPlatesPayments: hiddenPlatePayments.Count);
 
         IReadOnlyList<AdminMetric> subscriptions =
         [
@@ -254,6 +264,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
             new("Plată eșuată", stats.FailedPayment),
             new("Anulate", latest.Values.Count(s => s.Status == SubscriptionStatus.Cancelled)),
             new("Anunțuri extra plătite", stats.PaidExtraListings),
+            new("Numere de înmatriculare ascunse", stats.HiddenPlates),
         ];
 
         return (stats, subscriptions);

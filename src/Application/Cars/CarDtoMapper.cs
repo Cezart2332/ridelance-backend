@@ -22,7 +22,8 @@ internal static class CarDtoMapper
         int viewsLast7Days = 0,
         CarOwnerDto? owner = null,
         int? recommendationScore = null,
-        List<ScoreSuggestionDto>? scoreSuggestions = null) =>
+        List<ScoreSuggestionDto>? scoreSuggestions = null,
+        bool revealPlate = false) =>
         new(
             car.Id,
             car.Slug,
@@ -57,7 +58,12 @@ internal static class CarDtoMapper
                 .ToList(),
             car.CreatedAtUtc,
             MapStats(car, viewsLast7Days),
-            CarListingDetailsMapper.From(car));
+            // Ascuns înseamnă ascuns și în răspunsul API-ului, nu doar în interfață: altfel
+            // numărul plătit ca să nu se vadă ar sta în sursa oricărei pagini de anunț.
+            car.PlateHidden && !revealPlate
+                ? CarListingDetailsMapper.From(car) with { PlateNumber = null }
+                : CarListingDetailsMapper.From(car),
+            car.PlateHidden);
 
     /// <summary>
     /// Profilurile proprietarilor pentru o listă de mașini, într-un singur query.

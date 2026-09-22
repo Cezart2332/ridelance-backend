@@ -71,14 +71,15 @@ internal sealed class ToggleCarActiveCommandHandler(
 
         // Anunțurile flotei sunt incluse în abonament, până la o limită. Retragerea e mereu
         // permisă; publicarea doar cât mai e loc.
-        if (publishing && userResult.Value.Role == UserRole.CarPoster)
+        // Un anunț extra plătit are locul lui și nu se numără în cele incluse.
+        if (publishing && userResult.Value.Role == UserRole.CarPoster && car.PaymentStatus != CarListingPaymentStatus.Paid)
         {
             int used = await ListingQuota.CountUsedAsync(context, userResult.Value.Id, car.Id, cancellationToken);
             if (used >= ListingAllowance.IncludedInFleetPlan)
             {
                 return Result.Failure<CarListingStateDto>(Error.Problem(
                     "Car.ListingLimitReached",
-                    $"Ai folosit toate cele {ListingAllowance.IncludedInFleetPlan} anunțuri active incluse în abonament. Retrage un anunț ca să-l publici pe acesta."));
+                    $"Ai folosit toate cele {ListingAllowance.IncludedInFleetPlan} anunțuri active incluse în abonament. Retrage un anunț sau activează un anunț extra pentru mașina asta (40 lei pe lună)."));
             }
         }
 

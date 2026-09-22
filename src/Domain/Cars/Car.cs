@@ -96,6 +96,14 @@ public sealed class Car : Entity
     public string? StripeSubscriptionId { get; set; }
     public DateTime? PaidAtUtc { get; set; }
 
+    /// <summary>
+    /// Numărul de înmatriculare nu se arată în anunț. Plătit o dată per mașină, la publicare; rămâne
+    /// ascuns la orice republicare. Proprietarul și adminul îl văd în continuare.
+    /// </summary>
+    public bool PlateHidden { get; set; }
+
+    public DateTime? PlateHiddenPaidAtUtc { get; set; }
+
     // Audit
     /// <summary>
     /// Scorul „Recomandate", 0–100 (spec §5.2).
