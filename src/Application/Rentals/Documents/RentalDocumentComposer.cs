@@ -29,13 +29,6 @@ internal static class RentalDocumentComposer
         Tenant tenant,
         string? conditions)
     {
-        string title = type switch
-        {
-            RentalDocumentType.RentalContract => "Contract de închiriere",
-            RentalDocumentType.HandoverProtocol => "Proces-verbal de predare",
-            _ => "Proces-verbal de primire",
-        };
-
         List<RentalDocumentSection> sections =
         [
             new("Proprietar", [
@@ -65,7 +58,19 @@ internal static class RentalDocumentComposer
         // Semnează cele două părți. Numele se tipăresc, ca linia să nu fie anonimă pe hârtie.
         string[] signatures = [company.LegalName, tenant.Name];
 
-        return new RentalDocumentData(title, rental.PublicCode, sections, conditions, signatures, DateTime.UtcNow);
+        // Textul tipărit e cel din șablonul de contract al firmelor (CTR inchiriere.pdf), completat.
+        // Secțiunile de mai sus rămân: din ele se citește ce lipsește, iar șablonul le folosește valorile.
+        (string heading, string? kicker, IReadOnlyList<RentalDocumentArticle> articles) = type switch
+        {
+            RentalDocumentType.RentalContract =>
+                ("CONTRACT DE ÎNCHIRIERE AUTOVEHICUL", (string?)null, RentalContractText.Contract(rental, car, company, tenant)),
+            RentalDocumentType.HandoverProtocol =>
+                ("PROCES-VERBAL DE PREDARE-PRIMIRE AUTOVEHICUL", "ANEXA NR. 1", RentalContractText.Handover(rental, car, company, tenant, annex: false)),
+            _ =>
+                ("PROCES-VERBAL DE RESTITUIRE AUTOVEHICUL", "ANEXA NR. 2", RentalContractText.Return(rental, car, company, tenant)),
+        };
+
+        return new RentalDocumentData(heading, rental.PublicCode, sections, conditions, signatures, DateTime.UtcNow, articles, kicker);
     }
 
     private static readonly System.Globalization.CultureInfo PdfCulture =

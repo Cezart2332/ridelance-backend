@@ -6,6 +6,43 @@ public sealed record RentalDocumentField(string Label, string? Value);
 /// <summary>O secțiune din document: un titlu și rândurile lui.</summary>
 public sealed record RentalDocumentSection(string Title, IReadOnlyList<RentalDocumentField> Fields);
 
+/// <summary>Ce fel de bucată dintr-un paragraf de contract.</summary>
+public enum RentalTextKind
+{
+    /// <summary>Textul șablonului, tipărit ca atare.</summary>
+    Text,
+
+    /// <summary>O valoare completată din datele firmei, ale chiriașului sau ale închirierii.</summary>
+    Value,
+
+    /// <summary>Un loc gol, de completat de mână. <c>Text</c> e lățimea liniei (ex. „3cm”).</summary>
+    Blank,
+
+    /// <summary>O căsuță de bifat. <c>Text</c> e „x” când e bifată, gol altfel.</summary>
+    Checkbox,
+}
+
+/// <summary>O bucată de text dintr-un paragraf.</summary>
+public sealed record RentalTextRun(string Text, RentalTextKind Kind = RentalTextKind.Text);
+
+/// <summary>Semnăturile de la finalul unui articol: rolul fiecărei părți și numele ei.</summary>
+public sealed record RentalSignatureBlock(IReadOnlyList<string> Captions, IReadOnlyList<string> Names);
+
+/// <summary>
+/// Un capitol din textul contractului („I. PĂRȚILE CONTRACTANTE”) și paragrafele lui, fiecare
+/// alcătuit din bucăți de text și de valori completate.
+/// </summary>
+/// <param name="Title">Titlul capitolului, centrat. Lipsă pentru paragrafele fără titlu.</param>
+/// <param name="NewPage">Capitolul începe pe o pagină nouă (anexa).</param>
+/// <param name="Heading">Un titlu mare de document, pentru anexa din același PDF.</param>
+/// <param name="Signatures">Semnăturile care încheie capitolul, acolo unde le are șablonul.</param>
+public sealed record RentalDocumentArticle(
+    string? Title,
+    IReadOnlyList<IReadOnlyList<RentalTextRun>> Paragraphs,
+    bool NewPage = false,
+    string? Heading = null,
+    RentalSignatureBlock? Signatures = null);
+
 /// <param name="Pdf">Documentul tipărit.</param>
 /// <param name="Source">
 /// Sursa din care a ieșit, opacă pentru apelant. Se păstrează pentru că e singurul mod de a
@@ -24,6 +61,11 @@ public sealed record RentalSignature(byte[] Image, string Note);
 /// <param name="PublicCode">Codul închirierii, tipărit ca număr de document.</param>
 /// <param name="Sections">Părțile, obiectul, condițiile — în ordinea în care se citesc.</param>
 /// <param name="Clauses">Textul de condiții, dacă firma și-a setat unul.</param>
+/// <param name="Articles">
+/// Textul documentului, după șablonul contractului de închiriere, completat. Când există, se tipărește
+/// el în locul secțiunilor de câmpuri.
+/// </param>
+/// <param name="Kicker">Rândul mic de deasupra titlului: „ANEXA NR. 1”.</param>
 /// <param name="SignatureLines">
 /// Cine semnează, în ordinea liniilor de pe document. Poziția din listă, plus unu, e numărul liniei
 /// pe care se așază mai târziu semnătura.
@@ -34,7 +76,9 @@ public sealed record RentalDocumentData(
     IReadOnlyList<RentalDocumentSection> Sections,
     string? Clauses,
     IReadOnlyList<string> SignatureLines,
-    DateTime GeneratedAtUtc);
+    DateTime GeneratedAtUtc,
+    IReadOnlyList<RentalDocumentArticle>? Articles = null,
+    string? Kicker = null);
 
 /// <summary>
 /// Produce PDF-urile unei închirieri: contract și procese-verbale.
