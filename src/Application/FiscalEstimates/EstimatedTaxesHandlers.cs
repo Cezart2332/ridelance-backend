@@ -104,6 +104,7 @@ internal sealed class RecalculateEstimatedTaxesCommandHandler(
 internal sealed class ProcessFiscalEstimateQueueCommandHandler(
     IApplicationDbContext context,
     ICommandHandler<RecalculateEstimatedTaxesCommand, Guid?> recalculate,
+    TaxYearParametersProvider parameters,
     IDateTimeProvider clock,
     ILogger<ProcessFiscalEstimateQueueCommandHandler> logger)
     : ICommandHandler<ProcessFiscalEstimateQueueCommand, int>
@@ -127,16 +128,24 @@ internal sealed class ProcessFiscalEstimateQueueCommandHandler(
                     .Where(r => r.PfaRegistrationId == p.PfaRegistrationId && r.TaxYear == year)
                     .OrderByDescending(r => r.CreatedAtUtc)
                     .ThenBy(r => r.Stale)
-                    .Select(r => new { r.Stale, r.StaleSinceUtc, r.AsOf })
+                    .Select(r => new { r.Stale, r.StaleSinceUtc, r.AsOf, r.Status, r.RuleVersion })
                     .FirstOrDefault(),
             })
             .ToListAsync(cancellationToken);
 
-        // Fără rulare, expirată de peste 30 de secunde, sau din altă zi (proiecția depinde de săptămânile rămase).
+        // Versiunea parametrilor cu care s-ar calcula acum. O rulare făcută cu alta — sau fără
+        // parametri deloc (`RULE_UNAVAILABLE`, deci `RuleVersion` gol) — e depășită: altfel un
+        // deploy cu parametrii anului lăsa „Estimările nu sunt încă disponibile" până a doua zi.
+        string? currentRuleVersion = parameters.For(year)?.RuleVersion;
+
+        // Fără rulare, expirată de peste 30 de secunde, din altă zi (proiecția depinde de săptămânile
+        // rămase), sau calculată cu alți parametri. Rulările eșuate nu intră pe ultima regulă: n-au
+        // versiune, iar reîncercarea lor la fiecare trecere ar umple logurile.
         var due = candidates
             .Where(c => c.Latest is null
                 || c.Latest.Stale && (c.Latest.StaleSinceUtc ?? DateTime.MinValue) <= debounced
-                || c.Latest.AsOf < today)
+                || c.Latest.AsOf < today
+                || c.Latest.Status != TaxStatuses.Error && c.Latest.RuleVersion != currentRuleVersion)
             .Select(c => c.PfaRegistrationId)
             .Take(BatchSize)
             .ToList();
