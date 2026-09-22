@@ -8,6 +8,7 @@ using Domain.Documents;
 using Domain.Invoicing;
 using Domain.Maintenance;
 using Domain.Expenses;
+using Domain.FiscalProfiles;
 using Domain.Taxes;
 using Domain.Notifications;
 using Domain.Office;
@@ -41,6 +42,11 @@ public interface IApplicationDbContext
     DbSet<PfaPlatformAccount> PfaPlatformAccounts { get; }
     DbSet<PfaFleetConsent> PfaFleetConsents { get; }
     DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; }
+    DbSet<PfaTaxProfile> PfaTaxProfiles { get; }
+    DbSet<PfaTaxProfileRevision> PfaTaxProfileRevisions { get; }
+    DbSet<PfaDataCorrectionRequest> PfaDataCorrectionRequests { get; }
+    DbSet<FiscalProfileReminder> FiscalProfileReminders { get; }
+    DbSet<AdminCallTask> AdminCallTasks { get; }
     DbSet<PfaInternalNote> PfaInternalNotes { get; }
     DbSet<PfaActivityLog> PfaActivityLogs { get; }
     DbSet<OnboardingSectionApproval> OnboardingSectionApprovals { get; }

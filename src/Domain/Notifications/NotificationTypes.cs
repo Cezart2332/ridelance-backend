@@ -18,4 +18,7 @@ public static class NotificationTypes
     public const string MonthProcessed = "MonthProcessed";
     public const string FleetAccountConfigured = "FleetAccountConfigured";
     public const string BankConnection = "BankConnection";
+
+    /// <summary>Profilul fiscal anual: reamintiri către PFA și anunțul de completare către contabil.</summary>
+    public const string FiscalProfile = "FiscalProfile";
 }

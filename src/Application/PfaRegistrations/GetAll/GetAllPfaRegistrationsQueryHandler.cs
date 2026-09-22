@@ -2,6 +2,8 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Admin;
+using Application.FiscalProfiles;
+using Domain.FiscalProfiles;
 using Domain.PfaRegistrations;
 using Domain.Payments;
 using Domain.Users;
@@ -42,7 +44,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
         DateTime CreatedAtUtc,
         DateTime? UserLastActivityAtUtc,
         DateTime? ChatActivityAtUtc,
-        DateTime? DeletedAtUtc);
+        DateTime? DeletedAtUtc,
+        PfaTaxProfileStatus? FiscalProfileStatus = null);
 
     public async Task<Result<PfaRegistrationListResponse>> Handle(
         GetAllPfaRegistrationsQuery query,
@@ -60,6 +63,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
             // Contabilul lucrează doar cu clienți activi; un cont închis rămâne vizibil adminului.
             queryable = queryable.Where(r => r.AssignedContabilId == userContext.UserId && r.User.DeletedAtUtc == null);
         }
+
+        int taxYear = DateTime.UtcNow.Year;
 
         List<Row> rows = await queryable
             .AsNoTracking()
@@ -97,7 +102,11 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     .OrderByDescending(cr => cr.LastMessageAtUtc)
                     .Select(cr => (DateTime?)cr.LastMessageAtUtc)
                     .FirstOrDefault(),
-                r.User.DeletedAtUtc))
+                r.User.DeletedAtUtc,
+                context.PfaTaxProfiles
+                    .Where(t => t.PfaRegistrationId == r.Id && t.TaxYear == taxYear)
+                    .Select(t => (PfaTaxProfileStatus?)t.Status)
+                    .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
         // Conturile de client care n-au încă dosar PFA. Dosarul se naște abia la pasul 2, dar
@@ -210,7 +219,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     GetAdminOverviewQueryHandler.LatestActivity(x.UserLastActivityAtUtc, x.ChatActivityAtUtc),
                     x.OnboardingCompletedAtUtc,
                     hasRegistration,
-                    x.DeletedAtUtc);
+                    x.DeletedAtUtc,
+                    FiscalProfileService.StatusCode(x.FiscalProfileStatus ?? PfaTaxProfileStatus.NotStarted));
             })
             .ToList();
 
