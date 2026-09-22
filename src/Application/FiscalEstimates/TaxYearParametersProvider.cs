@@ -17,7 +17,11 @@ public sealed class TaxYearParametersProvider
     {
     }
 
-    public TaxYearParametersProvider(IEnumerable<TaxYearParameters> parameters)
+    /// <remarks>
+    /// Intern, pentru teste: un constructor public cu <c>IEnumerable</c> e ales de containerul DI, care
+    /// îl rezolvă cu o listă goală, iar anul rămâne fără parametri.
+    /// </remarks>
+    internal TaxYearParametersProvider(IEnumerable<TaxYearParameters> parameters)
     {
         _byYear = parameters.ToDictionary(p => p.TaxYear);
     }

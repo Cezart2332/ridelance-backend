@@ -62,7 +62,10 @@ public static class DependencyInjection
         services.AddScoped<FiscalProfiles.FiscalProfileService>();
 
         // Motorul de taxe estimate: pur și fără stare; parametrii se citesc o dată, la pornire.
-        services.AddSingleton<FiscalEstimates.TaxYearParametersProvider>();
+        // Construit explicit din fișierele JSON: lăsat pe seama containerului, alegea constructorul
+        // cu `IEnumerable<TaxYearParameters>` (pe care îl poate rezolva mereu, gol) și toți anii
+        // ieșeau RULE_UNAVAILABLE în producție.
+        services.AddSingleton(_ => new FiscalEstimates.TaxYearParametersProvider());
         services.AddSingleton<FiscalEstimates.ITaxEngine, FiscalEstimates.TaxEngine2026>();
         services.AddScoped<FiscalEstimates.IFinancialSnapshotProvider, FiscalEstimates.FinancialSnapshotProvider>();
 
