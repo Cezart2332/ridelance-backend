@@ -10,6 +10,7 @@ using Domain.Rentals;
 using Domain.Chat;
 using Domain.Documents;
 using Domain.Expenses;
+using Domain.FiscalProfiles;
 using Domain.Taxes;
 using Domain.Notifications;
 using Domain.Office;
@@ -47,6 +48,11 @@ public sealed class ApplicationDbContext(
     public DbSet<PfaPlatformAccount> PfaPlatformAccounts { get; set; }
     public DbSet<PfaFleetConsent> PfaFleetConsents { get; set; }
     public DbSet<PfaMonthlyIncome> PfaMonthlyIncomes { get; set; }
+    public DbSet<PfaTaxProfile> PfaTaxProfiles { get; set; }
+    public DbSet<PfaTaxProfileRevision> PfaTaxProfileRevisions { get; set; }
+    public DbSet<PfaDataCorrectionRequest> PfaDataCorrectionRequests { get; set; }
+    public DbSet<FiscalProfileReminder> FiscalProfileReminders { get; set; }
+    public DbSet<AdminCallTask> AdminCallTasks { get; set; }
     public DbSet<PfaInternalNote> PfaInternalNotes { get; set; }
     public DbSet<PfaActivityLog> PfaActivityLogs { get; set; }
     public DbSet<OnboardingSectionApproval> OnboardingSectionApprovals { get; set; }

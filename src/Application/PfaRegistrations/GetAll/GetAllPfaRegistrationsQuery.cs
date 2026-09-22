@@ -45,4 +45,6 @@ public sealed record PfaRegistrationSummary(
     /// </summary>
     bool HasRegistration = true,
     /// <summary>Contul a fost închis. Datele rămân; lista PFA îl arată la „Șterse”.</summary>
-    DateTime? DeletedAtUtc = null);
+    DateTime? DeletedAtUtc = null,
+    /// <summary>Profilul fiscal al anului curent: <c>NOT_STARTED</c>, <c>DRAFT</c> sau <c>COMPLETED</c>.</summary>
+    string FiscalProfileStatus = "NOT_STARTED");

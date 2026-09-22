@@ -2,10 +2,12 @@ using System.Globalization;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.FiscalProfiles;
 using Application.PfaRegistrations;
 using Domain.Bolt;
 using Domain.Documents;
 using Domain.Expenses;
+using Domain.FiscalProfiles;
 using Domain.PfaRegistrations;
 using Domain.Uber;
 using Microsoft.EntityFrameworkCore;
@@ -83,8 +85,8 @@ public sealed record PfaFeesAndTaxesPointResponse(
     string Label,
     decimal BoltFee,
     decimal UberFee,
-    decimal VatIntracom,
-    decimal BoltNonResident);
+    decimal? VatIntracom,
+    decimal? BoltNonResident);
 
 /// <summary>
 /// Un bucket din seria financiară. Cheltuielile și taxele nu au dată proprie, deci se
@@ -132,12 +134,20 @@ public sealed record PfaDashboardSourcesResponse(PfaBoltSourceResponse Bolt, Pfa
 public sealed record PfaDashboardSummaryResponse(
     PfaDashboardPeriodResponse Period,
     PfaDashboardKpisResponse Kpis,
-    PfaTaxReserveResponse TaxReserve,
-    PfaRealProfitResponse RealProfit,
+    PfaTaxReserveResponse? TaxReserve,
+    PfaRealProfitResponse? RealProfit,
     List<PfaPlatformSplitResponse> PlatformSplit,
     PfaDashboardSeriesResponse Series,
     PfaDashboardSourcesResponse Sources,
-    bool UberIsMonthlyAggregate);
+    bool UberIsMonthlyAggregate,
+    PfaTaxProfileGateResponse TaxProfile);
+
+/// <summary>
+/// Poarta estimărilor de taxe: cât timp profilul fiscal al anului nu e confirmat de PFA, nu
+/// pleacă din backend nicio estimare — nici rezerva, nici profitul după taxe, nici taxele din
+/// grafice. Nu e o ascundere în UI: cifrele pur și simplu nu sunt în răspuns.
+/// </summary>
+public sealed record PfaTaxProfileGateResponse(int TaxYear, string Status, bool EstimatesLocked);
 
 /* ── Query ────────────────────────────────────────────────────────────────── */
 
@@ -283,7 +293,16 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
             current.DeductibleExpenses,
             currentReserve.Total);
 
-        return new PfaDashboardSummaryResponse(
+        PfaTaxProfileStatus profileStatus = pfa is null
+            ? PfaTaxProfileStatus.NotStarted
+            : await context.PfaTaxProfiles
+                .AsNoTracking()
+                .Where(p => p.PfaRegistrationId == pfa.Id && p.TaxYear == fiscalYear)
+                .Select(p => (PfaTaxProfileStatus?)p.Status)
+                .FirstOrDefaultAsync(cancellationToken) ?? PfaTaxProfileStatus.NotStarted;
+        bool estimatesLocked = profileStatus != PfaTaxProfileStatus.Completed;
+
+        PfaDashboardSummaryResponse response = new(
             new PfaDashboardPeriodResponse(period.From, period.To, granularity),
             BuildKpis(current, previous),
             new PfaTaxReserveResponse(
@@ -310,8 +329,25 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
                     integration?.ErrorMessage,
                     BoltOnboarded()),
                 BuildUberSource(uberImports) with { OnboardingPending = UberOnboarded() }),
-            uberImports.Count > 0);
+            uberImports.Count > 0,
+            new PfaTaxProfileGateResponse(fiscalYear, FiscalProfileService.StatusCode(profileStatus), estimatesLocked));
+
+        return estimatesLocked ? WithoutEstimates(response) : response;
     }
+
+    /// <summary>Răspunsul fără nicio estimare de taxe. Comisioanele platformelor rămân: nu sunt taxe.</summary>
+    private static PfaDashboardSummaryResponse WithoutEstimates(PfaDashboardSummaryResponse response) => response with
+    {
+        TaxReserve = null,
+        RealProfit = null,
+        Series = response.Series with
+        {
+            FeesAndTaxes = response.Series.FeesAndTaxes
+                .Select(point => point with { VatIntracom = null, BoltNonResident = null })
+                .ToList(),
+            RealProfit = [],
+        },
+    };
 
     /* ── Agregare ─────────────────────────────────────────────────────────── */
 
