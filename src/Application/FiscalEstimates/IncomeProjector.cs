@@ -33,6 +33,11 @@ public sealed record FinancialSnapshot(
 /// Evidența e lunară (Uber livrează doar totaluri pe lună), deci săptămânile reprezentative sunt
 /// zilele din ultimele luni complete, cu activitate, până la 8 săptămâni: media săptămânală =
 /// netul lor ÷ zile × 7. Sub 4 săptămâni (28 de zile) nu estimăm.
+/// <para>
+/// O perioadă fără date la începutul anului (PFA vechi intrat mai târziu în RIDElance) nu oprește
+/// estimarea și nu e tratată ca venit zero: o acoperim cu aceeași medie săptămânală, iar proiecția
+/// spune ce perioadă a fost presupusă, ca PFA-ul s-o lămurească cu contabilul.
+/// </para>
 /// </remarks>
 public static class IncomeProjector
 {
@@ -52,10 +57,14 @@ public static class IncomeProjector
             return Unavailable(TaxReasons.CoverageGap, [Interval(snapshot.RequiredFrom, snapshot.AsOf)], netRealized, weeksRemaining);
         }
 
-        // Lipsa datelor nu înseamnă venit zero: o perioadă neacoperită oprește estimarea.
+        // Lipsa datelor nu înseamnă venit zero: perioada neacoperită se estimează mai jos, din media
+        // săptămânilor pe care le avem.
+        string? uncoveredPeriod = null;
+        decimal uncoveredWeeks = 0;
         if (coveredFrom > snapshot.RequiredFrom)
         {
-            return Unavailable(TaxReasons.CoverageGap, [Interval(snapshot.RequiredFrom, coveredFrom.AddDays(-1))], netRealized, weeksRemaining);
+            uncoveredPeriod = Interval(snapshot.RequiredFrom, coveredFrom.AddDays(-1));
+            uncoveredWeeks = (coveredFrom.DayNumber - snapshot.RequiredFrom.DayNumber) / 7m;
         }
 
         decimal representativeNet = 0;
@@ -87,7 +96,7 @@ public static class IncomeProjector
         }
 
         decimal weeklyAverage = representativeNet / representativeDays * 7m;
-        decimal netAnnual = netRealized + weeklyAverage * weeksRemaining;
+        decimal netAnnual = netRealized + weeklyAverage * (weeksRemaining + uncoveredWeeks);
 
         return new IncomeProjection(
             Math.Round(netAnnual, 2, MidpointRounding.AwayFromZero),
@@ -96,7 +105,9 @@ public static class IncomeProjector
             Math.Round(netRealized, 2, MidpointRounding.AwayFromZero),
             Math.Round(weeklyAverage, 2, MidpointRounding.AwayFromZero),
             Math.Round(representativeDays / 7m, 1, MidpointRounding.AwayFromZero),
-            Math.Round(weeksRemaining, 1, MidpointRounding.AwayFromZero));
+            Math.Round(weeksRemaining, 1, MidpointRounding.AwayFromZero),
+            uncoveredPeriod,
+            Math.Round(uncoveredWeeks, 1, MidpointRounding.AwayFromZero));
     }
 
     private static IncomeProjection Unavailable(string reason, IReadOnlyList<string> missing, decimal netRealized, decimal weeksRemaining) =>

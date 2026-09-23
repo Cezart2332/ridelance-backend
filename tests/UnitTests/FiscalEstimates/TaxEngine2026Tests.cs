@@ -167,18 +167,19 @@ public sealed class TaxEngine2026Tests
             Months(9, 10, income: 8_000),
             0));
 
+        // Ianuarie–august lipsesc: nu sunt zero, ci estimate din media lui septembrie, la fel ca restul anului.
+        decimal weekly = 8_000m / 30 * 7;
+        decimal uncoveredWeeks = (new DateOnly(2026, 9, 1).DayNumber - new DateOnly(2026, 1, 1).DayNumber) / 7m;
+        decimal weeksRemaining = (new DateOnly(2026, 12, 31).DayNumber - new DateOnly(2026, 10, 15).DayNumber) / 7m;
+        projection.UncoveredPeriod.ShouldBe("01.01.2026 – 31.08.2026");
+        projection.NetAnnualEstimated.ShouldBe(Math.Round(16_000 + weekly * (weeksRemaining + uncoveredWeeks), 2));
+
         TaxResult r = Engine.Calculate(new TaxInput(projection, new ProfileFlags(), 0, null, 11), P2026);
 
-        foreach (string component in new[] { TaxComponents.Cas, TaxComponents.Cass, TaxComponents.IncomeTax })
-        {
-            C(r, component).Status.ShouldBe(TaxStatuses.InsufficientData);
-            C(r, component).ReasonCode.ShouldBe(TaxReasons.CoverageGap);
-            C(r, component).Amount.ShouldBeNull();
-        }
-
-        C(r, TaxComponents.Cas).MissingInputs.ShouldBe(["01.01.2026 – 31.08.2026"]);
-        r.Reserve.Status.ShouldBe(TaxStatuses.InsufficientData);
-        r.Reserve.Total.ShouldBeNull();
+        r.Components.Take(3).ShouldAllBe(c => c.Status == TaxStatuses.Estimated && c.Amount > 0);
+        r.Warnings.ShouldContain(TaxWarnings.CoverageGap);
+        r.Reserve.Status.ShouldBe(TaxStatuses.Estimated);
+        r.Reserve.Total.ShouldNotBeNull();
     }
 
     [Fact]

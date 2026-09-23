@@ -14,6 +14,10 @@ internal sealed class ChatMessageConfiguration : IEntityTypeConfiguration<ChatMe
         builder.HasIndex(m => m.SentAtUtc);
 
         builder.Property(m => m.Content).HasMaxLength(4096).IsRequired();
+        builder.Property(m => m.AttachmentFileName).HasMaxLength(255);
+        builder.Property(m => m.AttachmentContentType).HasMaxLength(128);
+        builder.Property(m => m.AttachmentPath).HasMaxLength(1024);
+        builder.Property(m => m.AttachmentIv).HasMaxLength(64);
 
         builder.HasOne(m => m.Sender)
             .WithMany()

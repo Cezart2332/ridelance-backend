@@ -36,3 +36,14 @@ internal sealed class FiscalCalculationConfiguration : IEntityTypeConfiguration<
         builder.Property(c => c.BreakdownJson).HasColumnType("jsonb").IsRequired();
     }
 }
+
+internal sealed class PfaPriorPeriodMonthConfiguration : IEntityTypeConfiguration<PfaPriorPeriodMonth>
+{
+    public void Configure(EntityTypeBuilder<PfaPriorPeriodMonth> builder)
+    {
+        builder.HasKey(m => m.Id);
+        builder.HasIndex(m => new { m.PfaRegistrationId, m.Year, m.Month }).IsUnique();
+        builder.Property(m => m.Income).HasPrecision(18, 2);
+        builder.Property(m => m.Expenses).HasPrecision(18, 2);
+    }
+}

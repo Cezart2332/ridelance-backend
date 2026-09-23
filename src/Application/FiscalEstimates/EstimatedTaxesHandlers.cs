@@ -436,7 +436,13 @@ internal static class EstimatedTaxesMapping
             projection is null
                 ? null
                 : new EstimatedProjectionResponse(
-                    projection.NetRealized, projection.NetAnnualEstimated, projection.WeeklyAverage, projection.WeeksUsed, projection.WeeksRemaining),
+                    projection.NetRealized,
+                    projection.NetAnnualEstimated,
+                    projection.WeeklyAverage,
+                    projection.WeeksUsed,
+                    projection.WeeksRemaining,
+                    projection.UncoveredPeriod,
+                    projection.UncoveredWeeks),
             staff ? latest.ProfileRevision : null,
             staff ? latest.RuleVersion : null,
             staff ? latest.FinancialSnapshotId : null,

@@ -19,4 +19,8 @@ public sealed record ChatMessageDto(
     string SenderRole,
     string Content,
     DateTime SentAtUtc,
-    bool IsRead);
+    bool IsRead,
+    ChatAttachmentDto? Attachment = null);
+
+/// <summary>Fișierul atașat unui mesaj; conținutul se descarcă din <c>chat/messages/{id}/attachment</c>.</summary>
+public sealed record ChatAttachmentDto(string FileName, string ContentType, long Size);

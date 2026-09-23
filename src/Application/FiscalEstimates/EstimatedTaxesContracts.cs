@@ -25,7 +25,10 @@ public sealed record EstimatedProjectionResponse(
     decimal? NetAnnualEstimated,
     decimal? WeeklyAverage,
     decimal WeeksUsed,
-    decimal WeeksRemaining);
+    decimal WeeksRemaining,
+    /// <summary>Perioada fără date, estimată din media săptămânală; <c>null</c> = acoperire completă.</summary>
+    string? UncoveredPeriod,
+    decimal UncoveredWeeks);
 
 public sealed record EstimatedTaxesRunSummary(
     Guid Id,
