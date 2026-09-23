@@ -47,11 +47,9 @@ public sealed class FiscalProfileTests
     // ── Schema ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Nu_stiu_doar_la_CASS_pe_alte_venituri_si_nu_se_intreaba_de_norma_de_venit()
+    public void Nicio_intrebare_nu_are_varianta_Nu_stiu_si_nu_se_intreaba_de_norma_de_venit()
     {
-        // Singura excepție: dacă plătește deja CASS pe chirii/dividende — acolo „Nu știu” trimite
-        // întrebarea la contabil. Restul întrebărilor au doar răspunsuri pe care PFA-ul le știe.
-        foreach (FiscalProfileSchema.Question question in FiscalProfileSchema.Questions.Where(q => q.Key != "otherIncomeCassInsured"))
+        foreach (FiscalProfileSchema.Question question in FiscalProfileSchema.Questions)
         {
             question.Options.ShouldNotContain(o => o.Contains("stiu", StringComparison.OrdinalIgnoreCase) || o == "unknown");
             question.Key.ShouldNotContain("norma", Case.Insensitive);
@@ -276,6 +274,63 @@ public sealed class FiscalProfileTests
         (await new GetFiscalProfileQueryHandler(Service(db, other.Id))
             .Handle(new GetFiscalProfileQuery(FiscalProfileScope.Admin, pfa.Id, 2026), default))
             .IsFailure.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Contabilul_completeaza_sumele_iar_formularul_PFA_nu_le_atinge()
+    {
+        await using ApplicationDbContext db = NewDb();
+        (User owner, PfaRegistration pfa) = Seed(db);
+        User contabil = AddUser(db, UserRole.Contabil);
+        pfa.AssignedContabilId = contabil.Id;
+        await db.SaveChangesAsync();
+
+        FiscalProfileService pfaService = Service(db, owner.Id);
+        FiscalProfileAnswers answers = Complete() with { OtherIndependent = "yes", OtherIndependentRecords = "yes", OtherIncome = "yes" };
+        await new SaveFiscalProfileDraftCommandHandler(pfaService).Handle(new SaveFiscalProfileDraftCommand(2026, answers, null), default);
+        Result<FiscalProfileResponse> completed = await new CompleteFiscalProfileCommandHandler(db, pfaService)
+            .Handle(new CompleteFiscalProfileCommand(2026, answers, true, null), default);
+        completed.IsSuccess.ShouldBeTrue();
+
+        // PFA-ul nu poate folosi ruta contabilului.
+        (await new SaveStaffTaxInputsCommandHandler(db, pfaService)
+            .Handle(new SaveStaffTaxInputsCommand(FiscalProfileScope.Pfa, pfa.Id, 2026, new StaffTaxInputs(1, null, null, null), null), default))
+            .IsFailure.ShouldBeTrue();
+
+        FiscalProfileService staff = Service(db, contabil.Id);
+        StaffTaxInputsResponse shown = (await new GetStaffTaxInputsQueryHandler(staff)
+            .Handle(new GetStaffTaxInputsQuery(FiscalProfileScope.Accounting, pfa.Id, 2026), default)).Value;
+        shown.AskOtherIndependentNetAnnual.ShouldBeTrue();
+        shown.AskOtherIncomeCassInsured.ShouldBeTrue();
+        shown.AskCassOptInBase.ShouldBeFalse();
+
+        // O sumă pentru o întrebare la care PFA-ul a spus „Nu” nu se păstrează.
+        Result<StaffTaxInputsResponse> saved = await new SaveStaffTaxInputsCommandHandler(db, staff).Handle(
+            new SaveStaffTaxInputsCommand(FiscalProfileScope.Accounting, pfa.Id, 2026, new StaffTaxInputs(18_000, "yes", null, 30_000), shown.Revision),
+            default);
+        saved.IsSuccess.ShouldBeTrue();
+        saved.Value.OtherIndependentNetAnnual.ShouldBe(18_000);
+        saved.Value.OtherIncomeCassInsured.ShouldBe("yes");
+        saved.Value.CassOptInBase.ShouldBeNull();
+
+        // PFA-ul își editează profilul cu formularul, care nu are sumele: ele rămân.
+        FiscalProfileResponse current = (await new GetFiscalProfileQueryHandler(pfaService)
+            .Handle(new GetFiscalProfileQuery(FiscalProfileScope.Pfa, null, 2026), default)).Value;
+        Result<FiscalProfileResponse> edited = await new EditFiscalProfileCommandHandler(db, pfaService).Handle(
+            new EditFiscalProfileCommand(FiscalProfileScope.Pfa, null, 2026, answers with { TaxPaymentsMade = "yes" }, null, current.Revision),
+            default);
+        edited.IsSuccess.ShouldBeTrue();
+        PfaTaxProfile profile = await db.PfaTaxProfiles.SingleAsync(p => p.PfaRegistrationId == pfa.Id);
+        FiscalProfileAnswers stored = FiscalProfileService.Deserialize(profile.AnswersJson);
+        stored.OtherIndependentNetAnnual.ShouldBe(18_000);
+        stored.OtherIncomeCassInsured.ShouldBe("yes");
+
+        // „Nu” la activitățile independente șterge și netul lor.
+        await new EditFiscalProfileCommandHandler(db, pfaService).Handle(
+            new EditFiscalProfileCommand(FiscalProfileScope.Pfa, null, 2026, answers with { OtherIndependent = "no", OtherIndependentRecords = null }, null, profile.Revision),
+            default);
+        FiscalProfileService.Deserialize((await db.PfaTaxProfiles.SingleAsync(p => p.PfaRegistrationId == pfa.Id)).AnswersJson)
+            .OtherIndependentNetAnnual.ShouldBeNull();
     }
 
     // ── Reamintiri ───────────────────────────────────────────────────────────

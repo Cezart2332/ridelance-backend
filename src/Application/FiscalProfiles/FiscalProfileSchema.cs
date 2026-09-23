@@ -10,7 +10,6 @@ public static class FiscalProfileSchema
 {
     public const string Yes = "yes";
     public const string No = "no";
-    public const string Unknown = "unknown";
 
     public const string ChooseAnswer = "Alege un răspuns.";
     public const string FillDate = "Completează data.";
@@ -59,16 +58,10 @@ public static class FiscalProfileSchema
 
         new("otherIndependent", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.OtherIndependent),
         new("otherIndependentRecords", 3, QuestionKind.SingleChoice, YesNo, (a, _) => a.OtherIndependent == Yes, true, a => a.OtherIndependentRecords),
-
-        // Sumele de mai jos sunt opționale: PFA-ul poate să nu le știe, iar atunci le completează contabilul.
-        new("otherIndependentNetAnnual", 3, QuestionKind.Number, [], (a, _) => a.OtherIndependent == Yes, false, a => a.OtherIndependentNetAnnual),
         new("otherIncome", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.OtherIncome),
-        new("otherIncomeCassInsured", 3, QuestionKind.SingleChoice, [Yes, No, Unknown], (a, _) => a.OtherIncome == Yes, true, a => a.OtherIncomeCassInsured),
         new("taxPaymentsMade", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.TaxPaymentsMade),
         new("carriedLosses", 3, QuestionKind.SingleChoice, YesNo, (_, c) => c.AskCarriedLosses, true, a => a.CarriedLosses),
-        new("carriedLossesAmount", 3, QuestionKind.Number, [], (a, c) => c.AskCarriedLosses && a.CarriedLosses == Yes, false, a => a.CarriedLossesAmount),
         new("cassOptIn", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.CassOptIn),
-        new("cassOptInBase", 3, QuestionKind.Number, [], (a, _) => a.CassOptIn == Yes, false, a => a.CassOptInBase),
         new("casVoluntary", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.CasVoluntary),
         new("casVoluntaryBase", 3, QuestionKind.Number, [], (a, _) => a.CasVoluntary == Yes, true, a => a.CasVoluntaryBase),
         new("crossBorder", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.CrossBorder),
@@ -125,15 +118,44 @@ public static class FiscalProfileSchema
             PensionerSince = IsVisible("pensionerSince", a, conditions) ? a.PensionerSince : null,
             OtherIndependentRecords = IsVisible("otherIndependentRecords", a, conditions) ? a.OtherIndependentRecords : null,
             CarriedLosses = IsVisible("carriedLosses", a, conditions) ? a.CarriedLosses : null,
-            OtherIndependentNetAnnual = IsVisible("otherIndependentNetAnnual", a, conditions) ? a.OtherIndependentNetAnnual : null,
-            OtherIncomeCassInsured = IsVisible("otherIncomeCassInsured", a, conditions) ? a.OtherIncomeCassInsured : null,
-            CassOptInBase = IsVisible("cassOptInBase", a, conditions) ? a.CassOptInBase : null,
         };
 
-        // Suma pierderilor depinde de `carriedLosses`, care poate dispărea mai sus.
+        // Datele contabilului rămân doar cât PFA-ul spune „Da” la întrebarea de care țin.
         return a with
         {
-            CarriedLossesAmount = IsVisible("carriedLossesAmount", a, conditions) ? a.CarriedLossesAmount : null,
+            OtherIndependentNetAnnual = a.OtherIndependent == Yes ? a.OtherIndependentNetAnnual : null,
+            OtherIncomeCassInsured = a.OtherIncome == Yes ? a.OtherIncomeCassInsured : null,
+            CarriedLossesAmount = a.CarriedLosses == Yes ? a.CarriedLossesAmount : null,
+            CassOptInBase = a.CassOptIn == Yes ? a.CassOptInBase : null,
+        };
+    }
+
+    /// <summary>
+    /// Ce completează contabilul din evidența lui, pentru calculul taxelor: nu face parte din
+    /// formularul PFA-ului și nu se poate schimba prin el.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Key, Func<FiscalProfileAnswers, object?> Read)> StaffInputs =
+    [
+        ("otherIndependentNetAnnual", a => a.OtherIndependentNetAnnual),
+        ("otherIncomeCassInsured", a => a.OtherIncomeCassInsured),
+        ("carriedLossesAmount", a => a.CarriedLossesAmount),
+        ("cassOptInBase", a => a.CassOptInBase),
+    ];
+
+    /// <summary>
+    /// Răspunsurile trimise din formular, cu datele contabilului luate din ce e salvat: formularul
+    /// nu le are, deci nu le poate șterge sau suprascrie.
+    /// </summary>
+    public static FiscalProfileAnswers KeepStaffInputs(FiscalProfileAnswers incoming, FiscalProfileAnswers stored)
+    {
+        ArgumentNullException.ThrowIfNull(incoming);
+        ArgumentNullException.ThrowIfNull(stored);
+        return incoming with
+        {
+            OtherIndependentNetAnnual = stored.OtherIndependentNetAnnual,
+            OtherIncomeCassInsured = stored.OtherIncomeCassInsured,
+            CarriedLossesAmount = stored.CarriedLossesAmount,
+            CassOptInBase = stored.CassOptInBase,
         };
     }
 
@@ -196,7 +218,12 @@ public static class FiscalProfileSchema
             errors["casVoluntaryBase"] = "Suma trebuie să fie mai mare decât 0.";
         }
 
-        // Netul altor activități poate fi 0 (un an fără câștig); pierderea și baza CASS, nu.
+        if (answers.OtherIncomeCassInsured is string insured && insured is not (Yes or No))
+        {
+            errors["otherIncomeCassInsured"] = UnknownOption;
+        }
+
+        // Datele contabilului. Netul altor activități poate fi 0 (un an fără câștig); pierderea și baza CASS, nu.
         if (answers.OtherIndependentNetAnnual is decimal otherNet && (otherNet < 0 || otherNet > 10_000_000)
             && !errors.ContainsKey("otherIndependentNetAnnual"))
         {
@@ -240,6 +267,16 @@ public static class FiscalProfileSchema
             if (!string.Equals(oldValue, newValue, StringComparison.Ordinal))
             {
                 changes.Add(new FiscalProfileFieldChange(question.Key, oldValue, newValue));
+            }
+        }
+
+        foreach ((string key, Func<FiscalProfileAnswers, object?> read) in StaffInputs)
+        {
+            string? oldValue = Format(read(before));
+            string? newValue = Format(read(after));
+            if (!string.Equals(oldValue, newValue, StringComparison.Ordinal))
+            {
+                changes.Add(new FiscalProfileFieldChange(key, oldValue, newValue));
             }
         }
 

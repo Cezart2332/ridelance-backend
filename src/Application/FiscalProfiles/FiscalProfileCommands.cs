@@ -94,7 +94,10 @@ internal sealed class SaveFiscalProfileDraftCommandHandler(FiscalProfileService 
         }
 
         FiscalProfileConditions conditions = await service.ConditionsAsync(pfa.Value, profile, cancellationToken);
-        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(command.Answers ?? new FiscalProfileAnswers(), conditions);
+        // Datele completate de contabil nu vin din formular: rămân cele salvate.
+        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(
+            FiscalProfileSchema.KeepStaffInputs(command.Answers ?? new FiscalProfileAnswers(), FiscalProfileService.Deserialize(profile.AnswersJson)),
+            conditions);
         Dictionary<string, string> errors = FiscalProfileSchema.Validate(answers, conditions, requireAll: false);
         if (errors.Count > 0)
         {
@@ -151,7 +154,10 @@ internal sealed class CompleteFiscalProfileCommandHandler(IApplicationDbContext 
         }
 
         FiscalProfileConditions conditions = await service.ConditionsAsync(pfa.Value, profile, cancellationToken);
-        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(command.Answers ?? new FiscalProfileAnswers(), conditions);
+        // Datele completate de contabil nu vin din formular: rămân cele salvate.
+        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(
+            FiscalProfileSchema.KeepStaffInputs(command.Answers ?? new FiscalProfileAnswers(), FiscalProfileService.Deserialize(profile.AnswersJson)),
+            conditions);
         Dictionary<string, string> errors = FiscalProfileSchema.Validate(answers, conditions, requireAll: true);
         if (!command.Confirmed)
         {
@@ -268,7 +274,10 @@ internal sealed class EditFiscalProfileCommandHandler(IApplicationDbContext cont
         }
 
         FiscalProfileConditions conditions = await service.ConditionsAsync(pfa.Value, profile, cancellationToken);
-        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(command.Answers ?? new FiscalProfileAnswers(), conditions);
+        // Datele completate de contabil nu vin din formular: rămân cele salvate.
+        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(
+            FiscalProfileSchema.KeepStaffInputs(command.Answers ?? new FiscalProfileAnswers(), FiscalProfileService.Deserialize(profile.AnswersJson)),
+            conditions);
 
         // Un profil completat rămâne complet după editare; o ciornă poate rămâne parțială.
         Dictionary<string, string> errors = FiscalProfileSchema.Validate(

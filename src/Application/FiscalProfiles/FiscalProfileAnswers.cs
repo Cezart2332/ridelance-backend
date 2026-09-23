@@ -6,9 +6,9 @@ namespace Application.FiscalProfiles;
 /// </summary>
 /// <remarks>
 /// Toate sunt opționale aici, pentru că ciorna se salvează la fiecare pas. Ce e obligatoriu și
-/// când decide <see cref="FiscalProfileSchema"/>. Sumele pe care PFA-ul poate să nu le știe
-/// (netul altor activități, pierderile reportate, baza CASS aleasă) sunt opționale: goale, le
-/// completează contabilul în același formular.
+/// când decide <see cref="FiscalProfileSchema"/>. Nicio întrebare nu are varianta „Nu știu”.
+/// Câmpurile marcate „contabil” nu sunt în formular: le completează contabilul din evidența lui
+/// (<see cref="StaffTaxInputs"/>), iar salvarea formularului nu le atinge.
 /// </remarks>
 public sealed record FiscalProfileAnswers
 {
@@ -35,23 +35,20 @@ public sealed record FiscalProfileAnswers
     public string? OtherIndependent { get; init; }
     public string? OtherIndependentRecords { get; init; }
 
-    /// <summary>Netul estimat pe anul fiscal din celelalte activități independente, lei. Gol = îl completează contabilul.</summary>
+    /// <summary>Contabil: netul pe anul fiscal din celelalte activități independente, lei.</summary>
     public decimal? OtherIndependentNetAnnual { get; init; }
     public string? OtherIncome { get; init; }
 
-    /// <summary>
-    /// Plătește deja CASS pentru veniturile din chirii, dividende, investiții: <c>yes</c>, <c>no</c> sau
-    /// <c>unknown</c> (îl lămurește contabilul). Singura întrebare cu „Nu știu”.
-    /// </summary>
+    /// <summary>Contabil: plătește deja CASS pentru chirii, dividende, investiții (<c>yes</c> / <c>no</c>).</summary>
     public string? OtherIncomeCassInsured { get; init; }
     public string? TaxPaymentsMade { get; init; }
     public string? CarriedLosses { get; init; }
 
-    /// <summary>Pierderea reportată care se mai poate recupera în anul fiscal, lei. Gol = o completează contabilul.</summary>
+    /// <summary>Contabil: pierderea reportată care se mai poate recupera în anul fiscal, lei.</summary>
     public decimal? CarriedLossesAmount { get; init; }
     public string? CassOptIn { get; init; }
 
-    /// <summary>Baza pe care a optat să plătească CASS, lei pe an. Gol = o completează contabilul.</summary>
+    /// <summary>Contabil: baza pe care PFA-ul a optat să plătească CASS, lei pe an.</summary>
     public decimal? CassOptInBase { get; init; }
     public string? CasVoluntary { get; init; }
 

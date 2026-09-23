@@ -28,6 +28,12 @@ internal sealed class FiscalProfileEndpoints : IEndpoint
 
     public sealed record PriorPeriodRequest(IReadOnlyList<PriorPeriodMonthInput>? Months);
 
+    public sealed record StaffTaxInputsRequest(
+        decimal? OtherIndependentNetAnnual,
+        string? OtherIncomeCassInsured,
+        decimal? CarriedLossesAmount,
+        decimal? CassOptInBase);
+
     public sealed record UpdateTaskRequest(string? State, string? CallOutcome, DateTime? RescheduledToUtc, bool AssignToMe);
 
     private const string Tag = "Fiscal profiles";
@@ -230,6 +236,37 @@ internal sealed class FiscalProfileEndpoints : IEndpoint
         {
             Result<EstimatedTaxesResponse> result =
                 await handler.Handle(new RequestEstimateRecalculationCommand(scope, pfaId, year), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(permission)
+        .WithTags(Tag);
+
+        app.MapGet($"{prefix}/{{pfaId:guid}}/fiscal-profiles/{{year:int}}/staff-inputs", async (
+            Guid pfaId,
+            int year,
+            IQueryHandler<GetStaffTaxInputsQuery, StaffTaxInputsResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<StaffTaxInputsResponse> result = await handler.Handle(new GetStaffTaxInputsQuery(scope, pfaId, year), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(permission)
+        .WithTags(Tag);
+
+        app.MapPut($"{prefix}/{{pfaId:guid}}/fiscal-profiles/{{year:int}}/staff-inputs", async (
+            Guid pfaId,
+            int year,
+            StaffTaxInputsRequest request,
+            HttpContext http,
+            ICommandHandler<SaveStaffTaxInputsCommand, StaffTaxInputsResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            var inputs = new StaffTaxInputs(
+                request.OtherIndependentNetAnnual, request.OtherIncomeCassInsured, request.CarriedLossesAmount, request.CassOptInBase);
+            Result<StaffTaxInputsResponse> result =
+                await handler.Handle(new SaveStaffTaxInputsCommand(scope, pfaId, year, inputs, IfMatch(http)), cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .RequireAuthorization()
