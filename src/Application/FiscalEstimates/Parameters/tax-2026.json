@@ -9,5 +9,6 @@
   "cas_rate": 0.25,
   "cass_rate": 0.10,
   "income_tax_rate": 0.10,
+  "carried_loss_offset_limit": 0.70,
   "source": "https://static.anaf.ro/static/10/Cluj/cj_DU_activ_indep_22apr2026.pdf"
 }

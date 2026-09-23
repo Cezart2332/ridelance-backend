@@ -14,7 +14,9 @@ public sealed record TaxYearParameters(
     [property: JsonPropertyName("cas_rate")] decimal CasRate,
     [property: JsonPropertyName("cass_rate")] decimal CassRate,
     [property: JsonPropertyName("income_tax_rate")] decimal IncomeTaxRate,
-    [property: JsonPropertyName("source")] string Source);
+    [property: JsonPropertyName("source")] string Source,
+    // Cât din netul anului pot acoperi pierderile reportate (70% din 2023). De confirmat de specialist.
+    [property: JsonPropertyName("carried_loss_offset_limit")] decimal CarriedLossOffsetLimit);
 
 public static class TaxComponents
 {
@@ -72,10 +74,22 @@ public sealed record ProfileFlags
 
     public bool StudentCassExempt { get; init; }
     public bool OtherIncome { get; init; }
+
+    /// <summary>Plătește deja CASS pentru celelalte venituri: <c>true</c> / <c>false</c>, <c>null</c> = nu știm.</summary>
+    public bool? OtherIncomeCassInsured { get; init; }
     public bool OtherIndependent { get; init; }
+
+    /// <summary>Netul anual al celorlalte activități independente, când e cunoscut.</summary>
+    public decimal? OtherIndependentNetAnnual { get; init; }
     public decimal? CasVoluntaryBase { get; init; }
     public bool CassOptIn { get; init; }
+
+    /// <summary>Baza CASS aleasă prin opțiune, când e cunoscută.</summary>
+    public decimal? CassOptInBase { get; init; }
     public bool CarriedLosses { get; init; }
+
+    /// <summary>Pierderea reportată recuperabilă în anul fiscal, când e cunoscută.</summary>
+    public decimal? CarriedLossesAmount { get; init; }
     public bool CrossBorder { get; init; }
     public bool TaxPaymentsMade { get; init; }
     public bool PendingCorrection { get; init; }

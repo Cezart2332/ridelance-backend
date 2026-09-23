@@ -10,6 +10,7 @@ public static class FiscalProfileSchema
 {
     public const string Yes = "yes";
     public const string No = "no";
+    public const string Unknown = "unknown";
 
     public const string ChooseAnswer = "Alege un răspuns.";
     public const string FillDate = "Completează data.";
@@ -58,10 +59,16 @@ public static class FiscalProfileSchema
 
         new("otherIndependent", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.OtherIndependent),
         new("otherIndependentRecords", 3, QuestionKind.SingleChoice, YesNo, (a, _) => a.OtherIndependent == Yes, true, a => a.OtherIndependentRecords),
+
+        // Sumele de mai jos sunt opționale: PFA-ul poate să nu le știe, iar atunci le completează contabilul.
+        new("otherIndependentNetAnnual", 3, QuestionKind.Number, [], (a, _) => a.OtherIndependent == Yes, false, a => a.OtherIndependentNetAnnual),
         new("otherIncome", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.OtherIncome),
+        new("otherIncomeCassInsured", 3, QuestionKind.SingleChoice, [Yes, No, Unknown], (a, _) => a.OtherIncome == Yes, true, a => a.OtherIncomeCassInsured),
         new("taxPaymentsMade", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.TaxPaymentsMade),
         new("carriedLosses", 3, QuestionKind.SingleChoice, YesNo, (_, c) => c.AskCarriedLosses, true, a => a.CarriedLosses),
+        new("carriedLossesAmount", 3, QuestionKind.Number, [], (a, c) => c.AskCarriedLosses && a.CarriedLosses == Yes, false, a => a.CarriedLossesAmount),
         new("cassOptIn", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.CassOptIn),
+        new("cassOptInBase", 3, QuestionKind.Number, [], (a, _) => a.CassOptIn == Yes, false, a => a.CassOptInBase),
         new("casVoluntary", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.CasVoluntary),
         new("casVoluntaryBase", 3, QuestionKind.Number, [], (a, _) => a.CasVoluntary == Yes, true, a => a.CasVoluntaryBase),
         new("crossBorder", 3, QuestionKind.SingleChoice, YesNo, Always, true, a => a.CrossBorder),
@@ -91,6 +98,7 @@ public static class FiscalProfileSchema
             OtherIndependent = Clean(answers.OtherIndependent),
             OtherIndependentRecords = Clean(answers.OtherIndependentRecords),
             OtherIncome = Clean(answers.OtherIncome),
+            OtherIncomeCassInsured = Clean(answers.OtherIncomeCassInsured),
             TaxPaymentsMade = Clean(answers.TaxPaymentsMade),
             CarriedLosses = Clean(answers.CarriedLosses),
             CassOptIn = Clean(answers.CassOptIn),
@@ -107,7 +115,7 @@ public static class FiscalProfileSchema
             PriorDocs = IsVisible("priorDocs", a, conditions) ? a.PriorDocs : null,
         };
 
-        return a with
+        a = a with
         {
             PriorDocsLocation = IsVisible("priorDocsLocation", a, conditions) ? a.PriorDocsLocation : null,
             EmploymentStart = IsVisible("employmentStart", a, conditions) ? a.EmploymentStart : null,
@@ -117,6 +125,15 @@ public static class FiscalProfileSchema
             PensionerSince = IsVisible("pensionerSince", a, conditions) ? a.PensionerSince : null,
             OtherIndependentRecords = IsVisible("otherIndependentRecords", a, conditions) ? a.OtherIndependentRecords : null,
             CarriedLosses = IsVisible("carriedLosses", a, conditions) ? a.CarriedLosses : null,
+            OtherIndependentNetAnnual = IsVisible("otherIndependentNetAnnual", a, conditions) ? a.OtherIndependentNetAnnual : null,
+            OtherIncomeCassInsured = IsVisible("otherIncomeCassInsured", a, conditions) ? a.OtherIncomeCassInsured : null,
+            CassOptInBase = IsVisible("cassOptInBase", a, conditions) ? a.CassOptInBase : null,
+        };
+
+        // Suma pierderilor depinde de `carriedLosses`, care poate dispărea mai sus.
+        return a with
+        {
+            CarriedLossesAmount = IsVisible("carriedLossesAmount", a, conditions) ? a.CarriedLossesAmount : null,
         };
     }
 
@@ -177,6 +194,23 @@ public static class FiscalProfileSchema
         if (answers.CasVoluntaryBase is decimal casBase && (casBase <= 0 || casBase > 10_000_000) && !errors.ContainsKey("casVoluntaryBase"))
         {
             errors["casVoluntaryBase"] = "Suma trebuie să fie mai mare decât 0.";
+        }
+
+        // Netul altor activități poate fi 0 (un an fără câștig); pierderea și baza CASS, nu.
+        if (answers.OtherIndependentNetAnnual is decimal otherNet && (otherNet < 0 || otherNet > 10_000_000)
+            && !errors.ContainsKey("otherIndependentNetAnnual"))
+        {
+            errors["otherIndependentNetAnnual"] = "Suma nu poate fi negativă. Dacă ai avut pierdere, scrie 0.";
+        }
+
+        if (answers.CarriedLossesAmount is decimal losses && (losses <= 0 || losses > 10_000_000) && !errors.ContainsKey("carriedLossesAmount"))
+        {
+            errors["carriedLossesAmount"] = "Suma trebuie să fie mai mare decât 0.";
+        }
+
+        if (answers.CassOptInBase is decimal cassBase && (cassBase <= 0 || cassBase > 10_000_000) && !errors.ContainsKey("cassOptInBase"))
+        {
+            errors["cassOptInBase"] = "Suma trebuie să fie mai mare decât 0.";
         }
 
         if (answers.CorrectionDetails?.Length > 2000)
