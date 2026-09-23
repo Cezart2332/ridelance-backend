@@ -88,7 +88,9 @@ internal sealed class RecalculateEstimatedTaxesCommandHandler(
 
         var yearEnd = new DateOnly(profile.TaxYear, 12, 31);
         int weeksLeft = Math.Max(1, (int)Math.Ceiling(Math.Max(0, yearEnd.DayNumber - snapshot.AsOf.DayNumber) / 7m));
-        var input = new TaxInput(projection, flags, snapshot.RecordedTaxPayments, profile.ExistingReserve, weeksLeft);
+        // „Am deja pus deoparte” nu mai apare în card: o sumă salvată înainte nu se mai scade pe
+        // ascuns. Se scad doar plățile înregistrate de contabil.
+        var input = new TaxInput(projection, flags, snapshot.RecordedTaxPayments, null, weeksLeft);
 
         TaxResult result = engine.Calculate(input, parameters.For(profile.TaxYear));
 
