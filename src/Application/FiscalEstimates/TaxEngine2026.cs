@@ -65,6 +65,11 @@ public sealed class TaxEngine2026 : ITaxEngine
         }
 
         var warnings = new List<string>();
+        if (projection.UncoveredPeriod is not null)
+        {
+            warnings.Add(TaxWarnings.CoverageGap);
+        }
+
         ComponentResult cas = Cas(n, flags, parameters, warnings);
         (ComponentResult cass, decimal cassDeductible) = Cass(n, flags, parameters);
         ComponentResult tax = IncomeTax(n, cas, cassDeductible, flags, parameters);

@@ -1,6 +1,7 @@
 using Application.Abstractions.Data;
 using Application.FiscalProfiles;
 using Domain.Expenses;
+using Domain.FiscalEstimates;
 using Domain.FiscalProfiles;
 using Domain.PfaRegistrations;
 using Domain.Taxes;
@@ -49,13 +50,24 @@ internal sealed class FinancialSnapshotProvider(IApplicationDbContext context) :
             .Select(g => new { Month = g.Key, Amount = g.Sum(e => e.AmountRon ?? 0m) })
             .ToListAsync(cancellationToken);
 
-        var months = Enumerable.Range(1, 12)
+        Dictionary<int, PfaPriorPeriodMonth> prior = await context.PfaPriorPeriodMonths
+            .AsNoTracking()
+            .Where(m => m.PfaRegistrationId == pfa.Id && m.Year == year)
+            .ToDictionaryAsync(m => m.Month, cancellationToken);
+
+        var platformMonths = Enumerable.Range(1, 12)
             .Select(month => new MonthFigures(
                 month,
                 // O singură înregistrare pe lună: venitul din platforme (net de comision) sau, dacă
                 // contabilul a trecut altfel împărțirea cash/card, totalul acela — niciodată amândouă.
                 incomes.Where(i => i.Month == month).Sum(i => i.ComputeVenitTotal()),
                 expenses.Where(e => e.Month == month).Sum(e => e.Amount)))
+            .ToList();
+
+        // Luna trecută de contabil pentru perioada de dinainte de RIDElance e totalul ei: înlocuiește
+        // ce avem din platforme, nu se adună peste.
+        var months = platformMonths
+            .Select(m => prior.TryGetValue(m.Month, out PfaPriorPeriodMonth? p) ? new MonthFigures(m.Month, p.Income, p.Expenses) : m)
             .ToList();
 
         decimal recordedPayments = await context.TaxObligations
@@ -66,23 +78,11 @@ internal sealed class FinancialSnapshotProvider(IApplicationDbContext context) :
                 && AnnualTaxTypes.Contains(o.Type))
             .SumAsync(o => o.AmountDue, cancellationToken);
 
-        DateTime? accessUtc = profile.AccessGrantedAtUtc ?? pfa.OnboardingCompletedAtUtc;
-        DateOnly? accessOn = accessUtc is DateTime at ? DateOnly.FromDateTime(FiscalProfileService.ToRomania(at)) : null;
-
-        // De când trebuie acoperit anul: 1 ianuarie sau înființarea, dacă e mai târziu. Un PFA
-        // înființat prin noi, fără dată cunoscută, n-are activitate înainte de acces.
-        DateOnly requiredFrom = yearStart;
-        if (profile.PfaRegisteredOn is DateOnly registered && registered > yearStart)
-        {
-            requiredFrom = registered;
-        }
-        else if (profile.PfaRegisteredOn is null && pfa.PfaSource != PfaSource.Existing && accessOn is DateOnly a && a > yearStart)
-        {
-            requiredFrom = a;
-        }
+        DateOnly? accessOn = AccessOn(pfa, profile);
+        DateOnly requiredFrom = RequiredFrom(pfa, profile, accessOn);
 
         // De când avem date: accesul în RIDElance sau prima lună cu încasări, oricare e mai devreme.
-        int? firstMonthWithData = months.Where(m => m.Income > 0).Select(m => (int?)m.Month).FirstOrDefault();
+        int? firstMonthWithData = platformMonths.Where(m => m.Income > 0).Select(m => (int?)m.Month).FirstOrDefault();
         DateOnly? coveredFrom = (accessOn, firstMonthWithData) switch
         {
             (DateOnly acc, int m) => Min(acc, new DateOnly(year, m, 1)),
@@ -95,7 +95,56 @@ internal sealed class FinancialSnapshotProvider(IApplicationDbContext context) :
             coveredFrom = yearStart;
         }
 
+        // Lunile trecute de contabil acoperă anul înapoi, cât sunt una după alta: o lună sărită
+        // rămâne neacoperită și se estimează din medie.
+        if (coveredFrom is null && prior.Count > 0)
+        {
+            coveredFrom = new DateOnly(year, prior.Keys.Max(), 1).AddMonths(1);
+        }
+
+        if (coveredFrom is DateOnly c)
+        {
+            if (c.Day > 1 && prior.ContainsKey(c.Month))
+            {
+                c = new DateOnly(year, c.Month, 1);
+            }
+
+            while (c > requiredFrom && c.Month > 1 && c.Day == 1 && prior.ContainsKey(c.Month - 1))
+            {
+                c = c.AddMonths(-1);
+            }
+
+            coveredFrom = c;
+        }
+
         return new FinancialSnapshot(Guid.NewGuid(), effectiveAsOf, year, requiredFrom, coveredFrom, months, recordedPayments);
+    }
+
+    /// <summary>Ziua în care PFA-ul a intrat în RIDElance (după ora României); <c>null</c> = necunoscută.</summary>
+    internal static DateOnly? AccessOn(PfaRegistration pfa, PfaTaxProfile profile)
+    {
+        DateTime? accessUtc = profile.AccessGrantedAtUtc ?? pfa.OnboardingCompletedAtUtc;
+        return accessUtc is DateTime at ? DateOnly.FromDateTime(FiscalProfileService.ToRomania(at)) : null;
+    }
+
+    /// <summary>
+    /// De când trebuie acoperit anul: 1 ianuarie sau înființarea, dacă e mai târziu. Un PFA
+    /// înființat prin noi, fără dată cunoscută, n-are activitate înainte de acces.
+    /// </summary>
+    internal static DateOnly RequiredFrom(PfaRegistration pfa, PfaTaxProfile profile, DateOnly? accessOn)
+    {
+        var yearStart = new DateOnly(profile.TaxYear, 1, 1);
+        if (profile.PfaRegisteredOn is DateOnly registered && registered > yearStart)
+        {
+            return registered;
+        }
+
+        if (profile.PfaRegisteredOn is null && pfa.PfaSource != PfaSource.Existing && accessOn is DateOnly a && a > yearStart)
+        {
+            return a;
+        }
+
+        return yearStart;
     }
 
     private static DateOnly Min(DateOnly a, DateOnly b) => a < b ? a : b;

@@ -96,7 +96,10 @@ internal sealed class GetMessagesQueryHandler(IApplicationDbContext context)
                 m.Sender.Role.ToString(),
                 m.Content,
                 m.SentAtUtc,
-                m.IsRead))
+                m.IsRead,
+                m.AttachmentFileName == null
+                    ? null
+                    : new ChatAttachmentDto(m.AttachmentFileName, m.AttachmentContentType ?? "application/octet-stream", m.AttachmentSize ?? 0)))
             .ToListAsync(cancellationToken);
 
         // Reverse to show oldest first in page

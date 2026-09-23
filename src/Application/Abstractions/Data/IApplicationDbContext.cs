@@ -50,6 +50,7 @@ public interface IApplicationDbContext
     DbSet<AdminCallTask> AdminCallTasks { get; }
     DbSet<FiscalEstimateRun> FiscalEstimateRuns { get; }
     DbSet<FiscalCalculation> FiscalCalculations { get; }
+    DbSet<PfaPriorPeriodMonth> PfaPriorPeriodMonths { get; }
     DbSet<PfaInternalNote> PfaInternalNotes { get; }
     DbSet<PfaActivityLog> PfaActivityLogs { get; }
     DbSet<OnboardingSectionApproval> OnboardingSectionApprovals { get; }

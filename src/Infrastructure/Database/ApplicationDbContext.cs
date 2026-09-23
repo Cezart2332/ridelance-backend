@@ -56,6 +56,7 @@ public sealed class ApplicationDbContext(
     public DbSet<AdminCallTask> AdminCallTasks { get; set; }
     public DbSet<FiscalEstimateRun> FiscalEstimateRuns { get; set; }
     public DbSet<FiscalCalculation> FiscalCalculations { get; set; }
+    public DbSet<PfaPriorPeriodMonth> PfaPriorPeriodMonths { get; set; }
     public DbSet<PfaInternalNote> PfaInternalNotes { get; set; }
     public DbSet<PfaActivityLog> PfaActivityLogs { get; set; }
     public DbSet<OnboardingSectionApproval> OnboardingSectionApprovals { get; set; }

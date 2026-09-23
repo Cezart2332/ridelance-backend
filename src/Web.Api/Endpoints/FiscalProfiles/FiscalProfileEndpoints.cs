@@ -26,6 +26,8 @@ internal sealed class FiscalProfileEndpoints : IEndpoint
 
     public sealed record ExistingReserveRequest(decimal? Amount);
 
+    public sealed record PriorPeriodRequest(IReadOnlyList<PriorPeriodMonthInput>? Months);
+
     public sealed record UpdateTaskRequest(string? State, string? CallOutcome, DateTime? RescheduledToUtc, bool AssignToMe);
 
     private const string Tag = "Fiscal profiles";
@@ -228,6 +230,34 @@ internal sealed class FiscalProfileEndpoints : IEndpoint
         {
             Result<EstimatedTaxesResponse> result =
                 await handler.Handle(new RequestEstimateRecalculationCommand(scope, pfaId, year), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(permission)
+        .WithTags(Tag);
+
+        app.MapGet($"{prefix}/{{pfaId:guid}}/prior-period/{{year:int}}", async (
+            Guid pfaId,
+            int year,
+            IQueryHandler<GetPriorPeriodQuery, PriorPeriodResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<PriorPeriodResponse> result = await handler.Handle(new GetPriorPeriodQuery(scope, pfaId, year), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission(permission)
+        .WithTags(Tag);
+
+        app.MapPut($"{prefix}/{{pfaId:guid}}/prior-period/{{year:int}}", async (
+            Guid pfaId,
+            int year,
+            PriorPeriodRequest request,
+            ICommandHandler<SavePriorPeriodCommand, PriorPeriodResponse> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<PriorPeriodResponse> result =
+                await handler.Handle(new SavePriorPeriodCommand(scope, pfaId, year, request.Months ?? []), cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .RequireAuthorization()

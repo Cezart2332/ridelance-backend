@@ -197,6 +197,7 @@ public static class DependencyInjection
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
 
         services.AddScoped<IWebPushService, WebPushService>();
+        services.AddScoped<Infrastructure.Chat.ChatMessageNotifier>();
 
         return services;
     }

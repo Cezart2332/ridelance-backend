@@ -54,6 +54,9 @@ public static class TaxReasons
 public static class TaxWarnings
 {
     public const string CasThresholdNear = "CAS_THRESHOLD_NEAR";
+
+    /// <summary>O perioadă fără date a fost estimată din media săptămânilor cunoscute.</summary>
+    public const string CoverageGap = "COVERAGE_GAP";
 }
 
 /// <summary>Flagurile din profilul fiscal care schimbă calculul (spec §5). Cumulative, per contribuție.</summary>
@@ -81,6 +84,8 @@ public sealed record ProfileFlags
 /// <summary>
 /// Netul anual estimat, sau de ce nu se poate estima. Vine din <see cref="IncomeProjector"/>.
 /// </summary>
+/// <param name="UncoveredPeriod">Perioada fără date, estimată din medie („01.01.2026 – 30.04.2026”); <c>null</c> = acoperire completă.</param>
+/// <param name="UncoveredWeeks">Câte săptămâni are perioada fără date.</param>
 public sealed record IncomeProjection(
     decimal? NetAnnualEstimated,
     string? UnavailableReason,
@@ -88,7 +93,9 @@ public sealed record IncomeProjection(
     decimal NetRealized,
     decimal? WeeklyAverage,
     decimal WeeksUsed,
-    decimal WeeksRemaining);
+    decimal WeeksRemaining,
+    string? UncoveredPeriod = null,
+    decimal UncoveredWeeks = 0);
 
 /// <summary>Tot ce intră în motor, imutabil. Nicio dată nu se citește din afara lui.</summary>
 public sealed record TaxInput(
