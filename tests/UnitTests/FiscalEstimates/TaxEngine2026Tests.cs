@@ -298,6 +298,70 @@ public sealed class TaxEngine2026Tests
         C(Run(60_000, new ProfileFlags { CassOptIn = true }), TaxComponents.Cass).ReasonCode.ShouldBe(TaxReasons.CassOptIn);
     }
 
+    [Fact]
+    public void Toate_de_clarificat_inseamna_rezerva_de_clarificat_nu_date_insuficiente()
+    {
+        TaxResult r = Run(60_000, new ProfileFlags { OtherIndependent = true });
+        r.Reserve.Status.ShouldBe(TaxStatuses.RequiresClarification);
+        r.Reserve.Total.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Netul_altor_activitati_intra_in_plafonul_CAS()
+    {
+        // PFA 30.000 + alte activități 30.000 = 60.000 ⇒ CAS pe 12 salarii, CASS doar pe profitul PFA.
+        TaxResult r = Run(30_000, new ProfileFlags { OtherIndependent = true, OtherIndependentNetAnnual = 30_000 });
+        C(r, TaxComponents.Cas).Amount.ShouldBe(12_150);
+        C(r, TaxComponents.Cass).Amount.ShouldBe(3_000);
+        C(r, TaxComponents.IncomeTax).Amount.ShouldBe(1_485);
+        r.Reserve.Status.ShouldBe(TaxStatuses.Estimated);
+    }
+
+    [Fact]
+    public void Cu_alte_activitati_peste_prag_nu_se_completeaza_CASS_la_minim()
+    {
+        TaxResult r = Run(20_000, new ProfileFlags { OtherIndependent = true, OtherIndependentNetAnnual = 10_000 });
+        C(r, TaxComponents.Cass).Amount.ShouldBe(2_000);
+        C(r, TaxComponents.Cass).Breakdown["branch"].ShouldBe("combined");
+        C(r, TaxComponents.Cas).Amount.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(true, 2_000)]
+    [InlineData(false, 2_430)]
+    public void CASS_pe_alte_venituri_raspuns_cunoscut(bool insured, int cass)
+    {
+        C(Run(20_000, new ProfileFlags { OtherIncome = true, OtherIncomeCassInsured = insured }), TaxComponents.Cass)
+            .Amount.ShouldBe(cass);
+    }
+
+    [Fact]
+    public void CASS_pe_alte_venituri_necunoscut_cere_clarificare()
+    {
+        ComponentResult cass = C(Run(20_000, new ProfileFlags { OtherIncome = true }), TaxComponents.Cass);
+        cass.Status.ShouldBe(TaxStatuses.RequiresClarification);
+        cass.MissingInputs.ShouldBe(["otherIncomeCassInsured"]);
+    }
+
+    [Theory]
+    [InlineData(24_300, 2_430)]
+    [InlineData(50_000, 5_000)]
+    public void Optiunea_CASS_plateste_maximul_dintre_baza_aleasa_si_profit(int optInBase, int cass)
+    {
+        // Net 10.000: pe profit ar fi minimul, 2.430.
+        C(Run(10_000, new ProfileFlags { CassOptIn = true, CassOptInBase = optInBase }), TaxComponents.Cass).Amount.ShouldBe(cass);
+    }
+
+    [Theory]
+    [InlineData(5_000, 1_300)]
+    [InlineData(30_000, 400)]
+    public void Pierderile_reportate_scad_din_baza_impozitului_in_limita_a_70_la_suta(int losses, int tax)
+    {
+        // Net 20.000: CAS 0, CASS deductibilă 2.000; pierderea acoperă cel mult 14.000.
+        C(Run(20_000, new ProfileFlags { CarriedLosses = true, CarriedLossesAmount = losses }), TaxComponents.IncomeTax)
+            .Amount.ShouldBe(tax);
+    }
+
     private static List<MonthFigures> Months(int from, int to, decimal income) =>
         Enumerable.Range(from, to - from + 1).Select(m => new MonthFigures(m, income, 0)).ToList();
 }

@@ -176,10 +176,13 @@ internal sealed class FiscalProfileService(
             PriorDocsLocation = null,
             TaxPaymentsMade = null,
             CassOptIn = null,
+            CassOptInBase = null,
             CasVoluntary = null,
             CasVoluntaryBase = null,
             SalaryAboveCassMin = null,
             CarriedLosses = null,
+            CarriedLossesAmount = null,
+            OtherIndependentNetAnnual = null,
             Notes = null,
         };
     }

@@ -47,9 +47,11 @@ public sealed class FiscalProfileTests
     // ── Schema ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Nicio_intrebare_nu_are_varianta_Nu_stiu_si_nu_se_intreaba_de_norma_de_venit()
+    public void Nu_stiu_doar_la_CASS_pe_alte_venituri_si_nu_se_intreaba_de_norma_de_venit()
     {
-        foreach (FiscalProfileSchema.Question question in FiscalProfileSchema.Questions)
+        // Singura excepție: dacă plătește deja CASS pe chirii/dividende — acolo „Nu știu” trimite
+        // întrebarea la contabil. Restul întrebărilor au doar răspunsuri pe care PFA-ul le știe.
+        foreach (FiscalProfileSchema.Question question in FiscalProfileSchema.Questions.Where(q => q.Key != "otherIncomeCassInsured"))
         {
             question.Options.ShouldNotContain(o => o.Contains("stiu", StringComparison.OrdinalIgnoreCase) || o == "unknown");
             question.Key.ShouldNotContain("norma", Case.Insensitive);
