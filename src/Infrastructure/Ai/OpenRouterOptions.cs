@@ -20,12 +20,11 @@ public sealed class OpenRouterOptions
     public string? ReasoningEffort { get; set; } = "low";
 
     /// <summary>
-    /// Același lucru, pentru citirea documentelor: <c>high</c>, pentru cifre lungi, adrese și date
-    /// citite corect. Actele din dosar se citesc în fundal (<c>DocumentAiVerificationJob</c>);
-    /// doar scanarea talonului, la adăugarea mașinii, așteaptă răspunsul — câteva secunde în plus.
-    /// Costul în plus e de ordinul câtorva dolari pe lună.
+    /// Același lucru, pentru citirea documentelor: <c>low</c>. A stat o vreme pe <c>high</c> cât părea
+    /// că modelul citește prost; cauza era promptul (interzicea CNP-ul, seria și numărul), nu gânditul.
+    /// Se poate ridica din configurare (<c>OpenRouter__DocumentReasoningEffort</c>), fără cod.
     /// </summary>
-    public string? DocumentReasoningEffort { get; set; } = "high";
+    public string? DocumentReasoningEffort { get; set; } = "low";
 
     public string BaseUrl { get; set; } = "https://openrouter.ai/api/v1";
 

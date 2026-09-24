@@ -19,7 +19,7 @@ public sealed record DocumentSummary(
     string? AiDetectedType,
     DateTime? AiExtractedExpiresAtUtc,
     /// <summary>
-    /// Un câmp citit prin OCR n-a trecut validatorul determinist (ex. CAEN ≠ 4939) sau are
+    /// Un câmp citit prin OCR n-a trecut validatorul determinist (ex. CAEN ≠ 4933) sau are
     /// încredere prea mică. Documentul rămâne acceptat, dar intră în coada adminului.
     /// </summary>
     bool AiRequiresManualReview,

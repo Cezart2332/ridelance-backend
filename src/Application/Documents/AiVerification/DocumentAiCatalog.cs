@@ -49,7 +49,7 @@ public static class DocumentAiCatalog
 
     private static readonly ExtractedFieldSpec[] IdentityCardFields =
     [
-        new("date_of_birth", "Data nașterii titularului", ExtractedFieldType.Date, Required: false, Sensitive: true),
+        new("date_of_birth", "Data nașterii titularului. Dacă nu e tipărită separat, o iei din CNP: cifrele 2–7 sunt AALLZZ, iar prima cifră dă secolul (1/2 = 1900–1999, 3/4 = 1800–1899, 5/6 = 2000–2099). Ex.: 5010519… = 2001-05-19", ExtractedFieldType.Date, Required: false, Sensitive: true),
         new("full_name", "Numele și prenumele titularului, împreună", ExtractedFieldType.Text, Required: false),
         new("nume", "Numele de familie, separat", ExtractedFieldType.Text, Required: false),
         new("prenume", "Prenumele, separat", ExtractedFieldType.Text, Required: false),
@@ -155,7 +155,7 @@ public static class DocumentAiCatalog
                 // Județul sediului, separat de adresa completă: de aici se precompletează agenția
                 // ARR la care se depune dosarul, iar un text liber n-ar fi putut alimenta un select.
                 new("judet", "Județul sediului profesional, fără prefixul „jud.”", ExtractedFieldType.Text, Required: false),
-                new("caen_codes", "Toate codurile CAEN ale obiectului de activitate, separate prin virgulă, cel principal primul (ex. 4939)", ExtractedFieldType.Caen, Required: true),
+                new("caen_codes", "Toate codurile CAEN ale obiectului de activitate, separate prin virgulă, cel principal primul (ex. 4933)", ExtractedFieldType.Caen, Required: true),
             ],
             // Data de pe certificat e a eliberării: un certificat de înregistrare nu expiră.
             IssueDateOnly: true),
@@ -166,7 +166,7 @@ public static class DocumentAiCatalog
             [
                 new("cui", "Codul unic de înregistrare (CUI/CIF), fără prefixul RO", ExtractedFieldType.Cui, Required: false),
                 new("registry_number", "Numărul de ordine în registrul comerțului (ex. F40/…/2024)", ExtractedFieldType.Text, Required: false),
-                new("caen_codes", "Toate codurile CAEN ale obiectului de activitate, separate prin virgulă, cel principal primul (ex. 4939)", ExtractedFieldType.Caen, Required: true),
+                new("caen_codes", "Toate codurile CAEN ale obiectului de activitate, separate prin virgulă, cel principal primul (ex. 4933)", ExtractedFieldType.Caen, Required: true),
                 new("authorized_activities", "Activitățile autorizate, cu denumirea lor, separate prin punct și virgulă", ExtractedFieldType.Text, Required: false),
                 new("professional_office", "Sediul profesional, ca text, exact cum apare pe certificat", ExtractedFieldType.Text, Required: false),
                 new("activity_location", "Unde se desfășoară activitatea: „la sediu”, „la terți” sau ambele, cum e menționat", ExtractedFieldType.Text, Required: false),
