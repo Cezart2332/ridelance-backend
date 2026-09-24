@@ -48,7 +48,7 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         var payload = new
         {
             model = config.Model,
-            reasoning = config.Reasoning,
+            reasoning = config.DocumentReasoning,
             temperature = 0,
             // Pentru PDF folosim OCR-ul nativ al modelului (Gemini), nu parserul extern OpenRouter.
             plugins = isPdf
