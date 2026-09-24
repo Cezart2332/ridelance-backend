@@ -20,8 +20,8 @@ public sealed class OpenRouterOptions
     public string? ReasoningEffort { get; set; } = "low";
 
     /// <summary>
-    /// Același lucru, pentru citirea documentelor. <c>high</c>: pe <c>low</c>, 3.8 Flash citea vizibil
-    /// mai prost decât 2.5 Flash. Actele din dosar se citesc în fundal (<c>DocumentAiVerificationJob</c>);
+    /// Același lucru, pentru citirea documentelor: <c>high</c>, pentru cifre lungi, adrese și date
+    /// citite corect. Actele din dosar se citesc în fundal (<c>DocumentAiVerificationJob</c>);
     /// doar scanarea talonului, la adăugarea mașinii, așteaptă răspunsul — câteva secunde în plus.
     /// Costul în plus e de ordinul câtorva dolari pe lună.
     /// </summary>
