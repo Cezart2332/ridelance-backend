@@ -123,7 +123,7 @@ public static class DependencyInjection
         services.AddHttpClient();
         services.AddScoped<IBoltService, BoltService>();
 
-        // AI (prevalidarea documentelor prin OpenRouter / Gemini)
+        // AI (prevalidarea documentelor prin OpenRouter / Gemini 3.8 Flash; modelul se poate schimba din OpenRouter__Model)
         services.Configure<OpenRouterOptions>(configuration.GetSection(OpenRouterOptions.SectionName));
         string? openRouterApiKey = configuration["OpenRouter:ApiKey"] ??
                                    Environment.GetEnvironmentVariable("OpenRouter__ApiKey");
