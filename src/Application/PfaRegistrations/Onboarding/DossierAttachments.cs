@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Dossiers;
 using Application.Abstractions.Services;
 using Domain.Documents;
+using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -15,7 +16,7 @@ internal static class DossierAttachments
 {
     /// <summary>
     /// Pentru fiecare cerință, cel mai recent document din categoriile acceptate. Nu judecă
-    /// statusul — asta o face <see cref="UnverifiedAsync"/> înainte, iar generarea se oprește acolo
+    /// statusul — asta o face <see cref="AwaitingValidationAsync"/> înainte, iar generarea se oprește acolo
     /// dacă vreun act nu e verificat de om.
     /// Ordinea rezultatului urmează ordinea cerințelor — așa iese dosarul cum îl vrea ARR-ul.
     /// Cerințele fără document încărcat sunt sărite.
@@ -77,20 +78,22 @@ internal static class DossierAttachments
         $"Dosarul se poate genera după ce echipa verifică toate actele. Încă în verificare: {string.Join(", ", labels)}.");
 
     /// <summary>
-    /// Actele care ar intra în dosar, dar n-au fost încă verificate de un om — după etichetă.
-    /// Listă goală înseamnă că dosarul se poate genera.
+    /// Actele care ar intra în dosar și încă așteaptă validarea echipei — după etichetă.
     ///
-    /// Dosarul se depune la ghișeu în numele clientului, deci nu se construiește din acte pe care
-    /// nu le-a văzut nimeni: un act în așteptare sau respins îl blochează. Se uită la același act
-    /// pe care l-ar alege <see cref="CollectAsync"/> — cel mai recent pe fiecare cerință — ca
-    /// verificarea și generarea să nu poată ajunge la documente diferite.
+    /// Validarea e o decizie pe dosar, nu statusul fiecărui act: `validatedAtUtc` e momentul în care
+    /// adminul a apăsat „Validează documentele pentru dosar”. Până atunci, toate actele încărcate
+    /// așteaptă. După, așteaptă doar ce s-a reîncărcat de atunci sau ce a fost respins între timp.
     ///
-    /// Cerințele fără niciun act încărcat nu blochează aici: rămân sărite, ca până acum.
+    /// Statusul actului nu ajungea: actele pot intra deja „verificate” (aprobarea automată din
+    /// mediul de test, buletinul validat la pasul 1), iar dosarul se genera fără ca cineva să-l fi
+    /// văzut. Se uită la același act pe care l-ar alege <see cref="CollectAsync"/> — cel mai recent
+    /// pe fiecare cerință. Cerințele fără niciun act nu apar aici: sunt în lista celor lipsă.
     /// </summary>
-    public static async Task<IReadOnlyList<string>> UnverifiedAsync(
+    public static async Task<IReadOnlyList<string>> AwaitingValidationAsync(
         IApplicationDbContext context,
         Guid userId,
         IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements,
+        DateTime? validatedAtUtc,
         CancellationToken cancellationToken)
     {
         DocumentCategory[] wanted = requirements
@@ -104,7 +107,7 @@ internal static class DossierAttachments
             .OrderByDescending(d => d.UploadedAtUtc)
             .ToListAsync(cancellationToken);
 
-        var unverified = new List<string>();
+        var awaiting = new List<string>();
         var used = new HashSet<Guid>();
 
         foreach (OnboardingSectionCatalog.DocumentRequirement requirement in requirements)
@@ -119,30 +122,30 @@ internal static class DossierAttachments
 
             used.Add(document.Id);
 
-            if (document.Status != DocumentStatus.Verified)
+            bool validated = validatedAtUtc is DateTime at
+                && document.UploadedAtUtc <= at
+                && document.Status != DocumentStatus.Rejected;
+            if (!validated)
             {
-                unverified.Add(requirement.Label);
+                awaiting.Add(requirement.Label);
             }
         }
 
-        return unverified;
+        return awaiting;
     }
 
     /// <summary>
-    /// Ce ține dosarul pe loc: actele cerute care lipsesc cu totul, apoi cele încă neverificate de
-    /// un om. Listă goală înseamnă că dosarul se poate genera.
-    ///
-    /// `UnverifiedAsync` sărea peste cerințele fără act, deci un dosar cu o piesă lipsă trecea — și
-    /// ieșea incomplet la ghișeu. Aceeași listă se trimite și aplicației, ca butonul de generare să
-    /// spună dinainte ce așteaptă, nu abia după apăsare.
+    /// Ce ține dosarul pe loc: actele cerute care lipsesc cu totul, apoi cele care așteaptă
+    /// validarea echipei. Listă goală înseamnă că dosarul se poate genera.
     /// </summary>
     public static async Task<IReadOnlyList<string>> PendingAsync(
         IApplicationDbContext context,
         Guid userId,
         IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements,
+        DateTime? validatedAtUtc,
         CancellationToken cancellationToken)
     {
-        DossierReadiness readiness = await ReadinessAsync(context, userId, requirements, cancellationToken);
+        DossierReadiness readiness = await ReadinessAsync(context, userId, requirements, validatedAtUtc, cancellationToken);
         return [.. readiness.Missing, .. readiness.Unverified];
     }
 
@@ -154,6 +157,7 @@ internal static class DossierAttachments
         IApplicationDbContext context,
         Guid userId,
         IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements,
+        DateTime? validatedAtUtc,
         CancellationToken cancellationToken)
     {
         DocumentCategory[] wanted = requirements
@@ -173,10 +177,17 @@ internal static class DossierAttachments
             .Select(req => req.Label)
             .ToList();
 
-        IReadOnlyList<string> unverified = await UnverifiedAsync(context, userId, requirements, cancellationToken);
+        IReadOnlyList<string> awaiting = await AwaitingValidationAsync(
+            context, userId, requirements, validatedAtUtc, cancellationToken);
 
-        return new DossierReadiness(missing, unverified);
+        return new DossierReadiness(missing, awaiting);
     }
+
+    /// <summary>Momentul validării actelor pentru dosarul unui pas (<see cref="DossierSteps"/>).</summary>
+    public static DateTime? ValidatedAt(PfaRegistration registration, string step) =>
+        step == DossierSteps.Arr
+            ? registration.ArrDossierDocumentsValidatedAtUtc
+            : registration.VehicleDossierDocumentsValidatedAtUtc;
 
     /// <summary>
     /// Validarea din admin a actelor care intră în dosar, dintr-un singur clic: cel mai recent act

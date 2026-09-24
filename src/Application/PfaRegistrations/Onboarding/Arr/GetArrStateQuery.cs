@@ -24,10 +24,17 @@ internal sealed class GetArrStateQueryHandler(IApplicationDbContext context)
             return Result.Success<ArrStateResponse?>(null);
         }
 
+        DateTime? validatedAtUtc = await context.PfaRegistrations
+            .AsNoTracking()
+            .Where(r => r.Id == request.PfaRegistrationId)
+            .Select(r => r.ArrDossierDocumentsValidatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
         DossierReadiness readiness = await DossierAttachments.ReadinessAsync(
             context,
             query.UserId,
             OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport),
+            validatedAtUtc,
             cancellationToken);
 
         return Result.Success<ArrStateResponse?>(ArrShared.ToResponse(request) with

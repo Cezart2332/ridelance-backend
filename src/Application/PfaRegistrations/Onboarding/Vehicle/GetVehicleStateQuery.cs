@@ -45,7 +45,7 @@ internal sealed class GetVehicleStateQueryHandler(
             OnboardingSectionCatalog.RequirementsForVehicleDossier(vehicle.OwnershipMode);
 
         DossierReadiness readiness = await DossierAttachments.ReadinessAsync(
-            context, query.UserId, requirements, cancellationToken);
+            context, query.UserId, requirements, registration?.VehicleDossierDocumentsValidatedAtUtc, cancellationToken);
 
         return Result.Success(state with
         {
