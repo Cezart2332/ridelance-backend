@@ -96,8 +96,12 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
     /// documentul e valabil sau expirat: nu are ceas, iar când îl puneam să judece respingea acte
     /// bune pentru că „data eliberării e în viitor". Comparațiile temporale se fac în C#
     /// (<c>DocumentDateValidator</c>), unde sunt deterministe și testabile.
+    ///
+    /// Câmpurile sensibile (CNP, seria și numărul buletinului) se cer ca oricare altele. Promptul le
+    /// interzicea odinioară, în contradicție cu lista de câmpuri: 2.5 Flash trecea peste, 3.8 Flash
+    /// respecta interdicția și nu le mai întorcea deloc.
     /// </summary>
-    private static string BuildSystemPrompt() =>
+    internal static string BuildSystemPrompt() =>
         "Ești un extractor de date din documente pentru RIDElance, o platformă pentru șoferi de ridesharing din România. " +
         "Primești un document încărcat de un client, împreună cu tipul de document așteptat. " +
         "Sarcina ta este STRICT de citire și extragere. Analizează vizual documentul (folosește capacitățile tale " +
@@ -116,7 +120,6 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         "de jos în sus (capul actului e în stânga), 180 dacă e cu susul în jos, 270 dacă textul coboară " +
         "(capul actului e în dreapta). Alte valori nu sunt acceptate; dacă nu ești sigur, întoarce 0. " +
         "Dacă o dată nu apare pe document sau nu poate fi citită cu certitudine, întoarce null pentru ea — nu ghici. " +
-        "NU include în răspuns date personale sensibile (CNP, serie și număr de act). " +
         "Răspunde STRICT cu un obiect JSON valid, fără niciun alt text, în exact acest format: " +
         "{\"matches_expected_type\": boolean, \"readable\": boolean, " +
         "\"issued_on\": \"YYYY-MM-DD\" sau null, \"expires_at\": \"YYYY-MM-DD\" sau null, " +
@@ -126,7 +129,9 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         "\"rotation\": 0, 90, 180 sau 270, " +
         "\"fields\": { \"cheie_camp\": {\"value\": \"text sau null\", \"confidence\": number între 0 și 1}, ... }}. " +
         "Extrage în \"fields\" DOAR câmpurile cerute în mesajul utilizatorului; dacă nu sunt cerute câmpuri, întoarce \"fields\": {}. " +
-        "NU pune NICIODATĂ în \"fields\" CNP, serie sau număr de act de identitate. " +
+        "Extrage TOATE câmpurile cerute, inclusiv CNP-ul, seria și numărul actului de identitate, exact cum apar pe document: " +
+        "RIDElance le folosește pentru dosarele clientului și le stochează criptat. " +
+        "Nu repeta însă CNP-ul, seria sau numărul în \"reason\" — acela ajunge la client ca mesaj. " +
         "Dacă ai dubii rezonabile despre tip sau lizibilitate, preferă valorile permisive și explică în " +
         "\"reason\" — verificarea finală o face un om.";
 
