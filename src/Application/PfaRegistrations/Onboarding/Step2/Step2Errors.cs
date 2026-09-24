@@ -20,9 +20,15 @@ internal static class Step2Errors
         "Onboarding.Step2.SignatureNotFound",
         "Nu există un pachet de semnături pentru acest dosar.");
 
-    public static readonly Error FiscalIncomplete = Error.Problem(
+    // Mesajul spune exact ce lipsește. Unul comun („TVA, contul bancar și Oblio”) pomenea și contul
+    // bancar, pe care regula nu-l mai cere, iar omul nu știa ce să caute.
+    public static readonly Error FiscalVatMissing = Error.Problem(
         "Onboarding.Step2.FiscalIncomplete",
-        "Completează întâi răspunsul la TVA, contul bancar și consimțămintele Oblio.");
+        "Răspunde întâi la întrebarea despre TVA intracomunitar.");
+
+    public static readonly Error FiscalOblioMissing = Error.Problem(
+        "Onboarding.Step2.FiscalIncomplete",
+        "Acceptă întâi acordurile pentru contul de facturare Oblio.");
 
     public static readonly Error RejectionReasonRequired = Error.Problem(
         "Onboarding.Step2.RejectionReasonRequired",

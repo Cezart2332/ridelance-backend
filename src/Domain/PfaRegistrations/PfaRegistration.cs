@@ -59,6 +59,17 @@ public sealed class PfaRegistration : Entity
     public DateTime? OnboardingCompletedAtUtc { get; set; }
 
     /// <summary>
+    /// Când a validat echipa actele pentru dosarul ARR („Validează documentele pentru dosar”).
+    /// Până atunci clientul nu poate genera dosarul. Un act reîncărcat după această dată intră din
+    /// nou la validare. Statusul documentelor nu ajunge: pot intra deja „verificate” (aprobarea
+    /// automată de test, actele validate la pașii anteriori), fără ca cineva să fi văzut dosarul.
+    /// </summary>
+    public DateTime? ArrDossierDocumentsValidatedAtUtc { get; set; }
+
+    /// <summary>Același lucru, pentru dosarul copiei conforme (pasul 6).</summary>
+    public DateTime? VehicleDossierDocumentsValidatedAtUtc { get; set; }
+
+    /// <summary>
     /// OCR-ul n-a putut citi cu încredere datele de identitate din buletin (CNP lipsă sau sub
     /// pragul de confidence). Nu blochează șoferul — marchează dosarul pentru verificare umană.
     /// Vezi <c>IdentityCheck</c> și specul de fix-uri §1.

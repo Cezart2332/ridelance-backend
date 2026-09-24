@@ -67,9 +67,9 @@ internal sealed class GenerateVehicleDossierCommandHandler(
         IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements =
             OnboardingSectionCatalog.RequirementsForVehicleDossier(vehicle.OwnershipMode);
 
-        // Dosarul se construiește doar din acte verificate de un om.
+        // Dosarul se construiește doar după ce echipa a validat actele care intră în el.
         IReadOnlyList<string> unverified = await DossierAttachments.PendingAsync(
-            context, command.UserId, requirements, cancellationToken);
+            context, command.UserId, requirements, registration.VehicleDossierDocumentsValidatedAtUtc, cancellationToken);
 
         if (unverified.Count > 0)
         {

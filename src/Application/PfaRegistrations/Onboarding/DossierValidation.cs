@@ -87,7 +87,8 @@ internal sealed class GetDossierReadinessQueryHandler(IApplicationDbContext cont
             return Result.Failure<DossierReadinessResponse>(PfaRegistrationErrors.NotFound(query.RegistrationId));
         }
 
-        DossierReadiness readiness = await DossierAttachments.ReadinessAsync(context, registration.UserId, requirements, cancellationToken);
+        DossierReadiness readiness = await DossierAttachments.ReadinessAsync(
+            context, registration.UserId, requirements, DossierAttachments.ValidatedAt(registration, query.Step), cancellationToken);
         return new DossierReadinessResponse(query.Step, readiness.Missing, readiness.Unverified);
     }
 }
@@ -109,18 +110,30 @@ internal sealed class ValidateDossierDocumentsCommandHandler(IApplicationDbConte
             return Result.Failure<DossierReadinessResponse>(PfaRegistrationErrors.NotFound(command.RegistrationId));
         }
 
-        DossierReadiness before = await DossierAttachments.ReadinessAsync(context, registration.UserId, requirements, cancellationToken);
+        DossierReadiness before = await DossierAttachments.ReadinessAsync(
+            context, registration.UserId, requirements, DossierAttachments.ValidatedAt(registration, command.Step), cancellationToken);
         if (before.Missing.Count > 0)
         {
             return Result.Failure<DossierReadinessResponse>(DossierValidation.StillMissing(before.Missing));
         }
 
-        IReadOnlyList<string> validated = await DossierAttachments.VerifyLatestAsync(
-            context, registration.UserId, requirements, cancellationToken);
+        // Actele rămân și marcate verificate, ca în lista de documente; decizia care deblochează
+        // generarea e însă data validării de pe dosar.
+        await DossierAttachments.VerifyLatestAsync(context, registration.UserId, requirements, cancellationToken);
 
-        if (validated.Count > 0)
+        if (before.Unverified.Count > 0)
         {
             DateTime now = DateTime.UtcNow;
+            if (command.Step == DossierSteps.Arr)
+            {
+                registration.ArrDossierDocumentsValidatedAtUtc = now;
+            }
+            else
+            {
+                registration.VehicleDossierDocumentsValidatedAtUtc = now;
+            }
+
+            IReadOnlyList<string> validated = before.Unverified;
             string label = DossierValidation.DossierLabel(command.Step);
             context.PfaActivityLogs.Add(new PfaActivityLog
             {

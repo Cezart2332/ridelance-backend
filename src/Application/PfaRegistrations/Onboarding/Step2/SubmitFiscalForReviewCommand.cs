@@ -45,7 +45,9 @@ internal sealed class SubmitFiscalForReviewCommandHandler(
 
         if (!OnboardingStepCatalog.FiscalUserPartComplete(registration))
         {
-            return Result.Failure(Step2Errors.FiscalIncomplete);
+            return Result.Failure(registration.FiscalProfile?.VatAnswer is VatAnswer.Yes or VatAnswer.No
+                ? Step2Errors.FiscalOblioMissing
+                : Step2Errors.FiscalVatMissing);
         }
 
         DateTime nowUtc = DateTime.UtcNow;

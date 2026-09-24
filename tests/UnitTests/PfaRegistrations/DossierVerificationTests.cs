@@ -1,5 +1,6 @@
 using Application.PfaRegistrations.Onboarding;
 using Domain.Documents;
+using Domain.PfaRegistrations;
 using Infrastructure.Database;
 using Infrastructure.DomainEvents;
 using Microsoft.EntityFrameworkCore;
@@ -10,11 +11,11 @@ using Xunit;
 namespace UnitTests.PfaRegistrations;
 
 /// <summary>
-/// Dosarele (ARR, copie conformă) se generează doar din acte verificate de un om.
+/// Dosarele (ARR, copie conformă) se generează doar după ce echipa a validat actele care intră în ele.
 ///
-/// Dosarul se depune la ghișeu în numele clientului. Înainte se genera din orice era încărcat —
-/// inclusiv acte încă în verificare sau respinse — deci putea pleca la ARR un dosar pe care nu-l
-/// văzuse nimeni.
+/// Validarea e o decizie pe dosar („Validează documentele pentru dosar”), nu statusul actelor: actele
+/// pot intra deja „verificate” (aprobarea automată din mediul de test, buletinul validat la pasul 1),
+/// iar dosarul se genera fără ca cineva să-l fi văzut.
 /// </summary>
 public sealed class DossierVerificationTests
 {
@@ -28,52 +29,54 @@ public sealed class DossierVerificationTests
     ];
 
     [Fact]
-    public async Task All_verified_lets_the_dossier_through()
+    public async Task Acte_verificate_dar_nevalidate_pentru_dosar_tot_blocheaza()
     {
         using ApplicationDbContext db = await With(
             (DocumentCategory.CazierJudiciar, DocumentStatus.Verified),
             (DocumentCategory.AdeverintaMedicala, DocumentStatus.Verified),
             (DocumentCategory.AvizPsihologic, DocumentStatus.Verified));
 
-        (await DossierAttachments.UnverifiedAsync(db, Client, Requirements, CancellationToken.None))
+        (await DossierAttachments.PendingAsync(db, Client, Requirements, validatedAtUtc: null, CancellationToken.None))
+            .ShouldBe(["Cazier judiciar", "Aviz medical", "Aviz psihologic"]);
+    }
+
+    [Fact]
+    public async Task Dupa_validarea_dosarului_se_poate_genera()
+    {
+        using ApplicationDbContext db = await With(
+            (DocumentCategory.CazierJudiciar, DocumentStatus.Pending),
+            (DocumentCategory.AdeverintaMedicala, DocumentStatus.Verified),
+            (DocumentCategory.AvizPsihologic, DocumentStatus.Pending));
+
+        (await DossierAttachments.PendingAsync(db, Client, Requirements, DateTime.UtcNow.AddMinutes(1), CancellationToken.None))
             .ShouldBeEmpty();
     }
 
+    /// <summary>Un act reîncărcat după validare n-a fost văzut de nimeni: intră din nou la validare.</summary>
     [Fact]
-    public async Task A_document_still_in_review_blocks_it_and_is_named()
+    public async Task Un_act_reincarcat_dupa_validare_asteapta_din_nou()
     {
+        DateTime validatedAt = DateTime.UtcNow.AddHours(-1);
         using ApplicationDbContext db = await With(
-            (DocumentCategory.CazierJudiciar, DocumentStatus.Verified),
-            (DocumentCategory.AdeverintaMedicala, DocumentStatus.Pending),
-            (DocumentCategory.AvizPsihologic, DocumentStatus.Verified));
+            (DocumentCategory.CazierJudiciar, DocumentStatus.Verified, DateTime.UtcNow.AddDays(-1)),
+            (DocumentCategory.CazierJudiciar, DocumentStatus.Verified, DateTime.UtcNow),
+            (DocumentCategory.AdeverintaMedicala, DocumentStatus.Verified, DateTime.UtcNow.AddDays(-1)),
+            (DocumentCategory.AvizPsihologic, DocumentStatus.Verified, DateTime.UtcNow.AddDays(-1)));
 
-        (await DossierAttachments.UnverifiedAsync(db, Client, Requirements, CancellationToken.None))
-            .ShouldBe(["Aviz medical"]);
+        (await DossierAttachments.ReadinessAsync(db, Client, Requirements, validatedAt, CancellationToken.None))
+            .Unverified.ShouldBe(["Cazier judiciar"]);
     }
 
     [Fact]
-    public async Task A_rejected_document_blocks_it()
+    public async Task Un_act_respins_dupa_validare_blocheaza()
     {
         using ApplicationDbContext db = await With(
-            (DocumentCategory.CazierJudiciar, DocumentStatus.Rejected));
+            (DocumentCategory.CazierJudiciar, DocumentStatus.Rejected, DateTime.UtcNow.AddDays(-1)),
+            (DocumentCategory.AdeverintaMedicala, DocumentStatus.Verified, DateTime.UtcNow.AddDays(-1)),
+            (DocumentCategory.AvizPsihologic, DocumentStatus.Verified, DateTime.UtcNow.AddDays(-1)));
 
-        (await DossierAttachments.UnverifiedAsync(db, Client, Requirements, CancellationToken.None))
-            .ShouldBe(["Cazier judiciar"]);
-    }
-
-    /// <summary>
-    /// Contează actul cel mai recent, cel care ar intra în dosar: o variantă nouă, încă nevăzută,
-    /// blochează chiar dacă una veche fusese verificată.
-    /// </summary>
-    [Fact]
-    public async Task A_newer_unverified_upload_blocks_even_over_an_older_verified_one()
-    {
-        using ApplicationDbContext db = await With(
-            (DocumentCategory.CazierJudiciar, DocumentStatus.Verified, DateTime.UtcNow.AddDays(-2)),
-            (DocumentCategory.CazierJudiciar, DocumentStatus.Pending, DateTime.UtcNow));
-
-        (await DossierAttachments.UnverifiedAsync(db, Client, Requirements, CancellationToken.None))
-            .ShouldBe(["Cazier judiciar"]);
+        (await DossierAttachments.ReadinessAsync(db, Client, Requirements, DateTime.UtcNow, CancellationToken.None))
+            .Unverified.ShouldBe(["Cazier judiciar"]);
     }
 
     [Fact]
@@ -85,31 +88,16 @@ public sealed class DossierVerificationTests
         error.Description.ShouldContain("Cazier judiciar");
     }
 
-    /// <summary>
-    /// O piesă lipsă ține și ea dosarul pe loc: <c>UnverifiedAsync</c> sărea peste cerințele fără act,
-    /// iar dosarul ieșea incomplet. Lipsurile vin primele, apoi actele neverificate.
-    /// </summary>
+    /// <summary>O piesă lipsă ține și ea dosarul pe loc. Lipsurile vin primele, apoi actele nevalidate.</summary>
     [Fact]
-    public async Task Missing_documents_block_the_dossier_along_with_unverified_ones()
+    public async Task Missing_documents_block_the_dossier_along_with_unvalidated_ones()
     {
         using ApplicationDbContext db = await With(
             (DocumentCategory.CazierJudiciar, DocumentStatus.Verified),
             (DocumentCategory.AvizPsihologic, DocumentStatus.Pending));
 
-        (await DossierAttachments.PendingAsync(db, Client, Requirements, CancellationToken.None))
-            .ShouldBe(["Aviz medical", "Aviz psihologic"]);
-    }
-
-    [Fact]
-    public async Task A_complete_and_verified_set_is_ready()
-    {
-        using ApplicationDbContext db = await With(
-            (DocumentCategory.CazierJudiciar, DocumentStatus.Verified),
-            (DocumentCategory.AdeverintaMedicala, DocumentStatus.Verified),
-            (DocumentCategory.AvizPsihologic, DocumentStatus.Verified));
-
-        (await DossierAttachments.PendingAsync(db, Client, Requirements, CancellationToken.None))
-            .ShouldBeEmpty();
+        (await DossierAttachments.PendingAsync(db, Client, Requirements, validatedAtUtc: null, CancellationToken.None))
+            .ShouldBe(["Aviz medical", "Cazier judiciar", "Aviz psihologic"]);
     }
 
     [Fact]
@@ -133,23 +121,47 @@ public sealed class DossierVerificationTests
     }
 
     [Fact]
-    public async Task Validarea_din_admin_verifica_actul_cel_mai_recent_si_deblocheaza_dosarul()
+    public async Task Validarea_din_admin_deblocheaza_dosarul_si_marcheaza_actele()
     {
-        using ApplicationDbContext db = await With(
-            (DocumentCategory.CazierJudiciar, DocumentStatus.Pending, DateTime.UtcNow.AddDays(-1)),
-            (DocumentCategory.CazierJudiciar, DocumentStatus.Rejected, DateTime.UtcNow),
-            (DocumentCategory.AdeverintaMedicala, DocumentStatus.Verified, DateTime.UtcNow),
-            (DocumentCategory.AvizPsihologic, DocumentStatus.Pending, DateTime.UtcNow));
-
-        DossierReadiness before = await DossierAttachments.ReadinessAsync(db, Client, Requirements, CancellationToken.None);
-        before.Missing.ShouldBeEmpty();
-        before.Unverified.ShouldBe(["Cazier judiciar", "Aviz psihologic"]);
-
-        IReadOnlyList<string> validated = await DossierAttachments.VerifyLatestAsync(db, Client, Requirements, CancellationToken.None);
+        // Câte un act pe fiecare cerință reală a dosarului ARR, unul încă în verificare.
+        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> arr =
+            OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport);
+        using ApplicationDbContext db = await With(arr
+            .Select((req, i) => (req.AcceptedCategories[0], i == 0 ? DocumentStatus.Pending : DocumentStatus.Verified, DateTime.UtcNow.AddMinutes(-5)))
+            .ToArray());
+        var registration = new PfaRegistration { Id = Guid.NewGuid(), UserId = Client };
+        db.PfaRegistrations.Add(registration);
         await db.SaveChangesAsync();
 
-        validated.ShouldBe(["Cazier judiciar", "Aviz psihologic"]);
-        (await DossierAttachments.ReadinessAsync(db, Client, Requirements, CancellationToken.None)).Ready.ShouldBeTrue();
+        (await DossierAttachments.ReadinessAsync(db, Client, arr, validatedAtUtc: null, CancellationToken.None))
+            .Unverified.Count.ShouldBe(arr.Count);
+
+        var handler = new ValidateDossierDocumentsCommandHandler(db);
+        Result<DossierReadinessResponse> result = await handler.Handle(
+            new ValidateDossierDocumentsCommand(registration.Id, DossierSteps.Arr, Guid.NewGuid()), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        registration.ArrDossierDocumentsValidatedAtUtc.ShouldNotBeNull();
+        registration.VehicleDossierDocumentsValidatedAtUtc.ShouldBeNull();
+        (await DossierAttachments.ReadinessAsync(
+            db, Client, arr, registration.ArrDossierDocumentsValidatedAtUtc, CancellationToken.None)).Ready.ShouldBeTrue();
+        (await db.Documents.CountAsync(d => d.Status != DocumentStatus.Verified)).ShouldBe(0);
+        (await db.Notifications.CountAsync(n => n.UserId == Client)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Validarea_din_admin_refuza_cat_lipsesc_acte()
+    {
+        using ApplicationDbContext db = await With((DocumentCategory.CazierJudiciar, DocumentStatus.Verified));
+        var registration = new PfaRegistration { Id = Guid.NewGuid(), UserId = Client };
+        db.PfaRegistrations.Add(registration);
+        await db.SaveChangesAsync();
+
+        Result<DossierReadinessResponse> result = await new ValidateDossierDocumentsCommandHandler(db).Handle(
+            new ValidateDossierDocumentsCommand(registration.Id, DossierSteps.Arr, Guid.NewGuid()), CancellationToken.None);
+
+        result.IsFailure.ShouldBeTrue();
+        registration.ArrDossierDocumentsValidatedAtUtc.ShouldBeNull();
     }
 
     private static Task<ApplicationDbContext> With(params (DocumentCategory Category, DocumentStatus Status)[] documents) =>
