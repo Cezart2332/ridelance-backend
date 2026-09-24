@@ -42,6 +42,7 @@ internal sealed class OpenRouterTextGenerator(
         var payload = new
         {
             model = config.Model,
+            reasoning = config.Reasoning,
             temperature = request.Temperature,
             response_format = new { type = "json_object" },
             messages = new object[]
