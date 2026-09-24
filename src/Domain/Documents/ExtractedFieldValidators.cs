@@ -23,13 +23,12 @@ public static class ExtractedFieldValidators
         "^(?:[A-Z]{1,2})(?:[0-9]{2,3})(?:[A-Z]{3})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
-    /// Codul CAEN al transportului alternativ — „Alte servicii de transport terestru de călători
-    /// n.c.a.". Fără el, PFA-ul nu poate factura curse pe Uber/Bolt.
+    /// Codul CAEN al transportului alternativ (ridesharing), 4933 în nomenclatorul CAEN Rev. 3 —
+    /// înainte era 4939. Fără el, PFA-ul nu poate factura curse pe Uber/Bolt.
     /// </summary>
-    public const string RequiredCaen = "4939";
+    public const string RequiredCaen = "4933";
 
-    // Modelul întoarce des codul lipit de denumire („4939 - Alte transporturi terestre de
-    // călători n.c.a."), uneori mai multe coduri într-un singur text. Luăm grupurile de 4 cifre.
+    // Modelul întoarce des codul lipit de denumire („4933 - Transport de pasageri..."), uneori mai multe coduri într-un singur text. Luăm grupurile de 4 cifre.
     private static readonly Regex CaenRegex = new(
         @"(?<!\d)\d{4}(?!\d)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 

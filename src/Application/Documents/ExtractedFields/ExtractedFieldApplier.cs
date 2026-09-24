@@ -56,8 +56,22 @@ internal sealed class ExtractedFieldApplier(
                 await ApplyToCompanyFormationAsync(document, fieldKey, normalizedValue, cancellationToken);
                 break;
 
-            // Pasul 1, ramura „Nu am PFA" — datele de identitate citite din cartea de identitate.
+            // Data nașterii e codificată în CNP (1/2 → 1900–1999, 3/4 → 1800–1899, 5/6 → 2000–2099),
+            // iar pe buletinul vechi nici nu e tipărită: modelul o deducea singur și o nimerea greșit,
+            // iar formularul de înființare arăta apoi „data din buletin nu se potrivește cu CNP-ul”.
+            // Un CNP valid o dă sigur. Câmpurile se aplică în ordinea din catalog, cu CNP-ul după
+            // data nașterii, deci aceasta o înlocuiește pe cea citită.
             case "CNP":
+                if (CnpValidator.BirthDateOf(normalizedValue) is DateOnly fromCnp && CnpValidator.IsValid(normalizedValue))
+                {
+                    await ApplyToEligibilityAsync(
+                        document, "DATE_OF_BIRTH", fromCnp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), cancellationToken);
+                }
+
+                await ApplyToCompanyFormationAsync(document, fieldKey, normalizedValue, cancellationToken);
+                break;
+
+            // Pasul 1, ramura „Nu am PFA" — datele de identitate citite din cartea de identitate.
             case "SERIE_ACT":
             case "NUMAR_ACT":
             case "AUTORITATE_EMITENTA":
@@ -119,8 +133,12 @@ internal sealed class ExtractedFieldApplier(
     private async Task ApplyToEligibilityAsync(
         Document document, string key, string value, CancellationToken cancellationToken)
     {
-        OnboardingEligibilityProfile? profile = await context.OnboardingEligibilityProfiles
-            .FirstOrDefaultAsync(e => e.UserId == document.UserId, cancellationToken);
+        // Întâi printre cele adăugate în trecerea asta: data nașterii și CNP-ul din același buletin
+        // ajung aici unul după altul, înainte de salvare, și ar fi creat două profiluri.
+        OnboardingEligibilityProfile? profile =
+            context.OnboardingEligibilityProfiles.Local.FirstOrDefault(e => e.UserId == document.UserId)
+            ?? await context.OnboardingEligibilityProfiles
+                .FirstOrDefaultAsync(e => e.UserId == document.UserId, cancellationToken);
 
         if (profile is null)
         {
@@ -371,7 +389,7 @@ internal sealed class ExtractedFieldApplier(
                 registration.WorkPoints = value;
                 break;
             case "CAEN_CODES":
-                // Coloana e un array JSON; valoarea normalizată vine ca „4939,5610".
+                // Coloana e un array JSON; valoarea normalizată vine ca „4933,5610".
                 registration.CaenCodes = JsonSerializer.Serialize(
                     value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
                 break;
