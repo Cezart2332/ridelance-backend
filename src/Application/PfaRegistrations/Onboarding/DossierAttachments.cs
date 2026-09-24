@@ -142,6 +142,20 @@ internal static class DossierAttachments
         IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements,
         CancellationToken cancellationToken)
     {
+        DossierReadiness readiness = await ReadinessAsync(context, userId, requirements, cancellationToken);
+        return [.. readiness.Missing, .. readiness.Unverified];
+    }
+
+    /// <summary>
+    /// Același răspuns ca <see cref="PendingAsync"/>, dar despărțit: ce lipsește (treaba clientului)
+    /// și ce e încărcat dar încă nevalidat (treaba echipei, prin „Validează documentele pentru dosar”).
+    /// </summary>
+    public static async Task<DossierReadiness> ReadinessAsync(
+        IApplicationDbContext context,
+        Guid userId,
+        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements,
+        CancellationToken cancellationToken)
+    {
         DocumentCategory[] wanted = requirements
             .SelectMany(req => req.AcceptedCategories)
             .Distinct()
@@ -161,7 +175,51 @@ internal static class DossierAttachments
 
         IReadOnlyList<string> unverified = await UnverifiedAsync(context, userId, requirements, cancellationToken);
 
-        return [.. missing, .. unverified];
+        return new DossierReadiness(missing, unverified);
+    }
+
+    /// <summary>
+    /// Validarea din admin a actelor care intră în dosar, dintr-un singur clic: cel mai recent act
+    /// pe fiecare cerință devine verificat. Același act pe care l-ar alege <see cref="CollectAsync"/>,
+    /// deci generarea pornește exact din ce a validat echipa. Întoarce etichetele validate acum.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> VerifyLatestAsync(
+        IApplicationDbContext context,
+        Guid userId,
+        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements,
+        CancellationToken cancellationToken)
+    {
+        DocumentCategory[] wanted = requirements
+            .SelectMany(req => req.AcceptedCategories)
+            .Distinct()
+            .ToArray();
+
+        List<Document> documents = await context.Documents
+            .Where(d => d.UserId == userId && wanted.Contains(d.Category))
+            .OrderByDescending(d => d.UploadedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        var verified = new List<string>();
+        var used = new HashSet<Guid>();
+        foreach (OnboardingSectionCatalog.DocumentRequirement requirement in requirements)
+        {
+            Document? document = documents.FirstOrDefault(d =>
+                requirement.AcceptedCategories.Contains(d.Category) && !used.Contains(d.Id));
+            if (document is null)
+            {
+                continue;
+            }
+
+            used.Add(document.Id);
+            if (document.Status != DocumentStatus.Verified)
+            {
+                document.Status = DocumentStatus.Verified;
+                document.ReviewNote = null;
+                verified.Add(requirement.Label);
+            }
+        }
+
+        return verified;
     }
 
     /// <summary>Refuzul de generare cu actele care lipsesc sau așteaptă verificarea.</summary>
@@ -192,4 +250,10 @@ internal static class DossierAttachments
             return null;
         }
     }
+}
+
+/// <summary>Ce ține dosarul pe loc: acte lipsă (le încarcă clientul) și acte nevalidate (le validează echipa).</summary>
+public sealed record DossierReadiness(IReadOnlyList<string> Missing, IReadOnlyList<string> Unverified)
+{
+    public bool Ready => Missing.Count == 0 && Unverified.Count == 0;
 }

@@ -112,6 +112,46 @@ public sealed class DossierVerificationTests
             .ShouldBeEmpty();
     }
 
+    [Fact]
+    public void Dosarul_de_copie_conforma_nu_cere_ce_vine_dupa_depunere()
+    {
+        // Copia conformă și ecusoanele vin DUPĂ dosar; cât le cerea, dosarul nu se genera niciodată.
+        var owned = OnboardingSectionCatalog.RequirementsForVehicleDossier(Domain.PfaRegistrations.VehicleOwnershipMode.Owned)
+            .Select(r => r.Label)
+            .ToList();
+        owned.ShouldNotContain("Copie conformă");
+        owned.ShouldNotContain("Ecuson Uber");
+        owned.ShouldNotContain("Ecuson Bolt");
+        // O mașină proprie n-are contract.
+        owned.ShouldNotContain("Contract vehicul");
+        owned.ShouldContain("Autorizație transport alternativ");
+        owned.ShouldContain("RCA");
+
+        OnboardingSectionCatalog.RequirementsForVehicleDossier(Domain.PfaRegistrations.VehicleOwnershipMode.Rented)
+            .Select(r => r.Label)
+            .ShouldContain("Contract de închiriere");
+    }
+
+    [Fact]
+    public async Task Validarea_din_admin_verifica_actul_cel_mai_recent_si_deblocheaza_dosarul()
+    {
+        using ApplicationDbContext db = await With(
+            (DocumentCategory.CazierJudiciar, DocumentStatus.Pending, DateTime.UtcNow.AddDays(-1)),
+            (DocumentCategory.CazierJudiciar, DocumentStatus.Rejected, DateTime.UtcNow),
+            (DocumentCategory.AdeverintaMedicala, DocumentStatus.Verified, DateTime.UtcNow),
+            (DocumentCategory.AvizPsihologic, DocumentStatus.Pending, DateTime.UtcNow));
+
+        DossierReadiness before = await DossierAttachments.ReadinessAsync(db, Client, Requirements, CancellationToken.None);
+        before.Missing.ShouldBeEmpty();
+        before.Unverified.ShouldBe(["Cazier judiciar", "Aviz psihologic"]);
+
+        IReadOnlyList<string> validated = await DossierAttachments.VerifyLatestAsync(db, Client, Requirements, CancellationToken.None);
+        await db.SaveChangesAsync();
+
+        validated.ShouldBe(["Cazier judiciar", "Aviz psihologic"]);
+        (await DossierAttachments.ReadinessAsync(db, Client, Requirements, CancellationToken.None)).Ready.ShouldBeTrue();
+    }
+
     private static Task<ApplicationDbContext> With(params (DocumentCategory Category, DocumentStatus Status)[] documents) =>
         With(documents.Select(d => (d.Category, d.Status, DateTime.UtcNow)).ToArray());
 

@@ -61,16 +61,11 @@ internal sealed class GenerateVehicleDossierCommandHandler(
         VehicleCopyRequest copy = vehicle.CopyRequest;
         DateTime nowUtc = DateTime.UtcNow;
 
-        // Cerințele celor două secțiuni, deduplicate pe etichetă (Talon/ITP și contractul apar în
-        // ambele), cu documentele încărcate atașate efectiv în dosar.
-        //
-        // Partea de mașină vine prin `RequirementsForVehicle`, ca ramura de leasing să-și aducă
-        // în dosar și acordul finanțatorului, nu doar contractul (spec fix-uri §11.2/§11.3).
-        var requirements = OnboardingSectionCatalog
-            .RequirementsFor(OnboardingSectionKey.CopieConforma)
-            .Concat(OnboardingSectionCatalog.RequirementsForVehicle(vehicle.OwnershipMode))
-            .DistinctBy(req => req.Label)
-            .ToList();
+        // Doar actele care se depun — nu copia conformă și ecusoanele, care vin după —, cu
+        // contractul cerut de modul de deținere; leasingul își aduce acordul finanțatorului
+        // (spec fix-uri §11.2/§11.3). Documentele încărcate se atașează efectiv în dosar.
+        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements =
+            OnboardingSectionCatalog.RequirementsForVehicleDossier(vehicle.OwnershipMode);
 
         // Dosarul se construiește doar din acte verificate de un om.
         IReadOnlyList<string> unverified = await DossierAttachments.PendingAsync(

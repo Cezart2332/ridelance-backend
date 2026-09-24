@@ -41,14 +41,17 @@ internal sealed class GetVehicleStateQueryHandler(
 
         // Aceleași cerințe ca la generare (GenerateVehicleDossierCommand), ca butonul și serverul să
         // nu poată avea păreri diferite.
-        var requirements = OnboardingSectionCatalog
-            .RequirementsFor(OnboardingSectionKey.CopieConforma)
-            .Concat(OnboardingSectionCatalog.RequirementsForVehicle(vehicle.OwnershipMode))
-            .ToList();
+        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements =
+            OnboardingSectionCatalog.RequirementsForVehicleDossier(vehicle.OwnershipMode);
 
-        IReadOnlyList<string> pending = await DossierAttachments.PendingAsync(
+        DossierReadiness readiness = await DossierAttachments.ReadinessAsync(
             context, query.UserId, requirements, cancellationToken);
 
-        return Result.Success(state with { DossierPendingReview = pending });
+        return Result.Success(state with
+        {
+            DossierPendingReview = [.. readiness.Missing, .. readiness.Unverified],
+            DossierMissing = readiness.Missing,
+            DossierAwaitingValidation = readiness.Unverified,
+        });
     }
 }

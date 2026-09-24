@@ -28,7 +28,8 @@ public sealed record SubmitPlatformAccountCommand(
     string? DriverEmail = null,
     string? DriverPhone = null,
     string? DriverFullName = null,
-    string? DriverExternalId = null) : ICommand<PlatformOnboardingResponse>;
+    string? DriverExternalId = null,
+    bool? DriverHasExistingAccount = null) : ICommand<PlatformOnboardingResponse>;
 
 internal sealed class SubmitPlatformAccountCommandHandler(
     IApplicationDbContext context,
@@ -81,10 +82,17 @@ internal sealed class SubmitPlatformAccountCommandHandler(
         }
 
         account.IsSelectedByUser = true;
-        account.HasExistingAccount = command.HasExistingAccount;
-        account.ExistingAccountAnswer = string.IsNullOrWhiteSpace(command.ExistingAccountAnswer)
-            ? null
-            : command.ExistingAccountAnswer.Trim();
+        // Fără răspuns pentru contul de flotă (ex. întrebarea despre contul de șofer), cel salvat
+        // rămâne: altfel răspunsul „Da, am cont de flotă” s-ar șterge la orice altă salvare.
+        if (!string.IsNullOrWhiteSpace(command.ExistingAccountAnswer))
+        {
+            account.ExistingAccountAnswer = command.ExistingAccountAnswer.Trim();
+            account.HasExistingAccount = command.HasExistingAccount;
+        }
+        else if (account.ExistingAccountAnswer is null)
+        {
+            account.HasExistingAccount = command.HasExistingAccount;
+        }
         account.OperatorAccountId = string.IsNullOrWhiteSpace(command.OperatorAccountId) ? null : command.OperatorAccountId.Trim();
         account.AffiliationContractDocumentId = command.AffiliationContractDocumentId;
 
@@ -120,7 +128,25 @@ internal sealed class SubmitPlatformAccountCommandHandler(
             account.Email = Rehydrated(command.Email, owner?.Email);
         }
 
-        account.Phone = PlatformContactRules.ToE164(Rehydrated(command.Phone, owner?.PhoneNumber));
+        if (ownsAccountElsewhere)
+        {
+            // Contul existent poate fi pe alt număr decât cel de RIDElance: îl ia pe al lui.
+            if (!string.IsNullOrWhiteSpace(command.Phone) && !PlatformContactRules.IsValidPhone(command.Phone))
+            {
+                return Result.Failure<PlatformOnboardingResponse>(PlatformShared.InvalidPhone);
+            }
+
+            account.Phone = PlatformContactRules.ToE164(command.Phone) ?? account.Phone;
+        }
+        else
+        {
+            account.Phone = PlatformContactRules.ToE164(Rehydrated(command.Phone, owner?.PhoneNumber));
+        }
+
+        if (command.DriverHasExistingAccount is bool driverHasAccount)
+        {
+            account.DriverHasExistingAccount = driverHasAccount;
+        }
 
         // Datele de contact, verificate pe server, nu doar în formular. Câmpurile goale trec:
         // salvarea e de draft, iar completitudinea o cere `UserPartComplete`.
@@ -146,6 +172,16 @@ internal sealed class SubmitPlatformAccountCommandHandler(
         account.DriverExternalId = string.IsNullOrWhiteSpace(command.DriverExternalId)
             ? account.DriverExternalId
             : command.DriverExternalId.Trim();
+
+        // Contul de șofer îl deschidem noi: pe datele contului RIDElance, nu pe ce trimite clientul
+        // (câmpurile sunt blocate în aplicație, iar serverul nu se bazează pe asta).
+        if (account.DriverHasExistingAccount == false && owner is not null)
+        {
+            account.DriverEmail = Rehydrated(command.DriverEmail, owner.Email);
+            account.DriverPhone = PlatformContactRules.ToE164(Rehydrated(command.DriverPhone, owner.PhoneNumber)) ?? account.DriverPhone;
+            string ownerName = $"{owner.FirstName} {owner.LastName}".Trim();
+            account.DriverFullName = Rehydrated(command.DriverFullName, ownerName.Length > 0 ? ownerName : null) ?? account.DriverFullName;
+        }
 
         // Parola nu se șterge la o retrimitere fără ea: formularul nu o primește înapoi de la
         // server, deci ar veni goală la fiecare salvare ulterioară.
