@@ -24,12 +24,17 @@ internal sealed class GetArrStateQueryHandler(IApplicationDbContext context)
             return Result.Success<ArrStateResponse?>(null);
         }
 
-        IReadOnlyList<string> pending = await DossierAttachments.PendingAsync(
+        DossierReadiness readiness = await DossierAttachments.ReadinessAsync(
             context,
             query.UserId,
             OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport),
             cancellationToken);
 
-        return Result.Success<ArrStateResponse?>(ArrShared.ToResponse(request) with { DossierPendingReview = pending });
+        return Result.Success<ArrStateResponse?>(ArrShared.ToResponse(request) with
+        {
+            DossierPendingReview = [.. readiness.Missing, .. readiness.Unverified],
+            DossierMissing = readiness.Missing,
+            DossierAwaitingValidation = readiness.Unverified,
+        });
     }
 }

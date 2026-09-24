@@ -76,6 +76,8 @@ public sealed record OnboardingStateResponse(
     // se precompletează de aici; niciunul nu-și mai citește valoarea din alt loc.
     string? ContactEmail = null,
     string? ContactPhone = null,
+    // Numele titularului contului: precompletează contul de șofer Uber/Bolt deschis de noi.
+    string? ContactName = null,
     // Județul sediului social, cu adresa din buletin ca rezervă. Precompletează selectul ARR.
     string? PrimaryCounty = null,
     // Avansul RIDElance Start, în bani. Vine din `Pricing`, deci UI-ul nu are sume scrise în el.
@@ -98,6 +100,12 @@ public sealed record OnboardingStateResponse(
 /// </summary>
 public static class OnboardingStateBuilder
 {
+    private static string? FullNameOf(Domain.Users.User? user)
+    {
+        string full = $"{user?.FirstName} {user?.LastName}".Trim();
+        return full.Length > 0 ? full : null;
+    }
+
     private static readonly OnboardingSectionKey[] DocumentSections =
     [
         OnboardingSectionKey.AutorizatieTransport,
@@ -218,6 +226,7 @@ public static class OnboardingStateBuilder
             TestSkipEnabled: false,
             ContactEmail: registration?.User?.Email,
             ContactPhone: registration?.User?.PhoneNumber,
+            ContactName: FullNameOf(registration?.User),
             PrimaryCounty: PrimaryCountyOf(registration, countyFromIdCard),
             OnboardingAdvanceBani: Pricing.RidelanceStart.OnboardingAdvanceBani,
             OnboardingAdvanceIsRefundable: Pricing.RidelanceStart.OnboardingAdvanceIsRefundable,

@@ -44,4 +44,7 @@ public sealed record VehicleStateResponse(
     /// Actele după care așteaptă generarea dosarului: lipsă sau încă neverificate de echipă. Goală
     /// când dosarul se poate genera. Aplicația dezactivează butonul și le numește.
     /// </summary>
-    IReadOnlyList<string>? DossierPendingReview = null);
+    IReadOnlyList<string>? DossierPendingReview = null,
+    // Aceeași listă, despărțită: ce lipsește (îl încarcă clientul) și ce așteaptă validarea echipei.
+    IReadOnlyList<string>? DossierMissing = null,
+    IReadOnlyList<string>? DossierAwaitingValidation = null);

@@ -28,7 +28,8 @@ internal sealed class OnboardingPlatforms : IEndpoint
         string? DriverEmail,
         string? DriverPhone,
         string? DriverFullName,
-        string? DriverExternalId);
+        string? DriverExternalId,
+        bool? DriverHasExistingAccount = null);
 
     public sealed record AdvanceRequest(string Provider, string OnboardingStatus);
 
@@ -87,7 +88,8 @@ internal sealed class OnboardingPlatforms : IEndpoint
                     request.ExistingAccountAnswer,
                     request.Email, request.Phone, request.Password,
                     request.DriverEmail, request.DriverPhone,
-                    request.DriverFullName, request.DriverExternalId),
+                    request.DriverFullName, request.DriverExternalId,
+                    request.DriverHasExistingAccount),
                 cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);

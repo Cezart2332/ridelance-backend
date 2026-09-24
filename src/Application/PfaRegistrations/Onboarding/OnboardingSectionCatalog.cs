@@ -97,6 +97,28 @@ public static class OnboardingSectionCatalog
         ];
     }
 
+    /// <summary>
+    /// Actele din dosarul de copie conformă: ce se depune la ARR. Nu ce vine DUPĂ depunere — copia
+    /// conformă și ecusoanele —, iar contractul e doar cel cerut de modul de deținere (o mașină
+    /// proprie n-are contract). Cât le cerea pe toate, lista de așteptare nu se golea niciodată,
+    /// iar dosarul nu se putea genera deloc.
+    /// </summary>
+    public static IReadOnlyList<DocumentRequirement> RequirementsForVehicleDossier(VehicleOwnershipMode mode)
+    {
+        DocumentRequirement[] ownership = OwnershipRequirements.TryGetValue(mode, out DocumentRequirement[]? own)
+            ? own
+            : [];
+
+        return
+        [
+            .. RequirementsFor(OnboardingSectionKey.CopieConforma)
+                .Where(r => !r.AcceptedCategories.Contains(DocumentCategory.ContractVehicul)),
+            .. ownership,
+            .. RequirementsFor(OnboardingSectionKey.Vehicul)
+                .Where(r => r.AcceptedCategories.Contains(DocumentCategory.RCA)),
+        ];
+    }
+
     public static OnboardingSectionKey? NextSection(OnboardingSectionKey key) => key switch
     {
         OnboardingSectionKey.Pfa => OnboardingSectionKey.AutorizatieTransport,

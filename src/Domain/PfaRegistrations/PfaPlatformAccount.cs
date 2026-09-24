@@ -36,6 +36,13 @@ public sealed class PfaPlatformAccount : Entity
     // (operator) administrează mașinile, cel de șofer e cel cu care se conduce efectiv. Pasul
     // cerea doar flota, deci jumătate din ce trebuie ca să poți lucra lipsea din dosar.
     /// <summary>Emailul contului de șofer.</summary>
+    /// <summary>
+    /// Are deja cont de șofer (Uber Driver / Bolt Driver): atunci emailul, telefonul și numele sunt
+    /// ale lui și le poate corecta. Fără cont, îl deschidem noi pe datele contului RIDElance.
+    /// <c>null</c> = întrebarea nu a primit încă răspuns (dosare vechi).
+    /// </summary>
+    public bool? DriverHasExistingAccount { get; set; }
+
     public string? DriverEmail { get; set; }
     /// <summary>Telefonul contului de șofer, în format E.164.</summary>
     public string? DriverPhone { get; set; }
