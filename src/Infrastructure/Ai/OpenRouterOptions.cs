@@ -14,13 +14,27 @@ public sealed class OpenRouterOptions
 
     /// <summary>
     /// Cât „gândește” modelul înainte să răspundă (<c>minimal</c>, <c>low</c>, <c>medium</c>, <c>high</c>);
-    /// gol = implicitul modelului. Pentru citit câmpuri, mai mult nu ajută (în teste scorul chiar
-    /// scade), iar gânditul se plătește ca output.
+    /// gol = implicitul modelului. Pentru generarea de text (descrierea firmei): un om așteaptă în
+    /// fața butonului, deci rămâne scurt.
     /// </summary>
     public string? ReasoningEffort { get; set; } = "low";
+
+    /// <summary>
+    /// Același lucru, pentru citirea documentelor. <c>high</c>: pe <c>low</c>, 3.8 Flash citea vizibil
+    /// mai prost decât 2.5 Flash. Actele din dosar se citesc în fundal (<c>DocumentAiVerificationJob</c>);
+    /// doar scanarea talonului, la adăugarea mașinii, așteaptă răspunsul — câteva secunde în plus.
+    /// Costul în plus e de ordinul câtorva dolari pe lună.
+    /// </summary>
+    public string? DocumentReasoningEffort { get; set; } = "high";
 
     public string BaseUrl { get; set; } = "https://openrouter.ai/api/v1";
 
     /// <summary>Parametrul <c>reasoning</c> din cerere, sau <c>null</c> ca să nu se trimită deloc.</summary>
-    public object? Reasoning => string.IsNullOrWhiteSpace(ReasoningEffort) ? null : new { effort = ReasoningEffort };
+    public object? Reasoning => ReasoningFor(ReasoningEffort);
+
+    /// <summary>Parametrul <c>reasoning</c> pentru citirea documentelor.</summary>
+    public object? DocumentReasoning => ReasoningFor(DocumentReasoningEffort);
+
+    private static object? ReasoningFor(string? effort) =>
+        string.IsNullOrWhiteSpace(effort) ? null : new { effort };
 }
