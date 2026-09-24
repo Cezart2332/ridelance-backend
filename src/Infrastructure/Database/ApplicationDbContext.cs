@@ -72,6 +72,7 @@ public sealed class ApplicationDbContext(
     public DbSet<OnboardingSignaturePacket> OnboardingSignaturePackets { get; set; }
 
     public DbSet<OnboardingStepAudit> OnboardingStepAudits { get; set; }
+    public DbSet<OnboardingAnswer> OnboardingAnswers { get; set; }
     public DbSet<OnboardingSignatureDocument> OnboardingSignatureDocuments { get; set; }
     public DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; set; }
     public DbSet<PfaOblioAccount> PfaOblioAccounts { get; set; }

@@ -66,6 +66,7 @@ public interface IApplicationDbContext
     DbSet<OnboardingSignaturePacket> OnboardingSignaturePackets { get; }
 
     DbSet<OnboardingStepAudit> OnboardingStepAudits { get; }
+    DbSet<OnboardingAnswer> OnboardingAnswers { get; }
     DbSet<OnboardingSignatureDocument> OnboardingSignatureDocuments { get; }
     DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; }
     DbSet<PfaOblioAccount> PfaOblioAccounts { get; }

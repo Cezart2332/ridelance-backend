@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Messaging;
 using Application.PfaRegistrations.Onboarding;
+using Application.PfaRegistrations.Onboarding.Answers;
 using Application.PfaRegistrations.Onboarding.Eligibility;
 using Application.PfaRegistrations.Onboarding.GetState;
 using Application.PfaRegistrations.Onboarding.PartnerLead;
@@ -36,6 +37,8 @@ internal sealed class Onboarding : IEndpoint
         bool DataSharingConsent);
 
     public sealed record PartnerLeadStatusRequest(string Status, string? AdminNote);
+
+    public sealed record AnswerRequest(string StepKey, string Question, string Value, string ValueLabel);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -179,6 +182,47 @@ internal sealed class Onboarding : IEndpoint
             return result.Match(Results.NoContent, CustomResults.Problem);
         })
         .RequireAuthorization()
+        .WithTags(Tags.PfaRegistrations);
+
+        // Răspunsurile din onboarding: le salvează fluxul, le citește la reluare și le vede adminul.
+        app.MapPut("onboarding/answers/{questionId}", async (
+            string questionId,
+            AnswerRequest request,
+            IUserContext userContext,
+            ICommandHandler<SaveOnboardingAnswerCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            var command = new SaveOnboardingAnswerCommand(
+                userContext.UserId, request.StepKey, questionId, request.Question, request.Value, request.ValueLabel);
+            Result result = await handler.Handle(command, cancellationToken);
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.PfaRegistrations);
+
+        app.MapGet("onboarding/answers", async (
+            IUserContext userContext,
+            IQueryHandler<GetMyOnboardingAnswersQuery, IReadOnlyList<OnboardingAnswerValue>> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<IReadOnlyList<OnboardingAnswerValue>> result =
+                await handler.Handle(new GetMyOnboardingAnswersQuery(userContext.UserId), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .WithTags(Tags.PfaRegistrations);
+
+        app.MapGet("pfa-registrations/{id:guid}/onboarding/answers", async (
+            Guid id,
+            IQueryHandler<GetOnboardingAnswersForRegistrationQuery, IReadOnlyList<OnboardingAnswerResponse>> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<IReadOnlyList<OnboardingAnswerResponse>> result =
+                await handler.Handle(new GetOnboardingAnswersForRegistrationQuery(id), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:view")
         .WithTags(Tags.PfaRegistrations);
 
         // Starea de onboarding a unui dosar (admin/contabil)
