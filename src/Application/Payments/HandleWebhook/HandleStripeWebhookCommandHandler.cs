@@ -36,6 +36,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
     IInvoiceGenerator invoiceGenerator,
     PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier opsNotifier,
     ConsultoDossierSender consultoDossierSender,
+    ServiceOrders.ServiceOrderDossierSender serviceOrderDossierSender,
     IConfiguration configuration,
     ILogger<HandleStripeWebhookCommandHandler> logger)
     : ICommandHandler<HandleStripeWebhookCommand>
@@ -484,6 +485,9 @@ internal sealed class HandleStripeWebhookCommandHandler(
             ServiceOrderConfirmationEmail.Subject,
             html,
             ct);
+
+        // Dosarul pleacă doar după plată — la fel ca în onboarding, plata e poarta.
+        await serviceOrderDossierSender.SendIfReadyAsync(order.Id, ct);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

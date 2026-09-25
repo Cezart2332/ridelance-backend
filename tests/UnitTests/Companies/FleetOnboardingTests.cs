@@ -74,7 +74,7 @@ public sealed class FleetOnboardingTests
         var handler = new HandleStripeWebhookCommandHandler(db, stripe, email, renderer,
             DispatchProxy.Create<IWebPushService, NoOpProxy>(), DispatchProxy.Create<IInvoiceGenerator, NoOpProxy>(),
             new OnboardingOpsNotifier(email, renderer, config, NullLogger<OnboardingOpsNotifier>.Instance),
-            null!, config, NullLogger<HandleStripeWebhookCommandHandler>.Instance);
+            null!, null!, config, NullLogger<HandleStripeWebhookCommandHandler>.Instance);
         (await handler.Handle(new("payload", "signature"), default)).IsSuccess.ShouldBeTrue();
         (await handler.Handle(new("payload", "signature"), default)).IsSuccess.ShouldBeTrue();
         (user.FleetOnboarding.CompletedAtUtc is not null).ShouldBe(expected);

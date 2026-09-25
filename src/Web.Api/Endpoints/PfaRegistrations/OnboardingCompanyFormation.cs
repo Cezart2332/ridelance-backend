@@ -80,7 +80,8 @@ internal sealed class OnboardingCompanyFormation : IEndpoint
             return result.Match(Results.Ok, CustomResults.Problem);
         });
 
-        // Textele wizardului, versionate. Publice pentru orice user autentificat.
+        // Textele wizardului, versionate. Publice: formularul serviciilor de pe site le arată și
+        // celor fără cont — sunt texte juridice, nu date ale cuiva.
         app.MapGet("legal/consent-flow", async (
             string context,
             IQueryHandler<GetLegalConsentFlowQuery, LegalConsentFlowDto> handler,
@@ -91,10 +92,10 @@ internal sealed class OnboardingCompanyFormation : IEndpoint
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })
-        .RequireAuthorization()
         .WithTags(Tags.PfaRegistrations);
 
-        // Lista de adrese Consulto stă în afara dosarului: e un catalog, nu date ale userului.
+        // Lista de adrese Consulto stă în afara dosarului: e un catalog, nu date ale userului —
+        // deci publică, pentru formularul de găzduire sediu de pe site.
         app.MapGet("onboarding/sedii-disponibile", async (
             IQueryHandler<GetConsultoOfficesQuery, IReadOnlyList<ConsultoOfficeDto>> handler,
             CancellationToken cancellationToken) =>
@@ -104,7 +105,6 @@ internal sealed class OnboardingCompanyFormation : IEndpoint
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })
-        .RequireAuthorization()
         .WithTags(Tags.PfaRegistrations);
     }
 
@@ -113,7 +113,7 @@ internal sealed class OnboardingCompanyFormation : IEndpoint
     /// Proxy-urile adaugă la coadă, deci primul element e clientul — dar poate fi o adresă
     /// privată dacă lanțul trece prin rețeaua internă.
     /// </summary>
-    private static string? ClientIpAddress(HttpContext httpContext)
+    internal static string? ClientIpAddress(HttpContext httpContext)
     {
         string forwarded = httpContext.Request.Headers["X-Forwarded-For"].ToString();
 

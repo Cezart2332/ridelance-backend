@@ -1,6 +1,8 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
+using Application.Payments.ServiceOrders;
+using Application.PfaRegistrations.Onboarding.CompanyFormation;
 using Domain.Payments;
 using Microsoft.Extensions.Configuration;
 using SharedKernel;
@@ -10,6 +12,7 @@ namespace Application.Payments.CreatePublicServiceCheckout;
 internal sealed class CreatePublicServiceCheckoutCommandHandler(
     IApplicationDbContext context,
     IStripeService stripeService,
+    ServiceOrderDossierBuilder dossierBuilder,
     IConfiguration configuration)
     : ICommandHandler<CreatePublicServiceCheckoutCommand, string>
 {
@@ -20,6 +23,19 @@ internal sealed class CreatePublicServiceCheckoutCommandHandler(
         if (!StripeCatalog.TryResolvePublicService(command.ServiceKey, out StripeCatalogItem? catalogItem, out string? title))
         {
             return Result.Failure<string>(Error.Problem("Service.InvalidKey", "Serviciul selectat nu este disponibil."));
+        }
+
+        // Formularul întâi: o comandă fără datele cerute nu are voie să ajungă la plată — după
+        // plată nu mai avem de la cine le cere.
+        Result<ServiceOrderDossier> dossier = await dossierBuilder.BuildAsync(
+            command.ServiceKey,
+            command.Dossier,
+            command.Context ?? new SignatureContext(null, null, null),
+            cancellationToken);
+
+        if (dossier.IsFailure)
+        {
+            return Result.Failure<string>(dossier.Error);
         }
 
         string priceId = await stripeService.ResolvePriceIdAsync(catalogItem, cancellationToken);
@@ -42,6 +58,8 @@ internal sealed class CreatePublicServiceCheckoutCommandHandler(
             CustomerPhone = command.CustomerPhone.Trim(),
             Status = ServiceOrderStatus.Pending,
             CreatedAtUtc = DateTime.UtcNow,
+            UserId = command.UserId,
+            DossierJson = dossier.Value.Serialize(),
         };
 
         context.ServiceOrders.Add(order);

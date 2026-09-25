@@ -112,9 +112,9 @@ public static class StripeCatalog
 
     /// <summary>Standalone PFA setup, bought from the public services page without a subscription.</summary>
     public static StripeCatalogItem InfiintarePfaPublic { get; } = new(
-        "ridelance_infiintare_pfa_public_450_ron",
+        $"ridelance_infiintare_pfa_public_{Pricing.Services.InfiintarePfaBani / 100}_ron",
         "Infiintare PFA RIDElance - serviciu separat",
-        45000,
+        Pricing.Services.InfiintarePfaBani,
         Ron,
         null,
         new Dictionary<string, string>
@@ -124,11 +124,11 @@ public static class StripeCatalog
             ["billing_unit"] = "one_time",
         });
 
-    /// <summary>Advertised as "449 lei / an" but charged as a single payment, as before this catalog existed.</summary>
+    /// <summary>Advertised as a yearly fee but charged as a single payment, as before this catalog existed.</summary>
     public static StripeCatalogItem SediuSocial { get; } = new(
-        "ridelance_sediu_social_449_ron",
-        "Gazduire Sediu Social RIDElance",
-        44900,
+        $"ridelance_sediu_social_{Pricing.Services.SediuSocialAnnualBani / 100}_ron",
+        "Gazduire Sediu Social RIDElance - anual",
+        Pricing.Services.SediuSocialAnnualBani,
         Ron,
         null,
         new Dictionary<string, string>
@@ -139,9 +139,9 @@ public static class StripeCatalog
         });
 
     public static StripeCatalogItem StartRide { get; } = new(
-        "ridelance_start_ride_799_ron",
-        "Start Ride RIDElance",
-        79900,
+        $"ridelance_start_ride_{Pricing.Services.StartRideBani / 100}_ron",
+        "Start Ride RIDElance - cu PFA si TVA intracomunitar",
+        Pricing.Services.StartRideBani,
         Ron,
         null,
         new Dictionary<string, string>
