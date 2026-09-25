@@ -138,9 +138,11 @@ public sealed class LicensePlateDetectionService : ILicensePlateDetectionService
                 finalDetections.Add(d);
             }
 
+            // Și fără număr de blurat, poza pleacă micșorată și ca JPEG: originalul de pe telefon
+            // avea până la 6 MB, iar extensia lui nu se potrivea mereu cu conținutul.
             if (finalDetections.Count == 0)
             {
-                return imageBytes;
+                return CarPhotoEncoder.ToWebJpeg(src);
             }
 
             foreach (Detection detection in finalDetections)
@@ -165,7 +167,7 @@ public sealed class LicensePlateDetectionService : ILicensePlateDetectionService
                 src.SaveImage(debugPath);
             }
 
-            return src.ToBytes(".jpg");
+            return CarPhotoEncoder.ToWebJpeg(src);
         }
         catch (DllNotFoundException ex)
         {
