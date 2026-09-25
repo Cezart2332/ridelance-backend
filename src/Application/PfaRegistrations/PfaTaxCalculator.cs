@@ -1,3 +1,5 @@
+using Application.FiscalEstimates;
+
 namespace Application.PfaRegistrations;
 
 /// <summary>
@@ -33,22 +35,25 @@ public static class PfaTaxCalculator
     /// <param name="annualIncome">Total annual gross income (RON)</param>
     /// <param name="deductibleExpenses">Total verified deductible expenses for the year (RON)</param>
     /// <param name="year">Tax year (used to select the minimum gross salary reference)</param>
-    public static TaxResult Compute(decimal annualIncome, decimal deductibleExpenses, int year)
+    /// <param name="parameters">
+    /// Plafoanele anului — aceleași ca ale motorului de estimări, inclusiv ce a schimbat adminul.
+    /// Fără ele, calculul rămâne pe valorile legale cunoscute la scriere.
+    /// </param>
+    public static TaxResult Compute(decimal annualIncome, decimal deductibleExpenses, int year, TaxYearParameters? parameters = null)
     {
-        // Romanian minimum gross salary (brut) — 4050 RON/month from January 2025+
-        decimal grossSalary = year >= 2025 ? 4050m : 3300m;
+        Limits l = LimitsFor(year, parameters);
 
         decimal profit = Math.Max(0m, annualIncome - deductibleExpenses);
 
         // ── CAS (25%) ──────────────────────────────────────────────────────────
         decimal cas;
-        if (profit >= grossSalary * 24m)
+        if (profit >= l.Cas24)
         {
-            cas = 0.25m * grossSalary * 24m; // capped at 2 years salary
+            cas = l.CasRate * l.Cas24; // capped at 2 years salary
         }
-        else if (profit >= grossSalary * 12m)
+        else if (profit >= l.Cas12)
         {
-            cas = 0.25m * grossSalary * 12m; // capped at 1 year salary
+            cas = l.CasRate * l.Cas12; // capped at 1 year salary
         }
         else
         {
@@ -57,23 +62,23 @@ public static class PfaTaxCalculator
 
         // ── CASS (10%) ─────────────────────────────────────────────────────────
         decimal cass;
-        if (profit < grossSalary * 6m)
+        if (profit < l.CassMin)
         {
-            cass = 0.10m * grossSalary * 6m; // minimum contribution (6 salaries)
+            cass = l.CassRate * l.CassMin; // minimum contribution (6 salaries)
         }
-        else if (profit >= grossSalary * 72m)
+        else if (profit >= l.CassMax)
         {
-            cass = 0.10m * grossSalary * 72m; // maximum cap (72 salaries)
+            cass = l.CassRate * l.CassMax; // maximum cap (72 salaries)
         }
         else
         {
-            cass = 0.10m * profit;
+            cass = l.CassRate * profit;
         }
 
         // ── Impozit pe venit (10%) ─────────────────────────────────────────────
         // Both CAS and CASS are fully deductible from the taxable base
         decimal taxableBase = Math.Max(0m, profit - cas - cass);
-        decimal incomeTax = 0.10m * taxableBase;
+        decimal incomeTax = l.IncomeTaxRate * taxableBase;
 
         decimal totalTax = cas + cass + incomeTax;
         decimal netIncome = annualIncome - deductibleExpenses - totalTax;
@@ -90,15 +95,16 @@ public static class PfaTaxCalculator
     public static TaxThresholdProgress ComputeThresholdProgress(
         decimal annualIncome,
         decimal deductibleExpenses,
-        int year)
+        int year,
+        TaxYearParameters? parameters = null)
     {
-        decimal grossSalary = year >= 2025 ? 4050m : 3300m;
+        Limits l = LimitsFor(year, parameters);
         decimal profit = Math.Max(0m, annualIncome - deductibleExpenses);
 
-        decimal casFirstThreshold = grossSalary * 12m;
-        decimal casSecondThreshold = grossSalary * 24m;
-        decimal cassFirstThreshold = grossSalary * 6m;
-        decimal cassMaximumThreshold = grossSalary * 72m;
+        decimal casFirstThreshold = l.Cas12;
+        decimal casSecondThreshold = l.Cas24;
+        decimal cassFirstThreshold = l.CassMin;
+        decimal cassMaximumThreshold = l.CassMax;
 
         decimal remainingToNextCasThreshold = 0m;
         if (profit < casFirstThreshold)
@@ -132,5 +138,26 @@ public static class PfaTaxCalculator
             HasReachedCasSecondThreshold: profit >= casSecondThreshold,
             HasReachedCassFirstThreshold: profit >= cassFirstThreshold,
             HasReachedCassMaximumThreshold: profit >= cassMaximumThreshold);
+    }
+
+    private sealed record Limits(
+        decimal Cas12,
+        decimal Cas24,
+        decimal CassMin,
+        decimal CassMax,
+        decimal CasRate,
+        decimal CassRate,
+        decimal IncomeTaxRate);
+
+    private static Limits LimitsFor(int year, TaxYearParameters? p)
+    {
+        if (p is not null)
+        {
+            return new Limits(p.CasThreshold12, p.CasThreshold24, p.CassMinThreshold, p.CassMaxBase, p.CasRate, p.CassRate, p.IncomeTaxRate);
+        }
+
+        // Romanian minimum gross salary (brut) — 4050 RON/month from January 2025+
+        decimal grossSalary = year >= 2025 ? 4050m : 3300m;
+        return new Limits(grossSalary * 12m, grossSalary * 24m, grossSalary * 6m, grossSalary * 72m, 0.25m, 0.10m, 0.10m);
     }
 }

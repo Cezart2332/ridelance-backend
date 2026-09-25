@@ -17,7 +17,8 @@ namespace Application.Notifications.RecurringDocumentation;
 internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
     IApplicationDbContext context,
     IWebPushService webPushService,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    FiscalEstimates.TaxYearParametersProvider taxParameters)
     : ICommandHandler<SendRecurringDocumentationNotificationsCommand, SendRecurringDocumentationNotificationsResult>
 {
     public async Task<Result<SendRecurringDocumentationNotificationsResult>> Handle(
@@ -227,6 +228,6 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
             return null;
         }
 
-        return PfaTaxCalculator.ComputeThresholdProgress(totalIncome, verifiedExpenses, year);
+        return PfaTaxCalculator.ComputeThresholdProgress(totalIncome, verifiedExpenses, year, taxParameters.For(year));
     }
 }

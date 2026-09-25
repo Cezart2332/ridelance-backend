@@ -162,7 +162,8 @@ public sealed record GetPfaDashboardSummaryQuery(
 internal sealed class GetPfaDashboardSummaryQueryHandler(
     IApplicationDbContext context,
     IUserContext userContext,
-    IOptions<FiscalPolicyOptions> fiscalOptions)
+    IOptions<FiscalPolicyOptions> fiscalOptions,
+    FiscalEstimates.TaxYearParametersProvider taxParameters)
     : IQueryHandler<GetPfaDashboardSummaryQuery, PfaDashboardSummaryResponse>
 {
     /// <summary>
@@ -305,7 +306,7 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
 
         decimal annualIncome = yearIncomes.Sum(i => i.ComputePlatformIncome());
         decimal annualExpenses = verifiedExpenses.Where(e => e.Year == fiscalYear).Sum(e => e.Amount);
-        PfaTaxCalculator.TaxResult annualTaxes = PfaTaxCalculator.Compute(annualIncome, annualExpenses, fiscalYear);
+        PfaTaxCalculator.TaxResult annualTaxes = PfaTaxCalculator.Compute(annualIncome, annualExpenses, fiscalYear, taxParameters.For(fiscalYear));
 
         // Aceleași luni ca intervalul afișat, dar doar partea cu documentul încă neverificat.
         List<(int Year, int Month, decimal Amount)> awaitingReview = confirmedExpenses

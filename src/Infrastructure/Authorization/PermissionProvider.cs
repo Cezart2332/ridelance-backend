@@ -35,7 +35,8 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
                 Permissions.ViewServiceOrders,
                 Permissions.ManageDiscounts,
                 Permissions.ManageOfficeCalendar,
-                Permissions.ManageCompanyPages
+                Permissions.ManageCompanyPages,
+                Permissions.ManageTaxParameters
             ],
             UserRole.Contabil =>
             [
@@ -91,4 +92,7 @@ public static class Permissions
 
     /// <summary>Verificarea mini-site-urilor firmelor: aprobare, refuz, blocare de secțiuni, corecturi.</summary>
     public const string ManageCompanyPages = "company_pages:manage";
+
+    /// <summary>Plafoanele și cotele fiscale din „Privire de ansamblu” (salariul minim, CAS, CASS).</summary>
+    public const string ManageTaxParameters = "fiscal:manage_parameters";
 }
