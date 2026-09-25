@@ -283,7 +283,7 @@ internal sealed class SignCompanyFormationCommandHandler(
     /// set exact de date: dacă adminul redeschide dosarul și datele se schimbă, hash-ul
     /// recalculat nu mai corespunde.
     /// </summary>
-    private static string ComputePayloadHash(
+    internal static string ComputePayloadHash(
         CompanyFormationRequest request,
         IReadOnlyList<CompanyFormationConsent> consents,
         byte[] image)
@@ -338,7 +338,7 @@ internal sealed class SignCompanyFormationCommandHandler(
             .Append(a.Apartament).Append('|');
 
     /// <summary>Acceptă atât data URL-ul trimis de canvas, cât și base64 curat.</summary>
-    private static Result<byte[]> DecodePng(string? signatureImage)
+    internal static Result<byte[]> DecodePng(string? signatureImage)
     {
         if (string.IsNullOrWhiteSpace(signatureImage))
         {

@@ -59,6 +59,34 @@ public sealed class OnboardingOpsNotifier(
             highPriority: true,
             cancellationToken);
 
+    /// <summary>
+    /// Un serviciu individual cu dosar (Înființare PFA, Start Ride, Găzduire sediu) e plătit, iar
+    /// arhiva pentru Consulto e gata. Același destinatar și aceeași prioritate ca dosarul din
+    /// onboarding: și aici rezultă obligația de a-l duce mai departe.
+    /// </summary>
+    public Task ServiceDossierReadyAsync(
+        string serviceTitle,
+        string applicantName,
+        string customerEmail,
+        string customerPhone,
+        long amountBani,
+        EmailAttachmentContent archive,
+        CancellationToken cancellationToken) =>
+        SendAsync(
+            $"{serviceTitle} - {applicantName}",
+            $"Comanda „{serviceTitle}” e plătită. Arhiva pentru Consulto e atașată.",
+            [
+                ("Serviciu", serviceTitle),
+                ("Solicitant", applicantName),
+                ("Email client", customerEmail),
+                ("Telefon", customerPhone),
+                ("Plată", (amountBani / 100m).ToString("N2", Ro) + " lei"),
+                ("Arhivă", archive.FileName),
+            ],
+            [archive],
+            highPriority: true,
+            cancellationToken);
+
     /// <summary>O plată a fost încasată.</summary>
     public Task PaymentReceivedAsync(
         string description,

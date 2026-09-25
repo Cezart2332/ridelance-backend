@@ -12,6 +12,7 @@ internal sealed class ServiceOrderConfiguration : IEntityTypeConfiguration<Servi
 
         builder.HasIndex(o => o.StripeSessionId);
         builder.HasIndex(o => o.CustomerEmail);
+        builder.HasIndex(o => o.UserId);
 
         builder.Property(o => o.ServiceKey).HasMaxLength(64).IsRequired();
         builder.Property(o => o.ServiceTitle).HasMaxLength(256).IsRequired();
@@ -20,5 +21,6 @@ internal sealed class ServiceOrderConfiguration : IEntityTypeConfiguration<Servi
         builder.Property(o => o.CustomerPhone).HasMaxLength(32).IsRequired();
         builder.Property(o => o.Status).HasConversion<string>().HasMaxLength(32);
         builder.Property(o => o.StripeSessionId).HasMaxLength(128);
+        builder.Property(o => o.DossierJson).HasColumnType("jsonb");
     }
 }

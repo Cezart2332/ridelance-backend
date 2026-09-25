@@ -148,4 +148,20 @@ public static class Pricing
     // Tarifele ARR (eliberare autorizație, copie conformă, ecusoane) NU sunt aici: se citesc din
     // `ArrAuthorizationRequest.FeeSnapshotBani` și `VehicleCopyRequest`, stampilate la momentul
     // cererii. Lipsa unui snapshot se afișează ca atare în UI — nu se inventează o sumă.
+
+    /// <summary>
+    /// Serviciile individuale, fără abonament — de pe site sau din dashboard. Înființarea și
+    /// Start Ride cer aceleași date ca ramura „Nu am PFA" din onboarding, iar dosarul pleacă
+    /// singur spre Consulto după plată.
+    /// </summary>
+    public static class Services
+    {
+        public const long InfiintarePfaBani = 24_900;
+
+        /// <summary>Tarif anual, încasat o dată pe an ca plată unică — nu ca abonament Stripe.</summary>
+        public const long SediuSocialAnnualBani = 34_900;
+
+        /// <summary>Înființarea PFA și înregistrarea în scopuri de TVA intracomunitar sunt incluse.</summary>
+        public const long StartRideBani = 99_900;
+    }
 }

@@ -156,7 +156,7 @@ internal sealed class ExportCompanyFormationQueryHandler(
         }
     }
 
-    private static async Task WriteAsync(
+    internal static async Task WriteAsync(
         ZipArchive archive,
         string path,
         byte[] content,
@@ -167,7 +167,7 @@ internal sealed class ExportCompanyFormationQueryHandler(
         await stream.WriteAsync(content, cancellationToken);
     }
 
-    private static CompanyFormationSheetData BuildSheet(
+    internal static CompanyFormationSheetData BuildSheet(
         CompanyFormationRequest request,
         string applicant,
         DateTime generatedAtUtc)
@@ -233,7 +233,7 @@ internal sealed class ExportCompanyFormationQueryHandler(
         new("Domiciliu", FormatAddress(p.Domiciliu)),
     ];
 
-    private static CompanyFormationConsentProofData BuildProof(
+    internal static CompanyFormationConsentProofData BuildProof(
         CompanyFormationRequest request,
         string applicant,
         DateTime generatedAtUtc)
@@ -298,7 +298,7 @@ internal sealed class ExportCompanyFormationQueryHandler(
     /// Numele folderului: hash-ul valorii criptate a CNP-ului, scurtat. Identifică dosarul fără
     /// să expună nimic — Consulto oricum primește CNP-ul pe alt canal, dacă e cazul.
     /// </summary>
-    private static string CnpHash(PersoanaFizica solicitant)
+    internal static string CnpHash(PersoanaFizica solicitant)
     {
         string source = solicitant.CnpEncrypted ?? solicitant.CnpMasked ?? "necunoscut";
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source)))[..16];
