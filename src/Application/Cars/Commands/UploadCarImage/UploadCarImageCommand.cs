@@ -61,14 +61,17 @@ internal sealed class UploadCarImageCommandHandler(
         string uploadsDir = Path.Combine("uploads", "cars");
         Directory.CreateDirectory(uploadsDir);
 
-        string extension = Path.GetExtension(command.FileName).ToUpperInvariant();
-        string safeFileName = $"{Guid.NewGuid()}{extension}";
-        string filePath = Path.Combine(uploadsDir, safeFileName);
-
         // Automatically detect and blur license plates
         command.FileStream.Seek(0, SeekOrigin.Begin);
         byte[] processedImage;
         processedImage = await licensePlateDetectionService.ProcessImageAsync(command.FileStream, cancellationToken);
+
+        // Extensia după conținut, nu după numele trimis: blurarea scoate JPEG, iar telefoanele
+        // trimit și WebP-uri numite „.jpg”. Serverul dă `Content-Type` după extensie.
+        string extension = CarPhotoFormat.ExtensionOf(processedImage)
+            ?? Path.GetExtension(command.FileName).ToUpperInvariant();
+        string safeFileName = $"{Guid.NewGuid()}{extension}";
+        string filePath = Path.Combine(uploadsDir, safeFileName);
 
         await File.WriteAllBytesAsync(filePath, processedImage, cancellationToken);
 
