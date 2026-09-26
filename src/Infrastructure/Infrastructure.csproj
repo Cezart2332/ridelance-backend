@@ -21,6 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- XSD-urile oficiale ANAF (spec contabilitate B4), citite din assembly după calea lor. -->
+    <EmbeddedResource Include="Accounting\Anaf\Schemas\**\*.xsd.xml" LogicalName="Anaf/Schemas/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Application\Application.csproj" />
   </ItemGroup>
 

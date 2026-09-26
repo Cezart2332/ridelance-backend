@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="mfp:anaf:dgti:d100:declaratie:v2" targetNamespace="mfp:anaf:dgti:d100:declaratie:v2" elementFormDefault="qualified" attributeFormDefault="unqualified" version="1.02" xml:lang="ro">
+	<xs:element name="declaratie100" type="Declaratie100Type"/>
+	<xs:complexType name="Declaratie100Type">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:sequence>
+					<xs:element name="obligatie" type="ObligatieType" maxOccurs="1300"/>
+				</xs:sequence>
+				<xs:attribute name="luna" type="IntInt1_12SType" use="required"/>
+				<xs:attribute name="an" type="IntInt2011_2100SType" use="required"/>
+				<xs:attribute name="d_anulare" type="IntInt0_1SType" use="required"/>
+				<xs:attribute name="temei" type="IntInt2_2SType"/>
+				<xs:attribute name="d_succ" type="IntInt0_1SType"/>
+				<xs:attribute name="cifS" type="CifSType"/>
+				<xs:attribute name="d_dizolv" type="IntInt0_1SType"/>
+				<xs:attribute name="nume_declar" type="Str75" use="required"/>
+				<xs:attribute name="prenume_declar" type="Str75" use="required"/>
+				<xs:attribute name="functie_declar" type="Str50" use="required"/>
+				<xs:attribute name="cui" type="CifSType" use="required"/>
+				<xs:attribute name="den" type="Str200" use="required"/>
+				<xs:attribute name="adresa" type="Str1000" use="required"/>
+				<xs:attribute name="telefon" type="Str15"/>
+				<xs:attribute name="fax" type="Str15"/>
+				<xs:attribute name="mai" type="Email200SType"/>
+				<xs:attribute name="totalPlata_A" type="IntPoz15SType" use="required"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="ObligatieType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:attribute name="cod_oblig" type="Int_listaCodObligSType" use="required"/>
+				<xs:attribute name="cod_bugetar" type="Str10" use="required"/>
+				<xs:attribute name="scadenta" type="DateSType" use="required"/>
+				<xs:attribute name="nr_evid" type="IntStr23SType" use="required"/>
+				<xs:attribute name="suma_dat" type="IntPoz15SType"/>
+				<xs:attribute name="suma_ded" type="IntPoz15SType"/>
+				<xs:attribute name="suma_plata" type="IntPoz15SType"/>
+				<xs:attribute name="suma_rest" type="IntPoz15SType"/>
+				<xs:attribute name="cota" type="Int_listaCoteSType"/>
+				<xs:attribute name="suma_redu" type="IntPoz15SType"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:simpleType name="IntInt1_12SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="1"/>
+			<xs:maxInclusive value="12"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntInt2011_2100SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="2011"/>
+			<xs:maxInclusive value="2100"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntInt0_1SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="0"/>
+			<xs:maxInclusive value="1"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntInt2_2SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="2"/>
+			<xs:maxInclusive value="2"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="CifSType">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="[1-9]\d{12}|[1-9]\d{1,9}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str75">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="75"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str50">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="50"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str200">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="200"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str1000">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="1000"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str15">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="15"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Email200SType">
+		<xs:restriction base="xs:token">
+			<xs:maxLength value="200"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntPoz15SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="0"/>
+			<xs:maxInclusive value="999999999999999"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Int_listaCodObligSType">
+		<xs:restriction base="xs:integer">
+			<xs:enumeration value="102"/>
+			<xs:enumeration value="103"/>
+			<xs:enumeration value="106"/>
+			<xs:enumeration value="105"/>
+			<xs:enumeration value="150"/>
+			<xs:enumeration value="121"/>
+			<xs:enumeration value="122"/>
+			<xs:enumeration value="710"/>
+			<xs:enumeration value="611"/>
+			<xs:enumeration value="615"/>
+			<xs:enumeration value="616"/>
+			<xs:enumeration value="614"/>
+			<xs:enumeration value="604"/>
+			<xs:enumeration value="605"/>
+			<xs:enumeration value="609"/>
+			<xs:enumeration value="617"/>
+			<xs:enumeration value="606"/>
+			<xs:enumeration value="608"/>
+			<xs:enumeration value="620"/>
+			<xs:enumeration value="613"/>
+			<xs:enumeration value="690"/>
+			<xs:enumeration value="612"/>
+			<xs:enumeration value="140"/>
+			<xs:enumeration value="810"/>
+			<xs:enumeration value="750"/>
+			<xs:enumeration value="755"/>
+			<xs:enumeration value="756"/>
+			<xs:enumeration value="780"/>
+			<xs:enumeration value="111"/>
+			<xs:enumeration value="211"/>
+			<xs:enumeration value="216"/>
+			<xs:enumeration value="212"/>
+			<xs:enumeration value="217"/>
+			<xs:enumeration value="213"/>
+			<xs:enumeration value="214"/>
+			<xs:enumeration value="215"/>
+			<xs:enumeration value="221"/>
+			<xs:enumeration value="222"/>
+			<xs:enumeration value="224"/>
+			<xs:enumeration value="225"/>
+			<xs:enumeration value="231"/>
+			<xs:enumeration value="232"/>
+			<xs:enumeration value="233"/>
+			<xs:enumeration value="234"/>
+			<xs:enumeration value="235"/>
+			<xs:enumeration value="236"/>
+			<xs:enumeration value="238"/>
+			<xs:enumeration value="237"/>
+			<xs:enumeration value="270"/>
+			<xs:enumeration value="244"/>
+			<xs:enumeration value="242"/>
+			<xs:enumeration value="243"/>
+			<xs:enumeration value="261"/>
+			<xs:enumeration value="275"/>
+			<xs:enumeration value="504"/>
+			<xs:enumeration value="945"/>
+			<xs:enumeration value="941"/>
+			<xs:enumeration value="942"/>
+			<xs:enumeration value="943"/>
+			<xs:enumeration value="944"/>
+			<xs:enumeration value="510"/>
+			<xs:enumeration value="535"/>
+			<xs:enumeration value="619"/>
+			<xs:enumeration value="450"/>
+			<xs:enumeration value="758"/>
+			<xs:enumeration value="621"/>
+			<xs:enumeration value="781"/>
+			<xs:enumeration value="711"/>
+			<xs:enumeration value="712"/>
+			<xs:enumeration value="713"/>
+			<xs:enumeration value="130"/>
+			<xs:enumeration value="607"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str10">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="10"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DateSType">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="([1-9]|0[1-9]|[12][0-9]|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntStr23SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="0"/>
+			<xs:maxInclusive value="99999999999999999999999"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Int_listaCoteSType">
+		<xs:restriction base="xs:integer">
+			<xs:enumeration value="1"/>
+			<xs:enumeration value="3"/>
+		</xs:restriction>
+	</xs:simpleType>
+</xs:schema>

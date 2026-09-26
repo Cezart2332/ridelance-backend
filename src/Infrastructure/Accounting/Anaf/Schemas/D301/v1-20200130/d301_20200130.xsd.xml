@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="mfp:anaf:dgti:d301:declaratie:v1" targetNamespace="mfp:anaf:dgti:d301:declaratie:v1" elementFormDefault="qualified" attributeFormDefault="unqualified" version="1.02" xml:lang="ro">
+	<xs:element name="declaratie301" type="Declaratie301Type"/>
+	<xs:complexType name="Declaratie301Type">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:sequence>
+					<xs:element name="sectiune" type="SectiuneType" minOccurs="0" maxOccurs="4000"/>
+				</xs:sequence>
+				<xs:attribute name="luna" type="IntInt1_12SType" use="required"/>
+				<xs:attribute name="an" type="IntInt2013_2100SType" use="required"/>
+				<xs:attribute name="d_rec" type="IntInt0_1SType" use="required"/>
+				<xs:attribute name="mijl_trans" type="IntInt0_1SType" use="required"/>
+				<xs:attribute name="temei" type="IntInt1_2SType" use="required"/>
+				<xs:attribute name="cif" type="CifSType" use="required"/>
+				<xs:attribute name="denumire" type="Str200" use="required"/>
+				<xs:attribute name="adresa" type="Str1000"/>
+				<xs:attribute name="telefon" type="Str15"/>
+				<xs:attribute name="fax" type="Str15"/>
+				<xs:attribute name="email" type="Email200SType"/>
+				<xs:attribute name="banca" type="Str50" use="required"/>
+				<xs:attribute name="cont" type="Str50" use="required"/>
+				<xs:attribute name="pers_inreg" type="IntInt1_2SType" use="required"/>
+				<xs:attribute name="nr_evid" type="IntStr23SType" use="required"/>
+				<xs:attribute name="baza1" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="tva1" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="baza2" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="tva2" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="baza3" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="tva3" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="baza4" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="tva4" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="baza5" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="tva5" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="totalPlata_A" type="IntNeg17SType" use="required"/>
+				<xs:attribute name="nume_declarant" type="Str75" use="required"/>
+				<xs:attribute name="prenume_declarant" type="Str75" use="required"/>
+				<xs:attribute name="functia_declarant" type="Str50" use="required"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="SectiuneType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:attribute name="tip_operatie" type="Int_nr_tabelSType" use="required"/>
+				<xs:attribute name="nr_doc" type="Str20" use="required"/>
+				<xs:attribute name="data_doc" type="DateSType" use="required"/>
+				<xs:attribute name="val_valuta" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="tip_valuta" type="Str_tip_valutaSType" use="required"/>
+				<xs:attribute name="curs_valutar" type="DblPoz15_4SType" use="required"/>
+				<xs:attribute name="baza" type="DblNeg15_2SType" use="required"/>
+				<xs:attribute name="tva" type="DblNeg15_2SType" use="required"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:simpleType name="IntInt1_12SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="1"/>
+			<xs:maxInclusive value="12"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntInt2013_2100SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="2013"/>
+			<xs:maxInclusive value="2100"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntInt0_1SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="0"/>
+			<xs:maxInclusive value="1"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntInt1_2SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="1"/>
+			<xs:maxInclusive value="2"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="CifSType">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="[1-9]\d{12}|[1-9]\d{1,9}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str200">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="200"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str1000">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="1000"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str15">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="15"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Email200SType">
+		<xs:restriction base="xs:token">
+			<xs:maxLength value="200"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str50">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="50"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntStr23SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="0"/>
+			<xs:maxInclusive value="99999999999999999999999"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DblNeg15_2SType">
+		<xs:restriction base="xs:double">
+			<xs:pattern value="\d{0,15}(\.\d{0,2})?"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntNeg17SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="-99999999999999999"/>
+			<xs:maxInclusive value="99999999999999999"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str75">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="75"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Int_nr_tabelSType">
+		<xs:restriction base="xs:integer">
+			<xs:enumeration value="1"/>
+			<xs:enumeration value="2"/>
+			<xs:enumeration value="3"/>
+			<xs:enumeration value="4"/>
+			<xs:enumeration value="5"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str20">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="20"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DateSType">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="([1-9]|0[1-9]|[12][0-9]|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str_tip_valutaSType">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="3"/>
+			<xs:enumeration value="EUR"/>
+			<xs:enumeration value="USD"/>
+			<xs:enumeration value="AUD"/>
+			<xs:enumeration value="CAD"/>
+			<xs:enumeration value="CHF"/>
+			<xs:enumeration value="CZK"/>
+			<xs:enumeration value="DKK"/>
+			<xs:enumeration value="EGP"/>
+			<xs:enumeration value="GBP"/>
+			<xs:enumeration value="HUF"/>
+			<xs:enumeration value="JPY"/>
+			<xs:enumeration value="MDL"/>
+			<xs:enumeration value="NOK"/>
+			<xs:enumeration value="PLN"/>
+			<xs:enumeration value="RON"/>
+			<xs:enumeration value="SEK"/>
+			<xs:enumeration value="TRY"/>
+			<xs:enumeration value="XDR"/>
+			<xs:enumeration value="BGN"/>
+			<xs:enumeration value="HRK"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DblPoz15_4SType">
+		<xs:restriction base="xs:double">
+			<xs:minInclusive value="0."/>
+			<xs:pattern value="\d{0,15}(\.\d{0,4})?"/>
+		</xs:restriction>
+	</xs:simpleType>
+</xs:schema>

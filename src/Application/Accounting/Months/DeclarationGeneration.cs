@@ -1,5 +1,7 @@
+using Application.Abstractions.Anaf;
 using Application.Abstractions.Data;
 using Application.Accounting.Contracts;
+using Application.Accounting.Declarations;
 using Application.Accounting.Tax;
 using Domain.Accounting;
 using Microsoft.EntityFrameworkCore;
@@ -12,13 +14,14 @@ internal sealed record StatusHistoryRecord(DeclarationStatus? From, DeclarationS
 /// <summary>
 /// Generarea declarațiilor unei luni pentru un PFA gata (spec contabilitate B3): calculul, apoi
 /// câte o <see cref="Declaration"/> cu versiunea 1 în <c>GENERATED</c> pentru fiecare tip aplicabil,
-/// cu snapshot-ul intrărilor și al calculului. XML-ul se generează în B4.
+/// cu snapshot-ul intrărilor și al calculului, și XML-ul după schema ANAF a perioadei (B4).
 /// </summary>
 internal static class DeclarationGeneration
 {
     /// <summary>Întoarce dacă a reușit și mesajul pentru rezumatul jobului.</summary>
     public static async Task<(bool Ok, string Message)> GenerateAsync(
         IApplicationDbContext db,
+        DeclarationFiles files,
         ScopePfa pfa,
         MonthData data,
         TaxEngineSettings settings,
@@ -46,10 +49,13 @@ internal static class DeclarationGeneration
         }
 
         List<AnafDeclarationSchema> schemas = await db.AnafDeclarationSchemas.AsNoTracking().ToListAsync(cancellationToken);
+        AnafTaxpayer? taxpayer = await files.TaxpayerAsync(pfa.Id, cancellationToken);
         var generated = new List<string>();
         foreach (DeclarationCalculation calculation in result.Declarations.Values.Where(c => c.Applicable))
         {
             var declaration = new Declaration { Id = Guid.NewGuid(), PfaRegistrationId = pfa.Id, Period = data.Period, Type = calculation.Type };
+            AnafDeclarationSchema? schema = DeclarationFiles.PickSchema(schemas, calculation.Type, data.Period);
+            var snapshot = new DeclarationSnapshot(input, calculation, taxpayer is null ? null : taxpayer with { Iban = null }, DateTime.UtcNow);
             var version = new DeclarationVersion
             {
                 Id = Guid.NewGuid(),
@@ -57,10 +63,9 @@ internal static class DeclarationGeneration
                 VersionNo = 1,
                 Kind = DeclarationVersionKind.Initial,
                 Status = DeclarationStatus.Generated,
-                SchemaId = schemas.FirstOrDefault(s =>
-                    s.DeclarationType == calculation.Type && s.ValidFrom <= data.End && (s.ValidTo == null || s.ValidTo >= data.End))?.Id,
+                SchemaId = schema?.Id,
                 Amount = calculation.Total,
-                SnapshotJson = AccountingJson.Serialize(new { input, calculation, calculatedAtUtc = DateTime.UtcNow }),
+                SnapshotJson = AccountingJson.Serialize(snapshot),
                 StatusHistoryJson = AccountingJson.Serialize(new[] { new StatusHistoryRecord(null, DeclarationStatus.Generated, DateTime.UtcNow, userId, null) }),
                 CreatedByUserId = userId,
                 CreatedAtUtc = DateTime.UtcNow,
@@ -89,6 +94,11 @@ internal static class DeclarationGeneration
                 ResidenceCertValidFrom = line.ResidenceCertValidFrom,
                 ResidenceCertValidTo = line.ResidenceCertValidTo,
             }));
+
+            if (taxpayer is not null)
+            {
+                await files.WriteXmlAsync(declaration, version, taxpayer, snapshot, schema, cancellationToken);
+            }
 
             AccountingAudit.Record(
                 db, pfa.Id, nameof(DeclarationVersion), version.Id, "GENERATE", null,

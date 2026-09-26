@@ -2,6 +2,7 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Accounting.Contracts;
+using Application.Accounting.Declarations;
 using Application.Accounting.Documents;
 using Application.Accounting.Tax;
 using Domain.Accounting;
@@ -12,7 +13,7 @@ using SharedKernel;
 
 namespace Application.Accounting.Months;
 
-/// <summary><c>POST /accounting/periods/{period}/process | generate</c> — pornește un job.</summary>
+/// <summary><c>POST /accounting/periods/{period}/process | generate | validate</c> — pornește un job.</summary>
 public sealed record StartMonthJobCommand(BackgroundJobType Type, string Period) : ICommand<JobRef>;
 
 internal sealed record MonthJobParameters(string Period);
@@ -53,13 +54,15 @@ public sealed record RunMonthJobCommand(Guid JobId) : ICommand;
 /// fiecare unitate:
 /// <list type="bullet">
 /// <item><c>process</c>: citirea documentelor rămase în coadă, apoi pre-check-ul fiecărui PFA;</item>
-/// <item><c>generate</c>: pentru PFA-urile gata fără declarații, calculul și versiunea 1.</item>
+/// <item><c>generate</c>: pentru PFA-urile gata fără declarații, calculul, versiunea 1 și XML-ul;</item>
+/// <item><c>validate</c>: validarea pe 3 niveluri a versiunilor curente în <c>GENERATED</c> (B4).</item>
 /// </list>
-/// Validarea pe 3 niveluri e în B4.
 /// </summary>
 internal sealed class RunMonthJobCommandHandler(
     IApplicationDbContext db,
     ICommandHandler<RunPlatformDocumentExtractionCommand> extraction,
+    DeclarationFiles files,
+    DeclarationValidator validator,
     IOptions<AccountingOptions> options)
     : ICommandHandler<RunMonthJobCommand>
 {
@@ -85,6 +88,11 @@ internal sealed class RunMonthJobCommandHandler(
             List<Guid> declared = await db.Declarations.Where(d => d.Period == period).Select(d => d.PfaRegistrationId).Distinct().ToListAsync(cancellationToken);
             pfas = [.. pfas.Where(p => ready.Contains(p.Id) && !declared.Contains(p.Id))];
         }
+        else if (job.Type == BackgroundJobType.ValidateDeclarations)
+        {
+            List<Guid> generated = await GeneratedVersions(period).Select(v => v.Declaration.PfaRegistrationId).Distinct().ToListAsync(cancellationToken);
+            pfas = [.. pfas.Where(p => generated.Contains(p.Id))];
+        }
         else if (job.Type != BackgroundJobType.ProcessPeriod)
         {
             job.Status = BackgroundJobStatus.Failed;
@@ -102,10 +110,13 @@ internal sealed class RunMonthJobCommandHandler(
 
         foreach (ScopePfa pfa in pfas)
         {
-            (bool ok, string message) = job.Type == BackgroundJobType.ProcessPeriod
-                ? await ProcessAsync(pfa, period, settings, cancellationToken)
-                : await DeclarationGeneration.GenerateAsync(
-                    db, pfa, await MonthData.LoadAsync(db, period, [pfa.Id], cancellationToken), settings, job.CreatedByUserId, cancellationToken);
+            (bool ok, string message) = job.Type switch
+            {
+                BackgroundJobType.ProcessPeriod => await ProcessAsync(pfa, period, settings, cancellationToken),
+                BackgroundJobType.ValidateDeclarations => await ValidateAsync(pfa, period, job.CreatedByUserId, cancellationToken),
+                _ => await DeclarationGeneration.GenerateAsync(
+                    db, files, pfa, await MonthData.LoadAsync(db, period, [pfa.Id], cancellationToken), settings, job.CreatedByUserId, cancellationToken),
+            };
 
             (ok ? results.Results : results.Errors).Add(new JobResultItem(pfa.Id, pfa.Name, message));
             job.ProgressDone++;
@@ -117,6 +128,33 @@ internal sealed class RunMonthJobCommandHandler(
         job.FinishedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();
+    }
+
+    /// <summary>Versiunile curente ale lunii care așteaptă validarea.</summary>
+    private IQueryable<DeclarationVersion> GeneratedVersions(string period) =>
+        db.DeclarationVersions.Where(v =>
+            v.Declaration.Period == period &&
+            v.Status == DeclarationStatus.Generated &&
+            v.VersionNo == v.Declaration.Versions.Max(other => other.VersionNo));
+
+    private async Task<(bool Ok, string Message)> ValidateAsync(ScopePfa pfa, string period, Guid? userId, CancellationToken cancellationToken)
+    {
+        List<Guid> versions = await GeneratedVersions(period)
+            .Where(v => v.Declaration.PfaRegistrationId == pfa.Id)
+            .OrderBy(v => v.Declaration.Type)
+            .Select(v => v.Id)
+            .ToListAsync(cancellationToken);
+
+        var summaries = new List<string>();
+        bool allPassed = true;
+        foreach (Guid versionId in versions)
+        {
+            Result<ValidationRun> run = await validator.ValidateAsync(versionId, userId, cancellationToken);
+            allPassed &= run.IsSuccess && run.Value.Passed;
+            summaries.Add(run.IsSuccess ? run.Value.Summary : run.Error.Description);
+        }
+
+        return (allPassed, string.Join(" ", summaries));
     }
 
     private async Task<(bool Ok, string Message)> ProcessAsync(ScopePfa pfa, string period, TaxEngineSettings settings, CancellationToken cancellationToken)

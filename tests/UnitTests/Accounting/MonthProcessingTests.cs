@@ -2,12 +2,14 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Messaging;
 using Application.Accounting;
 using Application.Accounting.Contracts;
+using Application.Accounting.Declarations;
 using Application.Accounting.Documents;
 using Application.Accounting.Months;
 using Domain.Accounting;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.Users;
+using Infrastructure.Accounting.Anaf;
 using Infrastructure.Database;
 using Infrastructure.DomainEvents;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +34,8 @@ public sealed class MonthProcessingTests : IDisposable
         new Events());
 
     private readonly IOptions<AccountingOptions> _options = Options.Create(new AccountingOptions());
+    private readonly MemoryFiles _files = new();
+    private readonly FakeAnafValidator _anaf = new();
     private readonly Guid _accountant = Guid.NewGuid();
     private readonly Guid _ion;
     private readonly Guid _ana;
@@ -191,15 +195,204 @@ public sealed class MonthProcessingTests : IDisposable
         (await Overview()).Rows.Select(r => r.PfaId).ShouldNotContain(_george);
     }
 
+    // ─── B4: XML și validarea pe 3 niveluri ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Generation_writes_the_xml_of_each_version()
+    {
+        await GenerateIon();
+
+        List<DeclarationVersion> versions = await IonVersions();
+        versions.ShouldAllBe(v => v.XmlDocumentId != null && v.SchemaId != null);
+        Guid? xmlId = versions.Single(v => v.Declaration.Type == DeclarationType.D301).XmlDocumentId;
+        Domain.Documents.Document xml = await _db.Documents.SingleAsync(d => d.Id == xmlId);
+        (xml.OriginalFileName, xml.ContentType, xml.Origin).ShouldBe(("D301_12345674_2026-08_v1.xml", "application/xml", Domain.Documents.DocumentOrigin.AccountingGenerated));
+        xml.IsUserFacing.ShouldBeFalse();
+
+        string content = System.Text.Encoding.UTF8.GetString(_files.Files[xml.StoredFileName]);
+        content.ShouldContain("tva4=\"336\"");
+        content.ShouldContain("cont=\"RO49AAAA1B31007593840000\"");
+        // IBAN-ul stă doar în XML-ul criptat, nu în snapshot-ul din bază.
+        versions.ShouldAllBe(v => !v.SnapshotJson.Contains("RO49AAAA1B31007593840000"));
+        versions.Single(v => v.Declaration.Type == DeclarationType.D301).SnapshotJson.ShouldContain("\"taxpayer\"");
+    }
+
+    [Fact]
+    public async Task Validation_job_makes_the_declarations_ready_to_sign()
+    {
+        await GenerateIon();
+
+        JobDto validated = await RunJob(BackgroundJobType.ValidateDeclarations);
+
+        validated.Progress.ShouldBe(new JobProgress(2, 2));
+        validated.Errors.ShouldBeEmpty();
+        _anaf.Calls.Where(call => call.Version == "2026-09").Select(call => call.Type).Distinct().ShouldBe([DeclarationType.D100, DeclarationType.D301, DeclarationType.D390], ignoreOrder: true);
+
+        List<DeclarationVersion> versions = await IonVersions();
+        versions.ShouldAllBe(v => v.Status == DeclarationStatus.ReadyToSign && v.PdfDocumentId != null);
+        DeclarationVersion d100 = versions.Single(v => v.Declaration.Type == DeclarationType.D100);
+        AccountingJson.Deserialize<List<StatusHistoryRecord>>(d100.StatusHistoryJson, []).Select(h => h.To)
+            .ShouldBe([DeclarationStatus.Generated, DeclarationStatus.Validated, DeclarationStatus.ReadyToSign]);
+
+        ValidationResult result = (await new GetDeclarationValidationQueryHandler(_db).Handle(new GetDeclarationValidationQuery(d100.Id), CancellationToken.None)).Value!;
+        result.Levels.Select(l => (l.Level, l.Passed)).ShouldBe([(ValidationLevel.Ridelance, true), (ValidationLevel.Xsd, true), (ValidationLevel.Anaf, true)]);
+        result.ValidatorVersion.ShouldBe("2026-09");
+
+        DeclarationFile pdf = (await new GetDeclarationFileQueryHandler(_db, Files()).Handle(new GetDeclarationFileQuery(d100.Id, DeclarationFileKind.Pdf), CancellationToken.None)).Value;
+        (pdf.FileName, pdf.ContentType).ShouldBe(("D100_12345674_2026-08_v1.pdf", "application/pdf"));
+        pdf.Content.ShouldBe(FakeAnafValidator.Pdf);
+
+        // Documentele sursă sunt blocate de la VALIDATED (Decizii pct. 3).
+        PlatformDocument invoice = await _db.PlatformDocuments.FirstAsync(d => d.PfaRegistrationId == _ion && d.DocumentType == PlatformDocumentType.CommissionInvoice);
+        (await PlatformDocumentSupport.LockReasonAsync(_db, invoice, CancellationToken.None)).ShouldNotBeNull();
+
+        // A doua validare nu mai are ce face.
+        (await RunJob(BackgroundJobType.ValidateDeclarations)).Progress.ShouldBe(new JobProgress(0, 0));
+    }
+
+    [Fact]
+    public async Task Anaf_errors_fail_the_declaration_with_their_messages()
+    {
+        await GenerateIon();
+        _anaf.Respond = (type, _) => type == DeclarationType.D390
+            ? new Application.Abstractions.Anaf.AnafValidatorResult(
+                false,
+                [new Application.Abstractions.Anaf.AnafValidatorMessage("R24.1", "codO invalid (nu respecta algoritmul de tara)", "codO", "operatie (2)")],
+                [],
+                "E: operatie (2)",
+                null,
+                1300,
+                "test")
+            : new Application.Abstractions.Anaf.AnafValidatorResult(true, [], [], "ok", FakeAnafValidator.Pdf, 1500, "test");
+
+        JobDto validated = await RunJob(BackgroundJobType.ValidateDeclarations);
+
+        // Ion și Ana: D100 și D301 trec, D390 pică la ANAF.
+        validated.Errors.Count.ShouldBe(2);
+        validated.Errors.Single(e => e.PfaId == _ion).Message.ShouldBe(
+            "D100: pregătit pentru depunere. D301: pregătit pentru depunere. D390: R24.1: codO invalid (nu respecta algoritmul de tara) (operatie (2))");
+        DeclarationVersion d390 = (await IonVersions()).Single(v => v.Declaration.Type == DeclarationType.D390);
+        d390.Status.ShouldBe(DeclarationStatus.ValidationFailed);
+        d390.PdfDocumentId.ShouldBeNull();
+        ValidationResult result = (await new GetDeclarationValidationQueryHandler(_db).Handle(new GetDeclarationValidationQuery(d390.Id), CancellationToken.None)).Value!;
+        ValidationMessage message = result.Levels.Single(l => l.Level == ValidationLevel.Anaf).Messages.ShouldHaveSingleItem();
+        (message.Field, message.Text).ShouldBe(("codO", "R24.1: codO invalid (nu respecta algoritmul de tara) (operatie (2))"));
+        d390.ValidationResultJson!.ShouldContain("E: operatie (2)");
+    }
+
+    [Fact]
+    public async Task Unavailable_anaf_validator_keeps_the_declaration_generated()
+    {
+        await GenerateIon();
+        _anaf.Respond = (_, _) => Result.Failure<Application.Abstractions.Anaf.AnafValidatorResult>(
+            Error.Problem("Accounting.AnafValidatorUnavailable", "Validatorul ANAF: serviciul nu răspunde."));
+
+        await RunJob(BackgroundJobType.ValidateDeclarations);
+
+        List<DeclarationVersion> versions = await IonVersions();
+        versions.ShouldAllBe(v => v.Status == DeclarationStatus.Generated);
+        ValidationResult result = (await new GetDeclarationValidationQueryHandler(_db).Handle(new GetDeclarationValidationQuery(versions[0].Id), CancellationToken.None)).Value!;
+        result.Levels.Single(l => l.Level == ValidationLevel.Anaf).Messages[0].Text.ShouldStartWith("Validatorul ANAF nu a putut fi folosit: Validatorul ANAF: serviciul nu răspunde.");
+    }
+
+    [Fact]
+    public async Task Missing_bank_account_fails_d301_before_calling_anaf()
+    {
+        await GenerateIon();
+        _db.PfaBankAccountDeclarations.RemoveRange(_db.PfaBankAccountDeclarations);
+        await _db.SaveChangesAsync();
+
+        await RunJob(BackgroundJobType.ValidateDeclarations);
+
+        DeclarationVersion d301 = (await IonVersions()).Single(v => v.Declaration.Type == DeclarationType.D301);
+        d301.Status.ShouldBe(DeclarationStatus.ValidationFailed);
+        _anaf.Calls.ShouldNotContain(call => call.Type == DeclarationType.D301);
+        ValidationResult result = (await new GetDeclarationValidationQueryHandler(_db).Handle(new GetDeclarationValidationQuery(d301.Id), CancellationToken.None)).Value!;
+        result.Levels[0].Messages.Select(m => m.Field).ShouldBe(["banca", "cont"]);
+        result.Levels[2].Messages[0].Text.ShouldBe("Nu s-a rulat: nivelurile anterioare au erori.");
+    }
+
+    [Fact]
+    public async Task Changed_snapshot_fails_level_one()
+    {
+        await GenerateIon();
+        DeclarationVersion d100 = (await IonVersions()).Single(v => v.Declaration.Type == DeclarationType.D100);
+        d100.Amount = 25m;
+        await _db.SaveChangesAsync();
+
+        Result<ValidationRun> run = await Validator().ValidateAsync(d100.Id, _accountant, CancellationToken.None);
+
+        run.Value.Status.ShouldBe(DeclarationStatus.ValidationFailed);
+        ValidationResult result = (await new GetDeclarationValidationQueryHandler(_db).Handle(new GetDeclarationValidationQuery(d100.Id), CancellationToken.None)).Value!;
+        result.Levels[0].Messages.Select(m => m.Field).ShouldContain("total");
+        result.Levels[0].Messages.Select(m => m.Field).ShouldContain("suma_dat");
+    }
+
+    [Fact]
+    public async Task Validate_transition_returns_the_version_and_refuses_a_second_validation()
+    {
+        await GenerateIon();
+        DeclarationVersion d301 = (await IonVersions()).Single(v => v.Declaration.Type == DeclarationType.D301);
+        var handler = new TransitionDeclarationVersionCommandHandler(_db, User(), Validator());
+
+        DeclarationVersionDto dto = (await handler.Handle(new TransitionDeclarationVersionCommand(d301.Id, DeclarationAction.Validate, null), CancellationToken.None)).Value;
+
+        (dto.Status, dto.HasXml, dto.HasPdf, dto.SchemaVersion).ShouldBe((DeclarationStatus.ReadyToSign, true, true, "v1-20200130"));
+        dto.StatusHistory.Select(h => (h.To, h.By.Name)).ShouldBe(
+        [
+            (DeclarationStatus.Generated, "Contabil RIDElance"),
+            (DeclarationStatus.Validated, "Contabil RIDElance"),
+            (DeclarationStatus.ReadyToSign, "Contabil RIDElance"),
+        ]);
+
+        Result<DeclarationVersionDto> again = await handler.Handle(new TransitionDeclarationVersionCommand(d301.Id, DeclarationAction.Validate, null), CancellationToken.None);
+        again.Error.Code.ShouldBe("Accounting.InvalidTransition");
+        again.Error.Description.ShouldBe("Acțiunea VALIDATE nu e permisă din statusul READY_TO_SIGN.");
+    }
+
+    [Fact]
+    public async Task Declaration_detail_breakdown_and_xml_are_readable()
+    {
+        await GenerateIon();
+        DeclarationVersion d301 = (await IonVersions()).Single(v => v.Declaration.Type == DeclarationType.D301);
+
+        DeclarationDetail detail = (await new GetDeclarationQueryHandler(_db).Handle(new GetDeclarationQuery(d301.DeclarationId), CancellationToken.None)).Value;
+        (detail.Type, detail.Period, detail.CurrentVersionId, detail.Versions.Count).ShouldBe((DeclarationType.D301, Period, d301.Id, 1));
+
+        DeclarationBreakdown breakdown = (await new GetDeclarationBreakdownQueryHandler(_db).Handle(new GetDeclarationBreakdownQuery(d301.Id), CancellationToken.None)).Value;
+        (breakdown.Total, breakdown.ExcludedRideIncome).ShouldBe((336m, 13000m));
+        breakdown.Lines.Select(l => (l.SourceDocumentLabel.StartsWith("Factura ", StringComparison.Ordinal), l.Base, l.Value)).ShouldBe([(true, 1000m, 210m), (true, 600m, 126m)]);
+
+        DeclarationFile xml = (await new GetDeclarationFileQueryHandler(_db, Files()).Handle(new GetDeclarationFileQuery(d301.Id, DeclarationFileKind.Xml), CancellationToken.None)).Value;
+        xml.ContentType.ShouldBe("application/xml");
+        (await new GetDeclarationValidationQueryHandler(_db).Handle(new GetDeclarationValidationQuery(d301.Id), CancellationToken.None)).Value.ShouldBeNull();
+        (await new GetDeclarationFileQueryHandler(_db, Files()).Handle(new GetDeclarationFileQuery(d301.Id, DeclarationFileKind.Pdf), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.FileMissing");
+    }
+
     // ─── Ajutoare ──────────────────────────────────────────────────────────────────────────────
+
+    private async Task GenerateIon()
+    {
+        await RunJob(BackgroundJobType.ProcessPeriod);
+        await new ConfirmCleanDocumentsCommandHandler(_db, User(), _options).Handle(new ConfirmCleanDocumentsCommand(Period), CancellationToken.None);
+        await RunJob(BackgroundJobType.GenerateDeclarations);
+    }
+
+    private Task<List<DeclarationVersion>> IonVersions() =>
+        _db.DeclarationVersions.Include(v => v.Declaration).Where(v => v.Declaration.PfaRegistrationId == _ion).ToListAsync();
 
     private async Task<JobDto> RunJob(BackgroundJobType type)
     {
         JobRef started = (await new StartMonthJobCommandHandler(_db, User()).Handle(new StartMonthJobCommand(type, Period), CancellationToken.None)).Value;
-        Result run = await new RunMonthJobCommandHandler(_db, new NoExtraction(), _options).Handle(new RunMonthJobCommand(started.JobId), CancellationToken.None);
+        Result run = await new RunMonthJobCommandHandler(_db, new NoExtraction(), Files(), Validator(), _options).Handle(new RunMonthJobCommand(started.JobId), CancellationToken.None);
         run.IsSuccess.ShouldBeTrue();
         return (await new GetJobQueryHandler(_db).Handle(new GetJobQuery(started.JobId), CancellationToken.None)).Value;
     }
+
+    private DeclarationFiles Files() => new(_db, new AnafDeclarationXmlService(), _files, new PlainSecrets());
+
+    private DeclarationValidator Validator() => new(_db, new AnafDeclarationXmlService(), _anaf, Files());
 
     private async Task<PeriodOverview> Overview() =>
         (await new GetPeriodOverviewQueryHandler(_db, _options).Handle(new GetPeriodOverviewQuery(Period), CancellationToken.None)).Value;
@@ -211,17 +404,30 @@ public sealed class MonthProcessingTests : IDisposable
 
     private Guid Pfa(string name, bool onboarded = true)
     {
-        var user = new User { Id = Guid.NewGuid(), Email = $"{Guid.NewGuid():N}@ridelance.ro", FirstName = name, Role = UserRole.Client };
+        string[] names = name.Split(' ');
+        var user = new User { Id = Guid.NewGuid(), Email = $"{Guid.NewGuid():N}@ridelance.ro", FirstName = names[0], LastName = names[^1], Role = UserRole.Client };
         var pfa = new PfaRegistration
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
             User = user,
             FullName = name,
-            Cui = "41000001",
+            LegalName = $"{names[^1].ToUpperInvariant()} {names[0].ToUpperInvariant()} PFA",
+            // CUI fictiv, cu cifra de control corectă.
+            Cui = "12345674",
+            Street = "Str. Exemplu",
+            Number = "1",
+            City = "București",
             OnboardingCompletedAtUtc = onboarded ? new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) : null,
         };
         _db.PfaRegistrations.Add(pfa);
+        _db.PfaBankAccountDeclarations.Add(new PfaBankAccountDeclaration
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = pfa.Id,
+            BankName = "Banca Transilvania",
+            IbanEncrypted = "RO49AAAA1B31007593840000",
+        });
         _db.PfaAccountingSettings.Add(Setting(pfa.Id, PfaAccountingSettingKeys.Art317, "true"));
         _db.PfaAccountingSettings.Add(Setting(pfa.Id, PfaAccountingSettingKeys.Platforms, "[\"BOLT\",\"UBER\"]"));
         return pfa.Id;
@@ -253,7 +459,21 @@ public sealed class MonthProcessingTests : IDisposable
             });
         _db.VatRates.Add(new VatRate { Id = Guid.NewGuid(), Rate = 21, ValidFrom = new DateOnly(2025, 8, 1) });
         _db.D100Rules.Add(new D100Rule { Id = Guid.NewGuid(), Code = D100RuleCode.D100CommissionNonresident, Enabled = true, ValidFrom = new DateOnly(2025, 1, 1) });
+        _db.AnafDeclarationSchemas.AddRange(
+            Schema(DeclarationType.D100, "v2-20220224", AnafSchemaCorrections.D100V2),
+            Schema(DeclarationType.D301, "v1-20200130", AnafSchemaCorrections.D301V1),
+            Schema(DeclarationType.D390, "v3-20210212", AnafSchemaCorrections.D390V3));
     }
+
+    private static AnafDeclarationSchema Schema(DeclarationType type, string version, string xsd) => new()
+    {
+        Id = Guid.NewGuid(),
+        DeclarationType = type,
+        Version = version,
+        XsdPath = xsd,
+        ValidatorVersion = "2026-09",
+        ValidFrom = new DateOnly(2025, 1, 1),
+    };
 
     private int _invoiceNumber;
 

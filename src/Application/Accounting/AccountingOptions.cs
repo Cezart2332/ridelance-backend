@@ -52,8 +52,15 @@ public sealed class AccountingOptions
     /// <summary>Regula zilei cursului valutar. DE CONFIRMAT.</summary>
     public ExchangeRateDateRule ExchangeRateDate { get; init; } = ExchangeRateDateRule.SameDayOrPrevious;
 
-    /// <summary>Rotunjirea totalului, pe tip de declarație (<c>D100</c>, <c>D301</c>); lipsă = fără rotunjire. DE CONFIRMAT.</summary>
-    public IDictionary<string, DeclarationRounding> DeclarationRounding { get; init; } = new Dictionary<string, DeclarationRounding>();
+    /// <summary>
+    /// Rotunjirea totalului, pe tip de declarație (<c>D100</c>, <c>D301</c>); lipsă = fără rotunjire.
+    /// D100 pornește în lei întregi, fiindcă XSD-ul ANAF nu acceptă bani pentru sume (B4); metoda
+    /// de rotunjire rămâne DE CONFIRMAT.
+    /// </summary>
+    public IDictionary<string, DeclarationRounding> DeclarationRounding { get; init; } = new Dictionary<string, DeclarationRounding>
+    {
+        ["D100"] = Accounting.DeclarationRounding.WholeLei,
+    };
 
     /// <summary>Statele UE (cod TVA; Grecia e <c>EL</c>): serviciile de la furnizori de aici intră în D301 și D390.</summary>
     public IList<string> EuCountries { get; init; } =

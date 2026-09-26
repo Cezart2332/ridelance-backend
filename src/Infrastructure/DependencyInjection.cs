@@ -147,6 +147,11 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromMinutes(3));
         // Cursurile de referință BNR (B2), importate zilnic.
         services.AddHttpClient<Infrastructure.Accounting.BnrExchangeRateImporter>(client => client.Timeout = TimeSpan.FromSeconds(60));
+        // Declarațiile ANAF (B4): XML-ul din schema perioadei, XSD-ul oficial și validatorul ANAF intern.
+        services.AddSingleton<Application.Abstractions.Anaf.IDeclarationXmlService, Infrastructure.Accounting.Anaf.AnafDeclarationXmlService>();
+        services.Configure<Infrastructure.Accounting.Anaf.AnafValidatorOptions>(configuration.GetSection(Infrastructure.Accounting.Anaf.AnafValidatorOptions.SectionName));
+        services.AddHttpClient<Application.Abstractions.Anaf.IAnafValidatorClient, Infrastructure.Accounting.Anaf.AnafValidatorClient>(client =>
+            client.Timeout = Timeout.InfiniteTimeSpan);
 
         // Un singur provider de open banking. Alegerea prin config a dispărut odată cu
         // Enable Banking și GoCardless — cine vrea altul îl înregistrează aici.

@@ -25,4 +25,10 @@ public enum DocumentOrigin
     /// recipise, dovezi). Nu apare în documentele clientului din onboarding.
     /// </summary>
     AccountingUpload = 4,
+
+    /// <summary>
+    /// Generat de modulul de contabilitate: XML-ul unei declarații și PDF-ul DUKIntegrator. Nu apare
+    /// în documentele clientului.
+    /// </summary>
+    AccountingGenerated = 5,
 }
