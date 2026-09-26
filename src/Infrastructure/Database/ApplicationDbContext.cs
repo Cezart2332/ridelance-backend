@@ -1,4 +1,5 @@
 using Application.Abstractions.Data;
+using Domain.Accounting;
 using Domain.AppSettings;
 using Domain.Banking;
 using Domain.Bolt;
@@ -88,6 +89,31 @@ public sealed class ApplicationDbContext(
 
     public DbSet<TaxObligation> TaxObligations { get; set; }
 
+    // Contabilitate PFA (spec contabilitate B0).
+    public DbSet<PlatformDocument> PlatformDocuments { get; set; }
+    public DbSet<DocumentExtraction> DocumentExtractions { get; set; }
+    public DbSet<SupplierTaxProfile> SupplierTaxProfiles { get; set; }
+    public DbSet<VatRate> VatRates { get; set; }
+    public DbSet<D100Rule> D100Rules { get; set; }
+    public DbSet<ExchangeRate> ExchangeRates { get; set; }
+    public DbSet<AnafDeclarationSchema> AnafDeclarationSchemas { get; set; }
+    public DbSet<ExpenseCategoryRule> ExpenseCategoryRules { get; set; }
+    public DbSet<RetentionPolicy> RetentionPolicies { get; set; }
+    public DbSet<Declaration> Declarations { get; set; }
+    public DbSet<DeclarationVersion> DeclarationVersions { get; set; }
+    public DbSet<DeclarationLine> DeclarationLines { get; set; }
+    public DbSet<PfaAccountingSetting> PfaAccountingSettings { get; set; }
+    public DbSet<CashRegisterState> CashRegisterStates { get; set; }
+    public DbSet<PfaAccountingEngagement> PfaAccountingEngagements { get; set; }
+    public DbSet<PfaAccountingPeriod> PfaAccountingPeriods { get; set; }
+    public DbSet<PeriodCorrection> PeriodCorrections { get; set; }
+    public DbSet<AuditLog> AuditLogs { get; set; }
+    public DbSet<BackgroundJob> BackgroundJobs { get; set; }
+    public DbSet<LedgerEntry> LedgerEntries { get; set; }
+    public DbSet<ExpenseDocument> ExpenseDocuments { get; set; }
+    public DbSet<ZReport> ZReports { get; set; }
+    public DbSet<PfaAsset> PfaAssets { get; set; }
+
     public DbSet<NotificationPreference> NotificationPreferences { get; set; }
     public DbSet<ChatRoom> ChatRooms { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
@@ -122,12 +148,31 @@ public sealed class ApplicationDbContext(
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        RejectAccountingDeletes();
         List<IDomainEvent> domainEvents = ExtractDomainEvents();
         int result = await base.SaveChangesAsync(cancellationToken);
 
         await PublishDomainEventsAsync(domainEvents);
 
         return result;
+    }
+
+    /// <summary>
+    /// Înregistrările fiscale și contabile nu se șterg fizic (spec contabilitate §0 pct. 7): orice
+    /// ștergere ajunsă aici e o greșeală de program, nu o operațiune permisă.
+    /// </summary>
+    private void RejectAccountingDeletes()
+    {
+        string? deleted = ChangeTracker
+            .Entries()
+            .Where(entry => entry.State == EntityState.Deleted && entry.Entity is IAccountingRecord)
+            .Select(entry => entry.Entity.GetType().Name)
+            .FirstOrDefault();
+
+        if (deleted is not null)
+        {
+            throw new InvalidOperationException($"{deleted} e o înregistrare contabilă și nu se poate șterge fizic.");
+        }
     }
 
     private async Task PublishDomainEventsAsync(IEnumerable<IDomainEvent> domainEvents)

@@ -1,3 +1,4 @@
+using Domain.Accounting;
 using Domain.AppSettings;
 using Domain.Banking;
 using Domain.Bolt;
@@ -81,6 +82,31 @@ public interface IApplicationDbContext
     DbSet<DeductibleExpense> DeductibleExpenses { get; }
 
     DbSet<TaxObligation> TaxObligations { get; }
+
+    // Contabilitate PFA (spec contabilitate B0).
+    DbSet<PlatformDocument> PlatformDocuments { get; }
+    DbSet<DocumentExtraction> DocumentExtractions { get; }
+    DbSet<SupplierTaxProfile> SupplierTaxProfiles { get; }
+    DbSet<VatRate> VatRates { get; }
+    DbSet<D100Rule> D100Rules { get; }
+    DbSet<ExchangeRate> ExchangeRates { get; }
+    DbSet<AnafDeclarationSchema> AnafDeclarationSchemas { get; }
+    DbSet<ExpenseCategoryRule> ExpenseCategoryRules { get; }
+    DbSet<RetentionPolicy> RetentionPolicies { get; }
+    DbSet<Declaration> Declarations { get; }
+    DbSet<DeclarationVersion> DeclarationVersions { get; }
+    DbSet<DeclarationLine> DeclarationLines { get; }
+    DbSet<PfaAccountingSetting> PfaAccountingSettings { get; }
+    DbSet<CashRegisterState> CashRegisterStates { get; }
+    DbSet<PfaAccountingEngagement> PfaAccountingEngagements { get; }
+    DbSet<PfaAccountingPeriod> PfaAccountingPeriods { get; }
+    DbSet<PeriodCorrection> PeriodCorrections { get; }
+    DbSet<AuditLog> AuditLogs { get; }
+    DbSet<BackgroundJob> BackgroundJobs { get; }
+    DbSet<LedgerEntry> LedgerEntries { get; }
+    DbSet<ExpenseDocument> ExpenseDocuments { get; }
+    DbSet<ZReport> ZReports { get; }
+    DbSet<PfaAsset> PfaAssets { get; }
 
     DbSet<NotificationPreference> NotificationPreferences { get; }
     DbSet<ChatRoom> ChatRooms { get; }
