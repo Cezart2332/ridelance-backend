@@ -2,13 +2,14 @@ using Application.Abstractions.Messaging;
 using Application.Accounting.Contracts;
 using Application.Accounting.Declarations;
 using Infrastructure.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
 using Web.Api.Extensions;
 using Web.Api.Infrastructure;
 
 namespace Web.Api.Endpoints.Accounting;
 
-/// <summary>Declarațiile și versiunile lor: detaliu, calcul, fișiere, validare (spec contabilitate §4.4, B4).</summary>
+/// <summary>Declarațiile și versiunile lor: detaliu, calcul, fișiere, validare (spec contabilitate §4.4, B4–B5).</summary>
 internal sealed class DeclarationEndpoints : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -62,6 +63,32 @@ internal sealed class DeclarationEndpoints : IEndpoint
         {
             Result<DeclarationVersionDto> result = await handler.Handle(
                 new TransitionDeclarationVersionCommand(versionId, request.Action, request.Note), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        });
+
+        group.MapPost("declaration-versions/{versionId:guid}/receipt", async (
+            Guid versionId,
+            [FromForm] IFormFile file,
+            [FromForm] string? receiptNumber,
+            ICommandHandler<UploadDeclarationReceiptCommand, DeclarationVersionDto> handler,
+            CancellationToken cancellationToken) =>
+        {
+            using var buffer = new MemoryStream();
+            await file.CopyToAsync(buffer, cancellationToken);
+            Result<DeclarationVersionDto> result = await handler.Handle(
+                new UploadDeclarationReceiptCommand(versionId, new ReceiptFile(file.FileName, file.ContentType, buffer.ToArray()), receiptNumber),
+                cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .DisableAntiforgery();
+
+        group.MapPost("declarations/{declarationId:guid}/rectification", async (
+            Guid declarationId,
+            RectificationRequest request,
+            ICommandHandler<CreateRectificationCommand, DeclarationVersionDto> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<DeclarationVersionDto> result = await handler.Handle(new CreateRectificationCommand(declarationId, request.Reason), cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         });
     }

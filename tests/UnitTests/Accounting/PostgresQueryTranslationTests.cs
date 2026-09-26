@@ -111,7 +111,8 @@ public sealed class PostgresQueryTranslationTests
             new Events());
         var xml = new AnafDeclarationXmlService();
         var files = new DeclarationFiles(db, xml, new MemoryFiles(), new PlainSecrets());
-        var validator = new DeclarationValidator(db, xml, new FakeAnafValidator(), files);
+        var validator = new DeclarationValidator(db, xml, new FakeAnafValidator(), files, Options.Create(new AccountingOptions()));
+        var actions = new DeclarationActions(db, files, validator, Options.Create(new AccountingOptions()));
         var missing = Guid.NewGuid();
 
         (await DeclarationDtos.VersionsAsync(db, v => v.Declaration.Period == "2026-08", CancellationToken.None)).ShouldNotBeNull();
@@ -119,10 +120,17 @@ public sealed class PostgresQueryTranslationTests
         (await new GetDeclarationBreakdownQueryHandler(db).Handle(new GetDeclarationBreakdownQuery(missing), CancellationToken.None)).IsFailure.ShouldBeTrue();
         (await new GetDeclarationValidationQueryHandler(db).Handle(new GetDeclarationValidationQuery(missing), CancellationToken.None)).IsFailure.ShouldBeTrue();
         (await new GetDeclarationFileQueryHandler(db, files).Handle(new GetDeclarationFileQuery(missing, DeclarationFileKind.Xml), CancellationToken.None)).IsFailure.ShouldBeTrue();
-        (await new TransitionDeclarationVersionCommandHandler(db, new FixedUser(), validator)
+        (await new TransitionDeclarationVersionCommandHandler(db, new FixedUser(), actions)
             .Handle(new TransitionDeclarationVersionCommand(missing, DeclarationAction.Validate, null), CancellationToken.None)).IsFailure.ShouldBeTrue();
         (await validator.ValidateAsync(missing, null, CancellationToken.None)).IsFailure.ShouldBeTrue();
         (await files.TaxpayerAsync(missing, CancellationToken.None)).ShouldBeNull();
+        (await actions.CreateRectificationAsync(missing, "Corecție", null, CancellationToken.None)).IsFailure.ShouldBeTrue();
+        (await actions.UploadReceiptAsync(missing, new ReceiptFile("r.pdf", "application/pdf", [1]), null, null, CancellationToken.None)).IsFailure.ShouldBeTrue();
+        (await DeclarationContent.CalculateAsync(db, missing, "2026-08", DeclarationType.D301, Application.Accounting.Tax.TaxEngineSettings.From(new AccountingOptions()), CancellationToken.None))
+            .IsFailure.ShouldBeTrue();
+        (await new Application.Accounting.Audit.ListPfaAuditQueryHandler(db)
+            .Handle(new Application.Accounting.Audit.ListPfaAuditQuery(missing, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), "DeclarationVersion"), CancellationToken.None))
+            .IsFailure.ShouldBeTrue();
 
         // Schemele din migrația B4, alese după perioadă.
         List<AnafDeclarationSchema> schemas = await db.AnafDeclarationSchemas.AsNoTracking().ToListAsync();

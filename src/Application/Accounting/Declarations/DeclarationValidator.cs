@@ -1,10 +1,12 @@
 using Application.Abstractions.Anaf;
 using Application.Abstractions.Data;
 using Application.Accounting.Contracts;
+using Application.Accounting.Months;
 using Application.Accounting.Tax;
 using Domain.Accounting;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SharedKernel;
 
 namespace Application.Accounting.Declarations;
@@ -34,7 +36,8 @@ internal sealed record ValidationRun(DeclarationStatus Status, bool Passed, stri
 /// Validarea pe 3 niveluri (spec contabilitate B4), doar din <c>GENERATED</c>:
 /// <list type="number">
 /// <item><b>RIDElance</b>: recalculul din snapshot dă același rezultat, liniile salvate și totalul
-/// corespund, antetul e complet, iar XML-ul citit înapoi are sumele și sumele de control corecte;</item>
+/// corespund, documentele lunii nu s-au schimbat după generare, antetul e complet, iar XML-ul citit
+/// înapoi are sumele și sumele de control corecte;</item>
 /// <item><b>XSD</b>: schema oficială a perioadei;</item>
 /// <item><b>ANAF</b>: DUKIntegrator prin <c>ridelance-anaf-validator</c>, care dă și PDF-ul.</item>
 /// </list>
@@ -46,13 +49,14 @@ internal sealed class DeclarationValidator(
     IApplicationDbContext db,
     IDeclarationXmlService xml,
     IAnafValidatorClient anaf,
-    DeclarationFiles files)
+    DeclarationFiles files,
+    IOptions<AccountingOptions> options)
 {
     public async Task<Result<ValidationRun>> ValidateAsync(Guid versionId, Guid? userId, CancellationToken cancellationToken)
     {
         DeclarationVersion? version = await db.DeclarationVersions
             .Include(v => v.Declaration)
-            .Include(v => v.Lines)
+            .Include(v => v.Lines.Where(line => line.SupersededAtUtc == null))
             .Include(v => v.Schema)
             .SingleOrDefaultAsync(v => v.Id == versionId, cancellationToken);
         if (version is null)
@@ -88,6 +92,11 @@ internal sealed class DeclarationValidator(
         else
         {
             ridelance.AddRange(CheckCalculation(declaration.Type, version, snapshot));
+            MonthData data = await MonthData.LoadAsync(db, declaration.Period, [declaration.PfaRegistrationId], cancellationToken);
+            if (!SameInvoices(data.TaxInput(declaration.PfaRegistrationId, snapshot.Input.Settings).Invoices, snapshot.Input.Invoices))
+            {
+                ridelance.Add(new ValidationMessage(null, "Documentele lunii s-au schimbat după generare: declarația trebuie regenerată („Regenerează”)."));
+            }
         }
 
         AnafTaxpayer? taxpayer = await files.TaxpayerAsync(declaration.PfaRegistrationId, cancellationToken);
@@ -96,7 +105,12 @@ internal sealed class DeclarationValidator(
             ridelance.AddRange(CheckTaxpayer(declaration.Type, taxpayer));
         }
 
-        if (schema is null)
+        string? blocker = DeclarationContent.XmlBlocker(declaration.Type, version.Kind, options.Value.D100CorrectionProcedure);
+        if (blocker is not null)
+        {
+            xsd.Add(new ValidationMessage(null, blocker));
+        }
+        else if (schema is null)
         {
             xsd.Add(new ValidationMessage(null, $"Nu există schemă ANAF {declaration.Type} valabilă pentru {declaration.Period} (Reguli fiscale → Scheme ANAF)."));
         }
@@ -149,8 +163,8 @@ internal sealed class DeclarationValidator(
                 "application/pdf",
                 cancellationToken);
             version.PdfDocumentId = document.Id;
-            DeclarationStatusHistory.Move(version, DeclarationStatus.Validated, userId, "Validare RIDElance, XSD și ANAF trecută.");
-            DeclarationStatusHistory.Move(version, DeclarationStatus.ReadyToSign, userId, "PDF generat de DUKIntegrator.");
+            DeclarationStateMachine.Move(version, DeclarationStatus.Validated, userId, "Validare RIDElance, XSD și ANAF trecută.");
+            DeclarationStateMachine.Move(version, DeclarationStatus.ReadyToSign, userId, "PDF generat de DUKIntegrator.");
             run = new ValidationRun(version.Status, true, $"{declaration.Type}: pregătit pentru depunere.");
         }
         else if (unavailable)
@@ -159,7 +173,7 @@ internal sealed class DeclarationValidator(
         }
         else
         {
-            DeclarationStatusHistory.Move(version, DeclarationStatus.ValidationFailed, userId, null);
+            DeclarationStateMachine.Move(version, DeclarationStatus.ValidationFailed, userId, null);
             ValidationMessage first = levels.First(level => !level.Passed).Messages[0];
             run = new ValidationRun(version.Status, false, $"{declaration.Type}: {first.Text}");
         }
@@ -238,7 +252,7 @@ internal sealed class DeclarationValidator(
             messages.Add(new ValidationMessage("total", $"Suma versiunii ({AccountingJson.Amount(version.Amount)} lei) diferă de totalul calculat ({AccountingJson.Amount(saved.Total)} lei)."));
         }
 
-        if (!SameLines(version.Lines.Select(line => (line.RuleCode, line.SourceDocumentId, line.Base, line.Rate, line.Value, line.SupplierVatId)), saved.Lines.Select(Key)))
+        if (!SameLines(version.Lines.Where(line => line.SupersededAtUtc == null).Select(line => (line.RuleCode, line.SourceDocumentId, line.Base, line.Rate, line.Value, line.SupplierVatId)), saved.Lines.Select(Key)))
         {
             messages.Add(new ValidationMessage(null, "Liniile salvate ale declarației nu corespund calculului din snapshot."));
         }
@@ -299,6 +313,12 @@ internal sealed class DeclarationValidator(
 
         return messages;
     }
+
+    /// <summary>Facturile din snapshot sunt cele de acum: aceleași documente, cu aceleași valori citite.</summary>
+    private static bool SameInvoices(IEnumerable<TaxInvoice> current, IEnumerable<TaxInvoice> saved) =>
+        SameLines(
+            current.Select(i => (i.DocumentId, i.InvoiceNumber ?? string.Empty, i.InvoiceDate, i.Currency ?? string.Empty, i.CommissionAmount, i.SupplierVatId ?? string.Empty)),
+            saved.Select(i => (i.DocumentId, i.InvoiceNumber ?? string.Empty, i.InvoiceDate, i.Currency ?? string.Empty, i.CommissionAmount, i.SupplierVatId ?? string.Empty)));
 
     private static bool SameLines<T>(IEnumerable<T> left, IEnumerable<T> right) =>
         left.Order().SequenceEqual(right.Order());

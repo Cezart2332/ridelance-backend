@@ -77,6 +77,7 @@ internal static class PlatformDocumentSupport
 
         string? declaredElsewhere = await db.DeclarationLines
             .Where(line => line.SourceDocumentId == document.Id &&
+                           line.SupersededAtUtc == null &&
                            line.DeclarationVersion.Status == DeclarationStatus.Accepted &&
                            line.DeclarationVersion.Declaration.Period != document.Period)
             .Select(line => line.DeclarationVersion.Declaration.Type + " pentru " + line.DeclarationVersion.Declaration.Period)
@@ -124,7 +125,7 @@ internal static class PlatformDocumentSupport
 
         // Versiunile curente (cea mai mare pe declarație) care includ documentul.
         var current = await db.DeclarationLines
-            .Where(line => line.SourceDocumentId == document.Id)
+            .Where(line => line.SourceDocumentId == document.Id && line.SupersededAtUtc == null)
             .Select(line => line.DeclarationVersion)
             .Where(version => version.VersionNo == version.Declaration.Versions.Max(other => other.VersionNo))
             .Select(version => new { version.Kind, version.Status, version.VersionNo, version.Declaration.Type })
@@ -144,7 +145,7 @@ internal static class PlatformDocumentSupport
 
     public static async Task<IReadOnlyList<DeclarationReference>> IncludedInAsync(IApplicationDbContext db, Guid documentId, CancellationToken cancellationToken) =>
         await db.DeclarationLines
-            .Where(line => line.SourceDocumentId == documentId)
+            .Where(line => line.SourceDocumentId == documentId && line.SupersededAtUtc == null)
             .Select(line => line.DeclarationVersion)
             .Distinct()
             .Select(version => new DeclarationReference(

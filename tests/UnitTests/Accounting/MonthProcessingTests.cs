@@ -333,7 +333,7 @@ public sealed class MonthProcessingTests : IDisposable
     {
         await GenerateIon();
         DeclarationVersion d301 = (await IonVersions()).Single(v => v.Declaration.Type == DeclarationType.D301);
-        var handler = new TransitionDeclarationVersionCommandHandler(_db, User(), Validator());
+        var handler = new TransitionDeclarationVersionCommandHandler(_db, User(), Actions());
 
         DeclarationVersionDto dto = (await handler.Handle(new TransitionDeclarationVersionCommand(d301.Id, DeclarationAction.Validate, null), CancellationToken.None)).Value;
 
@@ -370,7 +370,190 @@ public sealed class MonthProcessingTests : IDisposable
             .Error.Code.ShouldBe("Accounting.FileMissing");
     }
 
+    // ─── B5: statusuri, recipisă, rectificative ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task Declaration_goes_from_generated_to_accepted()
+    {
+        await GenerateIon();
+        Guid d301 = await IonVersion(DeclarationType.D301);
+
+        (await Transition(d301, DeclarationAction.Validate)).Value.Status.ShouldBe(DeclarationStatus.ReadyToSign);
+        (await Transition(d301, DeclarationAction.MarkSigned)).Value.Status.ShouldBe(DeclarationStatus.Signed);
+        (await Transition(d301, DeclarationAction.MarkSubmitted, "Depus prin SPV")).Value.Status.ShouldBe(DeclarationStatus.Submitted);
+        DeclarationVersionDto accepted = (await Receipt(d301, "INTERNT-123")).Value;
+
+        (accepted.Status, accepted.ReceiptNumber, accepted.ReceiptFile!.FileName).ShouldBe((DeclarationStatus.Accepted, "INTERNT-123", "recipisa.pdf"));
+        accepted.StatusHistory.Select(h => (h.To, h.Note)).ShouldBe(
+        [
+            (DeclarationStatus.Generated, null),
+            (DeclarationStatus.Validated, "Validare RIDElance, XSD și ANAF trecută."),
+            (DeclarationStatus.ReadyToSign, "PDF generat de DUKIntegrator."),
+            (DeclarationStatus.Signed, null),
+            (DeclarationStatus.Submitted, "Depus prin SPV"),
+            (DeclarationStatus.Accepted, "Recipisa nr. INTERNT-123"),
+        ]);
+        Guid? receipt = (await _db.DeclarationVersions.SingleAsync(v => v.Id == d301)).ReceiptDocumentId;
+        (await _db.Documents.SingleAsync(d => d.Id == receipt)).Origin.ShouldBe(Domain.Documents.DocumentOrigin.AccountingUpload);
+        (await _db.AuditLogs.Where(a => a.EntityId == d301.ToString()).Select(a => a.Action).ToListAsync())
+            .ShouldBe(["GENERATE", "VALIDATE", "MARK_SIGNED", "MARK_SUBMITTED", "RECEIPT"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task Invalid_transitions_are_refused()
+    {
+        await GenerateIon();
+        Guid d100 = await IonVersion(DeclarationType.D100);
+
+        (await Transition(d100, DeclarationAction.MarkSigned)).Error.Description.ShouldBe("Acțiunea MARK_SIGNED nu e permisă din statusul GENERATED.");
+        (await Transition(d100, DeclarationAction.Regenerate)).Error.Code.ShouldBe("Accounting.InvalidTransition");
+        (await Receipt(d100, null)).Error.Description.ShouldBe("Recipisa se încarcă doar pe o declarație depusă.");
+        Guid declarationId = (await _db.DeclarationVersions.SingleAsync(v => v.Id == d100)).DeclarationId;
+        (await Rectify(declarationId, "Corecție")).Error.Description.ShouldBe("Rectificativa se creează doar dintr-o versiune cu recipisă validă.");
+
+        await Transition(d100, DeclarationAction.Validate);
+        await Transition(d100, DeclarationAction.MarkSigned);
+        await Transition(d100, DeclarationAction.MarkSubmitted);
+        Result<DeclarationVersionDto> noReason = await Transition(d100, DeclarationAction.MarkRejected, "  ");
+        (noReason.Error.Code, noReason.Error.Type).ShouldBe(("Accounting.ReasonRequired", ErrorType.Problem));
+        (await Rectify(declarationId, " ")).Error.Code.ShouldBe("Accounting.ReasonRequired");
+
+        Result<DeclarationVersionDto> text = await new UploadDeclarationReceiptCommandHandler(_db, User(), Actions())
+            .Handle(new UploadDeclarationReceiptCommand(d100, new ReceiptFile("recipisa.txt", "text/plain", [1]), null), CancellationToken.None);
+        text.Error.Code.ShouldBe("Accounting.ReceiptFileType");
+    }
+
+    [Fact]
+    public async Task Rejected_declaration_is_regenerated_on_the_same_version()
+    {
+        await GenerateIon();
+        Guid d301 = await IonVersion(DeclarationType.D301);
+        await Transition(d301, DeclarationAction.Validate);
+        await Transition(d301, DeclarationAction.MarkSigned);
+        await Transition(d301, DeclarationAction.MarkSubmitted);
+        (await Transition(d301, DeclarationAction.MarkRejected, "Respinsă: cont eronat")).Value.Status.ShouldBe(DeclarationStatus.Rejected);
+        Guid? oldXml = (await _db.DeclarationVersions.SingleAsync(v => v.Id == d301)).XmlDocumentId;
+        await ChangeCommission(Platform.Bolt, 1100m);
+
+        DeclarationVersionDto regenerated = (await Transition(d301, DeclarationAction.Regenerate, "Factura Bolt corectată")).Value;
+
+        (regenerated.Status, regenerated.VersionNo, regenerated.Amount, regenerated.HasPdf, regenerated.HasXml).ShouldBe((DeclarationStatus.Generated, 1, 357m, false, true));
+        DeclarationVersion version = await _db.DeclarationVersions.SingleAsync(v => v.Id == d301);
+        version.XmlDocumentId.ShouldNotBe(oldXml);
+        version.ValidationResultJson.ShouldBeNull();
+        List<DeclarationLine> lines = await _db.DeclarationLines.Where(l => l.DeclarationVersionId == d301).ToListAsync();
+        lines.Count(l => l.SupersededAtUtc != null).ShouldBe(2);
+        lines.Where(l => l.SupersededAtUtc == null).Sum(l => l.Value).ShouldBe(357m);
+        (await new GetDeclarationBreakdownQueryHandler(_db).Handle(new GetDeclarationBreakdownQuery(d301), CancellationToken.None)).Value.Lines.Count.ShouldBe(2);
+
+        (await Transition(d301, DeclarationAction.Validate)).Value.Status.ShouldBe(DeclarationStatus.ReadyToSign);
+        AuditLog audit = await _db.AuditLogs.SingleAsync(a => a.EntityId == d301.ToString() && a.Action == "REGENERATE");
+        (audit.Reason, audit.BeforeJson, audit.AfterJson).ShouldBe(("Factura Bolt corectată", "{\"status\":\"REJECTED\",\"amount\":336}", "{\"status\":\"GENERATED\",\"amount\":357}"));
+    }
+
+    [Fact]
+    public async Task Rectification_is_a_new_version_that_unlocks_its_documents()
+    {
+        await GenerateIon();
+        Guid d301 = await IonVersion(DeclarationType.D301);
+        await Accept(d301);
+        PlatformDocument boltInvoice = await _db.PlatformDocuments.SingleAsync(d => d.PfaRegistrationId == _ion && d.Platform == Platform.Bolt && d.DocumentType == PlatformDocumentType.CommissionInvoice);
+        (await PlatformDocumentSupport.LockReasonAsync(_db, boltInvoice, CancellationToken.None)).ShouldNotBeNull();
+        Guid declarationId = (await _db.DeclarationVersions.SingleAsync(v => v.Id == d301)).DeclarationId;
+
+        DeclarationVersionDto rectification = (await Rectify(declarationId, "Comision Bolt greșit")).Value;
+
+        (rectification.VersionNo, rectification.Kind, rectification.Status, rectification.RectificationReason, rectification.HasXml)
+            .ShouldBe((2, DeclarationVersionKind.Rectificative, DeclarationStatus.Generated, "Comision Bolt greșit", true));
+        (await _db.DeclarationVersions.SingleAsync(v => v.Id == d301)).Status.ShouldBe(DeclarationStatus.Accepted);
+        (await PlatformDocumentSupport.LockReasonAsync(_db, boltInvoice, CancellationToken.None)).ShouldBeNull();
+        (await PlatformDocumentSupport.IncludedInAsync(_db, boltInvoice.Id, CancellationToken.None))
+            .Where(r => r.Type == DeclarationType.D301).Select(r => (r.VersionNo, r.Status))
+            .ShouldBe([(1, DeclarationStatus.Accepted), (2, DeclarationStatus.Generated)], ignoreOrder: true);
+        DeclarationFile xml = (await new GetDeclarationFileQueryHandler(_db, Files()).Handle(new GetDeclarationFileQuery(rectification.Id, DeclarationFileKind.Xml), CancellationToken.None)).Value;
+        xml.FileName.ShouldBe("D301_12345674_2026-08_v2.xml");
+        System.Text.Encoding.UTF8.GetString(xml.Content).ShouldContain("d_rec=\"1\"");
+        (await Transition(d301, DeclarationAction.Validate)).Error.Code.ShouldBe("Accounting.NotCurrentVersion");
+
+        // Documentul se corectează; rectificativa, generată înainte, nu mai corespunde.
+        await ChangeCommission(Platform.Bolt, 1100m);
+        (await Transition(rectification.Id, DeclarationAction.Validate)).Value.Status.ShouldBe(DeclarationStatus.ValidationFailed);
+        ValidationResult failed = (await new GetDeclarationValidationQueryHandler(_db).Handle(new GetDeclarationValidationQuery(rectification.Id), CancellationToken.None)).Value!;
+        failed.Levels[0].Messages.Select(m => m.Text).ShouldContain("Documentele lunii s-au schimbat după generare: declarația trebuie regenerată („Regenerează”).");
+
+        (await Transition(rectification.Id, DeclarationAction.Regenerate)).Value.Amount.ShouldBe(357m);
+        (await Transition(rectification.Id, DeclarationAction.Validate)).Value.Status.ShouldBe(DeclarationStatus.ReadyToSign);
+    }
+
+    [Fact]
+    public async Task D100_rectification_waits_for_the_d710_procedure()
+    {
+        await GenerateIon();
+        Guid d100 = await IonVersion(DeclarationType.D100);
+        await Accept(d100);
+        Guid declarationId = (await _db.DeclarationVersions.SingleAsync(v => v.Id == d100)).DeclarationId;
+
+        DeclarationVersionDto rectification = (await Rectify(declarationId, "Cotă corectată")).Value;
+        rectification.HasXml.ShouldBeFalse();
+        int calls = _anaf.Calls.Count;
+
+        (await Transition(rectification.Id, DeclarationAction.Validate)).Value.Status.ShouldBe(DeclarationStatus.ValidationFailed);
+
+        _anaf.Calls.Count.ShouldBe(calls);
+        ValidationResult result = (await new GetDeclarationValidationQueryHandler(_db).Handle(new GetDeclarationValidationQuery(rectification.Id), CancellationToken.None)).Value!;
+        result.Levels.Single(l => l.Level == ValidationLevel.Xsd).Messages[0].Text.ShouldStartWith("Corecția D100 se depune prin D710");
+    }
+
+    [Fact]
+    public async Task Regeneration_needs_a_ready_month()
+    {
+        await GenerateIon();
+        Guid d301 = await IonVersion(DeclarationType.D301);
+        await Transition(d301, DeclarationAction.Validate);
+        await Transition(d301, DeclarationAction.MarkSigned);
+        await Transition(d301, DeclarationAction.MarkSubmitted);
+        await Transition(d301, DeclarationAction.MarkRejected, "Respinsă");
+        PlatformDocument invoice = await _db.PlatformDocuments.SingleAsync(d => d.PfaRegistrationId == _ion && d.Platform == Platform.Uber && d.DocumentType == PlatformDocumentType.CommissionInvoice);
+        invoice.Status = PlatformDocumentStatus.NeedsReview;
+        await _db.SaveChangesAsync();
+
+        Result<DeclarationVersionDto> regenerated = await Transition(d301, DeclarationAction.Regenerate);
+
+        regenerated.Error.Code.ShouldBe("Accounting.MonthNotReady");
+        (await _db.DeclarationVersions.SingleAsync(v => v.Id == d301)).Status.ShouldBe(DeclarationStatus.Rejected);
+    }
+
     // ─── Ajutoare ──────────────────────────────────────────────────────────────────────────────
+
+    private async Task<Guid> IonVersion(DeclarationType type) => (await IonVersions()).Single(v => v.Declaration.Type == type).Id;
+
+    private Task<Result<DeclarationVersionDto>> Transition(Guid versionId, DeclarationAction action, string? note = null) =>
+        new TransitionDeclarationVersionCommandHandler(_db, User(), Actions()).Handle(new TransitionDeclarationVersionCommand(versionId, action, note), CancellationToken.None);
+
+    private Task<Result<DeclarationVersionDto>> Receipt(Guid versionId, string? number) =>
+        new UploadDeclarationReceiptCommandHandler(_db, User(), Actions())
+            .Handle(new UploadDeclarationReceiptCommand(versionId, new ReceiptFile("recipisa.pdf", "application/pdf", "%PDF recipisa"u8.ToArray()), number), CancellationToken.None);
+
+    private Task<Result<DeclarationVersionDto>> Rectify(Guid declarationId, string? reason) =>
+        new CreateRectificationCommandHandler(_db, User(), Actions()).Handle(new CreateRectificationCommand(declarationId, reason), CancellationToken.None);
+
+    private async Task Accept(Guid versionId)
+    {
+        await Transition(versionId, DeclarationAction.Validate);
+        await Transition(versionId, DeclarationAction.MarkSigned);
+        await Transition(versionId, DeclarationAction.MarkSubmitted);
+        await Receipt(versionId, "R-1");
+    }
+
+    /// <summary>Corectura unei facturi: comisionul citit se schimbă (textul PDF îl conține).</summary>
+    private async Task ChangeCommission(Platform platform, decimal commission)
+    {
+        PlatformDocument invoice = await _db.PlatformDocuments.SingleAsync(d => d.PfaRegistrationId == _ion && d.Platform == platform && d.DocumentType == PlatformDocumentType.CommissionInvoice);
+        DocumentExtraction extraction = await _db.DocumentExtractions.SingleAsync(e => e.PlatformDocumentId == invoice.Id && e.IsCurrent);
+        extraction.CommissionAmount = commission;
+        extraction.Amount = commission;
+        await _db.SaveChangesAsync();
+    }
 
     private async Task GenerateIon()
     {
@@ -392,7 +575,9 @@ public sealed class MonthProcessingTests : IDisposable
 
     private DeclarationFiles Files() => new(_db, new AnafDeclarationXmlService(), _files, new PlainSecrets());
 
-    private DeclarationValidator Validator() => new(_db, new AnafDeclarationXmlService(), _anaf, Files());
+    private DeclarationValidator Validator() => new(_db, new AnafDeclarationXmlService(), _anaf, Files(), _options);
+
+    private DeclarationActions Actions() => new(_db, Files(), Validator(), _options);
 
     private async Task<PeriodOverview> Overview() =>
         (await new GetPeriodOverviewQueryHandler(_db, _options).Handle(new GetPeriodOverviewQuery(Period), CancellationToken.None)).Value;

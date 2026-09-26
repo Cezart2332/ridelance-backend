@@ -92,7 +92,7 @@ internal sealed class GetDeclarationBreakdownQueryHandler(IApplicationDbContext 
     {
         DeclarationVersion? version = await db.DeclarationVersions
             .AsNoTracking()
-            .Include(v => v.Lines)
+            .Include(v => v.Lines.Where(line => line.SupersededAtUtc == null))
             .ThenInclude(line => line.SourceDocument)
             .ThenInclude(document => document.SourceDocument)
             .SingleOrDefaultAsync(v => v.Id == query.VersionId, cancellationToken);

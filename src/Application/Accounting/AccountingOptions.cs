@@ -30,6 +30,16 @@ public enum DeclarationRounding
     WholeLei = 1,
 }
 
+/// <summary>Cum se corectează un D100 depus. DE CONFIRMAT (spec §6 pct. 6, B5).</summary>
+public enum D100CorrectionProcedure
+{
+    /// <summary>Declarația rectificativă D710. Generatorul XML D710 nu există încă (lipsește schema).</summary>
+    D710 = 0,
+
+    /// <summary>Un D100 nou pentru aceeași perioadă (schema D100 nu are marcaj de rectificativă).</summary>
+    D100 = 1,
+}
+
 /// <summary>
 /// Configurarea modulului de contabilitate (secțiunea <c>Accounting</c>). Pragurile verificărilor
 /// și regulile DE CONFIRMAT stau aici, nu în cod (spec §0 pct. 3).
@@ -61,6 +71,9 @@ public sealed class AccountingOptions
     {
         ["D100"] = Accounting.DeclarationRounding.WholeLei,
     };
+
+    /// <summary>Procedura de corecție D100 pentru rectificative. DE CONFIRMAT.</summary>
+    public D100CorrectionProcedure D100CorrectionProcedure { get; init; } = D100CorrectionProcedure.D710;
 
     /// <summary>Statele UE (cod TVA; Grecia e <c>EL</c>): serviciile de la furnizori de aici intră în D301 și D390.</summary>
     public IList<string> EuCountries { get; init; } =
