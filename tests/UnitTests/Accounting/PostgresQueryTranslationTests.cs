@@ -159,6 +159,42 @@ public sealed class PostgresQueryTranslationTests
         (await db.BackgroundJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id)).Status.ShouldBe(BackgroundJobStatus.Completed);
     }
 
+    [Fact]
+    public async Task Ledger_queries_translate_to_sql()
+    {
+        if (string.IsNullOrWhiteSpace(ConnectionString))
+        {
+            return;
+        }
+
+        await using var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseNpgsql(ConnectionString)
+                .UseSnakeCaseNamingConvention()
+                .Options,
+            new Events());
+        var pfaId = Guid.NewGuid();
+        var options = new AccountingOptions();
+        var context = new Application.Accounting.Ledger.LedgerImportContext(
+            pfaId,
+            Guid.NewGuid(),
+            new DateOnly(2026, 1, 1),
+            await Application.Accounting.Ledger.LedgerSupport.RulesAsync(db, pfaId, CancellationToken.None),
+            await Application.Accounting.Ledger.LedgerSupport.ClosedPeriodsAsync(db, pfaId, CancellationToken.None),
+            options);
+        context.Rules.Categories.ShouldNotBeEmpty();
+
+        (await new Application.Accounting.Ledger.BankLedgerSource(db).ImportAsync(context, CancellationToken.None)).Created.ShouldBe(0);
+        (await new Application.Accounting.Ledger.PlatformLedgerSource(db).ImportAsync(context, CancellationToken.None)).Created.ShouldBe(0);
+        (await new Application.Accounting.Ledger.ListLedgerQueryHandler(db)
+            .Handle(new Application.Accounting.Ledger.ListLedgerQuery(pfaId, null, null, null, null, null), CancellationToken.None)).IsFailure.ShouldBeTrue();
+        (await Application.Accounting.Ledger.LedgerSupport.DtosAsync(
+            db.LedgerEntries.Where(Application.Accounting.Ledger.LedgerSupport.UndocumentedBankExpense(pfaId)).Where(e => e.Amount >= -300.01m && e.Amount <= -299.99m),
+            CancellationToken.None)).ShouldBeEmpty();
+        (await new Application.Accounting.Ledger.ListLedgerImportPfasQueryHandler(db)
+            .Handle(new Application.Accounting.Ledger.ListLedgerImportPfasQuery("2026-10"), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+    }
+
     private sealed class FixedUser : Application.Abstractions.Authentication.IUserContext
     {
         public Guid UserId => Guid.Empty;

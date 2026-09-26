@@ -42,6 +42,10 @@ public static class DependencyInjection
         services.AddScoped<Accounting.Declarations.DeclarationFiles>();
         services.AddScoped<Accounting.Declarations.DeclarationValidator>();
         services.AddScoped<Accounting.Declarations.DeclarationActions>();
+        // Sursele ledger-ului (B6), rulate în ordinea lor de importul zilnic.
+        services.AddScoped<Accounting.Ledger.ILedgerSource, Accounting.Ledger.BankLedgerSource>();
+        services.AddScoped<Accounting.Ledger.ILedgerSource, Accounting.Ledger.PlatformLedgerSource>();
+        services.AddScoped<Accounting.Ledger.ILedgerSource, Accounting.Ledger.OblioLedgerSource>();
 
         services.AddScoped<PfaRegistrations.Onboarding.OnboardingStateService>();
         services.AddScoped<Companies.Onboarding.FleetOnboardingService>();
