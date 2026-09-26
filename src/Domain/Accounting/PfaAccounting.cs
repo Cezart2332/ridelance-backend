@@ -85,6 +85,24 @@ public sealed class PfaAccountingPeriod : Entity, IAccountingRecord
     public PfaRegistration PfaRegistration { get; set; } = null!;
 }
 
+/// <summary>
+/// Rezultatul pre-check-ului unui PFA pe o lună (B3): gata, de verificat sau cu documente lipsă,
+/// cu motivele. Lipsa rândului înseamnă „neprocesat”.
+/// </summary>
+public sealed class PfaMonthCheck : Entity, IAccountingRecord
+{
+    public Guid Id { get; set; }
+    public Guid PfaRegistrationId { get; set; }
+
+    /// <summary><c>yyyy-MM</c></summary>
+    public string Period { get; set; } = string.Empty;
+    public PfaMonthStatus Status { get; set; }
+
+    /// <summary>JSON: motivele, în ordinea de afișare (primul apare sub numele PFA-ului).</summary>
+    public string ReasonsJson { get; set; } = "[]";
+    public DateTime CheckedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>O corecție într-o perioadă închisă: doar ADMIN / ACCOUNTANT, cu motiv și audit (B8).</summary>
 public sealed class PeriodCorrection : Entity, IAccountingRecord
 {

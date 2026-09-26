@@ -107,6 +107,7 @@ public interface IApplicationDbContext
     DbSet<ExpenseDocument> ExpenseDocuments { get; }
     DbSet<ZReport> ZReports { get; }
     DbSet<PfaAsset> PfaAssets { get; }
+    DbSet<PfaMonthCheck> PfaMonthChecks { get; }
 
     DbSet<NotificationPreference> NotificationPreferences { get; }
     DbSet<ChatRoom> ChatRooms { get; }

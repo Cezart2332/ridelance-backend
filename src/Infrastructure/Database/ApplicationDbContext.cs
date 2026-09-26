@@ -113,6 +113,7 @@ public sealed class ApplicationDbContext(
     public DbSet<ExpenseDocument> ExpenseDocuments { get; set; }
     public DbSet<ZReport> ZReports { get; set; }
     public DbSet<PfaAsset> PfaAssets { get; set; }
+    public DbSet<PfaMonthCheck> PfaMonthChecks { get; set; }
 
     public DbSet<NotificationPreference> NotificationPreferences { get; set; }
     public DbSet<ChatRoom> ChatRooms { get; set; }

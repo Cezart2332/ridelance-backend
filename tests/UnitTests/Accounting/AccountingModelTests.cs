@@ -7,6 +7,7 @@ using Infrastructure.Migrations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using SharedKernel;
 using Shouldly;
@@ -39,9 +40,10 @@ public sealed class AccountingModelTests
                         .ToHashSet();
                 });
 
-        List<CreateTableOperation> created = [.. new AddAccountingModule().UpOperations.OfType<CreateTableOperation>()];
-        // Coloanele adăugate de migrațiile de după B0.
-        List<AddColumnOperation> added = [.. new AddPlatformDocumentText().UpOperations.OfType<AddColumnOperation>()];
+        // Toate migrațiile modulului, în ordine: tabelele din B0 și ce s-a adăugat după.
+        List<MigrationOperation> operations = [.. AccountingMigrations.SelectMany(migration => migration.UpOperations)];
+        List<CreateTableOperation> created = [.. operations.OfType<CreateTableOperation>()];
+        List<AddColumnOperation> added = [.. operations.OfType<AddColumnOperation>()];
 
         created.Select(table => table.Name).ToHashSet().ShouldBe(expected.Keys.ToHashSet(), ignoreOrder: true);
         foreach (CreateTableOperation table in created)
@@ -144,6 +146,8 @@ public sealed class AccountingModelTests
         root.GetProperty("currentVersionKind").GetString().ShouldBe("INITIAL");
         root.GetProperty("blockingReasons").GetArrayLength().ShouldBe(0);
     }
+
+    private static readonly Migration[] AccountingMigrations = [new AddAccountingModule(), new AddPlatformDocumentText(), new AddMonthProcessing()];
 
     private static List<object?> Rows(InsertDataOperation insert, string column)
     {

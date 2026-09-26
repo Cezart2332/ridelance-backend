@@ -75,6 +75,8 @@ public sealed class DeclarationLine : Entity, IAccountingRecord
     public Guid SourceDocumentId { get; set; }
     public string RuleCode { get; set; } = string.Empty;
 
+    /// <summary>Suma din document, în moneda lui (D301, secțiunea 4.1: „valoare valută”).</summary>
+    public decimal AmountInCurrency { get; set; }
     public decimal Base { get; set; }
     public decimal? Rate { get; set; }
     public decimal Value { get; set; }

@@ -100,6 +100,7 @@ internal sealed class UpdateExtractionCommandHandler(IApplicationDbContext db, I
             db, document.PfaRegistrationId, nameof(DocumentExtraction), document.Id, "MANUAL_EDIT",
             ExtractedFieldsPatch.Pick(before, changed), ExtractedFieldsPatch.Pick(after, changed), reason, userContext.UserId);
         await db.SaveChangesAsync(cancellationToken);
+        await Months.PreCheck.RefreshIfProcessedAsync(db, document.PfaRegistrationId, document.Period, options.Value, cancellationToken);
 
         return await PlatformDocumentDetails.BuildAsync(db, document, extraction, checks, cancellationToken);
     }
@@ -127,6 +128,7 @@ internal sealed class ConfirmPlatformDocumentCommandHandler(IApplicationDbContex
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        await Months.PreCheck.RefreshIfProcessedAsync(db, document.PfaRegistrationId, document.Period, options.Value, cancellationToken);
         DocumentExtraction? extraction = await PlatformDocumentSupport.CurrentExtractionAsync(db, document.Id, cancellationToken);
         return await PlatformDocumentDetails.BuildAsync(db, document, extraction, confirmed.Value, cancellationToken);
     }
@@ -142,6 +144,7 @@ internal sealed class ConfirmPlatformDocumentsBulkCommandHandler(IApplicationDbC
     {
         var confirmed = new List<Guid>();
         var skipped = new List<SkippedItem>();
+        var touched = new HashSet<(Guid PfaId, string Period)>();
 
         foreach (Guid id in command.Ids.Distinct())
         {
@@ -161,9 +164,15 @@ internal sealed class ConfirmPlatformDocumentsBulkCommandHandler(IApplicationDbC
             }
 
             confirmed.Add(id);
+            touched.Add((document.PfaRegistrationId, document.Period));
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        foreach ((Guid pfaId, string period) in touched)
+        {
+            await Months.PreCheck.RefreshIfProcessedAsync(db, pfaId, period, options.Value, cancellationToken);
+        }
+
         return new ConfirmBulkResult(confirmed, skipped);
     }
 }
