@@ -145,6 +145,8 @@ public static class DependencyInjection
         services.AddSingleton<Application.Abstractions.Services.IPdfTextExtractor, Infrastructure.Accounting.PdfPigTextExtractor>();
         services.AddHttpClient<IDocumentExtractor, Infrastructure.Accounting.OpenRouterDocumentExtractor>(client =>
             client.Timeout = TimeSpan.FromMinutes(3));
+        // Cursurile de referință BNR (B2), importate zilnic.
+        services.AddHttpClient<Infrastructure.Accounting.BnrExchangeRateImporter>(client => client.Timeout = TimeSpan.FromSeconds(60));
 
         // Un singur provider de open banking. Alegerea prin config a dispărut odată cu
         // Enable Banking și GoCardless — cine vrea altul îl înregistrează aici.
@@ -180,6 +182,7 @@ public static class DependencyInjection
         services.AddHostedService<BankSyncJob>();
         services.AddHostedService<DocumentAiVerificationJob>();
         services.AddHostedService<PlatformDocumentExtractionJob>();
+        services.AddHostedService<Infrastructure.Accounting.BnrExchangeRateImportJob>();
         services.AddHostedService<CompanyFormationDraftPurgeJob>();
         services.AddHostedService<FiscalProfileReminderJob>();
         services.AddHostedService<FiscalEstimateRecalculationJob>();

@@ -1,0 +1,23 @@
+{
+  "name": "Ion Popescu, august 2026 (spec §5.1)",
+  "note": "Cota D100 Uber e 0% în fixtures (Decizii pct. 2): D100 = 20 doar din Bolt.",
+  "period": "2026-08",
+  "suppliers": [
+    { "supplierName": "Bolt Operations OÜ", "country": "EE", "vatId": "EE102090374", "treaty": "Convenția RO–EE", "d100Rate": 2, "d100RateConfirmed": true, "validFrom": "2025-01-01", "residenceCertValidFrom": "2026-01-01", "residenceCertValidTo": "2026-12-31" },
+    { "supplierName": "Uber B.V.", "country": "NL", "vatId": "NL852071588B01", "treaty": "Convenția RO–NL", "d100Rate": 0, "d100RateConfirmed": true, "validFrom": "2025-01-01", "residenceCertValidFrom": "2026-01-01", "residenceCertValidTo": "2026-12-31" }
+  ],
+  "vatRates": [ { "rate": 19, "validFrom": "2017-01-01", "validTo": "2025-07-31" }, { "rate": 21, "validFrom": "2025-08-01" } ],
+  "art317": [ { "enabled": true, "validFrom": "2025-09-01" } ],
+  "exchangeRates": [],
+  "invoices": [
+    { "label": "Factura Bolt EE-BOLT-2026-08-1000", "supplierVatId": "EE102090374", "invoiceDate": "2026-08-31", "servicePeriodEnd": "2026-08-31", "currency": "RON", "commissionAmount": 1000 },
+    { "label": "Factura Uber UBR-RO-2026-08-1002", "supplierVatId": "NL852071588B01", "invoiceDate": "2026-08-31", "servicePeriodEnd": "2026-08-31", "currency": "RON", "commissionAmount": 600 }
+  ],
+  "reports": [ { "currency": "RON", "income": 8000, "periodTo": "2026-08-31" }, { "currency": "RON", "income": 5000, "periodTo": "2026-08-31" } ],
+  "expected": {
+    "blockingReasons": [],
+    "D100": { "total": 20, "lines": [ { "supplierVatId": "EE102090374", "base": 1000, "rate": 2, "value": 20 }, { "supplierVatId": "NL852071588B01", "base": 600, "rate": 0, "value": 0 } ] },
+    "D301": { "total": 336, "excludedRideIncome": 13000, "lines": [ { "supplierVatId": "EE102090374", "base": 1000, "rate": 21, "value": 210 }, { "supplierVatId": "NL852071588B01", "base": 600, "rate": 21, "value": 126 } ] },
+    "D390": { "total": 0, "lines": [ { "supplierVatId": "EE102090374", "base": 1000, "value": 0, "operationType": "S", "country": "EE" }, { "supplierVatId": "NL852071588B01", "base": 600, "value": 0, "operationType": "S", "country": "NL" } ] }
+  }
+}

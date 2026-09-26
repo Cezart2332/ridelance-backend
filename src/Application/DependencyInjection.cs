@@ -38,6 +38,8 @@ public static class DependencyInjection
         services.AddScoped<Documents.ExtractedFields.IExtractedFieldApplier,
             Documents.ExtractedFields.ExtractedFieldApplier>();
 
+        services.AddScoped<Accounting.Tax.IExchangeRateProvider, Accounting.Tax.ExchangeRateProvider>();
+
         services.AddScoped<PfaRegistrations.Onboarding.OnboardingStateService>();
         services.AddScoped<Companies.Onboarding.FleetOnboardingService>();
         services.AddScoped<Companies.Onboarding.FleetBcrService>();
