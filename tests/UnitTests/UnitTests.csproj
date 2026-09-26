@@ -27,4 +27,8 @@
     <ProjectReference Include="..\..\src\Infrastructure\Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Cazurile golden ale motorului fiscal (spec contabilitate B2): se adaugă doar fișiere. -->
+    <None Include="Accounting/Golden/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
