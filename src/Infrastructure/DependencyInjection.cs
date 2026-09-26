@@ -147,6 +147,9 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromMinutes(3));
         // Cursurile de referință BNR (B2), importate zilnic.
         services.AddHttpClient<Infrastructure.Accounting.BnrExchangeRateImporter>(client => client.Timeout = TimeSpan.FromSeconds(60));
+        // Ledger-ul (B6): citirea bonurilor și a rapoartelor Z.
+        services.AddHttpClient<Application.Abstractions.Ai.IReceiptExtractor, Infrastructure.Accounting.OpenRouterReceiptExtractor>(client =>
+            client.Timeout = TimeSpan.FromMinutes(3));
         // Declarațiile ANAF (B4): XML-ul din schema perioadei, XSD-ul oficial și validatorul ANAF intern.
         services.AddSingleton<Application.Abstractions.Anaf.IDeclarationXmlService, Infrastructure.Accounting.Anaf.AnafDeclarationXmlService>();
         services.Configure<Infrastructure.Accounting.Anaf.AnafValidatorOptions>(configuration.GetSection(Infrastructure.Accounting.Anaf.AnafValidatorOptions.SectionName));
@@ -189,6 +192,7 @@ public static class DependencyInjection
         services.AddHostedService<PlatformDocumentExtractionJob>();
         services.AddHostedService<Infrastructure.Accounting.BnrExchangeRateImportJob>();
         services.AddHostedService<AccountingJobRunner>();
+        services.AddHostedService<LedgerImportJob>();
         services.AddHostedService<CompanyFormationDraftPurgeJob>();
         services.AddHostedService<FiscalProfileReminderJob>();
         services.AddHostedService<FiscalEstimateRecalculationJob>();

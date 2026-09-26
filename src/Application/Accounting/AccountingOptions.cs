@@ -41,6 +41,22 @@ public enum D100CorrectionProcedure
 }
 
 /// <summary>
+/// Cum intră veniturile din Uber/Bolt în ledger. DE CONFIRMAT (spec §6 pct. 8, B6). Oricare ar fi
+/// regula, aceeași încasare nu se înregistrează de două ori.
+/// </summary>
+public enum LedgerIncomeRecognition
+{
+    /// <summary>Venitul e payout-ul net încasat în bancă; raportul platformei doar se leagă de payout-uri.</summary>
+    NetPayout = 0,
+
+    /// <summary>
+    /// Venitul brut din raport, plus comisionul ca cheltuială; payout-ul din bancă e doar decontarea
+    /// (<c>TRANSFER</c>), nu venit.
+    /// </summary>
+    GrossReport = 1,
+}
+
+/// <summary>
 /// Configurarea modulului de contabilitate (secțiunea <c>Accounting</c>). Pragurile verificărilor
 /// și regulile DE CONFIRMAT stau aici, nu în cod (spec §0 pct. 3).
 /// </summary>
@@ -74,6 +90,28 @@ public sealed class AccountingOptions
 
     /// <summary>Procedura de corecție D100 pentru rectificative. DE CONFIRMAT.</summary>
     public D100CorrectionProcedure D100CorrectionProcedure { get; init; } = D100CorrectionProcedure.D710;
+
+    /// <summary>Regula de recunoaștere a venitului din platforme în ledger. DE CONFIRMAT.</summary>
+    public LedgerIncomeRecognition IncomeRecognition { get; init; } = LedgerIncomeRecognition.NetPayout;
+
+    /// <summary>
+    /// Contrapartidele bancare ale platformelor (expresii regulate pe numele plătitorului și pe
+    /// detaliile plății), după codul platformei (<c>BOLT</c>, <c>UBER</c>).
+    /// </summary>
+    public IDictionary<string, string> PlatformCounterpartyPatterns { get; init; } = new Dictionary<string, string>
+    {
+        ["BOLT"] = "BOLT",
+        ["UBER"] = "UBER",
+    };
+
+    /// <summary>Toleranța de date la potrivirea payout-urilor cu raportul lunii (± zile după sfârșitul lunii).</summary>
+    public int PayoutMatchDays { get; init; } = 7;
+
+    /// <summary>Zilele în care se caută încasarea unei facturi Oblio după emitere.</summary>
+    public int InvoiceMatchDays { get; init; } = 60;
+
+    /// <summary>Toleranța de date la potrivirea unui document de cheltuială cu plata din bancă (± zile).</summary>
+    public int ExpenseMatchDays { get; init; } = 5;
 
     /// <summary>Statele UE (cod TVA; Grecia e <c>EL</c>): serviciile de la furnizori de aici intră în D301 și D390.</summary>
     public IList<string> EuCountries { get; init; } =
