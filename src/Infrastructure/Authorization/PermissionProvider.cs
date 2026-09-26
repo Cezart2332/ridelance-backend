@@ -36,7 +36,8 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
                 Permissions.ManageDiscounts,
                 Permissions.ManageOfficeCalendar,
                 Permissions.ManageCompanyPages,
-                Permissions.ManageTaxParameters
+                Permissions.ManageTaxParameters,
+                Permissions.ManageAccounting
             ],
             UserRole.Contabil =>
             [
@@ -46,7 +47,8 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
                 Permissions.ViewAllDocuments,
                 Permissions.DownloadDocuments,
                 Permissions.SendMessages,
-                Permissions.ViewCars
+                Permissions.ViewCars,
+                Permissions.ManageAccounting
             ],
             UserRole.Client =>
             [
@@ -95,4 +97,7 @@ public static class Permissions
 
     /// <summary>Plafoanele și cotele fiscale din „Privire de ansamblu” (salariul minim, CAS, CASS).</summary>
     public const string ManageTaxParameters = "fiscal:manage_parameters";
+
+    /// <summary>Modulul de contabilitate PFA (declarații, documente Uber/Bolt, registre): ADMIN și contabil.</summary>
+    public const string ManageAccounting = "accounting:manage";
 }

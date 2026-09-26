@@ -17,6 +17,7 @@
     <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64.slim" />
     <PackageReference Include="QuestPDF" />
     <PackageReference Include="PdfSharp" />
+    <PackageReference Include="PdfPig" />
   </ItemGroup>
 
   <ItemGroup>

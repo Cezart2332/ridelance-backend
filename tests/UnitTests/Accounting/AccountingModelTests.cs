@@ -15,7 +15,7 @@ using Xunit;
 namespace UnitTests.Accounting;
 
 /// <summary>
-/// B0: modelul de date al contabilității. Migrația e scrisă de mână (proiectul nu întreține
+/// B0: modelul de date al contabilității. Migrațiile sunt scrise de mână (proiectul nu întreține
 /// snapshot-ul), deci testul verifică direct că tabelele și coloanele ei sunt exact cele din model.
 /// </summary>
 public sealed class AccountingModelTests
@@ -40,11 +40,14 @@ public sealed class AccountingModelTests
                 });
 
         List<CreateTableOperation> created = [.. new AddAccountingModule().UpOperations.OfType<CreateTableOperation>()];
+        // Coloanele adăugate de migrațiile de după B0.
+        List<AddColumnOperation> added = [.. new AddPlatformDocumentText().UpOperations.OfType<AddColumnOperation>()];
 
         created.Select(table => table.Name).ToHashSet().ShouldBe(expected.Keys.ToHashSet(), ignoreOrder: true);
         foreach (CreateTableOperation table in created)
         {
-            table.Columns.Select(column => column.Name).ToHashSet().ShouldBe(expected[table.Name], ignoreOrder: true, customMessage: table.Name);
+            HashSet<string> columns = [.. table.Columns.Select(column => column.Name), .. added.Where(column => column.Table == table.Name).Select(column => column.Name)];
+            columns.ShouldBe(expected[table.Name], ignoreOrder: true, customMessage: table.Name);
         }
     }
 
