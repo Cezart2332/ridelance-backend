@@ -9,7 +9,7 @@ using Web.Api.Infrastructure;
 
 namespace Web.Api.Endpoints.Accounting;
 
-/// <summary>Luna fiscală pe toate PFA-urile, joburile și declarațiile unui PFA (spec contabilitate §4.3, §4.4, B3).</summary>
+/// <summary>Luna fiscală pe toate PFA-urile, joburile și declarațiile unui PFA (spec contabilitate §4.3, §4.4, B3–B4).</summary>
 internal sealed class MonthEndpoints : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -32,6 +32,9 @@ internal sealed class MonthEndpoints : IEndpoint
 
         group.MapPost("periods/{period}/generate", (string period, ICommandHandler<StartMonthJobCommand, JobRef> handler, CancellationToken cancellationToken) =>
             Start(BackgroundJobType.GenerateDeclarations, period, handler, cancellationToken));
+
+        group.MapPost("periods/{period}/validate", (string period, ICommandHandler<StartMonthJobCommand, JobRef> handler, CancellationToken cancellationToken) =>
+            Start(BackgroundJobType.ValidateDeclarations, period, handler, cancellationToken));
 
         group.MapPost("periods/{period}/confirm-clean-documents", async (
             string period,

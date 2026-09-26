@@ -12,14 +12,19 @@ namespace Infrastructure.BackgroundJobs;
 
 /// <summary>
 /// Rulează joburile lunii (spec contabilitate B3) din tabelul <c>background_jobs</c>, pe rând. Un
-/// job rămas „în lucru” după un restart se reia de la capăt: procesarea și generarea sunt
-/// idempotente.
+/// job rămas „în lucru” după un restart se reia de la capăt: procesarea, generarea și validarea
+/// sunt idempotente (validarea ia doar versiunile rămase în <c>GENERATED</c>).
 /// </summary>
 internal sealed class AccountingJobRunner(IServiceScopeFactory scopeFactory, ILogger<AccountingJobRunner> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
-    private static readonly BackgroundJobType[] MonthJobs = [BackgroundJobType.ProcessPeriod, BackgroundJobType.GenerateDeclarations];
+    private static readonly BackgroundJobType[] MonthJobs =
+    [
+        BackgroundJobType.ProcessPeriod,
+        BackgroundJobType.GenerateDeclarations,
+        BackgroundJobType.ValidateDeclarations,
+    ];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

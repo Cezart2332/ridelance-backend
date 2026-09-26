@@ -39,6 +39,8 @@ public static class DependencyInjection
             Documents.ExtractedFields.ExtractedFieldApplier>();
 
         services.AddScoped<Accounting.Tax.IExchangeRateProvider, Accounting.Tax.ExchangeRateProvider>();
+        services.AddScoped<Accounting.Declarations.DeclarationFiles>();
+        services.AddScoped<Accounting.Declarations.DeclarationValidator>();
 
         services.AddScoped<PfaRegistrations.Onboarding.OnboardingStateService>();
         services.AddScoped<Companies.Onboarding.FleetOnboardingService>();
