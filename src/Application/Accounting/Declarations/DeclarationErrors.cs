@@ -15,6 +15,23 @@ internal static class DeclarationErrors
         "Accounting.NotCurrentVersion",
         "Doar versiunea curentă își poate schimba statusul. Versiunile vechi rămân neschimbate.");
 
+    public static readonly Error ReceiptFileType = Error.Problem("Accounting.ReceiptFileType", "Recipisa se încarcă ca PDF sau imagine (PNG, JPEG).");
+
+    public static readonly Error RejectionReasonRequired = Error.Problem("Accounting.ReasonRequired", "Motivul respingerii e obligatoriu.");
+
+    public static readonly Error RectificationReasonRequired = Error.Problem("Accounting.ReasonRequired", "Motivul rectificativei e obligatoriu.");
+
+    public static readonly Error ReceiptOnlyWhenSubmitted = Error.Conflict("Accounting.InvalidTransition", "Recipisa se încarcă doar pe o declarație depusă.");
+
+    public static readonly Error RectificationOnlyWhenAccepted = Error.Conflict(
+        "Accounting.InvalidTransition",
+        "Rectificativa se creează doar dintr-o versiune cu recipisă validă.");
+
+    public static Error MonthNotReady(string reason) => Error.Conflict("Accounting.MonthNotReady", $"Luna nu e gata: {reason}");
+
+    public static Error NoBase(DeclarationType type, string period) =>
+        Error.Conflict("Accounting.NoDeclarationBase", $"{type} nu mai are bază în {period}: recalculul nu produce nicio linie.");
+
     public static Error FileMissing(string what) => Error.NotFound("Accounting.FileMissing", $"{what} nu există pentru această versiune.");
 
     public static Error InvalidTransition(DeclarationStatus status, DeclarationAction action) => Error.Conflict(

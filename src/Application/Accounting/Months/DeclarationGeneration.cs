@@ -54,8 +54,6 @@ internal static class DeclarationGeneration
         foreach (DeclarationCalculation calculation in result.Declarations.Values.Where(c => c.Applicable))
         {
             var declaration = new Declaration { Id = Guid.NewGuid(), PfaRegistrationId = pfa.Id, Period = data.Period, Type = calculation.Type };
-            AnafDeclarationSchema? schema = DeclarationFiles.PickSchema(schemas, calculation.Type, data.Period);
-            var snapshot = new DeclarationSnapshot(input, calculation, taxpayer is null ? null : taxpayer with { Iban = null }, DateTime.UtcNow);
             var version = new DeclarationVersion
             {
                 Id = Guid.NewGuid(),
@@ -63,9 +61,6 @@ internal static class DeclarationGeneration
                 VersionNo = 1,
                 Kind = DeclarationVersionKind.Initial,
                 Status = DeclarationStatus.Generated,
-                SchemaId = schema?.Id,
-                Amount = calculation.Total,
-                SnapshotJson = AccountingJson.Serialize(snapshot),
                 StatusHistoryJson = AccountingJson.Serialize(new[] { new StatusHistoryRecord(null, DeclarationStatus.Generated, DateTime.UtcNow, userId, null) }),
                 CreatedByUserId = userId,
                 CreatedAtUtc = DateTime.UtcNow,
@@ -73,32 +68,7 @@ internal static class DeclarationGeneration
 
             db.Declarations.Add(declaration);
             db.DeclarationVersions.Add(version);
-            db.DeclarationLines.AddRange(calculation.Lines.Select(line => new DeclarationLine
-            {
-                Id = Guid.NewGuid(),
-                DeclarationVersionId = version.Id,
-                SourceDocumentId = line.SourceDocumentId,
-                RuleCode = line.RuleCode,
-                AmountInCurrency = line.AmountInCurrency,
-                Base = line.Base,
-                Rate = line.Rate,
-                Value = line.Value,
-                Currency = line.Currency,
-                ExchangeRate = line.ExchangeRate,
-                Explanation = line.Explanation,
-                SupplierName = line.SupplierName,
-                SupplierCountry = line.SupplierCountry,
-                SupplierVatId = line.SupplierVatId,
-                OperationType = line.OperationType,
-                Treaty = line.Treaty,
-                ResidenceCertValidFrom = line.ResidenceCertValidFrom,
-                ResidenceCertValidTo = line.ResidenceCertValidTo,
-            }));
-
-            if (taxpayer is not null)
-            {
-                await files.WriteXmlAsync(declaration, version, taxpayer, snapshot, schema, cancellationToken);
-            }
+            await DeclarationContent.ApplyAsync(db, files, declaration, version, new DeclarationDraft(input, calculation), taxpayer, schemas, null, cancellationToken);
 
             AccountingAudit.Record(
                 db, pfa.Id, nameof(DeclarationVersion), version.Id, "GENERATE", null,

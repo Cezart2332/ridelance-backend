@@ -17,16 +17,3 @@ internal sealed record DeclarationSnapshot(PfaTaxInput Input, DeclarationCalcula
         return snapshot?.Input is null || snapshot.Calculation is null ? null : snapshot;
     }
 }
-
-/// <summary>Istoricul de status al unei versiuni (<c>status_history_json</c>).</summary>
-internal static class DeclarationStatusHistory
-{
-    /// <summary>Trece versiunea în <paramref name="to"/> și notează tranziția.</summary>
-    public static void Move(DeclarationVersion version, DeclarationStatus to, Guid? userId, string? note)
-    {
-        List<Months.StatusHistoryRecord> history = AccountingJson.Deserialize<List<Months.StatusHistoryRecord>>(version.StatusHistoryJson, []);
-        history.Add(new Months.StatusHistoryRecord(version.Status, to, DateTime.UtcNow, userId, note));
-        version.StatusHistoryJson = AccountingJson.Serialize(history);
-        version.Status = to;
-    }
-}

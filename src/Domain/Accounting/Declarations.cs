@@ -94,6 +94,12 @@ public sealed class DeclarationLine : Entity, IAccountingRecord
     public DateOnly? ResidenceCertValidFrom { get; set; }
     public DateOnly? ResidenceCertValidTo { get; set; }
 
+    /// <summary>
+    /// Regenerarea recalculează versiunea pe loc (B5): liniile vechi nu se șterg, se marchează
+    /// înlocuite. Doar liniile cu <c>null</c> aici fac parte din versiune.
+    /// </summary>
+    public DateTime? SupersededAtUtc { get; set; }
+
     public DeclarationVersion DeclarationVersion { get; set; } = null!;
     public PlatformDocument SourceDocument { get; set; } = null!;
 }

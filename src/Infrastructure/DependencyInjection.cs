@@ -202,8 +202,11 @@ public static class DependencyInjection
     {
         string? connectionString = configuration.GetConnectionString("Database");
 
+        // Auditul automat al înregistrărilor contabile (spec contabilitate B5), per cerere: știe utilizatorul.
+        services.AddScoped<Infrastructure.Accounting.AccountingAuditInterceptor>();
         services.AddDbContext<ApplicationDbContext>(
-            options => options
+            (serviceProvider, options) => options
+                .AddInterceptors(serviceProvider.GetRequiredService<Infrastructure.Accounting.AccountingAuditInterceptor>())
                 .UseNpgsql(connectionString, npgsqlOptions =>
                     npgsqlOptions.MigrationsHistoryTable(HistoryRepository.DefaultTableName, Schemas.Default))
                 .UseSnakeCaseNamingConvention()

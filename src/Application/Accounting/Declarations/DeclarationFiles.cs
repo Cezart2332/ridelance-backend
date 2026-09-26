@@ -136,7 +136,13 @@ internal sealed class DeclarationFiles(
         return content;
     }
 
-    public async Task<Document> StoreAsync(Guid pfaId, byte[] content, string fileName, string contentType, CancellationToken cancellationToken)
+    public async Task<Document> StoreAsync(
+        Guid pfaId,
+        byte[] content,
+        string fileName,
+        string contentType,
+        CancellationToken cancellationToken,
+        DocumentOrigin origin = DocumentOrigin.AccountingGenerated)
     {
         Guid userId = await db.PfaRegistrations.Where(p => p.Id == pfaId).Select(p => p.UserId).SingleAsync(cancellationToken);
         string storedFileName = $"{Guid.NewGuid()}{Path.GetExtension(fileName)}";
@@ -156,7 +162,7 @@ internal sealed class DeclarationFiles(
             ContentType = contentType,
             Category = DocumentCategory.Other,
             Status = DocumentStatus.Verified,
-            Origin = DocumentOrigin.AccountingGenerated,
+            Origin = origin,
             EncryptedFilePath = encrypted.FilePath,
             EncryptionIv = encrypted.Iv,
             FileSize = content.Length,
