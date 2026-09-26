@@ -45,7 +45,9 @@ public static class DocumentAiCatalog
     private const string IdentityCardDetails =
         "Carte de identitate românească a unei persoane fizice: conține fotografie, nume, prenume, " +
         "CNP, seria și numărul actului, autoritatea emitentă, datele de emitere și expirare și " +
-        "adresa de domiciliu.";
+        "adresa de domiciliu. Se acceptă și cartea de identitate electronică (CEI), inclusiv PDF-ul " +
+        "generat de aplicația RO CEI Reader cu datele citite din cip — pe CEI domiciliul nu e " +
+        "tipărit pe card, ci apare doar în acest PDF.";
 
     private static readonly ExtractedFieldSpec[] IdentityCardFields =
     [
@@ -55,7 +57,7 @@ public static class DocumentAiCatalog
         new("prenume", "Prenumele, separat", ExtractedFieldType.Text, Required: false),
         new("cnp", "CNP-ul titularului, 13 cifre", ExtractedFieldType.Cnp, Required: false, Sensitive: true),
         new("serie_act", "Seria actului, 2 litere (câmpul SERIA)", ExtractedFieldType.Text, Required: false, Sensitive: true),
-        new("numar_act", "Numărul actului, 6 cifre (câmpul NR)", ExtractedFieldType.Text, Required: false, Sensitive: true),
+        new("numar_act", "Numărul actului (câmpul NR): 6 cifre pe cartea clasică; pe cea electronică, cum apare în document", ExtractedFieldType.Text, Required: false, Sensitive: true),
         new("autoritate_emitenta", "Autoritatea emitentă (câmpul „emisă de” / SPCLEP)", ExtractedFieldType.Text, Required: false),
         new("data_emiterii", "Data emiterii actului", ExtractedFieldType.Date, Required: false),
         new("data_expirarii", "Data expirării actului", ExtractedFieldType.Date, Required: false),
