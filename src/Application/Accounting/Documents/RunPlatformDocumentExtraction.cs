@@ -107,6 +107,7 @@ internal sealed class RunPlatformDocumentExtractionCommandHandler(
 
         document.Status = PlatformDocumentSupport.StatusAfter(checks);
         await db.SaveChangesAsync(cancellationToken);
+        await Months.PreCheck.RefreshIfProcessedAsync(db, document.PfaRegistrationId, document.Period, options.Value, cancellationToken);
         return Result.Success();
     }
 }

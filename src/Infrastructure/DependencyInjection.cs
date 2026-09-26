@@ -183,6 +183,7 @@ public static class DependencyInjection
         services.AddHostedService<DocumentAiVerificationJob>();
         services.AddHostedService<PlatformDocumentExtractionJob>();
         services.AddHostedService<Infrastructure.Accounting.BnrExchangeRateImportJob>();
+        services.AddHostedService<AccountingJobRunner>();
         services.AddHostedService<CompanyFormationDraftPurgeJob>();
         services.AddHostedService<FiscalProfileReminderJob>();
         services.AddHostedService<FiscalEstimateRecalculationJob>();

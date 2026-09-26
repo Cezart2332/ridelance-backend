@@ -251,6 +251,7 @@ internal sealed class DeclarationLineConfiguration : IEntityTypeConfiguration<De
         builder.ToTable("declaration_lines");
         builder.HasKey(l => l.Id);
         builder.Property(l => l.RuleCode).HasMaxLength(64).IsRequired();
+        builder.Property(l => l.AmountInCurrency).AsMoney();
         builder.Property(l => l.Base).AsMoney();
         builder.Property(l => l.Rate).AsRate();
         builder.Property(l => l.Value).AsMoney();
@@ -323,6 +324,22 @@ internal sealed class PfaAccountingPeriodConfiguration : IEntityTypeConfiguratio
         builder.HasIndex(p => new { p.PfaRegistrationId, p.Period }).IsUnique();
         builder.HasOne(p => p.PfaRegistration).WithMany().HasForeignKey(p => p.PfaRegistrationId).OnDelete(DeleteBehavior.Restrict);
         builder.RestrictToUser(p => p.ClosedByUserId);
+    }
+}
+
+internal sealed class PfaMonthCheckConfiguration : IEntityTypeConfiguration<PfaMonthCheck>
+{
+    public void Configure(EntityTypeBuilder<PfaMonthCheck> builder)
+    {
+        builder.ToTable("pfa_month_checks");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Period).HasMaxLength(AccountingMapping.PeriodLength).IsRequired();
+        builder.Property(c => c.Status).AsText();
+        builder.Property(c => c.ReasonsJson).AsJson();
+        // Un singur rezultat pe PFA și lună; pre-check-ul îl suprascrie (nu e dată fiscală, e o stare).
+        builder.HasIndex(c => new { c.PfaRegistrationId, c.Period }).IsUnique();
+        builder.HasIndex(c => c.Period);
+        builder.RestrictToPfa(c => c.PfaRegistrationId);
     }
 }
 

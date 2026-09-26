@@ -1,6 +1,7 @@
 using Application.Accounting;
 using Application.Accounting.Contracts;
 using Application.Accounting.Documents;
+using Application.Accounting.Months;
 using Domain.Accounting;
 using Infrastructure.Database;
 using Infrastructure.DomainEvents;
@@ -64,6 +65,32 @@ public sealed class PostgresQueryTranslationTests
         Result<PlatformDocumentDetail> missing = await new GetPlatformDocumentQueryHandler(db, Options.Create(new AccountingOptions()))
             .Handle(new GetPlatformDocumentQuery(document.Id), CancellationToken.None);
         missing.Error.ShouldBe(AccountingErrors.DocumentNotFound);
+    }
+
+    [Fact]
+    public async Task Month_queries_translate_to_sql()
+    {
+        if (string.IsNullOrWhiteSpace(ConnectionString))
+        {
+            return;
+        }
+
+        await using var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseNpgsql(ConnectionString)
+                .UseSnakeCaseNamingConvention()
+                .Options,
+            new Events());
+
+        List<ScopePfa> scope = await AccountingScope.InPeriodAsync(db, "2026-08", CancellationToken.None);
+        MonthData data = await MonthData.LoadAsync(db, "2026-08", [.. scope.Select(p => p.Id), Guid.NewGuid()], CancellationToken.None);
+        data.Suppliers.ShouldNotBeEmpty();
+        (await DeclarationSummaries.CurrentVersionsAsync(db, "2026-08", [Guid.NewGuid()], CancellationToken.None)).ShouldBeEmpty();
+
+        Result<PeriodOverview> overview = await new GetPeriodOverviewQueryHandler(db, Options.Create(new AccountingOptions()))
+            .Handle(new GetPeriodOverviewQuery("2026-08"), CancellationToken.None);
+        overview.IsSuccess.ShouldBeTrue();
+        (await PreCheck.RunAsync(db, Guid.NewGuid(), "2026-08", new AccountingOptions(), CancellationToken.None)).ShouldBeNull();
     }
 
     private sealed class Events : IDomainEventsDispatcher
