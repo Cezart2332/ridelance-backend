@@ -61,6 +61,7 @@ internal sealed class PlatformDocumentConfiguration : IEntityTypeConfiguration<P
         builder.Property(d => d.Status).AsText();
         builder.Property(d => d.FileHash).HasMaxLength(64).IsRequired();
         builder.Property(d => d.ExtractionError).HasMaxLength(1000);
+        builder.Property(d => d.PdfText).HasColumnType("text");
 
         builder.HasIndex(d => new { d.PfaRegistrationId, d.Period });
         // Același fișier la același PFA e duplicat (B1: 409 cu link spre cel existent).

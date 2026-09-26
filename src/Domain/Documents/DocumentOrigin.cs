@@ -19,4 +19,10 @@ public enum DocumentOrigin
 
     /// <summary>Generat de sistem (dosare ARR/copie conformă, specimen de semnătură).</summary>
     SystemGenerated = 3,
+
+    /// <summary>
+    /// Încărcat de contabilitate în modulul de declarații (facturi și rapoarte Uber/Bolt,
+    /// recipise, dovezi). Nu apare în documentele clientului din onboarding.
+    /// </summary>
+    AccountingUpload = 4,
 }

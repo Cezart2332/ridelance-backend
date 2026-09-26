@@ -35,6 +35,15 @@ public sealed class PlatformDocument : Entity, IAccountingRecord
 
     public string? ExtractionError { get; set; }
 
+    /// <summary>
+    /// Textul PDF-ului (text layer), extras o singură dată. <c>AMOUNT_IN_TEXT</c> caută sumele în
+    /// el; fără el, verificările s-ar reface decriptând fișierul la fiecare citire.
+    /// </summary>
+    public string? PdfText { get; set; }
+
+    /// <summary>PDF-ul are text layer. Fără, modelul citește paginile ca imagine.</summary>
+    public bool HasTextLayer { get; set; }
+
     public Guid UploadedByUserId { get; set; }
     public DateTime UploadedAtUtc { get; set; } = DateTime.UtcNow;
     public Guid? ReviewedByUserId { get; set; }

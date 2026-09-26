@@ -140,6 +140,12 @@ public static class DependencyInjection
         services.AddMemoryCache();
         services.AddSingleton<IAiUsageLimiter, MemoryAiUsageLimiter>();
 
+        // Contabilitatea PFA (spec contabilitate B1): citirea documentelor Uber/Bolt și coada ei.
+        services.Configure<Application.Accounting.AccountingOptions>(configuration.GetSection(Application.Accounting.AccountingOptions.SectionName));
+        services.AddSingleton<Application.Abstractions.Services.IPdfTextExtractor, Infrastructure.Accounting.PdfPigTextExtractor>();
+        services.AddHttpClient<IDocumentExtractor, Infrastructure.Accounting.OpenRouterDocumentExtractor>(client =>
+            client.Timeout = TimeSpan.FromMinutes(3));
+
         // Un singur provider de open banking. Alegerea prin config a dispărut odată cu
         // Enable Banking și GoCardless — cine vrea altul îl înregistrează aici.
         services.Configure<SmartAccountsOptions>(configuration.GetSection(SmartAccountsOptions.SectionName));
@@ -173,6 +179,7 @@ public static class DependencyInjection
         services.AddHostedService<ListingFreshnessScoreJob>();
         services.AddHostedService<BankSyncJob>();
         services.AddHostedService<DocumentAiVerificationJob>();
+        services.AddHostedService<PlatformDocumentExtractionJob>();
         services.AddHostedService<CompanyFormationDraftPurgeJob>();
         services.AddHostedService<FiscalProfileReminderJob>();
         services.AddHostedService<FiscalEstimateRecalculationJob>();

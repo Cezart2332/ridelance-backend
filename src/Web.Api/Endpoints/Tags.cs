@@ -12,4 +12,5 @@ public static class Tags
     public const string Payments = "Payments";
     public const string Office = "Office";
     public const string Companies = "Companies";
+    public const string Accounting = "Accounting";
 }
