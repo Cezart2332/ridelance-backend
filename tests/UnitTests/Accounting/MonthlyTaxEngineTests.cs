@@ -252,7 +252,7 @@ public sealed class MonthlyTaxEngineTests
     {
         SupplierName = "Uber B.V.",
         Country = "NL",
-        VatId = "NL852071588B01",
+        VatId = "NL852071589B01",
         Treaty = "Convenția RO–NL",
         D100Rate = 0,
         D100RateConfirmed = true,
@@ -271,7 +271,7 @@ public sealed class MonthlyTaxEngineTests
         new(Guid.NewGuid(), "Factura Bolt", "EE102090374", "B-1", new DateOnly(2026, 8, 31), new DateOnly(2026, 8, 31), "RON", commission);
 
     private static TaxInvoice Uber(decimal commission) =>
-        new(Guid.NewGuid(), "Factura Uber", "NL852071588B01", "U-1", new DateOnly(2026, 8, 31), new DateOnly(2026, 8, 31), "RON", commission);
+        new(Guid.NewGuid(), "Factura Uber", "NL852071589B01", "U-1", new DateOnly(2026, 8, 31), new DateOnly(2026, 8, 31), "RON", commission);
 
     private static PfaTaxInput Input(IReadOnlyList<SupplierTaxProfile>? suppliers = null, IReadOnlyList<TaxInvoice>? invoices = null) => new(
         "2026-08",

@@ -122,6 +122,8 @@ internal sealed class SupplierTaxProfileConfiguration : IEntityTypeConfiguration
         builder.Property(s => s.Note).HasMaxLength(500);
         builder.HasIndex(s => new { s.VatId, s.ValidFrom });
         builder.RestrictToDocument(s => s.ResidenceCertDocumentId);
+        // Furnizorii șterși (logic) nu mai apar nicăieri: registru, verificări, calcul.
+        builder.HasQueryFilter(s => s.DeletedAtUtc == null);
     }
 }
 

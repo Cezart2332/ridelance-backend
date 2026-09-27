@@ -159,6 +159,10 @@ internal sealed class AnafValidatorClient(HttpClient http, IOptions<AnafValidato
         HttpStatusCode.RequestEntityTooLarge => "XML-ul depășește limita serviciului.",
         HttpStatusCode.UnprocessableEntity => $"XML-ul nu e bine format{(detail is null ? "." : $": {detail}")}",
         HttpStatusCode.GatewayTimeout => "DUKIntegrator nu a terminat la timp.",
+        // Serviciul Java nu întoarce 503: vine din proxy, când containerul e oprit sau „unhealthy”.
+        HttpStatusCode.ServiceUnavailable =>
+            "serviciul nu e disponibil (HTTP 503 de la proxy): containerul validatorului e oprit sau marcat nesănătos " +
+            "(verifică portul și healthcheck-ul în Coolify și AnafValidator:BaseUrl).",
         _ => $"HTTP {(int)status}{(detail is null ? "." : $": {detail}")}",
     };
 

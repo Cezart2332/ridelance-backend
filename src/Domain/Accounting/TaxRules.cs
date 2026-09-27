@@ -45,6 +45,13 @@ public sealed class SupplierTaxProfile : Entity, IAccountingRecord, IValidityPer
     public Guid? ResidenceCertDocumentId { get; set; }
 
     public string? Note { get; set; }
+
+    /// <summary>
+    /// Ștergere logică: furnizorul dispare din registru, din verificări și din calcul, dar rândul
+    /// rămâne (înregistrările fiscale nu se șterg fizic). Doar pentru furnizori nefolosiți în declarații.
+    /// </summary>
+    public DateTime? DeletedAtUtc { get; set; }
+    public Guid? DeletedByUserId { get; set; }
 }
 
 /// <summary>Cota standard de TVA (D301), după data exigibilității.</summary>

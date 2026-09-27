@@ -149,9 +149,12 @@ internal sealed class MonthData
     /// Platformele așteptate la sfârșitul lunii: setarea contabilă, altfel platformele alese la
     /// onboarding. <c>null</c> dacă nu se știu deloc.
     /// </summary>
-    public IReadOnlyList<Platform>? PlatformsOf(Guid pfaId)
+    public IReadOnlyList<Platform>? PlatformsOf(Guid pfaId) => PlatformsAt(pfaId, End);
+
+    /// <summary>Platformele valabile la o dată anume (ex. azi, în Setări contabilitate).</summary>
+    public IReadOnlyList<Platform>? PlatformsAt(Guid pfaId, DateOnly date)
     {
-        PfaAccountingSetting? setting = SettingAt(pfaId, PfaAccountingSettingKeys.Platforms, End);
+        PfaAccountingSetting? setting = SettingAt(pfaId, PfaAccountingSettingKeys.Platforms, date);
         if (setting is not null)
         {
             return AccountingJson.Deserialize<List<Platform>>(setting.ValueJson, []);

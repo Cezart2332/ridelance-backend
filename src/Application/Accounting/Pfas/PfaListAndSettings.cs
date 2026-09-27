@@ -305,7 +305,9 @@ internal static class PfaSettings
             RealSystem: true,
             VatPayer: false,
             new Art317Setting(art317Enabled, art317Enabled ? art317!.ValidFrom : null, vatCode),
-            data.PlatformsOf(pfaId) ?? [],
+            // Valoarea de azi, ca la celelalte setări: o schimbare „valabilă de la” azi trebuie să se vadă,
+            // chiar dacă luna fiscală în lucru (luna trecută) folosește încă valoarea veche.
+            data.PlatformsAt(pfaId, today) ?? [],
             vehicle,
             summary.Cash,
             history);

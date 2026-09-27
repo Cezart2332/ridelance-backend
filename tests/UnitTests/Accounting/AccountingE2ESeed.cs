@@ -186,7 +186,7 @@ public sealed class AccountingE2ESeed
         string[] lines =
         [
             bolt ? "Bolt Operations OÜ, Vana-Lõuna 15, Tallinn, Estonia" : "Uber B.V., Burgerweeshuispad 301, Amsterdam",
-            $"VAT: {(bolt ? "EE102090374" : "NL852071588B01")}",
+            $"VAT: {(bolt ? "EE102090374" : "NL852071589B01")}",
             $"Factura {number} din 31.08.2026",
             "Perioada: 01.08.2026 – 31.08.2026",
             $"Comision platformă: {AccountingJson.Amount(inPdf)} RON",
@@ -195,7 +195,7 @@ public sealed class AccountingE2ESeed
         {
             SupplierName = bolt ? "Bolt Operations OÜ" : "Uber B.V.",
             SupplierCountry = bolt ? "EE" : "NL",
-            SupplierVatId = bolt ? "EE102090374" : "NL852071588B01",
+            SupplierVatId = bolt ? "EE102090374" : "NL852071589B01",
             InvoiceNumber = number,
             InvoiceDate = new DateOnly(2026, 8, 31),
             PeriodFrom = new DateOnly(2026, 8, 1),
