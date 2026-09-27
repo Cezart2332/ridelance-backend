@@ -55,7 +55,8 @@ public sealed class LedgerTests : IDisposable
             Category("CAR_SERVICE", vehicle: true, DeductibilityType.Percent100, "SERVICE"),
             Category("PHONE", vehicle: false, DeductibilityType.Percent100, "ORANGE"),
             Category("DEPRECIATION", vehicle: true, DeductibilityType.SpecialRule, null),
-            Category("PERSONAL", vehicle: false, DeductibilityType.NonDeductible, null));
+            Category("PERSONAL", vehicle: false, DeductibilityType.NonDeductible, null),
+            Category("PLATFORM_COMMISSION", vehicle: false, DeductibilityType.Percent100, null));
         VehicleDeductibility(new DateOnly(2026, 1, 1), "100_PERCENT");
         _db.CashRegisterStates.Add(new CashRegisterState { PfaRegistrationId = _pfa, CashRequested = true, CashEnabled = true, Status = CashRegisterStatus.Active, ActivationDate = new DateOnly(2026, 9, 1) });
         _db.SaveChanges();
@@ -194,6 +195,8 @@ public sealed class LedgerTests : IDisposable
             (LedgerTransactionType.Expense, -500m, LedgerSource.Bolt),
         ], ignoreOrder: true);
         entries.Where(e => e.TransactionType == LedgerTransactionType.Income).Sum(e => e.Amount).ShouldBe(2500m);
+        LedgerEntry commission = entries.Single(e => e.TransactionType == LedgerTransactionType.Expense);
+        (commission.Category, commission.DeductibleAmount).ShouldBe(("PLATFORM_COMMISSION", (decimal?)500m));
     }
 
     [Fact]

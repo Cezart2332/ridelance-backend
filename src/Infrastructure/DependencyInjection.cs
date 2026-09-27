@@ -150,6 +150,8 @@ public static class DependencyInjection
         // Ledger-ul (B6): citirea bonurilor și a rapoartelor Z.
         services.AddHttpClient<Application.Abstractions.Ai.IReceiptExtractor, Infrastructure.Accounting.OpenRouterReceiptExtractor>(client =>
             client.Timeout = TimeSpan.FromMinutes(3));
+        // Registrele contabile (B7): export PDF și Excel.
+        services.AddSingleton<Application.Abstractions.Services.IRegisterExporter, Infrastructure.Accounting.RegisterExporter>();
         // Declarațiile ANAF (B4): XML-ul din schema perioadei, XSD-ul oficial și validatorul ANAF intern.
         services.AddSingleton<Application.Abstractions.Anaf.IDeclarationXmlService, Infrastructure.Accounting.Anaf.AnafDeclarationXmlService>();
         services.Configure<Infrastructure.Accounting.Anaf.AnafValidatorOptions>(configuration.GetSection(Infrastructure.Accounting.Anaf.AnafValidatorOptions.SectionName));

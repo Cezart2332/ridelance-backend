@@ -1,0 +1,311 @@
+using System.Text;
+using Application.Accounting.Contracts;
+using Application.Accounting.Registers;
+using ClosedXML.Excel;
+using Domain.Accounting;
+using Domain.PfaRegistrations;
+using Domain.Users;
+using Infrastructure.Accounting;
+using Infrastructure.Database;
+using Infrastructure.DomainEvents;
+using Microsoft.EntityFrameworkCore;
+using SharedKernel;
+using Shouldly;
+using Xunit;
+
+namespace UnitTests.Accounting;
+
+/// <summary>B7: registrele ca proiecții din ledger — RJIP, REF, Registrul-inventar — și exporturile lor.</summary>
+public sealed class RegisterTests : IDisposable
+{
+    private static readonly DateOnly Day = new(2026, 10, 10);
+
+    private readonly ApplicationDbContext _db = new(
+        new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+        new Events());
+
+    private readonly Guid _pfa = Guid.NewGuid();
+    private readonly RegisterExporter _exporter = new();
+
+    public RegisterTests()
+    {
+        // Ca în DependencyInjection: licența Community se setează la pornirea aplicației.
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        var user = new User { Id = Guid.NewGuid(), Email = "ion@ridelance.ro", FirstName = "Ion", LastName = "Popescu" };
+        _db.PfaRegistrations.Add(new PfaRegistration { Id = _pfa, UserId = user.Id, User = user, FullName = "Ion Popescu", LegalName = "POPESCU ION PFA", Cui = "12345674" });
+        _db.SaveChanges();
+    }
+
+    public void Dispose() => _db.Dispose();
+
+    /// <summary>Spec §5.3: o zi în RIDElance apare corect în RJIP și REF.</summary>
+    [Fact]
+    public async Task A_day_in_ridelance_in_rjip_and_ref()
+    {
+        ADayInRidelance();
+
+        RjipView rjip = await Rjip(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31));
+        RefView refView = await Ref(2026);
+
+        rjip.Rows.Select(r => (r.Document, r.CashIn, r.CashOut, r.BankIn, r.BankOut)).ShouldBe(
+        [
+            ("Extras 10.10.2026", 0m, 0m, 0m, 300m),
+            ("Extras 10.10.2026", 0m, 0m, 1850m, 0m),
+            ("Raport Z nr. 125", 420m, 0m, 0m, 0m),
+        ]);
+        rjip.Rows[0].Operation.ShouldBe("Plată combustibil – OMV Petrom");
+        rjip.MonthTotals.ShouldBe([new RjipMonthTotal("2026-10", 420m, 0m, 1850m, 300m)]);
+
+        (refView.Status, refView.AsOf).ShouldBe((RefStatus.Current, (DateOnly?)null));
+        refView.Rows.Select(r => (r.CalculationElement, r.Value)).ShouldBe([("Venit brut", 2270m), ("Cheltuieli deductibile", 300m), ("Venit net anual", 1970m)]);
+        refView.Rows.ShouldAllBe(r => r.Year == 2026 && !r.Rectification && r.IncomeCategory == GetRefQueryHandler.IncomeCategory);
+    }
+
+    /// <summary>RJIP are suma plătită, REF suma deductibilă (spec B7: 1.000 plătiți, 500 deductibili la 50%).</summary>
+    [Fact]
+    public async Task Rjip_shows_what_was_paid_and_ref_what_is_deductible()
+    {
+        Entry(new DateOnly(2027, 3, 15), -1000m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Revizie", deductible: 500m);
+        await _db.SaveChangesAsync();
+
+        (await Rjip(new DateOnly(2027, 3, 1), new DateOnly(2027, 3, 31))).Rows.ShouldHaveSingleItem().BankOut.ShouldBe(1000m);
+        (await Ref(2027)).Rows.Single(r => r.CalculationElement == "Cheltuieli deductibile").Value.ShouldBe(500m);
+    }
+
+    [Fact]
+    public async Task Registers_skip_closed_month_imports_and_report_figures_are_not_cash()
+    {
+        Entry(Day, -300m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Plată în lună închisă", deductible: 300m).ClosedPeriodFlag = true;
+        // GrossReport: venitul brut din raport nu e o încasare; payout-ul din bancă e decontarea.
+        LedgerEntry gross = Entry(new DateOnly(2026, 8, 31), 2500m, LedgerTransactionType.Income, PaymentMethod.Bank, "Venit brut din curse, Bolt");
+        gross.BankTransactionId = null;
+        gross.PlatformDocumentId = Guid.NewGuid();
+        Entry(new DateOnly(2026, 9, 2), 2000m, LedgerTransactionType.Transfer, PaymentMethod.Bank, "Payout Bolt");
+        await _db.SaveChangesAsync();
+
+        RjipView rjip = await Rjip(new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
+        RefView refView = await Ref(2026);
+
+        rjip.Rows.ShouldHaveSingleItem().BankIn.ShouldBe(2000m);
+        refView.Rows.Select(r => r.Value).ShouldBe([2500m, 0m, 2500m]);
+    }
+
+    [Fact]
+    public async Task Foreign_amounts_use_the_bnr_rate_of_the_previous_banking_day()
+    {
+        _db.ExchangeRates.AddRange(
+            new ExchangeRate { Id = Guid.NewGuid(), Currency = "EUR", Date = new DateOnly(2026, 10, 9), Rate = 5.0m, Source = "BNR" },
+            new ExchangeRate { Id = Guid.NewGuid(), Currency = "EUR", Date = Day, Rate = 5.1m, Source = "BNR" });
+        LedgerEntry eur = Entry(Day, -100m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Abonament", deductible: 100m);
+        eur.Currency = "EUR";
+        await _db.SaveChangesAsync();
+
+        RjipRow row = (await Rjip(Day, Day)).Rows.ShouldHaveSingleItem();
+
+        row.BankOut.ShouldBe(500m);
+        row.Operation.ShouldBe("Abonament – OMV Petrom (100,00 EUR × 5 (BNR 09.10.2026))");
+        (await Ref(2026)).Rows[1].Value.ShouldBe(500m);
+    }
+
+    [Fact]
+    public async Task Ref_is_final_when_every_active_month_is_closed()
+    {
+        _db.PfaAccountingEngagements.Add(new PfaAccountingEngagement { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, StartDate = new DateOnly(2026, 9, 15), Status = EngagementStatus.Active });
+        Close("2026-09", "2026-10", "2026-11");
+        await _db.SaveChangesAsync();
+        (await Ref(2026)).Status.ShouldBe(RefStatus.Current);
+
+        Close("2026-12");
+        await _db.SaveChangesAsync();
+        (await Ref(2026)).Status.ShouldBe(RefStatus.Final);
+    }
+
+    [Fact]
+    public async Task Ref_is_intermediate_at_a_date_or_at_the_end_of_the_engagement()
+    {
+        ADayInRidelance();
+        Entry(new DateOnly(2026, 11, 20), 100m, LedgerTransactionType.Income, PaymentMethod.Cash, "După data cerută");
+        await _db.SaveChangesAsync();
+
+        RefView asked = (await new GetRefQueryHandler(_db).Handle(new GetRefQuery(_pfa, 2026, new DateOnly(2026, 10, 31)), CancellationToken.None)).Value;
+        (asked.Status, asked.AsOf, asked.Rows[0].Value).ShouldBe((RefStatus.Intermediate, (DateOnly?)new DateOnly(2026, 10, 31), 2270m));
+
+        _db.PfaAccountingEngagements.Add(new PfaAccountingEngagement
+        {
+            Id = Guid.NewGuid(), PfaRegistrationId = _pfa, StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 11, 30), Status = EngagementStatus.Inactive,
+        });
+        await _db.SaveChangesAsync();
+        RefView ended = await Ref(2026);
+        (ended.Status, ended.AsOf).ShouldBe((RefStatus.Intermediate, (DateOnly?)new DateOnly(2026, 11, 30)));
+    }
+
+    [Fact]
+    public async Task A_loss_is_shown_as_a_net_annual_loss()
+    {
+        Entry(Day, -800m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Service", deductible: 800m);
+        Entry(Day, 300m, LedgerTransactionType.Income, PaymentMethod.Cash, "Curse");
+        await _db.SaveChangesAsync();
+
+        (await Ref(2026)).Rows[2].ShouldBe(new RefRow(2026, false, GetRefQueryHandler.IncomeCategory, "Pierdere netă anuală", 500m));
+    }
+
+    [Fact]
+    public async Task Rjip_export_follows_the_official_model()
+    {
+        ADayInRidelance();
+
+        RegisterFile pdf = (await new ExportRjipQueryHandler(_db, new GetRjipQueryHandler(_db), _exporter)
+            .Handle(new ExportRjipQuery(_pfa, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), RegisterFormat.Pdf), CancellationToken.None)).Value;
+        RegisterFile xlsx = (await new ExportRjipQueryHandler(_db, new GetRjipQueryHandler(_db), _exporter)
+            .Handle(new ExportRjipQuery(_pfa, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), RegisterFormat.Xlsx), CancellationToken.None)).Value;
+
+        (pdf.FileName, pdf.ContentType).ShouldBe(("RJIP_12345674_20261001_20261031.pdf", "application/pdf"));
+        Encoding.ASCII.GetString(pdf.Content, 0, 4).ShouldBe("%PDF");
+        xlsx.FileName.ShouldBe("RJIP_12345674_20261001_20261031.xlsx");
+
+        using var workbook = new XLWorkbook(new MemoryStream(xlsx.Content));
+        IXLWorksheet sheet = workbook.Worksheet(1);
+        sheet.Cell(1, 1).GetString().ShouldBe("REGISTRUL-JURNAL DE ÎNCASĂRI ȘI PLĂȚI");
+        sheet.Cell(2, 1).GetString().ShouldBe("POPESCU ION PFA — CUI 12345674");
+        IXLRow header = sheet.RowsUsed().First(r => r.Cell(1).GetString() == "Nr. crt.");
+        header.Cells(1, 8).Select(c => c.GetString()).ShouldBe(
+            ["Nr. crt.", "Data operațiunii de încasare/plată", "Documentul (fel, număr)", "Explicații", "Încasări — Numerar", "Încasări — Bancă", "Plăți — Numerar", "Plăți — Bancă"]);
+        IXLRow total = sheet.RowsUsed().Single(r => r.Cell(4).GetString() == "Total octombrie 2026");
+        (total.Cell(5).GetValue<decimal>(), total.Cell(6).GetValue<decimal>(), total.Cell(8).GetValue<decimal>()).ShouldBe((420m, 1850m, 300m));
+        sheet.RowsUsed().Any(r => r.Cell(1).GetString() == "14-1-1/b").ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Ref_and_inventory_exports()
+    {
+        ADayInRidelance();
+        _db.PfaAssets.AddRange(
+            Asset("Casă de marcat", "Datecs DP-25X", new DateOnly(2026, 8, 20), 1350m),
+            Asset("Laptop", "Vândut", new DateOnly(2025, 3, 1), 3000m, disposed: new DateOnly(2026, 6, 1)));
+        await _db.SaveChangesAsync();
+
+        RegisterFile refFile = (await new ExportRefQueryHandler(_db, new GetRefQueryHandler(_db), _exporter)
+            .Handle(new ExportRefQuery(_pfa, 2026, RegisterFormat.Xlsx, null), CancellationToken.None)).Value;
+        using (var workbook = new XLWorkbook(new MemoryStream(refFile.Content)))
+        {
+            IXLWorksheet sheet = workbook.Worksheet(1);
+            sheet.Cell(1, 1).GetString().ShouldBe("REGISTRUL DE EVIDENȚĂ FISCALĂ");
+            sheet.RowsUsed().Select(r => r.Cell(2).GetString()).ShouldContain("Venit net anual");
+        }
+
+        RegisterFile inventory = (await new ExportInventoryQueryHandler(_db, _exporter)
+            .Handle(new ExportInventoryQuery(_pfa, 2026, RegisterFormat.Xlsx), CancellationToken.None)).Value;
+        inventory.FileName.ShouldBe("Registru-inventar_12345674_20261231.xlsx");
+        using (var workbook = new XLWorkbook(new MemoryStream(inventory.Content)))
+        {
+            IXLWorksheet sheet = workbook.Worksheet(1);
+            sheet.Cell(3, 1).GetString().ShouldBe("la data de 31.12.2026");
+            sheet.RowsUsed().Where(r => r.Cell(3).DataType == XLDataType.Number && r.Cell(2).GetString() != "Total").ShouldHaveSingleItem()
+                .Cell(2).GetString().ShouldStartWith("Casă de marcat — Datecs DP-25X");
+            sheet.RowsUsed().Single(r => r.Cell(2).GetString() == "Total").Cell(3).GetValue<decimal>().ShouldBe(1350m);
+        }
+
+        // Vizualizarea anului arată și activul ieșit în an.
+        (await new GetInventoryQueryHandler(_db).Handle(new GetInventoryQuery(_pfa, 2026), CancellationToken.None)).Value.Assets.Count.ShouldBe(2);
+        Encoding.ASCII.GetString((await new ExportInventoryQueryHandler(_db, _exporter)
+            .Handle(new ExportInventoryQuery(_pfa, 2026, RegisterFormat.Pdf), CancellationToken.None)).Value.Content, 0, 4).ShouldBe("%PDF");
+    }
+
+    [Fact]
+    public async Task Assets_are_validated_and_never_deleted()
+    {
+        var handler = new SaveAssetCommandHandler(_db);
+
+        (await handler.Handle(new SaveAssetCommand(_pfa, null, new AssetInput("", "x", Day, 10m, AssetStatus.InUse, null)), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.AssetInvalid");
+        AssetDto created = (await handler.Handle(new SaveAssetCommand(_pfa, null, new AssetInput("Casă de marcat", "Datecs", Day, 1350m, AssetStatus.InUse, Day)), CancellationToken.None)).Value;
+        created.DisposedDate.ShouldBeNull();
+        (await handler.Handle(new SaveAssetCommand(_pfa, created.Id, new AssetInput("Casă de marcat", "Datecs", Day, 1350m, AssetStatus.Disposed, null)), CancellationToken.None))
+            .Error.Description.ShouldStartWith("Data ieșirii e obligatorie");
+
+        AssetDto disposed = (await handler.Handle(
+            new SaveAssetCommand(_pfa, created.Id, new AssetInput("Casă de marcat", "Datecs", Day, 1350m, AssetStatus.Disposed, new DateOnly(2027, 1, 5))), CancellationToken.None)).Value;
+
+        (disposed.Status, disposed.DisposedDate).ShouldBe((AssetStatus.Disposed, (DateOnly?)new DateOnly(2027, 1, 5)));
+        (await new ListAssetsQueryHandler(_db).Handle(new ListAssetsQuery(_pfa), CancellationToken.None)).Value.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Invalid_ranges_and_years_are_refused()
+    {
+        (await new GetRjipQueryHandler(_db).Handle(new GetRjipQuery(_pfa, Day, Day.AddDays(-1)), CancellationToken.None)).Error.Code.ShouldBe("Accounting.InvalidRange");
+        (await new GetRefQueryHandler(_db).Handle(new GetRefQuery(_pfa, 2026, new DateOnly(2025, 5, 1)), CancellationToken.None)).Error.Code.ShouldBe("Accounting.InvalidYear");
+        (await new GetInventoryQueryHandler(_db).Handle(new GetInventoryQuery(Guid.NewGuid(), 2026), CancellationToken.None)).Error.Code.ShouldBe("Accounting.PfaNotFound");
+    }
+
+    // ─── Ajutoare ──────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Spec §5.3, cum îl lasă ledger-ul după import (B6).</summary>
+    private void ADayInRidelance()
+    {
+        Entry(Day, -300m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Plată combustibil", deductible: 300m);
+        Entry(Day, 1850m, LedgerTransactionType.Income, PaymentMethod.Bank, "Payout Bolt", counterparty: "BOLT OPERATIONS OU");
+        LedgerEntry z = Entry(Day, 420m, LedgerTransactionType.Income, PaymentMethod.Cash, "Încasări numerar, raport Z nr. 125", counterparty: null);
+        z.DocumentLabel = "Raport Z nr. 125";
+        z.BankTransactionId = null;
+        _db.SaveChanges();
+    }
+
+    private int _order;
+
+    private LedgerEntry Entry(
+        DateOnly date,
+        decimal amount,
+        LedgerTransactionType type,
+        PaymentMethod method,
+        string description,
+        decimal? deductible = null,
+        string? counterparty = "OMV Petrom")
+    {
+        var entry = new LedgerEntry
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = _pfa,
+            Date = date,
+            DocumentLabel = $"Extras {date:dd.MM.yyyy}",
+            Source = LedgerSource.Bank,
+            BankTransactionId = method == PaymentMethod.Bank ? Guid.NewGuid() : null,
+            Counterparty = counterparty,
+            Description = description,
+            TransactionType = type,
+            PaymentMethod = method,
+            Amount = amount,
+            DeductibleAmount = deductible,
+            AccountingPeriod = date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture),
+            CreatedAtUtc = DateTime.UtcNow.AddSeconds(++_order),
+        };
+        _db.LedgerEntries.Add(entry);
+        return entry;
+    }
+
+    private void Close(params string[] periods) => _db.PfaAccountingPeriods.AddRange(periods.Select(period =>
+        new PfaAccountingPeriod { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Period = period, Status = AccountingPeriodStatus.Closed }));
+
+    private PfaAsset Asset(string type, string description, DateOnly acquired, decimal value, DateOnly? disposed = null) => new()
+    {
+        Id = Guid.NewGuid(),
+        PfaRegistrationId = _pfa,
+        Type = type,
+        Description = description,
+        AcquisitionDate = acquired,
+        AcquisitionValue = value,
+        Status = disposed is null ? AssetStatus.InUse : AssetStatus.Disposed,
+        DisposedDate = disposed,
+    };
+
+    private async Task<RjipView> Rjip(DateOnly from, DateOnly to) =>
+        (await new GetRjipQueryHandler(_db).Handle(new GetRjipQuery(_pfa, from, to), CancellationToken.None)).Value;
+
+    private async Task<RefView> Ref(int year) =>
+        (await new GetRefQueryHandler(_db).Handle(new GetRefQuery(_pfa, year), CancellationToken.None)).Value;
+
+    private sealed class Events : IDomainEventsDispatcher
+    {
+        public Task DispatchAsync(IEnumerable<IDomainEvent> domainEvents, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+}
