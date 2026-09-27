@@ -39,6 +39,11 @@ public sealed class AccountingE2ESeed
 
     public const string AccountantPassword = "E2e-Contabil-2026!";
 
+    /// <summary>Adminul de test: doar el poate șterge documente din contabilitate.</summary>
+    public const string AdminEmail = "admin.e2e@ridelance.test";
+
+    public const string AdminPassword = "E2e-Admin-2026!";
+
     private const string Period = "2026-08";
 
     private static readonly string? Database = Environment.GetEnvironmentVariable("RIDELANCE_SEED_DATABASE");
@@ -77,6 +82,16 @@ public sealed class AccountingE2ESeed
             LastName = "E2E",
             Role = UserRole.Contabil,
             PasswordHash = new PasswordHasher().Hash(AccountantPassword),
+            EmailVerifiedAtUtc = DateTime.UtcNow,
+        });
+        db.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Email = AdminEmail,
+            FirstName = "Admin",
+            LastName = "E2E",
+            Role = UserRole.Admin,
+            PasswordHash = new PasswordHasher().Hash(AdminPassword),
             EmailVerifiedAtUtc = DateTime.UtcNow,
         });
 

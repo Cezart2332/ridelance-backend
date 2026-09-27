@@ -90,8 +90,10 @@ internal sealed class GetDeclarationBreakdownQueryHandler(IApplicationDbContext 
 {
     public async Task<Result<DeclarationBreakdown>> Handle(GetDeclarationBreakdownQuery query, CancellationToken cancellationToken)
     {
+        // Liniile rămân cu documentul lor chiar dacă acesta a fost șters logic ulterior (istoric).
         DeclarationVersion? version = await db.DeclarationVersions
             .AsNoTracking()
+            .IgnoreQueryFilters()
             .Include(v => v.Lines.Where(line => line.SupersededAtUtc == null))
             .ThenInclude(line => line.SourceDocument)
             .ThenInclude(document => document.SourceDocument)

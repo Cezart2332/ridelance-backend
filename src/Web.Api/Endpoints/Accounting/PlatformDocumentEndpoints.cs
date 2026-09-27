@@ -95,6 +95,17 @@ internal sealed class PlatformDocumentEndpoints : IEndpoint
             return result.Match(Results.Ok, CustomResults.Problem);
         });
 
+        // Doar ADMIN: permisiunea de ștergere nu o are contabilul.
+        group.MapDelete("platform-documents/{id:guid}", async (
+            Guid id,
+            ICommandHandler<DeletePlatformDocumentCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(new DeletePlatformDocumentCommand(id), cancellationToken);
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .RequireAuthorization(Permissions.DeleteAccountingDocuments);
+
         group.MapPost("platform-documents/confirm-bulk", async (
             ConfirmBulkRequest request,
             ICommandHandler<ConfirmPlatformDocumentsBulkCommand, ConfirmBulkResult> handler,
