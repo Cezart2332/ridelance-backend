@@ -88,6 +88,40 @@ public sealed class PlatformDocumentFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task Admin_deletes_a_wrong_document_and_can_upload_the_same_file_again()
+    {
+        Guid id = await UploadAndExtract("bolt.pdf", BoltText("1.000,00"), Bolt(1000m));
+
+        (await Delete(id)).IsSuccess.ShouldBeTrue();
+
+        // Dispare din lună (și cu citirea lui), dar rândul și auditul rămân.
+        (await new ListPlatformDocumentsQueryHandler(_db).Handle(new ListPlatformDocumentsQuery(_pfa, Period), CancellationToken.None)).Value.ShouldBeEmpty();
+        (await _db.DocumentExtractions.CountAsync()).ShouldBe(0);
+        (await _db.PlatformDocuments.IgnoreQueryFilters().SingleAsync(d => d.Id == id)).DeletedByUserId.ShouldBe(_accountant);
+        (await _db.AuditLogs.AnyAsync(a => a.EntityId == id.ToString() && a.Action == "DELETE")).ShouldBeTrue();
+
+        // Același PDF se poate reîncărca: nu mai e duplicat.
+        (await Upload("bolt.pdf", BoltText("1.000,00"))).IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_document_included_in_a_declaration_cannot_be_deleted()
+    {
+        Guid id = await UploadAndExtract("bolt.pdf", BoltText("1.000,00"), Bolt(1000m));
+        var declaration = new Declaration { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Period = Period, Type = DeclarationType.D301 };
+        var version = new DeclarationVersion { Id = Guid.NewGuid(), DeclarationId = declaration.Id, Declaration = declaration, VersionNo = 1 };
+        _db.Declarations.Add(declaration);
+        _db.DeclarationVersions.Add(version);
+        _db.DeclarationLines.Add(new DeclarationLine { Id = Guid.NewGuid(), DeclarationVersionId = version.Id, DeclarationVersion = version, SourceDocumentId = id });
+        await _db.SaveChangesAsync();
+
+        Result result = await Delete(id);
+
+        result.Error.Code.ShouldBe("Accounting.DocumentInDeclaration");
+        result.Error.Description.ShouldContain("D301 2026-08");
+    }
+
+    [Fact]
     public async Task Misread_amount_needs_review_until_a_manual_edit_with_reason()
     {
         // Bogdan Matei: modelul citește 1.284,50, în PDF scrie 1.248,50.
@@ -226,6 +260,9 @@ public sealed class PlatformDocumentFlowTests : IDisposable
 
     private async Task<PlatformDocumentDetail> Get(Guid id) =>
         (await new GetPlatformDocumentQueryHandler(_db, _options).Handle(new GetPlatformDocumentQuery(id), CancellationToken.None)).Value;
+
+    private Task<Result> Delete(Guid id) =>
+        new DeletePlatformDocumentCommandHandler(_db, User(), _options).Handle(new DeletePlatformDocumentCommand(id), CancellationToken.None);
 
     private Task<Result<PlatformDocumentDetail>> Confirm(Guid id) =>
         new ConfirmPlatformDocumentCommandHandler(_db, User(), _options).Handle(new ConfirmPlatformDocumentCommand(id), CancellationToken.None);

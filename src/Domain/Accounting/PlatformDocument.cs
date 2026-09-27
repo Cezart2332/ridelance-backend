@@ -49,6 +49,14 @@ public sealed class PlatformDocument : Entity, IAccountingRecord
     public Guid? ReviewedByUserId { get; set; }
     public DateTime? ReviewedAtUtc { get; set; }
 
+    /// <summary>
+    /// Ștergere logică, doar de admin (document încărcat greșit): dispare din listă, verificări și
+    /// calcul, dar rândul și fișierul rămân pentru audit. Nu e permisă pentru documentele incluse în
+    /// declarații sau dintr-o perioadă închisă.
+    /// </summary>
+    public DateTime? DeletedAtUtc { get; set; }
+    public Guid? DeletedByUserId { get; set; }
+
     public PfaRegistration PfaRegistration { get; set; } = null!;
     public Document SourceDocument { get; set; } = null!;
     public ICollection<DocumentExtraction> Extractions { get; } = [];

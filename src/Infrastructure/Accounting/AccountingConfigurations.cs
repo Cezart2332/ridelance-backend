@@ -64,8 +64,10 @@ internal sealed class PlatformDocumentConfiguration : IEntityTypeConfiguration<P
         builder.Property(d => d.PdfText).HasColumnType("text");
 
         builder.HasIndex(d => new { d.PfaRegistrationId, d.Period });
-        // Același fișier la același PFA e duplicat (B1: 409 cu link spre cel existent).
-        builder.HasIndex(d => new { d.PfaRegistrationId, d.FileHash }).IsUnique();
+        // Același fișier la același PFA e duplicat (B1: 409 cu link spre cel existent). Un document
+        // șters nu mai blochează reîncărcarea aceluiași fișier.
+        builder.HasIndex(d => new { d.PfaRegistrationId, d.FileHash }).IsUnique().HasFilter("deleted_at_utc IS NULL");
+        builder.HasQueryFilter(d => d.DeletedAtUtc == null);
 
         builder.HasOne(d => d.PfaRegistration).WithMany().HasForeignKey(d => d.PfaRegistrationId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(d => d.SourceDocument).WithMany().HasForeignKey(d => d.SourceDocumentId).OnDelete(DeleteBehavior.Restrict);
@@ -79,6 +81,8 @@ internal sealed class DocumentExtractionConfiguration : IEntityTypeConfiguration
     public void Configure(EntityTypeBuilder<DocumentExtraction> builder)
     {
         builder.ToTable("document_extractions");
+        // Citirile unui document șters dispar odată cu el.
+        builder.HasQueryFilter(e => e.PlatformDocument.DeletedAtUtc == null);
         builder.HasKey(e => e.Id);
         builder.Property(e => e.SupplierName).HasMaxLength(256);
         builder.Property(e => e.SupplierCountry).HasMaxLength(2);

@@ -37,7 +37,8 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
                 Permissions.ManageOfficeCalendar,
                 Permissions.ManageCompanyPages,
                 Permissions.ManageTaxParameters,
-                Permissions.ManageAccounting
+                Permissions.ManageAccounting,
+                Permissions.DeleteAccountingDocuments
             ],
             UserRole.Contabil =>
             [
@@ -100,4 +101,7 @@ public static class Permissions
 
     /// <summary>Modulul de contabilitate PFA (declarații, documente Uber/Bolt, registre): ADMIN și contabil.</summary>
     public const string ManageAccounting = "accounting:manage";
+
+    /// <summary>Ștergerea (logică) a documentelor Uber/Bolt din contabilitate: doar ADMIN.</summary>
+    public const string DeleteAccountingDocuments = "accounting:delete_documents";
 }
