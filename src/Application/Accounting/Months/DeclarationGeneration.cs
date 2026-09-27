@@ -49,7 +49,7 @@ internal static class DeclarationGeneration
         }
 
         List<AnafDeclarationSchema> schemas = await db.AnafDeclarationSchemas.AsNoTracking().ToListAsync(cancellationToken);
-        AnafTaxpayer? taxpayer = await files.TaxpayerAsync(pfa.Id, cancellationToken);
+        AnafTaxpayer? taxpayer = await files.TaxpayerAsync(pfa.Id, cancellationToken, data.Period);
         var generated = new List<string>();
         foreach (DeclarationCalculation calculation in result.Declarations.Values.Where(c => c.Applicable))
         {

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Application.Accounting.Contracts;
+using Application.Accounting.Tax;
 using Domain.Accounting;
 
 namespace Application.Accounting.Documents;
@@ -43,7 +44,7 @@ public static class DocumentChecker
 
         checks.Add(PeriodMatch(subject, fields, context.Options, invoice));
         checks.Add(CurrencyAllowed(fields, context.Options));
-        checks.Add(SettlementCorrelation(fields, context, invoice));
+        checks.Add(SettlementCorrelation(subject, fields, context, invoice));
         return checks;
     }
 
@@ -174,19 +175,23 @@ public static class DocumentChecker
             ? new DocumentCheck(DocumentCheckCode.NotAlreadyDeclared, false, $"Documentul apare deja în {declaration}, cu recipisă.", null)
             : new DocumentCheck(DocumentCheckCode.NotAlreadyDeclared, true, "Documentul nu a mai fost declarat.", null);
 
-    /// <summary>Regula de exigibilitate e DE CONFIRMAT (config): data facturii sau sfârșitul perioadei.</summary>
+    /// <summary>
+    /// Luna fiscală a documentului. La facturi, după regula de exigibilitate (DE CONFIRMAT, implicit
+    /// „Data impozitării”); la rapoarte, sfârșitul perioadei raportate.
+    /// </summary>
     private static DocumentCheck PeriodMatch(CheckSubject subject, ExtractedFields fields, AccountingOptions options, bool invoice)
     {
-        DateOnly? reference = invoice && options.VatExigibility == VatExigibilityRule.InvoiceDate
-            ? fields.InvoiceDate
+        DateOnly? reference = invoice
+            ? FiscalDate.Of(options.VatExigibility, fields.InvoiceDate, fields.PeriodTo, fields.TaxPointDate)
             : fields.PeriodTo ?? fields.InvoiceDate;
+        string label = invoice ? FiscalDate.Label(options.VatExigibility, fields.TaxPointDate, fields.PeriodTo) : "Data";
         bool ok = reference is { } date && date.ToString("yyyy-MM", CultureInfo.InvariantCulture) == subject.Period;
         return ok
-            ? new DocumentCheck(DocumentCheckCode.PeriodMatch, true, $"Data {AccountingJson.Date(reference)} e în perioada procesată.", null)
+            ? new DocumentCheck(DocumentCheckCode.PeriodMatch, true, $"{label} {AccountingJson.Date(reference)} e în perioada procesată.", null)
             : new DocumentCheck(
                 DocumentCheckCode.PeriodMatch,
                 false,
-                $"Data {AccountingJson.Date(reference)} nu e în perioada procesată ({subject.Period}).",
+                $"{label} {AccountingJson.Date(reference)} nu e în perioada procesată ({subject.Period}).",
                 null);
     }
 
@@ -203,12 +208,26 @@ public static class DocumentChecker
                 null);
     }
 
-    private static DocumentCheck SettlementCorrelation(ExtractedFields fields, CheckContext context, bool invoice)
+    /// <summary>
+    /// Comision / venit, ca avertisment: nu blochează documentul. O factură se compară cu raportul
+    /// doar pe perioade echivalente (factura acoperă toată luna raportului); facturile săptămânale Uber
+    /// se compară cu sumarul lunar abia la nivel de lună, în declarație.
+    /// </summary>
+    private static DocumentCheck SettlementCorrelation(CheckSubject subject, ExtractedFields fields, CheckContext context, bool invoice)
     {
-        decimal? income = invoice ? context.ReportIncome : fields.Amount;
         decimal minimum = context.Options.SettlementMinPercent;
         decimal maximum = context.Options.SettlementMaxPercent;
 
+        if (invoice && !CoversMonth(subject.Period, fields))
+        {
+            return new DocumentCheck(
+                DocumentCheckCode.SettlementCorrelation,
+                true,
+                $"Factura acoperă {AccountingJson.Date(fields.PeriodFrom)}–{AccountingJson.Date(fields.PeriodTo)}, raportul toată luna: corelarea se face pe lună, în declarație.",
+                null);
+        }
+
+        decimal? income = invoice ? context.ReportIncome : fields.Amount;
         if (income is not > 0 || fields.CommissionAmount is not { } commission)
         {
             return new DocumentCheck(
@@ -219,12 +238,25 @@ public static class DocumentChecker
         }
 
         decimal ratio = Math.Round(commission / income.Value * 100, 2);
-        bool ok = ratio >= minimum && ratio <= maximum;
+        bool inRange = ratio >= minimum && ratio <= maximum;
         return new DocumentCheck(
             DocumentCheckCode.SettlementCorrelation,
-            ok,
-            $"Comision / venit = {AccountingJson.Amount(ratio)}% (interval acceptat {minimum.ToString(CultureInfo.InvariantCulture)}–{maximum.ToString(CultureInfo.InvariantCulture)}%).",
-            null);
+            true,
+            $"Comision / venit = {AccountingJson.Amount(ratio)}% (interval obișnuit {minimum.ToString(CultureInfo.InvariantCulture)}–{maximum.ToString(CultureInfo.InvariantCulture)}%)." +
+            (inRange ? string.Empty : " De verificat, nu blochează."),
+            null,
+            Warning: !inRange);
+    }
+
+    /// <summary>Perioada facturii e exact luna calendaristică procesată.</summary>
+    private static bool CoversMonth(string period, ExtractedFields fields)
+    {
+        if (!DateOnly.TryParseExact($"{period}-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly start))
+        {
+            return false;
+        }
+
+        return fields.PeriodFrom == start && fields.PeriodTo == start.AddMonths(1).AddDays(-1);
     }
 
     public static bool IsValidAt(IValidityPeriod rule, DateOnly date) =>

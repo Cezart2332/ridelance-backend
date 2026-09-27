@@ -30,6 +30,7 @@ internal sealed class OpenRouterDocumentExtractor(
     [
         "supplier_name", "supplier_country", "supplier_vat_id", "invoice_number", "invoice_date",
         "period_from", "period_to", "currency", "amount", "commission_amount",
+        "tax_point_date", "withheld_tax",
     ];
 
     public async Task<Result<DocumentExtractionResult>> ExtractAsync(DocumentExtractionRequest request, CancellationToken cancellationToken)
@@ -96,9 +97,14 @@ internal sealed class OpenRouterDocumentExtractor(
         "de venituri / câștiguri, UNKNOWN pentru orice altceva. platform: BOLT sau UBER, după emitent; null dacă nu e clar. " +
         "Câmpuri: supplier_name (entitatea emitentă, ex. „Bolt Operations OÜ”), supplier_country (cod ISO din 2 litere), " +
         "supplier_vat_id (codul de TVA al emitentului, cu prefixul de țară), invoice_number, invoice_date " +
-        "(data facturii sau a raportului), period_from și period_to (perioada serviciului), currency (cod ISO din 3 litere), " +
+        "(data facturii sau a raportului), period_from și period_to (perioada serviciului), " +
+        "tax_point_date („Data impozitării” / tax point de pe factură, dacă apare; Uber o trece pe linia facturii; null altfel), " +
+        "currency (cod ISO din 3 litere), " +
         "amount (la factură: totalul de plată; la raport: venitul brut din curse), commission_amount (comisionul platformei), " +
-        "other_amounts (alte sume, de ex. TVA, cu eticheta lor). " +
+        "other_amounts (alte sume, de ex. TVA, cu eticheta lor), " +
+        "withheld_tax (impozitul reținut la sursă, ca sumă, dacă documentul îl arată — ex. „Reținere la sursă” în rezumatul " +
+        "lunar Bolt; o simplă mențiune a procentului, fără sumă, nu se trece). " +
+        "Uber emite facturi săptămânale și un sumar fiscal lunar; Bolt o factură lunară și un rezumat lunar. " +
         "Datele în format YYYY-MM-DD. Sumele ca numere, cu punct zecimal, fără separator de mii. " +
         "Pentru fiecare câmp completat, source_snippets conține textul EXACT din document din care l-ai citit " +
         "(inclusiv separatorii de mii și zecimale, ca în document); null dacă valoarea lipsește. " +
@@ -121,6 +127,8 @@ internal sealed class OpenRouterDocumentExtractor(
             ["currency"] = nullableString,
             ["amount"] = nullableNumber,
             ["commission_amount"] = nullableNumber,
+            ["tax_point_date"] = nullableString,
+            ["withheld_tax"] = nullableNumber,
             ["other_amounts"] = new
             {
                 type = "array",
@@ -193,7 +201,9 @@ internal sealed class OpenRouterDocumentExtractor(
                 Text(fields, "currency")?.ToUpperInvariant(),
                 Number(fields, "amount"),
                 Number(fields, "commission_amount"),
-                others);
+                others,
+                Date(fields, "tax_point_date"),
+                Number(fields, "withheld_tax"));
 
             var snippets = new Dictionary<string, string>();
             if (root.TryGetProperty("source_snippets", out JsonElement source) && source.ValueKind == JsonValueKind.Object)
@@ -239,10 +249,8 @@ internal sealed class OpenRouterDocumentExtractor(
             return value.GetDecimal();
         }
 
-        return value.ValueKind == JsonValueKind.String &&
-               decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsed)
-            ? parsed
-            : null;
+        // Modelul trimite uneori suma ca text, cu separatorii din document („2.535,66”, „2273.23”).
+        return value.ValueKind == JsonValueKind.String ? AmountText.Parse(value.GetString()) : null;
     }
 
     private static DateOnly? Date(JsonElement element, string name)

@@ -51,13 +51,17 @@ internal static class PreCheck
             {
                 foreach ((PlatformDocumentType type, string label) in Slots)
                 {
-                    bool present = documents.Any(d =>
+                    List<MonthDocument> present = [.. documents.Where(d =>
                         d.Document.Platform == platform &&
                         d.Document.DocumentType == type &&
-                        d.Document.Status != PlatformDocumentStatus.ExtractionFailed);
-                    if (!present)
+                        d.Document.Status != PlatformDocumentStatus.ExtractionFailed)];
+                    if (present.Count == 0)
                     {
-                        missing.Add($"Lipsește {label} {(platform == Platform.Bolt ? "Bolt" : "Uber")}.");
+                        missing.Add($"Lipsește {label} {PlatformName(platform)}.");
+                    }
+                    else if (type == PlatformDocumentType.CommissionInvoice)
+                    {
+                        missing.AddRange(InvoiceCoverageGaps(data.Period, platform, present, settings.VatExigibility));
                     }
                 }
             }
@@ -114,6 +118,59 @@ internal static class PreCheck
         }
 
         return new PreCheckResult(status, [.. missing, .. review]);
+    }
+
+    private static string PlatformName(Platform platform) => platform == Platform.Bolt ? "Bolt" : "Uber";
+
+    /// <summary>
+    /// Facturile de comision ale unei platforme trebuie să acopere luna fără goluri: Uber emite una pe
+    /// săptămână, Bolt una pe lună, deci nu se numără facturile, ci se urmăresc perioadele lor.
+    /// <list type="bullet">
+    /// <item>între două facturi consecutive nu rămân zile nefacturate;</item>
+    /// <item>cu regula „data impozitării” / „sfârșitul perioadei”, luna începe cu factura care conține
+    /// ziua 1 și se termină cu ultima a cărei perioadă următoare (de aceeași lungime) ar cădea în luna
+    /// următoare — altfel lipsește o factură la margine.</item>
+    /// </list>
+    /// Facturile fără perioadă citită nu intră în verificare (le semnalează documentul însuși).
+    /// </summary>
+    internal static IEnumerable<string> InvoiceCoverageGaps(string period, Platform platform, IReadOnlyList<MonthDocument> invoices, VatExigibilityRule rule)
+    {
+        List<(DateOnly From, DateOnly To)> spans = [.. invoices
+            .Where(d => d.Extraction is { PeriodFrom: not null, PeriodTo: not null })
+            .Select(d => (From: d.Extraction!.PeriodFrom!.Value, To: d.Extraction.PeriodTo!.Value))
+            .Where(span => span.From <= span.To)
+            .OrderBy(span => span.From)];
+        if (spans.Count == 0)
+        {
+            yield break;
+        }
+
+        (DateOnly start, DateOnly end) = AccountingScope.Bounds(period);
+        string name = PlatformName(platform);
+        bool edges = rule != VatExigibilityRule.InvoiceDate;
+
+        if (edges && spans[0].From > start)
+        {
+            yield return $"Lipsește factura de comision {name} pentru perioada de dinainte de {AccountingJson.Date(spans[0].From)}.";
+        }
+
+        DateOnly coveredTo = spans[0].To;
+        foreach ((DateOnly from, DateOnly to) in spans.Skip(1))
+        {
+            if (from > coveredTo.AddDays(1))
+            {
+                yield return $"Lipsește factura de comision {name} pentru {AccountingJson.Date(coveredTo.AddDays(1))}–{AccountingJson.Date(from.AddDays(-1))}.";
+            }
+
+            coveredTo = to > coveredTo ? to : coveredTo;
+        }
+
+        (DateOnly lastFrom, DateOnly lastTo) = spans[^1];
+        int length = lastTo.DayNumber - lastFrom.DayNumber + 1;
+        if (edges && coveredTo.AddDays(length) <= end)
+        {
+            yield return $"Lipsește factura de comision {name} pentru perioada de după {AccountingJson.Date(coveredTo)}.";
+        }
     }
 
     /// <summary>Salvează rezultatul (un singur rând pe PFA și lună).</summary>

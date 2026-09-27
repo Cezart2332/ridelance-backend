@@ -26,7 +26,8 @@ internal static class AnafTestSupport
         "Ion",
         "TITULAR",
         "Banca Transilvania",
-        "RO49AAAA1B31007593840000");
+        "RO49AAAA1B31007593840000",
+        "RO12345674");
 
     public static AnafDeclarationInput Input(DeclarationType type) => type switch
     {

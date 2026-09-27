@@ -87,6 +87,7 @@ internal sealed class DocumentExtractionConfiguration : IEntityTypeConfiguration
         builder.Property(e => e.Currency).HasMaxLength(3);
         builder.Property(e => e.Amount).AsMoney();
         builder.Property(e => e.CommissionAmount).AsMoney();
+        builder.Property(e => e.WithheldTax).AsMoney();
         builder.Property(e => e.OtherAmountsJson).AsJson();
         builder.Property(e => e.SourceSnippetsJson).AsJson();
         builder.Property(e => e.ChecksResultJson).AsJson();

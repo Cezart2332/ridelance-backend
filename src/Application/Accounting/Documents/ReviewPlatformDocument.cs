@@ -258,8 +258,10 @@ internal static class ExtractedFieldsPatch
                     "periodFrom" => result with { PeriodFrom = isNull ? null : Date(value) },
                     "periodTo" => result with { PeriodTo = isNull ? null : Date(value) },
                     "currency" => result with { Currency = Text(value)?.ToUpperInvariant() },
-                    "amount" => result with { Amount = isNull ? null : value.GetDecimal() },
-                    "commissionAmount" => result with { CommissionAmount = isNull ? null : value.GetDecimal() },
+                    "taxPointDate" => result with { TaxPointDate = isNull ? null : Date(value) },
+                    "amount" => result with { Amount = Amount(value) },
+                    "commissionAmount" => result with { CommissionAmount = Amount(value) },
+                    "withheldTax" => result with { WithheldTax = Amount(value) },
                     "otherAmounts" => result with { OtherAmounts = value.Deserialize<List<OtherAmount>>(AccountingJson.Options) ?? [] },
                     _ => throw new FormatException(property.Name),
                 };
@@ -295,6 +297,17 @@ internal static class ExtractedFieldsPatch
         ["amount"] = fields.Amount,
         ["commissionAmount"] = fields.CommissionAmount,
         ["otherAmounts"] = fields.OtherAmounts,
+        ["taxPointDate"] = fields.TaxPointDate,
+        ["withheldTax"] = fields.WithheldTax,
+    };
+
+    /// <summary>Număr JSON sau text („2.535,66”, „2273.23”); altceva e o eroare de format.</summary>
+    private static decimal? Amount(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Null => null,
+        JsonValueKind.Number => value.GetDecimal(),
+        JsonValueKind.String => AmountText.Parse(value.GetString()) ?? throw new FormatException("amount"),
+        _ => throw new FormatException("amount"),
     };
 
     private static string? Text(JsonElement value)

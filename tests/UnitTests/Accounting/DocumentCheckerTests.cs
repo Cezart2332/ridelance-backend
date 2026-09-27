@@ -137,7 +137,29 @@ public sealed class DocumentCheckerTests
 
     [Fact]
     public void Period_match_fails_for_an_invoice_from_another_month() =>
-        Check(RunInvoice(Invoice() with { InvoiceDate = new DateOnly(2026, 9, 1) }), DocumentCheckCode.PeriodMatch).Passed.ShouldBeFalse();
+        Check(
+            RunInvoice(Invoice() with { InvoiceDate = new DateOnly(2026, 9, 1), PeriodFrom = new DateOnly(2026, 9, 1), PeriodTo = new DateOnly(2026, 9, 30) }),
+            DocumentCheckCode.PeriodMatch).Passed.ShouldBeFalse();
+
+    [Fact]
+    public void Period_match_uses_the_tax_point_of_a_weekly_uber_invoice()
+    {
+        // Factura reală UBERDEF-…-0000037: emisă pe 03.09, pentru 24–30.08, data impozitării 30.08.
+        ExtractedFields weekly = Invoice() with
+        {
+            InvoiceDate = new DateOnly(2026, 9, 3),
+            PeriodFrom = new DateOnly(2026, 8, 24),
+            PeriodTo = new DateOnly(2026, 8, 30),
+            TaxPointDate = new DateOnly(2026, 8, 30),
+        };
+
+        DocumentCheck byTaxPoint = Check(RunInvoice(weekly), DocumentCheckCode.PeriodMatch);
+        byTaxPoint.Passed.ShouldBeTrue();
+        byTaxPoint.Message.ShouldBe("Data impozitării 30.08.2026 e în perioada procesată.");
+
+        var invoiceDate = new AccountingOptions { VatExigibility = VatExigibilityRule.InvoiceDate };
+        Check(RunInvoice(weekly, Context(options: invoiceDate)), DocumentCheckCode.PeriodMatch).Passed.ShouldBeFalse();
+    }
 
     [Fact]
     public void Period_match_follows_the_configured_exigibility_rule()
@@ -166,12 +188,23 @@ public sealed class DocumentCheckerTests
         Check(RunInvoice(Invoice() with { Currency = "USD" }), DocumentCheckCode.CurrencyAllowed).Passed.ShouldBeFalse();
 
     [Fact]
-    public void Settlement_correlation_fails_outside_the_configured_range()
+    public void Settlement_correlation_outside_the_range_is_a_warning_not_a_block()
     {
         DocumentCheck check = Check(RunInvoice(Invoice(), Context(reportIncome: 2000m)), DocumentCheckCode.SettlementCorrelation);
 
-        check.Passed.ShouldBeFalse();
+        (check.Passed, check.Warning).ShouldBe((true, true));
         check.Message.ShouldContain("50,00%");
+    }
+
+    [Fact]
+    public void Settlement_correlation_skips_a_weekly_invoice_against_the_monthly_report()
+    {
+        ExtractedFields weekly = Invoice() with { PeriodFrom = new DateOnly(2026, 8, 3), PeriodTo = new DateOnly(2026, 8, 9) };
+
+        DocumentCheck check = Check(RunInvoice(weekly, Context(reportIncome: 2000m)), DocumentCheckCode.SettlementCorrelation);
+
+        (check.Passed, check.Warning).ShouldBe((true, false));
+        check.Message.ShouldContain("corelarea se face pe lună");
     }
 
     [Fact]

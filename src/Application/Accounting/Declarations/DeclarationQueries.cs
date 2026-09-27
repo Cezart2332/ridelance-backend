@@ -130,7 +130,9 @@ internal sealed class GetDeclarationBreakdownQueryHandler(IApplicationDbContext 
                     line.ResidenceCertValidTo))],
             version.Amount,
             snapshot?.Calculation.Explanation ?? string.Empty,
-            snapshot?.Calculation.ExcludedRideIncome);
+            snapshot?.Calculation.ExcludedRideIncome,
+            snapshot?.Calculation.Warnings ?? [],
+            snapshot?.Calculation.Withholding ?? []);
     }
 }
 

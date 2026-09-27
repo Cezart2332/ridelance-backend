@@ -156,7 +156,7 @@ internal sealed class DeclarationActions(
             declaration,
             version,
             draft.Value,
-            await files.TaxpayerAsync(declaration.PfaRegistrationId, cancellationToken),
+            await files.TaxpayerAsync(declaration.PfaRegistrationId, cancellationToken, declaration.Period),
             await db.AnafDeclarationSchemas.AsNoTracking().ToListAsync(cancellationToken),
             DeclarationContent.XmlBlocker(declaration.Type, version.Kind, options.Value.D100CorrectionProcedure),
             cancellationToken);
@@ -190,7 +190,7 @@ internal sealed class DeclarationActions(
             declaration,
             version,
             draft.Value,
-            await files.TaxpayerAsync(declaration.PfaRegistrationId, cancellationToken),
+            await files.TaxpayerAsync(declaration.PfaRegistrationId, cancellationToken, declaration.Period),
             await db.AnafDeclarationSchemas.AsNoTracking().ToListAsync(cancellationToken),
             DeclarationContent.XmlBlocker(declaration.Type, version.Kind, options.Value.D100CorrectionProcedure),
             cancellationToken);

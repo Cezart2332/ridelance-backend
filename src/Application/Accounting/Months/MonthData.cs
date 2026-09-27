@@ -188,10 +188,19 @@ internal sealed class MonthData
                     d.Extraction.InvoiceDate,
                     d.Extraction.PeriodTo,
                     d.Extraction.Currency,
-                    d.Extraction.CommissionAmount))],
+                    d.Extraction.CommissionAmount,
+                    d.Extraction.TaxPointDate,
+                    d.Document.Platform))],
             [.. confirmed
                 .Where(d => d.Document.DocumentType == PlatformDocumentType.PlatformReport)
-                .Select(d => new TaxReport(d.Document.Id, d.Extraction!.Currency, d.Extraction.Amount, d.Extraction.PeriodTo))],
+                .Select(d => new TaxReport(
+                    d.Document.Id,
+                    d.Extraction!.Currency,
+                    d.Extraction.Amount,
+                    d.Extraction.PeriodTo,
+                    d.Document.Platform,
+                    d.Extraction.CommissionAmount,
+                    d.Extraction.WithheldTax))],
             Suppliers,
             VatRates,
             D100Rules,

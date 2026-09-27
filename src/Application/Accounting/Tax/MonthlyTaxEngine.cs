@@ -1,4 +1,5 @@
 using System.Globalization;
+using Application.Accounting.Contracts;
 using Domain.Accounting;
 
 namespace Application.Accounting.Tax;
@@ -6,6 +7,7 @@ namespace Application.Accounting.Tax;
 /// <summary>O factură de comision confirmată, intrare în calcul.</summary>
 /// <param name="Label">Cum apare în explicații („Factura Bolt EE-BOLT-2026-08-1000”).</param>
 /// <param name="ServicePeriodEnd">Sfârșitul perioadei facturate, pentru regula de exigibilitate.</param>
+/// <param name="TaxPointDate">„Data impozitării” de pe factură, dacă apare.</param>
 public sealed record TaxInvoice(
     Guid DocumentId,
     string Label,
@@ -14,10 +16,22 @@ public sealed record TaxInvoice(
     DateOnly? InvoiceDate,
     DateOnly? ServicePeriodEnd,
     string? Currency,
-    decimal? CommissionAmount);
+    decimal? CommissionAmount,
+    DateOnly? TaxPointDate = null,
+    Platform? Platform = null);
 
-/// <summary>Un raport de platformă confirmat: veniturile din curse, care nu intră în bază.</summary>
-public sealed record TaxReport(Guid DocumentId, string? Currency, decimal? Income, DateOnly? PeriodTo);
+/// <summary>
+/// Un raport de platformă confirmat: veniturile din curse, care nu intră în bază. Comisionul și
+/// reținerea la sursă din raport servesc doar la avertismente (corelare, D100), nu la calcul.
+/// </summary>
+public sealed record TaxReport(
+    Guid DocumentId,
+    string? Currency,
+    decimal? Income,
+    DateOnly? PeriodTo,
+    Platform? Platform = null,
+    decimal? Commission = null,
+    decimal? WithheldTax = null);
 
 /// <summary>Regulile DE CONFIRMAT, din configurare.</summary>
 public sealed record TaxEngineSettings(
@@ -76,13 +90,17 @@ public sealed record TaxLine(
     DateOnly? ResidenceCertValidTo,
     IReadOnlyList<Guid> DocumentIds);
 
+/// <param name="Warnings">Nu blochează: diferențe de semnalat contabilului (corelare, reținere la sursă).</param>
+/// <param name="Withholding">D100: reținerea raportată de platformă lângă impozitul calculat.</param>
 public sealed record DeclarationCalculation(
     DeclarationType Type,
     bool Applicable,
     IReadOnlyList<TaxLine> Lines,
     decimal Total,
     string Explanation,
-    decimal? ExcludedRideIncome);
+    decimal? ExcludedRideIncome,
+    IReadOnlyList<string>? Warnings = null,
+    IReadOnlyList<WithholdingComparison>? Withholding = null);
 
 public sealed record TaxResult(IReadOnlyList<string> BlockingReasons, IReadOnlyDictionary<DeclarationType, DeclarationCalculation> Declarations)
 {
@@ -163,6 +181,7 @@ public static class MonthlyTaxEngine
 
         decimal d100Total = Total(input, DeclarationType.D100, d100);
         decimal d301Total = Total(input, DeclarationType.D301, d301);
+        (List<string> d301Warnings, List<string> d100Warnings, List<WithholdingComparison> withholding) = ReportWarnings(input, d100, d301);
 
         return new TaxResult(
             blocking.Distinct().ToList(),
@@ -170,11 +189,12 @@ public static class MonthlyTaxEngine
             {
                 [DeclarationType.D100] = new(
                     DeclarationType.D100, d100.Count > 0, d100, d100Total,
-                    $"Impozit pe veniturile nerezidenților din comisioane: {AccountingJson.Amount(d100Total)} lei.", null),
+                    $"Impozit pe veniturile nerezidenților din comisioane: {AccountingJson.Amount(d100Total)} lei.", null, d100Warnings, withholding),
                 [DeclarationType.D301] = new(
                     DeclarationType.D301, d301.Count > 0, d301, d301Total,
                     $"TVA pentru serviciile intracomunitare achiziționate: {AccountingJson.Amount(d301Total)} lei. Veniturile din curse nu intră în bază.",
-                    rideIncome),
+                    rideIncome,
+                    d301Warnings),
                 [DeclarationType.D390] = new(DeclarationType.D390, d390.Count > 0, d390, 0, "0 lei de plată, doar raportare.", null),
             });
     }
@@ -220,9 +240,7 @@ public static class MonthlyTaxEngine
             return;
         }
 
-        DateOnly exigibility = input.Settings.VatExigibility == VatExigibilityRule.ServicePeriodEnd
-            ? invoice.ServicePeriodEnd ?? date
-            : date;
+        DateOnly exigibility = FiscalDate.Of(input.Settings.VatExigibility, date, invoice.ServicePeriodEnd, invoice.TaxPointDate) ?? date;
         VatRate? vatRate = input.VatRates.FirstOrDefault(rate => IsValidAt(rate, exigibility));
         if (vatRate is null)
         {
@@ -280,6 +298,57 @@ public static class MonthlyTaxEngine
             ResidenceCertValidTo = supplier.ResidenceCertValidTo,
         });
     }
+
+    /// <summary>
+    /// Avertismentele din rapoartele platformelor, pe platformă (spec: documente reale Uber/Bolt):
+    /// <list type="bullet">
+    /// <item>D301: suma facturilor din lună față de comisionul din raport. Sumarul Uber e pe lună
+    /// calendaristică, facturile săptămânale pe perioadele lor, deci diferența e normală și nu blochează.</item>
+    /// <item>D100: reținerea la sursă raportată („Reținere la sursă” la Bolt) față de impozitul
+    /// calculat. Se afișează, nu se corectează.</item>
+    /// </list>
+    /// </summary>
+    private static (List<string> D301, List<string> D100, List<WithholdingComparison> Withholding) ReportWarnings(
+        PfaTaxInput input, List<TaxLine> d100, List<TaxLine> d301)
+    {
+        var d301Warnings = new List<string>();
+        var d100Warnings = new List<string>();
+        var withholding = new List<WithholdingComparison>();
+        var platformOf = input.Invoices.ToDictionary(invoice => invoice.DocumentId, invoice => invoice.Platform);
+
+        foreach (TaxReport report in input.Reports.Where(report => report.Platform is not null))
+        {
+            string name = report.Platform == Platform.Bolt ? "Bolt" : "Uber";
+            bool Of(TaxLine line) => platformOf.GetValueOrDefault(line.SourceDocumentId) == report.Platform;
+
+            if (report.Commission is { } commission && IsRon(report.Currency) && d301.Any(Of))
+            {
+                decimal invoiced = d301.Where(Of).Sum(line => line.Base);
+                if (Math.Abs(invoiced - commission) >= 0.01m)
+                {
+                    d301Warnings.Add(
+                        $"{name}: facturile de comision din lună însumează {AccountingJson.Amount(invoiced)} lei, raportul arată comision " +
+                        $"{AccountingJson.Amount(commission)} lei. Raportul poate acoperi altă perioadă decât facturile; diferența nu blochează.");
+                }
+            }
+
+            if (report.WithheldTax is { } reported && IsRon(report.Currency))
+            {
+                decimal calculated = d100.Where(Of).Sum(line => line.Value);
+                withholding.Add(new WithholdingComparison(name, reported, calculated));
+                if (Math.Abs(calculated - reported) >= 0.01m)
+                {
+                    d100Warnings.Add(
+                        $"{name}: reținerea la sursă raportată e {AccountingJson.Amount(reported)} lei, D100 calculat {AccountingJson.Amount(calculated)} lei " +
+                        $"(diferență {AccountingJson.Amount(calculated - reported)} lei). Nu se corectează automat.");
+                }
+            }
+        }
+
+        return (d301Warnings, d100Warnings, withholding);
+    }
+
+    private static bool IsRon(string? currency) => currency is null || currency.Equals("RON", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Suma în lei și cursul folosit. Sursa și ziua cursului sunt DE CONFIRMAT (config).</summary>
     private static (decimal Amount, decimal? Rate)? ToRon(PfaTaxInput input, decimal amount, string? currency, DateOnly? date, List<string> blocking, string label)

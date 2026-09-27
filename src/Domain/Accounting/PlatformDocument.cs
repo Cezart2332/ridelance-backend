@@ -73,11 +73,21 @@ public sealed class DocumentExtraction : Entity, IAccountingRecord
     public DateOnly? InvoiceDate { get; set; }
     public DateOnly? PeriodFrom { get; set; }
     public DateOnly? PeriodTo { get; set; }
+
+    /// <summary>„Data impozitării” (tax point) de pe factură, dacă apare; Uber o dă pe fiecare linie.</summary>
+    public DateOnly? TaxPointDate { get; set; }
+
     public string? Currency { get; set; }
 
     /// <summary>Totalul documentului; la rapoarte, venitul brut din curse.</summary>
     public decimal? Amount { get; set; }
     public decimal? CommissionAmount { get; set; }
+
+    /// <summary>
+    /// Impozitul reținut la sursă, cum îl raportează platforma („Reținere la sursă” în rezumatul
+    /// Bolt). Doar informativ: D100 se calculează din reguli, diferența se semnalează.
+    /// </summary>
+    public decimal? WithheldTax { get; set; }
 
     /// <summary>JSON: <c>[{ label, amount }]</c>.</summary>
     public string OtherAmountsJson { get; set; } = "[]";

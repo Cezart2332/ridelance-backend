@@ -99,7 +99,7 @@ internal sealed class DeclarationValidator(
             }
         }
 
-        AnafTaxpayer? taxpayer = await files.TaxpayerAsync(declaration.PfaRegistrationId, cancellationToken);
+        AnafTaxpayer? taxpayer = await files.TaxpayerAsync(declaration.PfaRegistrationId, cancellationToken, declaration.Period);
         if (taxpayer is not null)
         {
             ridelance.AddRange(CheckTaxpayer(declaration.Type, taxpayer));
@@ -274,6 +274,8 @@ internal sealed class DeclarationValidator(
             (line.RuleCode, line.SourceDocumentId, line.Base, line.Rate, line.Value, line.SupplierVatId);
     }
 
+    private static bool IsVatCode(string? code) => code is { Length: > 2 } && code.StartsWith("RO", StringComparison.Ordinal) && CuiValidator.Validate(code).IsValid;
+
     /// <summary>Antetul declarației: câmpurile obligatorii ANAF și CUI-ul valid.</summary>
     internal static List<ValidationMessage> CheckTaxpayer(DeclarationType type, AnafTaxpayer taxpayer)
     {
@@ -296,6 +298,15 @@ internal sealed class DeclarationValidator(
         if (string.IsNullOrWhiteSpace(taxpayer.DeclarantLastName) || string.IsNullOrWhiteSpace(taxpayer.DeclarantFirstName))
         {
             messages.Add(new ValidationMessage("nume_declar", "Lipsește numele sau prenumele titularului (declarantul)."));
+        }
+
+        if (type == DeclarationType.D390 && !IsVatCode(taxpayer.VatCode))
+        {
+            messages.Add(new ValidationMessage(
+                "cui",
+                taxpayer.VatCode is null
+                    ? "Lipsește codul de TVA art. 317 (Setări contabilitate). D390 cere codul de TVA, nu CUI-ul."
+                    : $"Codul de TVA art. 317 („{taxpayer.VatCode}”) nu e valid."));
         }
 
         if (type == DeclarationType.D301)
