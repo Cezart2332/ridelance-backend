@@ -83,7 +83,10 @@ public sealed class PfaSettingsAndRulesTests : IDisposable
     {
         PfaAccountingSettingsDto settings = (await Update(PfaAccountingSettingKeys.Art317VatCode, "\"ro 5132 1900\"", new DateOnly(2026, 1, 1), "Certificat TVA")).Value;
 
-        settings.Art317.VatCode.ShouldBe("RO51321900");
+        // Codul decide și regimul art. 317: activ de la aceeași dată.
+        settings.Art317.ShouldBe(new Art317Setting(true, new DateOnly(2026, 1, 1), "RO51321900"));
+        PfaAccountingSettingsDto removed = (await Update(PfaAccountingSettingKeys.Art317VatCode, "\"\"", new DateOnly(2026, 3, 1), "Cod anulat")).Value;
+        removed.Art317.ShouldBe(new Art317Setting(false, null, null));
         (await Update(PfaAccountingSettingKeys.Art317VatCode, "\"51321900\"", new DateOnly(2026, 2, 1), "Fără RO")).Error.Code.ShouldBe("Accounting.InvalidVatCode");
         (await Update(PfaAccountingSettingKeys.Art317VatCode, "\"RO51321901\"", new DateOnly(2026, 2, 1), "Cifra de control greșită")).Error.Code.ShouldBe("Accounting.InvalidVatCode");
     }

@@ -157,6 +157,34 @@ internal sealed class UpdatePfaSettingsCommandHandler(IApplicationDbContext db, 
             return Result.Failure<PfaAccountingSettingsDto>(PfaSettings.Exists(change.ValidFrom));
         }
 
+        // Codul de TVA art. 317 decide și dacă regimul art. 317 se aplică: o singură setare în
+        // interfață, două valori în istoric (steagul îl citesc pre-check-ul și motorul fiscal).
+        if (change.Field == PfaAccountingSettingKeys.Art317VatCode)
+        {
+            bool enabled = AccountingJson.Deserialize<string?>(value.Value, null) is not null;
+            PfaAccountingSetting? sameDay = await db.PfaAccountingSettings.SingleOrDefaultAsync(
+                s => s.PfaRegistrationId == command.PfaId && s.Key == PfaAccountingSettingKeys.Art317 && s.ValidFrom == change.ValidFrom, cancellationToken);
+            if (sameDay is not null && AccountingJson.Deserialize(sameDay.ValueJson, false) != enabled)
+            {
+                return Result.Failure<PfaAccountingSettingsDto>(PfaSettings.Exists(change.ValidFrom));
+            }
+
+            if (sameDay is null)
+            {
+                db.PfaAccountingSettings.Add(new PfaAccountingSetting
+                {
+                    Id = Guid.NewGuid(),
+                    PfaRegistrationId = command.PfaId,
+                    Key = PfaAccountingSettingKeys.Art317,
+                    ValueJson = AccountingJson.Serialize(enabled),
+                    ValidFrom = change.ValidFrom,
+                    Note = change.Note.Trim(),
+                    ChangedByUserId = userContext.UserId,
+                    ChangedAtUtc = DateTime.UtcNow,
+                });
+            }
+        }
+
         var setting = new PfaAccountingSetting
         {
             Id = Guid.NewGuid(),
@@ -242,6 +270,10 @@ internal static class PfaSettings
                         : Result.Failure<string>(AccountingErrors.InvalidField("value"));
                 case PfaAccountingSettingKeys.Art317:
                     return Result.Failure<string>(AccountingErrors.InvalidField("value"));
+                // Gol = PFA-ul nu (mai) are cod art. 317.
+                case PfaAccountingSettingKeys.Art317VatCode when value.ValueKind == JsonValueKind.Null ||
+                                                               value.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(value.GetString()):
+                    return AccountingJson.Serialize<string?>(null);
                 case PfaAccountingSettingKeys.Art317VatCode when value.ValueKind == JsonValueKind.String:
                     return Art317VatCode(value.GetString()) is { } code
                         ? AccountingJson.Serialize(code)
