@@ -36,7 +36,7 @@ public static class DeductibilityService
     /// <summary>
     /// Completează deductibilitatea înregistrării: <c>SPECIAL_RULE</c> (amortizare etc., DE CONFIRMAT)
     /// fără procent; categoriile auto după setarea <c>vehicle_deductibility</c> de la data
-    /// cheltuielii; restul după regula categoriei. Veniturile și cheltuielile fără categorie rămân fără.
+    /// cheltuielii (50% până la prima setare); restul după regula categoriei. Veniturile și cheltuielile fără categorie rămân fără.
     /// </summary>
     public static void Resolve(LedgerEntry entry, LedgerRules rules)
     {
@@ -83,7 +83,9 @@ public static class DeductibilityService
             DeductibilityType? type = setting is null ? null : AccountingJson.Deserialize<DeductibilityType?>(setting.ValueJson, null);
             if (setting is null || type is null)
             {
-                // Fără setare la data cheltuielii: procentul auto nu se ghicește.
+                // Fără setare la data cheltuielii: 50%, regula pentru autoturismele cu utilizare mixtă
+                // (aceeași valoare implicită ca în Setări contabilitate), până când contabilul setează alta.
+                Apply(entry, VehicleDefault, rule.ValidFrom);
                 return;
             }
 
@@ -94,6 +96,9 @@ public static class DeductibilityService
 
         Apply(entry, rule.DefaultDeductibility, rule.ValidFrom);
     }
+
+    /// <summary>Deductibilitatea auto până la prima setare <c>vehicle_deductibility</c>.</summary>
+    public const DeductibilityType VehicleDefault = DeductibilityType.Percent50;
 
     public static decimal? PercentOf(DeductibilityType type) => type switch
     {
