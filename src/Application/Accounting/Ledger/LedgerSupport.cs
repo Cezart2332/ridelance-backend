@@ -11,6 +11,9 @@ namespace Application.Accounting.Ledger;
 internal static class LedgerSupport
 {
     public const int DocumentLabelLength = 128;
+
+    /// <summary>Comisionul reținut de platformă, cheltuială deductibilă (regula din migrația B7).</summary>
+    public const string PlatformCommissionCategory = "PLATFORM_COMMISSION";
     public const int CounterpartyLength = 256;
     public const int DescriptionLength = 500;
 

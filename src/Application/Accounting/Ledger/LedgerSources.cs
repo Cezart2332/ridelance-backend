@@ -252,6 +252,12 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
             context.PfaId, date, source, externalId, label, source == LedgerSource.Bolt ? "Bolt" : "Uber", description,
             type, PaymentMethod.Bank, amount, currency ?? "RON", LedgerEntryStatus.AutoImported, context.ClosedPeriods);
         entry.PlatformDocumentId = documentId;
+        if (type == LedgerTransactionType.Expense)
+        {
+            entry.Category = LedgerSupport.PlatformCommissionCategory;
+            DeductibilityService.Resolve(entry, context.Rules);
+        }
+
         db.LedgerEntries.Add(entry);
         return 1;
     }

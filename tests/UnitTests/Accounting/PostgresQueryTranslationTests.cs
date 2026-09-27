@@ -195,6 +195,29 @@ public sealed class PostgresQueryTranslationTests
             .Handle(new Application.Accounting.Ledger.ListLedgerImportPfasQuery("2026-10"), CancellationToken.None)).IsSuccess.ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task Register_queries_translate_to_sql()
+    {
+        if (string.IsNullOrWhiteSpace(ConnectionString))
+        {
+            return;
+        }
+
+        await using var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseNpgsql(ConnectionString)
+                .UseSnakeCaseNamingConvention()
+                .Options,
+            new Events());
+        var pfaId = Guid.NewGuid();
+
+        (await Application.Accounting.Registers.RegisterData.EntriesAsync(db, pfaId, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None)).ShouldBeEmpty();
+        (await Application.Accounting.Registers.RegisterData.PfaAsync(db, pfaId, CancellationToken.None)).ShouldBeNull();
+        (await Application.Accounting.Registers.Assets.DtosAsync(db, db.PfaAssets.Where(a => a.PfaRegistrationId == pfaId), CancellationToken.None)).ShouldBeEmpty();
+        (await db.ExchangeRates.Where(r => new List<string> { "EUR" }.Contains(r.Currency) && r.Date >= new DateOnly(2026, 1, 1)).CountAsync()).ShouldBeGreaterThanOrEqualTo(0);
+        (await db.ExpenseCategoryRules.AnyAsync(r => r.Category == Application.Accounting.Ledger.LedgerSupport.PlatformCommissionCategory)).ShouldBeTrue();
+    }
+
     private sealed class FixedUser : Application.Abstractions.Authentication.IUserContext
     {
         public Guid UserId => Guid.Empty;
