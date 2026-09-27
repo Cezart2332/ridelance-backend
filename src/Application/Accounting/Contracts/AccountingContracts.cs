@@ -27,7 +27,11 @@ public sealed record PfaListItem(
     EngagementStatus EngagementStatus,
     string CurrentPeriod,
     PfaMonthStatus CurrentMonthStatus,
-    CashRegisterStatus CashStatus);
+    CashRegisterStatus CashStatus,
+    ClientContact Client);
+
+/// <summary>Titularul contului PFA: pentru chat, open banking și contact din profilul clientului.</summary>
+public sealed record ClientContact(Guid UserId, string Email, string? Phone);
 
 public sealed record EngagementInfo(EngagementStatus Status, DateOnly StartDate, DateOnly? EndDate);
 
@@ -53,7 +57,8 @@ public sealed record PfaAccountingSummary(
     PfaMonthStatus CurrentMonthStatus,
     CashRegisterStateDto Cash,
     bool ReadOnly,
-    DateOnly? RetentionUntil);
+    DateOnly? RetentionUntil,
+    ClientContact Client);
 
 public sealed record SettingHistoryEntry(
     Guid Id,
