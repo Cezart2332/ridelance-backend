@@ -29,7 +29,7 @@ internal static class PfaSummaries
     {
         var pfa = await db.PfaRegistrations.AsNoTracking()
             .Where(p => p.Id == pfaId)
-            .Select(p => new { p.Id, p.LegalName, p.FullName, p.Cui, p.UserId, p.User.Email, p.User.PhoneNumber })
+            .Select(p => new { p.Id, p.LegalName, p.HolderName, p.FullName, p.Cui, p.UserId, p.User.FirstName, p.User.LastName, p.User.Email, p.User.PhoneNumber })
             .SingleOrDefaultAsync(cancellationToken);
         if (pfa is null)
         {
@@ -52,7 +52,7 @@ internal static class PfaSummaries
 
         return new PfaAccountingSummary(
             pfa.Id,
-            (pfa.LegalName ?? pfa.FullName ?? string.Empty).Trim(),
+            PfaNames.Of(pfa.LegalName, pfa.HolderName, pfa.FullName, pfa.FirstName, pfa.LastName),
             pfa.Cui ?? string.Empty,
             // Sistem real, neplătitor de TVA: profilul PFA-urilor de ridesharing din spec (§1).
             RealSystem: true,

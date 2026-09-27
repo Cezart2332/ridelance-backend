@@ -58,7 +58,8 @@ public sealed class PfaSettingsAndRulesTests : IDisposable
         IReadOnlyList<PfaListItem> active = (await handler.Handle(new ListPfasQuery("active", null), CancellationToken.None)).Value;
         IReadOnlyList<PfaListItem> search = (await handler.Handle(new ListPfasQuery(null, "stefan"), CancellationToken.None)).Value;
 
-        all.Select(p => p.Name).ShouldBe(["Ion Popescu", "Ștefan Ionescu"]);
+        // Fără denumire din certificat: numele titularului + „PFA” (PfaNames).
+        all.Select(p => p.Name).ShouldBe(["Ion Popescu PFA", "Ștefan Ionescu PFA"]);
         active.ShouldHaveSingleItem().CashStatus.ShouldBe(CashRegisterStatus.Pending);
         search.ShouldHaveSingleItem().EngagementStatus.ShouldBe(EngagementStatus.Inactive);
         (await handler.Handle(new ListPfasQuery(null, "4100"), CancellationToken.None)).Value.ShouldHaveSingleItem().Id.ShouldBe(_stefan);
