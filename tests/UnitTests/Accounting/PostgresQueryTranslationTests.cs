@@ -265,6 +265,38 @@ public sealed class PostgresQueryTranslationTests
         (await db.BackgroundJobs.AsNoTracking().SingleAsync(j => j.Id == job.JobId)).Status.ShouldBe(BackgroundJobStatus.Completed);
     }
 
+    [Fact]
+    public async Task List_settings_and_rule_queries_translate_to_sql()
+    {
+        if (string.IsNullOrWhiteSpace(ConnectionString))
+        {
+            return;
+        }
+
+        await using var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseNpgsql(ConnectionString)
+                .UseSnakeCaseNamingConvention()
+                .Options,
+            new Events());
+
+        IReadOnlyList<PfaListItem> pfas = (await new Application.Accounting.Pfas.ListPfasQueryHandler(db)
+            .Handle(new Application.Accounting.Pfas.ListPfasQuery("active", "test"), CancellationToken.None)).Value;
+        pfas.ShouldNotBeNull();
+        (await new Application.Accounting.Pfas.GetPfaSettingsQueryHandler(db)
+            .Handle(new Application.Accounting.Pfas.GetPfaSettingsQuery(Guid.NewGuid()), CancellationToken.None)).IsFailure.ShouldBeTrue();
+        foreach (Application.Accounting.Rules.TaxRuleKind kind in Enum.GetValues<Application.Accounting.Rules.TaxRuleKind>())
+        {
+            (await new Application.Accounting.Rules.ListTaxRulesQueryHandler(db)
+                .Handle(new Application.Accounting.Rules.ListTaxRulesQuery(kind), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        }
+
+        (await new Application.Accounting.Rules.GetExchangeRateQueryHandler(db)
+            .Handle(new Application.Accounting.Rules.GetExchangeRateQuery("EUR", new DateOnly(2026, 8, 31)), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        (await new Application.Accounting.Pfas.GetMyCashPreferenceQueryHandler(db, new UserOf(Guid.NewGuid()))
+            .Handle(new Application.Accounting.Pfas.GetMyCashPreferenceQuery(), CancellationToken.None)).IsFailure.ShouldBeTrue();
+    }
+
     private sealed class UserOf(Guid id) : Application.Abstractions.Authentication.IUserContext
     {
         public Guid UserId => id;
