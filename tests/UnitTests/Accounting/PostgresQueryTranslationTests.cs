@@ -218,6 +218,58 @@ public sealed class PostgresQueryTranslationTests
         (await db.ExpenseCategoryRules.AnyAsync(r => r.Category == Application.Accounting.Ledger.LedgerSupport.PlatformCommissionCategory)).ShouldBeTrue();
     }
 
+    /// <summary>B8 pe Postgres: un PFA de test (baza e de unică folosință), perioade, sumar, dosar de predare.</summary>
+    [Fact]
+    public async Task Period_and_handover_queries_translate_to_sql()
+    {
+        if (string.IsNullOrWhiteSpace(ConnectionString))
+        {
+            return;
+        }
+
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        await using var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseNpgsql(ConnectionString)
+                .UseSnakeCaseNamingConvention()
+                .Options,
+            new Events());
+        var user = new Domain.Users.User { Id = Guid.NewGuid(), Email = $"{Guid.NewGuid():N}@test.ro", FirstName = "Test", LastName = "B8", PasswordHash = "x" };
+        var pfa = new Domain.PfaRegistrations.PfaRegistration { Id = Guid.NewGuid(), UserId = user.Id, FullName = "Test B8", Cui = "12345674" };
+        db.Users.Add(user);
+        db.PfaRegistrations.Add(pfa);
+        db.PfaAccountingEngagements.Add(new PfaAccountingEngagement { Id = Guid.NewGuid(), PfaRegistrationId = pfa.Id, StartDate = new DateOnly(2026, 1, 1), Status = EngagementStatus.Active });
+        await db.SaveChangesAsync();
+
+        (await new Application.Accounting.Periods.ListPeriodsQueryHandler(db).Handle(new Application.Accounting.Periods.ListPeriodsQuery(pfa.Id), CancellationToken.None))
+            .Value.Count.ShouldBeGreaterThan(7);
+        (await new Application.Accounting.Periods.ClosePeriodCommandHandler(db, new UserOf(user.Id))
+            .Handle(new Application.Accounting.Periods.ClosePeriodCommand(pfa.Id, "2026-02"), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        (await new Application.Accounting.Pfas.GetPfaSummaryQueryHandler(db).Handle(new Application.Accounting.Pfas.GetPfaSummaryQuery(pfa.Id), CancellationToken.None))
+            .Value.Cui.ShouldBe("12345674");
+
+        var exporter = new Infrastructure.Accounting.RegisterExporter();
+        var files = new DeclarationFiles(db, new AnafDeclarationXmlService(), new MemoryFiles(), new PlainSecrets());
+        var refQuery = new Application.Accounting.Registers.GetRefQueryHandler(db);
+        JobRef job = (await new Application.Accounting.Handover.StartHandoverPackageCommandHandler(db, new UserOf(user.Id))
+            .Handle(new Application.Accounting.Handover.StartHandoverPackageCommand(pfa.Id), CancellationToken.None)).Value;
+        (await new Application.Accounting.Handover.RunHandoverPackageCommandHandler(
+                db,
+                files,
+                exporter,
+                refQuery,
+                new Application.Accounting.Registers.ExportRjipQueryHandler(db, new Application.Accounting.Registers.GetRjipQueryHandler(db), exporter),
+                new Application.Accounting.Registers.ExportRefQueryHandler(db, refQuery, exporter),
+                new Application.Accounting.Registers.ExportInventoryQueryHandler(db, exporter))
+            .Handle(new Application.Accounting.Handover.RunHandoverPackageCommand(job.JobId), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        (await db.BackgroundJobs.AsNoTracking().SingleAsync(j => j.Id == job.JobId)).Status.ShouldBe(BackgroundJobStatus.Completed);
+    }
+
+    private sealed class UserOf(Guid id) : Application.Abstractions.Authentication.IUserContext
+    {
+        public Guid UserId => id;
+    }
+
     private sealed class FixedUser : Application.Abstractions.Authentication.IUserContext
     {
         public Guid UserId => Guid.Empty;

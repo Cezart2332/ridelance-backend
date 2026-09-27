@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Accounting.Handover;
 using Application.Accounting.Months;
 using Domain.Accounting;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,7 @@ using SharedKernel;
 namespace Infrastructure.BackgroundJobs;
 
 /// <summary>
-/// Rulează joburile lunii (spec contabilitate B3) din tabelul <c>background_jobs</c>, pe rând. Un
+/// Rulează joburile lunii (spec contabilitate B3) și dosarul de predare (B8) din tabelul <c>background_jobs</c>, pe rând. Un
 /// job rămas „în lucru” după un restart se reia de la capăt: procesarea, generarea și validarea
 /// sunt idempotente (validarea ia doar versiunile rămase în <c>GENERATED</c>).
 /// </summary>
@@ -24,6 +25,7 @@ internal sealed class AccountingJobRunner(IServiceScopeFactory scopeFactory, ILo
         BackgroundJobType.ProcessPeriod,
         BackgroundJobType.GenerateDeclarations,
         BackgroundJobType.ValidateDeclarations,
+        BackgroundJobType.HandoverPackage,
     ];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -36,16 +38,19 @@ internal sealed class AccountingJobRunner(IServiceScopeFactory scopeFactory, ILo
             {
                 using IServiceScope scope = scopeFactory.CreateScope();
                 IApplicationDbContext db = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
-                Guid? next = await db.BackgroundJobs
+                var next = await db.BackgroundJobs
                     .Where(j => j.Status == BackgroundJobStatus.Queued && MonthJobs.Contains(j.Type))
                     .OrderBy(j => j.CreatedAtUtc)
-                    .Select(j => (Guid?)j.Id)
+                    .Select(j => new { j.Id, j.Type })
                     .FirstOrDefaultAsync(stoppingToken);
 
-                if (next is { } jobId)
+                if (next is not null)
                 {
-                    ICommandHandler<RunMonthJobCommand> handler = scope.ServiceProvider.GetRequiredService<ICommandHandler<RunMonthJobCommand>>();
-                    Result result = await handler.Handle(new RunMonthJobCommand(jobId), stoppingToken);
+                    Guid jobId = next.Id;
+                    // Dosarul de predare are rulatorul lui; restul sunt joburile lunii.
+                    Result result = next.Type == BackgroundJobType.HandoverPackage
+                        ? await scope.ServiceProvider.GetRequiredService<ICommandHandler<RunHandoverPackageCommand>>().Handle(new RunHandoverPackageCommand(jobId), stoppingToken)
+                        : await scope.ServiceProvider.GetRequiredService<ICommandHandler<RunMonthJobCommand>>().Handle(new RunMonthJobCommand(jobId), stoppingToken);
                     if (result.IsFailure)
                     {
                         logger.LogWarning("Jobul de contabilitate {JobId} a eșuat: {Error}", jobId, result.Error.Description);

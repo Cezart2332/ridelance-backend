@@ -9,7 +9,8 @@ namespace Application.Accounting.Ledger;
 
 /// <summary>
 /// Importul ledger-ului unui PFA: rulează sursele în ordine (bancă, platforme, Oblio) și salvează
-/// după fiecare. Rulat zilnic de job, pentru toate PFA-urile active (B6).
+/// după fiecare. Rulat zilnic de job, pentru toate PFA-urile active (B6); pentru un dosar inactiv,
+/// doar operațiunile de până la încheierea colaborării (B8).
 /// </summary>
 public sealed record RunLedgerImportCommand(Guid PfaId) : ICommand<IReadOnlyList<LedgerImportResult>>;
 
@@ -30,18 +31,11 @@ internal sealed class RunLedgerImportCommandHandler(
             return Result.Failure<IReadOnlyList<LedgerImportResult>>(AccountingErrors.PfaNotFound);
         }
 
-        // Un dosar inactiv nu mai primește importuri.
-        Result writable = await Documents.PlatformDocumentSupport.EnsureWritableAsync(db, pfa.Id, string.Empty, cancellationToken);
-        if (writable.IsFailure)
-        {
-            return Result.Failure<IReadOnlyList<LedgerImportResult>>(writable.Error);
-        }
-
-        DateOnly? from = await db.PfaAccountingEngagements.AsNoTracking()
-            .Where(e => e.PfaRegistrationId == pfa.Id && e.Status == EngagementStatus.Active)
-            .OrderBy(e => e.StartDate)
-            .Select(e => (DateOnly?)e.StartDate)
-            .FirstOrDefaultAsync(cancellationToken);
+        // Doar o colaborare înregistrată limitează importul: de la începutul ei și, după inactivare,
+        // până la data încheierii (B8). Fără rând, se importă tot istoricul disponibil.
+        PfaAccountingEngagement? engagement = await Pfas.PfaEngagements.LatestAsync(db, pfa.Id, cancellationToken);
+        DateOnly? from = engagement?.StartDate;
+        DateOnly? to = engagement?.Status == EngagementStatus.Inactive ? engagement.EndDate : null;
 
         var context = new LedgerImportContext(
             pfa.Id,
@@ -49,7 +43,8 @@ internal sealed class RunLedgerImportCommandHandler(
             from,
             await LedgerSupport.RulesAsync(db, pfa.Id, cancellationToken),
             await LedgerSupport.ClosedPeriodsAsync(db, pfa.Id, cancellationToken),
-            options.Value);
+            options.Value,
+            to);
 
         var results = new List<LedgerImportResult>();
         foreach (ILedgerSource source in sources.OrderBy(s => s.Order))
