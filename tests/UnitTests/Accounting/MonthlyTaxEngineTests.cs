@@ -148,11 +148,18 @@ public sealed class MonthlyTaxEngineTests
         ];
         TaxInvoice invoice = Bolt(1000m) with { ServicePeriodEnd = new DateOnly(2026, 8, 10) };
 
-        PfaTaxInput byInvoiceDate = Input(invoices: [invoice]) with { VatRates = rates };
-        PfaTaxInput byServicePeriod = byInvoiceDate with { Settings = byInvoiceDate.Settings with { VatExigibility = VatExigibilityRule.ServicePeriodEnd } };
+        PfaTaxInput input = Input(invoices: [invoice]) with { VatRates = rates };
+        PfaTaxInput byInvoiceDate = input with { Settings = input.Settings with { VatExigibility = VatExigibilityRule.InvoiceDate } };
+        PfaTaxInput byServicePeriod = input with { Settings = input.Settings with { VatExigibility = VatExigibilityRule.ServicePeriodEnd } };
+        PfaTaxInput byTaxPoint = input with
+        {
+            Invoices = [invoice with { TaxPointDate = new DateOnly(2026, 8, 9) }],
+            Settings = input.Settings with { VatExigibility = VatExigibilityRule.TaxPointDate },
+        };
 
         MonthlyTaxEngine.Calculate(byInvoiceDate).Declarations[DeclarationType.D301].Total.ShouldBe(210m);
         MonthlyTaxEngine.Calculate(byServicePeriod).Declarations[DeclarationType.D301].Total.ShouldBe(190m);
+        MonthlyTaxEngine.Calculate(byTaxPoint).Declarations[DeclarationType.D301].Total.ShouldBe(190m);
     }
 
     [Fact]

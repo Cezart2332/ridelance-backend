@@ -36,7 +36,9 @@ internal static class PlatformDocumentSupport
         extraction.Currency,
         extraction.Amount,
         extraction.CommissionAmount,
-        AccountingJson.Deserialize<List<OtherAmount>>(extraction.OtherAmountsJson, []));
+        AccountingJson.Deserialize<List<OtherAmount>>(extraction.OtherAmountsJson, []),
+        extraction.TaxPointDate,
+        extraction.WithheldTax);
 
     public static void Apply(DocumentExtraction extraction, ExtractedFields fields)
     {
@@ -50,6 +52,8 @@ internal static class PlatformDocumentSupport
         extraction.Currency = fields.Currency;
         extraction.Amount = fields.Amount;
         extraction.CommissionAmount = fields.CommissionAmount;
+        extraction.TaxPointDate = fields.TaxPointDate;
+        extraction.WithheldTax = fields.WithheldTax;
         extraction.OtherAmountsJson = AccountingJson.Serialize(fields.OtherAmounts);
     }
 

@@ -9,6 +9,7 @@ using Application.Accounting.Documents;
 using Application.Accounting.Ledger;
 using Application.Accounting.Months;
 using Domain.Accounting;
+using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -205,6 +206,19 @@ internal static class PfaSettings
 
     public static readonly Error PlatformsRequired = Error.Problem("Accounting.PlatformsRequired", "Alege cel puțin o platformă.");
 
+    public static readonly Error InvalidVatCode = Error.Problem(
+        "Accounting.InvalidVatCode",
+        "Codul de TVA art. 317 trebuie să fie „RO” urmat de un cod fiscal valid (ex. RO51321900).");
+
+    /// <summary>„ro 5132 1900” → „RO51321900”; <c>null</c> dacă nu e RO + un cod fiscal valid.</summary>
+    public static string? Art317VatCode(string? text)
+    {
+        string compact = new([.. (text ?? string.Empty).ToUpperInvariant().Where(char.IsLetterOrDigit)]);
+        return compact.StartsWith("RO", StringComparison.Ordinal) && compact.Length > 2 && compact[2..].All(char.IsDigit) && CuiValidator.Validate(compact).IsValid
+            ? compact
+            : null;
+    }
+
     public static Error Exists(DateOnly validFrom) => Error.Conflict(
         "Accounting.SettingExists",
         $"Există deja o valoare cu „Valabil de la” {validFrom.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)}. Istoricul nu se suprascrie.");
@@ -228,6 +242,10 @@ internal static class PfaSettings
                         : Result.Failure<string>(AccountingErrors.InvalidField("value"));
                 case PfaAccountingSettingKeys.Art317:
                     return Result.Failure<string>(AccountingErrors.InvalidField("value"));
+                case PfaAccountingSettingKeys.Art317VatCode when value.ValueKind == JsonValueKind.String:
+                    return Art317VatCode(value.GetString()) is { } code
+                        ? AccountingJson.Serialize(code)
+                        : Result.Failure<string>(InvalidVatCode);
                 default:
                     return Result.Failure<string>(AccountingErrors.InvalidField("field"));
             }
@@ -261,6 +279,7 @@ internal static class PfaSettings
             .FirstOrDefault();
 
         PfaAccountingSetting? art317 = At(PfaAccountingSettingKeys.Art317);
+        string? vatCode = At(PfaAccountingSettingKeys.Art317VatCode) is { } code ? AccountingJson.Deserialize<string?>(code.ValueJson, null) : null;
         bool art317Enabled = art317 is not null && AccountingJson.Deserialize(art317.ValueJson, false);
         DeductibilityType vehicle = At(PfaAccountingSettingKeys.VehicleDeductibility) is { } deductibility
             ? AccountingJson.Deserialize(deductibility.ValueJson, DeductibilityType.Percent50)
@@ -285,7 +304,7 @@ internal static class PfaSettings
             pfaId,
             RealSystem: true,
             VatPayer: false,
-            new Art317Setting(art317Enabled, art317Enabled ? art317!.ValidFrom : null),
+            new Art317Setting(art317Enabled, art317Enabled ? art317!.ValidFrom : null, vatCode),
             data.PlatformsOf(pfaId) ?? [],
             vehicle,
             summary.Cash,

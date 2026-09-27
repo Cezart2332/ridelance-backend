@@ -3,10 +3,12 @@ using Application.Abstractions.Anaf;
 using Application.Abstractions.Data;
 using Application.Abstractions.Security;
 using Application.Abstractions.Services;
+using Application.Accounting.Documents;
+using Application.Accounting.Months;
+using Application.Accounting.Pfas;
 using Application.Documents.ExtractedFields;
 using Domain.Accounting;
 using Domain.Documents;
-using Application.Accounting.Pfas;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Accounting.Declarations;
@@ -25,7 +27,8 @@ internal sealed class DeclarationFiles(
     public const string DeclarantFunction = "TITULAR";
 
     /// <summary>Datele din antet, cu IBAN-ul decriptat; <c>null</c> dacă PFA-ul nu există.</summary>
-    public async Task<AnafTaxpayer?> TaxpayerAsync(Guid pfaId, CancellationToken cancellationToken)
+    /// <param name="period">Luna declarației: codul de TVA art. 317 e cel valabil la sfârșitul ei.</param>
+    public async Task<AnafTaxpayer?> TaxpayerAsync(Guid pfaId, CancellationToken cancellationToken, string? period = null)
     {
         var pfa = await db.PfaRegistrations
             .AsNoTracking()
@@ -63,7 +66,21 @@ internal sealed class DeclarationFiles(
             DeclarantFirstName: firstName,
             DeclarantFunction: DeclarantFunction,
             BankName: pfa.BankName?.Trim(),
-            Iban: SensitiveFieldProtection.TryUnprotect(secrets, pfa.Iban)?.Replace(" ", string.Empty, StringComparison.Ordinal));
+            Iban: SensitiveFieldProtection.TryUnprotect(secrets, pfa.Iban)?.Replace(" ", string.Empty, StringComparison.Ordinal),
+            VatCode: await Art317VatCodeAsync(pfaId, period, cancellationToken));
+    }
+
+    private async Task<string?> Art317VatCodeAsync(Guid pfaId, string? period, CancellationToken cancellationToken)
+    {
+        DateOnly at = period is not null && PlatformDocumentSupport.IsValidPeriod(period)
+            ? AccountingScope.Bounds(period).End
+            : DateOnly.FromDateTime(DateTime.UtcNow);
+        string? json = await db.PfaAccountingSettings.AsNoTracking()
+            .Where(s => s.PfaRegistrationId == pfaId && s.Key == PfaAccountingSettingKeys.Art317VatCode && s.ValidFrom <= at)
+            .OrderByDescending(s => s.ValidFrom)
+            .Select(s => s.ValueJson)
+            .FirstOrDefaultAsync(cancellationToken);
+        return json is null ? null : AccountingJson.Deserialize<string?>(json, null);
     }
 
     /// <summary>Intrarea mapperului: liniile calculului, cu numărul și data facturii din snapshot.</summary>

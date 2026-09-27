@@ -29,7 +29,8 @@ internal sealed class D390MapperV3 : IDeclarationXmlMapper
             NumeDeclar = AnafFormat.Text(input.Taxpayer.DeclarantLastName),
             PrenumeDeclar = AnafFormat.Text(input.Taxpayer.DeclarantFirstName),
             FunctieDeclar = AnafFormat.Text(input.Taxpayer.DeclarantFunction),
-            Cui = input.Taxpayer.Cui,
+            // „Cod de înregistrare în scopuri de TVA”: codul art. 317, fără „RO”; nu CUI-ul.
+            Cui = VatCode(input.Taxpayer),
             Den = AnafFormat.Text(input.Taxpayer.Name),
             Adresa = AnafFormat.Text(input.Taxpayer.Address),
         };
@@ -73,9 +74,9 @@ internal sealed class D390MapperV3 : IDeclarationXmlMapper
             messages.Add(new ValidationMessage("luna", $"Perioada din XML ({declaration.Luna}/{declaration.An}) nu e {input.Period}."));
         }
 
-        if (declaration.Cui != input.Taxpayer.Cui)
+        if (declaration.Cui != VatCode(input.Taxpayer))
         {
-            messages.Add(new ValidationMessage("cui", $"CUI-ul din XML ({declaration.Cui}) diferă de al PFA-ului ({input.Taxpayer.Cui})."));
+            messages.Add(new ValidationMessage("cui", $"Codul de TVA din XML ({declaration.Cui}) diferă de codul art. 317 al PFA-ului ({input.Taxpayer.VatCode ?? "lipsă"})."));
         }
 
         foreach (AnafDeclarationLine line in input.Lines)
@@ -123,4 +124,7 @@ internal sealed class D390MapperV3 : IDeclarationXmlMapper
         (long)d.Rezumat.NrOpi + d.Rezumat.BazaL + d.Rezumat.BazaT + d.Rezumat.BazaA + d.Rezumat.BazaP + d.Rezumat.BazaS + d.Rezumat.BazaR;
 
     private static long WholeLei(decimal value) => (long)Math.Round(value, 0, MidpointRounding.AwayFromZero);
+
+    /// <summary>Codul de TVA art. 317 fără prefixul „RO”; gol dacă lipsește (validarea RIDElance îl cere).</summary>
+    private static string VatCode(AnafTaxpayer taxpayer) => AnafFormat.VatNumber(taxpayer.VatCode);
 }

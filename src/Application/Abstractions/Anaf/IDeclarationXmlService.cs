@@ -8,6 +8,10 @@ namespace Application.Abstractions.Anaf;
 /// pct. 11: semnarea ca împuternicit e DE CONFIRMAT).
 /// </summary>
 /// <param name="Iban">Contul (D301). Nu se păstrează în snapshot, doar în XML-ul criptat.</param>
+/// <param name="VatCode">
+/// Codul de TVA art. 317 (<c>RO51321900</c>), din Setări contabilitate; poate diferi de „RO” + CUI.
+/// D390 cere „codul de înregistrare în scopuri de TVA”, deci acesta, nu CUI-ul.
+/// </param>
 public sealed record AnafTaxpayer(
     string Cui,
     string Name,
@@ -16,7 +20,8 @@ public sealed record AnafTaxpayer(
     string DeclarantFirstName,
     string DeclarantFunction,
     string? BankName,
-    string? Iban);
+    string? Iban,
+    string? VatCode = null);
 
 /// <summary>O linie a declarației, cu documentul din care vine (D301: numărul și data facturii).</summary>
 public sealed record AnafDeclarationLine(

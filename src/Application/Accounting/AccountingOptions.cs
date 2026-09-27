@@ -8,6 +8,13 @@ public enum VatExigibilityRule
 
     /// <summary>Sfârșitul perioadei de serviciu facturate.</summary>
     ServicePeriodEnd = 1,
+
+    /// <summary>
+    /// „Data impozitării” (tax point) de pe factură; fără ea, sfârșitul perioadei, apoi data facturii.
+    /// Uber emite facturi săptămânale cu data facturii în luna următoare (factura pentru 24–30.08
+    /// are data 03.09), dar data impozitării e ultima zi a săptămânii.
+    /// </summary>
+    TaxPointDate = 2,
 }
 
 /// <summary>Ce curs se folosește pentru o factură în valută. DE CONFIRMAT (spec §6 pct. 4).</summary>
@@ -73,7 +80,7 @@ public sealed class AccountingOptions
     public decimal SettlementMaxPercent { get; init; } = 30;
 
     /// <summary>Regula pentru <c>PERIOD_MATCH</c> și cota de TVA. DE CONFIRMAT.</summary>
-    public VatExigibilityRule VatExigibility { get; init; } = VatExigibilityRule.InvoiceDate;
+    public VatExigibilityRule VatExigibility { get; init; } = VatExigibilityRule.TaxPointDate;
 
     /// <summary>Regula zilei cursului valutar. DE CONFIRMAT.</summary>
     public ExchangeRateDateRule ExchangeRateDate { get; init; } = ExchangeRateDateRule.SameDayOrPrevious;
@@ -124,7 +131,7 @@ public sealed class AccountingOptions
     public string? ExtractionModel { get; init; }
 
     /// <summary>Versiunea promptului, salvată pe fiecare extracție.</summary>
-    public string ExtractionPromptVersion { get; init; } = "accounting-extraction-v1";
+    public string ExtractionPromptVersion { get; init; } = "accounting-extraction-v2";
 
     /// <summary>Dimensiunea maximă a unui PDF încărcat.</summary>
     public long MaxUploadBytes { get; init; } = 25 * 1024 * 1024;

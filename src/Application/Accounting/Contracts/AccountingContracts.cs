@@ -70,7 +70,8 @@ public sealed record SettingHistoryEntry(
     UserRef ChangedBy,
     DateTime ChangedAt);
 
-public sealed record Art317Setting(bool Enabled, DateOnly? ActivationDate);
+/// <param name="VatCode">Codul de TVA art. 317, separat de CUI; <c>null</c> dacă nu e completat.</param>
+public sealed record Art317Setting(bool Enabled, DateOnly? ActivationDate, string? VatCode = null);
 
 public sealed record PfaAccountingSettingsDto(
     Guid PfaId,
@@ -143,7 +144,9 @@ public sealed record ExtractedFields(
     string? Currency,
     decimal? Amount,
     decimal? CommissionAmount,
-    IReadOnlyList<OtherAmount> OtherAmounts);
+    IReadOnlyList<OtherAmount> OtherAmounts,
+    DateOnly? TaxPointDate = null,
+    decimal? WithheldTax = null);
 
 public sealed record DocumentExtractionDto(
     int Version,
@@ -157,7 +160,8 @@ public sealed record DocumentExtractionDto(
     UserRef? CreatedBy,
     DateTime CreatedAt);
 
-public sealed record DocumentCheck(DocumentCheckCode Code, bool Passed, string Message, DocumentCheckAction? Action);
+/// <param name="Warning">Trecută, dar de văzut: nu blochează documentul (ex. corelarea cu raportul).</param>
+public sealed record DocumentCheck(DocumentCheckCode Code, bool Passed, string Message, DocumentCheckAction? Action, bool Warning = false);
 
 public sealed record DeclarationReference(
     Guid DeclarationId,
@@ -294,7 +298,15 @@ public sealed record DeclarationBreakdown(
     IReadOnlyList<DeclarationLineDto> Lines,
     decimal Total,
     string Explanation,
-    decimal? ExcludedRideIncome);
+    decimal? ExcludedRideIncome,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<WithholdingComparison> Withholding);
+
+/// <summary>D100: reținerea la sursă raportată de platformă, lângă impozitul calculat din reguli.</summary>
+public sealed record WithholdingComparison(string Platform, decimal Reported, decimal Calculated)
+{
+    public decimal Difference => Calculated - Reported;
+}
 
 public sealed record TransitionRequest(DeclarationAction Action, string? Note);
 

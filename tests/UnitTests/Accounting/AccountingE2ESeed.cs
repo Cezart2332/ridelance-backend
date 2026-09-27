@@ -167,6 +167,7 @@ public sealed class AccountingE2ESeed
         db.PfaAccountingEngagements.Add(new PfaAccountingEngagement { Id = Guid.NewGuid(), PfaRegistrationId = pfa.Id, StartDate = new DateOnly(2026, 1, 1), Status = EngagementStatus.Active });
         db.PfaAccountingSettings.AddRange(
             Setting(pfa.Id, PfaAccountingSettingKeys.Art317, "true", new DateOnly(2025, 9, 1), "Cod special de TVA primit"),
+            Setting(pfa.Id, PfaAccountingSettingKeys.Art317VatCode, $"\"RO{cui}\"", new DateOnly(2025, 9, 1), "Codul din certificatul de înregistrare în scopuri de TVA"),
             Setting(pfa.Id, PfaAccountingSettingKeys.Platforms, "[\"BOLT\",\"UBER\"]", new DateOnly(2026, 1, 1), "Platformele din onboarding"),
             Setting(pfa.Id, PfaAccountingSettingKeys.VehicleDeductibility, "\"100_PERCENT\"", new DateOnly(2026, 1, 1), "Autoturism folosit exclusiv pentru curse"));
         return pfa.Id;

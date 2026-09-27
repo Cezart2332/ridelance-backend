@@ -614,6 +614,7 @@ public sealed class MonthProcessingTests : IDisposable
             IbanEncrypted = "RO49AAAA1B31007593840000",
         });
         _db.PfaAccountingSettings.Add(Setting(pfa.Id, PfaAccountingSettingKeys.Art317, "true"));
+        _db.PfaAccountingSettings.Add(Setting(pfa.Id, PfaAccountingSettingKeys.Art317VatCode, $"\"RO{pfa.Cui}\""));
         _db.PfaAccountingSettings.Add(Setting(pfa.Id, PfaAccountingSettingKeys.Platforms, "[\"BOLT\",\"UBER\"]"));
         return pfa.Id;
     }

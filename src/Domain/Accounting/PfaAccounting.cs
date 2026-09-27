@@ -7,6 +7,12 @@ namespace Domain.Accounting;
 public static class PfaAccountingSettingKeys
 {
     public const string Art317 = "art317";
+
+    /// <summary>
+    /// Codul de TVA atribuit pentru art. 317 (ex. <c>RO51321900</c>). E un câmp separat: poate
+    /// diferi de „RO” + CUI (CUI 51149610, TVA RO51321900), deci nu se derivă din CUI.
+    /// </summary>
+    public const string Art317VatCode = "art317_vat_code";
     public const string Platforms = "platforms";
     public const string VehicleDeductibility = "vehicle_deductibility";
 }
