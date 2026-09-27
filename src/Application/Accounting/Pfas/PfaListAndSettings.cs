@@ -31,7 +31,7 @@ internal sealed class ListPfasQueryHandler(IApplicationDbContext db) : IQueryHan
         List<Guid> engaged = [.. engagements.Select(e => e.PfaRegistrationId).Distinct()];
         var rows = await db.PfaRegistrations.AsNoTracking()
             .Where(p => engaged.Contains(p.Id) || p.OnboardingCompletedAtUtc != null && p.User.DeletedAtUtc == null)
-            .Select(p => new { p.Id, p.LegalName, p.FullName, p.Cui, p.OnboardingCompletedAtUtc, p.CreatedAtUtc, p.User.FirstName, p.User.LastName })
+            .Select(p => new { p.Id, p.LegalName, p.FullName, p.Cui, p.OnboardingCompletedAtUtc, p.CreatedAtUtc, p.User.FirstName, p.User.LastName, p.UserId, p.User.Email, p.User.PhoneNumber })
             .ToListAsync(cancellationToken);
 
         string search = Fold(query.Search);
@@ -46,7 +46,7 @@ internal sealed class ListPfasQueryHandler(IApplicationDbContext db) : IQueryHan
                     .ThenByDescending(e => e.StartDate)
                     .FirstOrDefault();
                 string name = (p.LegalName ?? p.FullName ?? $"{p.FirstName} {p.LastName}").Trim();
-                return new { p.Id, Name = name, Cui = p.Cui ?? string.Empty, Status = engagement?.Status ?? EngagementStatus.Active };
+                return new { p.Id, Name = name, Cui = p.Cui ?? string.Empty, Status = engagement?.Status ?? EngagementStatus.Active, Client = new ClientContact(p.UserId, p.Email, p.PhoneNumber) };
             })
             .Where(p => query.Status?.ToUpperInvariant() switch
             {
@@ -77,7 +77,8 @@ internal sealed class ListPfasQueryHandler(IApplicationDbContext db) : IQueryHan
                 p.Status,
                 period,
                 months.GetValueOrDefault(p.Id, PfaMonthStatus.NotProcessed),
-                cash.GetValueOrDefault(p.Id, CashRegisterStatus.NotRequiredCurrentConfiguration)))
+                cash.GetValueOrDefault(p.Id, CashRegisterStatus.NotRequiredCurrentConfiguration),
+                p.Client))
             .ToList();
     }
 

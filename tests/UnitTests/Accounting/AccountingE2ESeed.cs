@@ -151,6 +151,8 @@ public sealed class AccountingE2ESeed
             City = "București",
             County = "București",
             OnboardingCompletedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            // Portofoliul contabilului de test: „Clienți PFA” și spațiul de lucru îi arată doar clienții alocați.
+            AssignedContabilId = Accountant,
         };
         db.Users.Add(user);
         db.PfaRegistrations.Add(pfa);

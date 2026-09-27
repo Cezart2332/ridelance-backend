@@ -29,7 +29,7 @@ internal static class PfaSummaries
     {
         var pfa = await db.PfaRegistrations.AsNoTracking()
             .Where(p => p.Id == pfaId)
-            .Select(p => new { p.Id, p.LegalName, p.FullName, p.Cui })
+            .Select(p => new { p.Id, p.LegalName, p.FullName, p.Cui, p.UserId, p.User.Email, p.User.PhoneNumber })
             .SingleOrDefaultAsync(cancellationToken);
         if (pfa is null)
         {
@@ -65,7 +65,8 @@ internal static class PfaSummaries
             CurrentMonthStatus: monthStatus,
             Cash: await CashAsync(db, pfaId, cancellationToken),
             ReadOnly: inactive,
-            RetentionUntil: retention);
+            RetentionUntil: retention,
+            Client: new ClientContact(pfa.UserId, pfa.Email, pfa.PhoneNumber));
     }
 
     private static async Task<CashRegisterStateDto> CashAsync(IApplicationDbContext db, Guid pfaId, CancellationToken cancellationToken)
