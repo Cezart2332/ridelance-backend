@@ -4,6 +4,7 @@ using Application.Accounting.Contracts;
 using Application.Accounting.Tax;
 using Domain.Accounting;
 using Domain.PfaRegistrations;
+using Application.Accounting.Pfas;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Accounting.Months;
@@ -43,11 +44,11 @@ internal static class AccountingScope
                         p.OnboardingCompletedAtUtc != null &&
                         p.OnboardingCompletedAtUtc < endUtc &&
                         p.User.DeletedAtUtc == null)
-            .Select(p => new { p.Id, p.LegalName, p.FullName, p.Cui, p.User.FirstName, p.User.LastName })
+            .Select(p => new { p.Id, p.LegalName, p.HolderName, p.FullName, p.Cui, p.User.FirstName, p.User.LastName })
             .ToListAsync(cancellationToken);
 
         return [.. rows
-            .Select(p => new ScopePfa(p.Id, p.LegalName ?? p.FullName ?? $"{p.FirstName} {p.LastName}".Trim(), p.Cui ?? string.Empty))
+            .Select(p => new ScopePfa(p.Id, PfaNames.Of(p.LegalName, p.HolderName, p.FullName, p.FirstName, p.LastName), p.Cui ?? string.Empty))
             .OrderBy(p => p.Name, StringComparer.Create(CultureInfo.GetCultureInfo("ro-RO"), ignoreCase: true))];
     }
 

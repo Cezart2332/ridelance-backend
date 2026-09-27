@@ -3,6 +3,7 @@ using Application.Abstractions.Data;
 using Application.Accounting.Months;
 using Application.Accounting.Tax;
 using Domain.Accounting;
+using Application.Accounting.Pfas;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -32,14 +33,14 @@ internal static class DeclarationContent
         var registration = await db.PfaRegistrations
             .AsNoTracking()
             .Where(p => p.Id == pfaId)
-            .Select(p => new { p.Id, p.LegalName, p.FullName, p.Cui })
+            .Select(p => new { p.Id, p.LegalName, p.HolderName, p.FullName, p.Cui, p.User.FirstName, p.User.LastName })
             .SingleOrDefaultAsync(cancellationToken);
         if (registration is null)
         {
             return Result.Failure<DeclarationDraft>(AccountingErrors.PfaNotFound);
         }
 
-        var pfa = new ScopePfa(registration.Id, registration.LegalName ?? registration.FullName ?? string.Empty, registration.Cui ?? string.Empty);
+        var pfa = new ScopePfa(registration.Id, PfaNames.Of(registration.LegalName, registration.HolderName, registration.FullName, registration.FirstName, registration.LastName), registration.Cui ?? string.Empty);
         MonthData data = await MonthData.LoadAsync(db, period, [pfaId], cancellationToken);
         PreCheckResult check = PreCheck.Evaluate(pfa, data, settings);
         await PreCheck.SaveAsync(db, pfaId, period, check, cancellationToken);

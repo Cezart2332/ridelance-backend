@@ -2,6 +2,7 @@ using System.Globalization;
 using Application.Abstractions.Data;
 using Application.Accounting.Ledger;
 using Domain.Accounting;
+using Application.Accounting.Pfas;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Accounting.Registers;
@@ -22,9 +23,9 @@ internal static class RegisterData
     {
         var pfa = await db.PfaRegistrations.AsNoTracking()
             .Where(p => p.Id == pfaId)
-            .Select(p => new { p.LegalName, p.FullName, p.Cui })
+            .Select(p => new { p.LegalName, p.HolderName, p.FullName, p.Cui, p.User.FirstName, p.User.LastName })
             .SingleOrDefaultAsync(cancellationToken);
-        return pfa is null ? null : ((pfa.LegalName ?? pfa.FullName ?? string.Empty).Trim(), pfa.Cui ?? string.Empty);
+        return pfa is null ? null : (PfaNames.Of(pfa.LegalName, pfa.HolderName, pfa.FullName, pfa.FirstName, pfa.LastName), pfa.Cui ?? string.Empty);
     }
 
     /// <summary>

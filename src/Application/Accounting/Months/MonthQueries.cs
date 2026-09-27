@@ -3,6 +3,7 @@ using Application.Abstractions.Messaging;
 using Application.Accounting.Contracts;
 using Application.Accounting.Tax;
 using Domain.Accounting;
+using Application.Accounting.Pfas;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SharedKernel;
@@ -90,14 +91,14 @@ internal sealed class ListDeclarationsQueryHandler(IApplicationDbContext db, IOp
 
         var registration = await db.PfaRegistrations.AsNoTracking()
             .Where(p => p.Id == query.PfaId)
-            .Select(p => new { p.Id, p.LegalName, p.FullName, p.Cui })
+            .Select(p => new { p.Id, p.LegalName, p.HolderName, p.FullName, p.Cui, p.User.FirstName, p.User.LastName })
             .SingleOrDefaultAsync(cancellationToken);
         if (registration is null)
         {
             return Result.Failure<IReadOnlyList<DeclarationSummary>>(AccountingErrors.PfaNotFound);
         }
 
-        var pfa = new ScopePfa(registration.Id, registration.LegalName ?? registration.FullName ?? string.Empty, registration.Cui ?? string.Empty);
+        var pfa = new ScopePfa(registration.Id, PfaNames.Of(registration.LegalName, registration.HolderName, registration.FullName, registration.FirstName, registration.LastName), registration.Cui ?? string.Empty);
         PfaMonthCheck? check = await db.PfaMonthChecks.AsNoTracking()
             .SingleOrDefaultAsync(c => c.PfaRegistrationId == pfa.Id && c.Period == query.Period, cancellationToken);
         List<DeclarationSummaries.CurrentVersion> versions = await DeclarationSummaries.CurrentVersionsAsync(db, query.Period, [pfa.Id], cancellationToken);

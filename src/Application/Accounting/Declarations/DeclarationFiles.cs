@@ -6,6 +6,7 @@ using Application.Abstractions.Services;
 using Application.Documents.ExtractedFields;
 using Domain.Accounting;
 using Domain.Documents;
+using Application.Accounting.Pfas;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Accounting.Declarations;
@@ -56,7 +57,7 @@ internal sealed class DeclarationFiles(
 
         return new AnafTaxpayer(
             Cui: new string((pfa.Cui ?? string.Empty).Where(char.IsDigit).ToArray()),
-            Name: (pfa.LegalName ?? pfa.FullName ?? string.Empty).Trim(),
+            Name: PfaNames.Of(pfa.LegalName, pfa.HolderName, pfa.FullName, pfa.FirstName, pfa.LastName),
             Address: address,
             DeclarantLastName: lastName,
             DeclarantFirstName: firstName,
