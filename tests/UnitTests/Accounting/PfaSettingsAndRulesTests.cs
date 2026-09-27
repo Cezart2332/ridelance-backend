@@ -66,6 +66,49 @@ public sealed class PfaSettingsAndRulesTests : IDisposable
     }
 
     [Fact]
+    public async Task A_platforms_change_valid_from_today_shows_right_away()
+    {
+        // Luna fiscală în lucru e luna trecută; setările afișează totuși valoarea de azi, altfel
+        // schimbarea părea nesalvată.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        (await Update(PfaAccountingSettingKeys.Platforms, "[\"BOLT\",\"UBER\"]", new DateOnly(2025, 1, 1), "Onboarding")).IsSuccess.ShouldBeTrue();
+
+        PfaAccountingSettingsDto settings = (await Update(PfaAccountingSettingKeys.Platforms, "[\"UBER\"]", today, "A renunțat la Bolt")).Value;
+
+        settings.Platforms.ShouldBe([Platform.Uber]);
+    }
+
+    [Fact]
+    public async Task Art317_vat_code_is_its_own_setting_and_must_be_a_valid_ro_code()
+    {
+        PfaAccountingSettingsDto settings = (await Update(PfaAccountingSettingKeys.Art317VatCode, "\"ro 5132 1900\"", new DateOnly(2026, 1, 1), "Certificat TVA")).Value;
+
+        settings.Art317.VatCode.ShouldBe("RO51321900");
+        (await Update(PfaAccountingSettingKeys.Art317VatCode, "\"51321900\"", new DateOnly(2026, 2, 1), "Fără RO")).Error.Code.ShouldBe("Accounting.InvalidVatCode");
+        (await Update(PfaAccountingSettingKeys.Art317VatCode, "\"RO51321901\"", new DateOnly(2026, 2, 1), "Cifra de control greșită")).Error.Code.ShouldBe("Accounting.InvalidVatCode");
+    }
+
+    [Fact]
+    public async Task A_wrong_unused_supplier_can_be_deleted_but_a_declared_one_cannot()
+    {
+        var wrong = new SupplierTaxProfile { Id = Guid.NewGuid(), SupplierName = "Uber B.V.", Country = "NL", VatId = "NL852071588B01", ValidFrom = new DateOnly(2025, 1, 1) };
+        var used = new SupplierTaxProfile { Id = Guid.NewGuid(), SupplierName = "Bolt Operations OÜ", Country = "EE", VatId = "EE102090374", ValidFrom = new DateOnly(2025, 1, 1) };
+        _db.SupplierTaxProfiles.AddRange(wrong, used);
+        _db.DeclarationLines.Add(new DeclarationLine { Id = Guid.NewGuid(), DeclarationVersionId = Guid.NewGuid(), SourceDocumentId = Guid.NewGuid(), SupplierVatId = "EE102090374" });
+        await _db.SaveChangesAsync();
+        var delete = new DeleteSupplierCommandHandler(_db, User());
+
+        (await delete.Handle(new DeleteSupplierCommand(wrong.Id), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        (await delete.Handle(new DeleteSupplierCommand(used.Id), CancellationToken.None)).Error.Code.ShouldBe("Accounting.SupplierInUse");
+
+        // Șters logic: nu mai apare în registru, dar rândul și auditul rămân.
+        IReadOnlyList<object> suppliers = (await new ListTaxRulesQueryHandler(_db).Handle(new ListTaxRulesQuery(TaxRuleKind.Suppliers), CancellationToken.None)).Value;
+        suppliers.Cast<SupplierTaxProfileDto>().Select(s => s.VatId).ShouldBe(["EE102090374"]);
+        (await _db.SupplierTaxProfiles.IgnoreQueryFilters().SingleAsync(s => s.Id == wrong.Id)).DeletedByUserId.ShouldBe(_accountant);
+        (await _db.AuditLogs.AnyAsync(a => a.EntityId == wrong.Id.ToString() && a.Action == "DELETE")).ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task Settings_are_appended_with_their_history()
     {
         (await Update(PfaAccountingSettingKeys.Art317, "true", new DateOnly(2026, 1, 1), "Cod primit")).IsSuccess.ShouldBeTrue();

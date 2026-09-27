@@ -640,7 +640,7 @@ public sealed class MonthProcessingTests : IDisposable
             },
             new SupplierTaxProfile
             {
-                Id = Guid.NewGuid(), SupplierName = "Uber B.V.", Country = "NL", VatId = "NL852071588B01", D100Rate = 0, D100RateConfirmed = true,
+                Id = Guid.NewGuid(), SupplierName = "Uber B.V.", Country = "NL", VatId = "NL852071589B01", D100Rate = 0, D100RateConfirmed = true,
                 ValidFrom = new DateOnly(2025, 1, 1), ResidenceCertValidFrom = new DateOnly(2026, 1, 1), ResidenceCertValidTo = new DateOnly(2026, 12, 31),
             });
         _db.VatRates.Add(new VatRate { Id = Guid.NewGuid(), Rate = 21, ValidFrom = new DateOnly(2025, 8, 1) });
@@ -670,7 +670,7 @@ public sealed class MonthProcessingTests : IDisposable
         {
             SupplierName = bolt ? "Bolt Operations OÜ" : "Uber B.V.",
             SupplierCountry = bolt ? "EE" : "NL",
-            SupplierVatId = bolt ? "EE102090374" : "NL852071588B01",
+            SupplierVatId = bolt ? "EE102090374" : "NL852071589B01",
             InvoiceNumber = $"{(bolt ? "EE" : "UBR")}-{++_invoiceNumber}",
             InvoiceDate = new DateOnly(2026, 8, 31),
             PeriodFrom = new DateOnly(2026, 8, 1),

@@ -85,6 +85,9 @@ internal sealed class RuleAndSettingsEndpoints : IEndpoint
                 ? (await handler.Handle(new SaveTaxRuleCommand(parsed, id, input), cancellationToken)).Match(Results.Ok, CustomResults.Problem)
                 : Results.NotFound());
 
+        group.MapDelete("rules/suppliers/{id:guid}", async (Guid id, ICommandHandler<DeleteSupplierCommand> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new DeleteSupplierCommand(id), cancellationToken)).Match(Results.NoContent, CustomResults.Problem));
+
         // Rolul PFA: utilizatorul își vede și își schimbă propriul răspuns (nu cere drept de contabilitate).
         RouteGroupBuilder me = app.MapGroup("accounting/me")
             .RequireAuthorization()

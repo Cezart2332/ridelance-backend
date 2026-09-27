@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Accounting.Contracts;
@@ -175,6 +176,40 @@ internal sealed class SaveTaxRuleCommandHandler(IApplicationDbContext db) : ICom
 }
 
 /// <summary>Maparea regulă ↔ DTO; câmpurile vin normalizate (coduri cu majuscule, text fără spații la capete).</summary>
+/// <summary>
+/// <c>DELETE /accounting/rules/suppliers/{id}</c> — ștergere logică a unui furnizor adăugat greșit.
+/// Un furnizor care apare deja într-o declarație nu se șterge: se închide cu „Valabil până la”.
+/// </summary>
+public sealed record DeleteSupplierCommand(Guid Id) : ICommand;
+
+internal sealed class DeleteSupplierCommandHandler(IApplicationDbContext db, IUserContext userContext) : ICommandHandler<DeleteSupplierCommand>
+{
+    public async Task<Result> Handle(DeleteSupplierCommand command, CancellationToken cancellationToken)
+    {
+        SupplierTaxProfile? supplier = await db.SupplierTaxProfiles.SingleOrDefaultAsync(s => s.Id == command.Id, cancellationToken);
+        if (supplier is null)
+        {
+            return Result.Failure(TaxRuleErrors.NotFound);
+        }
+
+        bool declared = await db.DeclarationLines.AnyAsync(line => line.SupplierVatId == supplier.VatId, cancellationToken);
+        if (declared)
+        {
+            return Result.Failure(Error.Conflict(
+                "Accounting.SupplierInUse",
+                $"{supplier.SupplierName} ({supplier.VatId}) apare în declarații generate și nu se poate șterge. Închide-l cu „Valabil până la”."));
+        }
+
+        supplier.DeletedAtUtc = DateTime.UtcNow;
+        supplier.DeletedByUserId = userContext.UserId;
+        AccountingAudit.Record(
+            db, null, nameof(SupplierTaxProfile), supplier.Id, "DELETE",
+            new { supplier.SupplierName, supplier.VatId, supplier.ValidFrom, supplier.ValidTo }, null, null, userContext.UserId);
+        await db.SaveChangesAsync(cancellationToken);
+        return Result.Success();
+    }
+}
+
 internal static class TaxRuleDtos
 {
     public static object Supplier(SupplierTaxProfile r) => new SupplierTaxProfileDto(

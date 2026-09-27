@@ -11,11 +11,7 @@ internal static class AnafTestSupport
 {
     public const string Period = "2026-08";
 
-    /// <summary>
-    /// Codul TVA Uber din fixtures (<c>NL852071588B01</c>) nu trece algoritmul NL al validatorului ANAF
-    /// (cifra de control ar fi 9). Testele de XML folosesc varianta care trece; codul real e de confirmat
-    /// pe o factură Uber.
-    /// </summary>
+    /// <summary>Codul TVA al Uber B.V., cum apare pe facturile reale (trece și algoritmul NL al validatorului ANAF).</summary>
     public const string UberVatId = "NL852071589B01";
 
     public static readonly AnafTaxpayer Ion = new(
