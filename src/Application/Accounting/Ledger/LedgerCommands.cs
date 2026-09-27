@@ -90,9 +90,6 @@ public sealed record UpdateLedgerEntryCommand(Guid Id, JsonElement Fields, strin
 internal sealed class UpdateLedgerEntryCommandHandler(IApplicationDbContext db, IUserContext userContext)
     : ICommandHandler<UpdateLedgerEntryCommand, LedgerEntryDto>
 {
-    private static readonly string[] Editable =
-        ["date", "documentLabel", "counterparty", "description", "transactionType", "paymentMethod", "amount", "category", "sourceDocumentId"];
-
     public async Task<Result<LedgerEntryDto>> Handle(UpdateLedgerEntryCommand command, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(command.Reason))
@@ -112,25 +109,12 @@ internal sealed class UpdateLedgerEntryCommandHandler(IApplicationDbContext db, 
             return Result.Failure<LedgerEntryDto>(open.Error);
         }
 
-        if (command.Fields.ValueKind != JsonValueKind.Object)
-        {
-            return Result.Failure<LedgerEntryDto>(AccountingErrors.NoChanges);
-        }
-
         var before = new Dictionary<string, object?>();
         var after = new Dictionary<string, object?>();
-        foreach (JsonProperty field in command.Fields.EnumerateObject().Where(f => Editable.Contains(f.Name)))
+        Result applied = await LedgerChanges.ApplyAllAsync(db, entry, command.Fields, before, after, cancellationToken);
+        if (applied.IsFailure)
         {
-            Result applied = await ApplyAsync(entry, field, before, after, cancellationToken);
-            if (applied.IsFailure)
-            {
-                return Result.Failure<LedgerEntryDto>(applied.Error);
-            }
-        }
-
-        if (after.Count == 0)
-        {
-            return Result.Failure<LedgerEntryDto>(AccountingErrors.NoChanges);
+            return Result.Failure<LedgerEntryDto>(applied.Error);
         }
 
         string period = LedgerSupport.PeriodOf(entry.Date);
@@ -160,8 +144,45 @@ internal sealed class UpdateLedgerEntryCommandHandler(IApplicationDbContext db, 
 
         return await PlatformDocumentSupport.EnsureWritableAsync(db, entry.PfaRegistrationId, entry.AccountingPeriod, cancellationToken);
     }
+}
 
-    private async Task<Result> ApplyAsync(
+/// <summary>
+/// Aplicarea câmpurilor schimbate pe o înregistrare (modificarea obișnuită și corecția controlată
+/// a unei luni închise, B8), cu valorile vechi și noi pentru audit.
+/// </summary>
+internal static class LedgerChanges
+{
+    public static readonly string[] Editable =
+        ["date", "documentLabel", "counterparty", "description", "transactionType", "paymentMethod", "amount", "category", "sourceDocumentId"];
+
+    /// <summary>Aplică toate câmpurile editabile din <paramref name="fields"/>; ignoră restul.</summary>
+    public static async Task<Result> ApplyAllAsync(
+        IApplicationDbContext db,
+        LedgerEntry entry,
+        JsonElement fields,
+        Dictionary<string, object?> before,
+        Dictionary<string, object?> after,
+        CancellationToken cancellationToken)
+    {
+        if (fields.ValueKind != JsonValueKind.Object)
+        {
+            return Result.Failure(AccountingErrors.NoChanges);
+        }
+
+        foreach (JsonProperty field in fields.EnumerateObject().Where(f => Editable.Contains(f.Name)))
+        {
+            Result applied = await ApplyAsync(db, entry, field, before, after, cancellationToken);
+            if (applied.IsFailure)
+            {
+                return applied;
+            }
+        }
+
+        return after.Count == 0 ? Result.Failure(AccountingErrors.NoChanges) : Result.Success();
+    }
+
+    public static async Task<Result> ApplyAsync(
+        IApplicationDbContext db,
         LedgerEntry entry,
         JsonProperty field,
         Dictionary<string, object?> before,
@@ -212,7 +233,7 @@ internal sealed class UpdateLedgerEntryCommandHandler(IApplicationDbContext db, 
                     }
 
                     Set(field.Name, entry.SourceDocumentId, documentId, v => entry.SourceDocumentId = v);
-                    await LinkExpenseDocumentAsync(entry, documentId, cancellationToken);
+                    await LinkExpenseDocumentAsync(db, entry, documentId, cancellationToken);
                     break;
                 default:
                     return Result.Failure(AccountingErrors.InvalidField(field.Name));
@@ -239,7 +260,7 @@ internal sealed class UpdateLedgerEntryCommandHandler(IApplicationDbContext db, 
     }
 
     /// <summary>Potrivirea confirmată: documentul de cheltuială știe plata pe care o justifică.</summary>
-    private async Task LinkExpenseDocumentAsync(LedgerEntry entry, Guid? documentId, CancellationToken cancellationToken)
+    private static async Task LinkExpenseDocumentAsync(IApplicationDbContext db, LedgerEntry entry, Guid? documentId, CancellationToken cancellationToken)
     {
         if (documentId is not { } id ||
             await db.ExpenseDocuments.FirstOrDefaultAsync(d => d.DocumentId == id && d.PfaRegistrationId == entry.PfaRegistrationId, cancellationToken) is not { } expense)

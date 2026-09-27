@@ -12,13 +12,15 @@ namespace Application.Accounting.Ledger;
 
 /// <summary>Ce știe un importator despre PFA-ul pe care îl importă.</summary>
 /// <param name="From">De la ce dată se importă (începutul colaborării contabile), sau fără limită.</param>
+/// <param name="To">Data încetării colaborării: operațiunile de după ea se ignoră (B8).</param>
 public sealed record LedgerImportContext(
     Guid PfaId,
     Guid UserId,
     DateOnly? From,
     LedgerRules Rules,
     IReadOnlySet<string> ClosedPeriods,
-    AccountingOptions Options);
+    AccountingOptions Options,
+    DateOnly? To = null);
 
 /// <summary>Rezultatul unui importator: înregistrări noi, înregistrări completate, observații.</summary>
 public sealed record LedgerImportResult(LedgerSource Source, int Created, int Updated, IReadOnlyList<string> Notes);
@@ -91,6 +93,11 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
         if (context.From is { } from)
         {
             transactions = transactions.Where(t => (t.BookingDate ?? t.ValueDate) >= from);
+        }
+
+        if (context.To is { } to)
+        {
+            transactions = transactions.Where(t => (t.BookingDate ?? t.ValueDate) <= to);
         }
 
         List<BankTransaction> fresh = await transactions
@@ -186,6 +193,11 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
             string name = source == LedgerSource.Bolt ? "Bolt" : "Uber";
             DateOnly from = report.PeriodFrom ?? DateOnly.ParseExact(report.Period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture);
             DateOnly to = report.PeriodTo ?? from.AddMonths(1).AddDays(-1);
+            if (context.To is { } end && from > end)
+            {
+                continue;
+            }
+
             string label = $"Raport {name} {to.ToString("MM.yyyy", CultureInfo.InvariantCulture)}";
 
             if (context.Options.IncomeRecognition == LedgerIncomeRecognition.GrossReport && report.Amount is { } gross)
@@ -284,7 +296,8 @@ internal sealed class OblioLedgerSource(IApplicationDbContext db, OwnerOblioReso
         IReadOnlyList<OwnerInvoice> invoices;
         try
         {
-            invoices = await invoicing.ListInvoicesAsync(credentials.Value, context.From ?? today.AddYears(-1), today, cancellationToken);
+            DateOnly until = context.To is { } end && end < today ? end : today;
+            invoices = await invoicing.ListInvoicesAsync(credentials.Value, context.From ?? today.AddYears(-1), until, cancellationToken);
         }
         catch (HttpRequestException)
         {
@@ -293,7 +306,7 @@ internal sealed class OblioLedgerSource(IApplicationDbContext db, OwnerOblioReso
 
         int created = 0;
         int updated = 0;
-        foreach (OwnerInvoice invoice in invoices.Where(i => !i.Canceled && i.CollectedLei > 0))
+        foreach (OwnerInvoice invoice in invoices.Where(i => !i.Canceled && i.CollectedLei > 0 && (context.To is not { } last || i.IssueDate <= last)))
         {
             string label = LedgerSupport.Cut($"Factura {invoice.SeriesName} {invoice.Number}", LedgerSupport.DocumentLabelLength);
             string externalId = $"{context.PfaId:N}:{invoice.SeriesName}-{invoice.Number}";
