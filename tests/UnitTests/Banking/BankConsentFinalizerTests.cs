@@ -39,6 +39,30 @@ public sealed class BankConsentFinalizerTests
     }
 
     [Fact]
+    public async Task ProviderUnreachable_KeepsTheConnectionAndExplainsInsteadOfFailingThePage()
+    {
+        // Cazul din producție: certificatul mTLS refuzat de Smart Accounts („The SSL certificate
+        // error”). Nu e un răspuns despre acord, deci conexiunea rămâne cum era, cu motivul vizibil.
+        await using ApplicationDbContext db = Database();
+        BankConnection connection = await AddConnection(db);
+
+        var failing = new StubProvider
+        {
+            OnGetConsent = () => throw new BankDataProviderException("Cererea către Smart Accounts a eșuat (400): The SSL certificate error"),
+        };
+
+        BankConnectionStatus status = await Finalizer(db, failing).TryFinalizeAsync(connection, default);
+
+        status.ShouldBe(BankConnectionStatus.Created);
+        connection.ErrorMessage.ShouldBe(BankConsentFinalizer.ProviderUnavailable);
+
+        // Când furnizorul răspunde din nou (încă neautorizat), motivul vechi dispare.
+        var back = new StubProvider { OnGetConsent = () => throw new BankDataConsentExpiredException("UNAUTHORIZED") };
+        (await Finalizer(db, back).TryFinalizeAsync(connection, default)).ShouldBe(BankConnectionStatus.Created);
+        connection.ErrorMessage.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task RefusalAfterTheAuthorisationWindowClosed_EndsTheAttempt()
     {
         // Singurul lucru care încheie o conectare neterminată e termenul adresei băncii. Altfel un
