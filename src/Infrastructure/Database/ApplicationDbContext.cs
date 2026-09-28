@@ -103,6 +103,10 @@ public sealed class ApplicationDbContext(
     public DbSet<DeclarationVersion> DeclarationVersions { get; set; }
     public DbSet<DeclarationLine> DeclarationLines { get; set; }
     public DbSet<VatRegistrationRequest> VatRegistrationRequests { get; set; }
+    public DbSet<AnafConnection> AnafConnections { get; set; }
+    public DbSet<AnafAuthorizationRequest> AnafAuthorizationRequests { get; set; }
+    public DbSet<AnafPfaLink> AnafPfaLinks { get; set; }
+    public DbSet<EFacturaMessage> EFacturaMessages { get; set; }
     public DbSet<PfaAccountingSetting> PfaAccountingSettings { get; set; }
     public DbSet<CashRegisterState> CashRegisterStates { get; set; }
     public DbSet<PfaAccountingEngagement> PfaAccountingEngagements { get; set; }

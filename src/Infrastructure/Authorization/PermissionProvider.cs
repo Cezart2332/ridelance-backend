@@ -38,7 +38,8 @@ internal sealed class PermissionProvider(IApplicationDbContext context)
                 Permissions.ManageCompanyPages,
                 Permissions.ManageTaxParameters,
                 Permissions.ManageAccounting,
-                Permissions.DeleteAccountingDocuments
+                Permissions.DeleteAccountingDocuments,
+                Permissions.ManageAnaf
             ],
             UserRole.Contabil =>
             [
@@ -104,4 +105,7 @@ public static class Permissions
 
     /// <summary>Ștergerea (logică) a documentelor Uber/Bolt din contabilitate: doar ADMIN.</summary>
     public const string DeleteAccountingDocuments = "accounting:delete_documents";
+
+    /// <summary>Conexiunea ANAF (OAuth cu certificatul împuternicitului) și conectarea clienților la e-Factura: doar ADMIN.</summary>
+    public const string ManageAnaf = "anaf:manage";
 }
