@@ -1,15 +1,19 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Accounting.VatRegistration;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.Step2;
 
 internal sealed class SubmitFiscalVatCommandHandler(
     IApplicationDbContext context,
-    OnboardingStateService stateService)
+    OnboardingStateService stateService,
+    VatRegistrationService vatRegistration,
+    ILogger<SubmitFiscalVatCommandHandler> logger)
     : ICommandHandler<SubmitFiscalVatCommand>
 {
     public async Task<Result> Handle(SubmitFiscalVatCommand command, CancellationToken cancellationToken)
@@ -84,6 +88,25 @@ internal sealed class SubmitFiscalVatCommandHandler(
         profile.UpdatedAtUtc = nowUtc;
 
         await context.SaveChangesAsync(cancellationToken);
+
+        // „Nu”: codul îl obținem noi. D700 se generează acum, din datele PFA-ului, și ajunge la
+        // contabil. O problemă aici nu blochează onboardingul: cererea se poate genera și din admin.
+        if (command.VatAnswer == VatAnswer.No)
+        {
+            try
+            {
+                Result<Domain.Accounting.VatRegistrationRequest> requested =
+                    await vatRegistration.EnsureRequestedAsync(registration.Id, command.UserId, cancellationToken);
+                if (requested.IsFailure)
+                {
+                    logger.LogWarning("D700 negenerat pentru PFA {PfaId}: {Error}", registration.Id, requested.Error.Description);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogError(exception, "D700 negenerat pentru PFA {PfaId}", registration.Id);
+            }
+        }
 
         return Result.Success();
     }

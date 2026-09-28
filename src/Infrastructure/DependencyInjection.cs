@@ -154,6 +154,7 @@ public static class DependencyInjection
         services.AddSingleton<Application.Abstractions.Services.IRegisterExporter, Infrastructure.Accounting.RegisterExporter>();
         // Declarațiile ANAF (B4): XML-ul din schema perioadei, XSD-ul oficial și validatorul ANAF intern.
         services.AddSingleton<Application.Abstractions.Anaf.IDeclarationXmlService, Infrastructure.Accounting.Anaf.AnafDeclarationXmlService>();
+        services.AddSingleton<Application.Abstractions.Anaf.IVatRegistrationXml, Infrastructure.Accounting.Anaf.D700Xml>();
         services.Configure<Infrastructure.Accounting.Anaf.AnafValidatorOptions>(configuration.GetSection(Infrastructure.Accounting.Anaf.AnafValidatorOptions.SectionName));
         services.AddHttpClient<Application.Abstractions.Anaf.IAnafValidatorClient, Infrastructure.Accounting.Anaf.AnafValidatorClient>(client =>
             client.Timeout = Timeout.InfiniteTimeSpan);

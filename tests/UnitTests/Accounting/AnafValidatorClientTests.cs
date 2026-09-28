@@ -26,7 +26,7 @@ public sealed class AnafValidatorClientTests
     {
         var handler = new ScriptedHandler((HttpStatusCode.OK, ValidResponse));
 
-        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(DeclarationType.D100, "2026-09", "<x/>"u8.ToArray(), "abc", CancellationToken.None);
+        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(nameof(DeclarationType.D100), "2026-09", "<x/>"u8.ToArray(), "abc", CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
         (result.Value.Valid, result.Value.RawOutput, result.Value.DurationMs).ShouldBe((true, "ok", 1892L));
@@ -47,7 +47,7 @@ public sealed class AnafValidatorClientTests
     {
         var handler = new ScriptedHandler((HttpStatusCode.ServiceUnavailable, "{}"), (HttpStatusCode.BadGateway, "{}"), (HttpStatusCode.OK, ValidResponse));
 
-        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(DeclarationType.D100, "2026-09", [1], "abc", CancellationToken.None);
+        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(nameof(DeclarationType.D100), "2026-09", [1], "abc", CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
         handler.Requests.Count.ShouldBe(3);
@@ -58,7 +58,7 @@ public sealed class AnafValidatorClientTests
     {
         var handler = new ScriptedHandler((HttpStatusCode.GatewayTimeout, "{}"), (HttpStatusCode.GatewayTimeout, "{}"), (HttpStatusCode.GatewayTimeout, "{}"), (HttpStatusCode.OK, ValidResponse));
 
-        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(DeclarationType.D100, "2026-09", [1], "abc", CancellationToken.None);
+        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(nameof(DeclarationType.D100), "2026-09", [1], "abc", CancellationToken.None);
 
         result.Error.Description.ShouldBe("Validatorul ANAF: DUKIntegrator nu a terminat la timp.");
         handler.Requests.Count.ShouldBe(3);
@@ -69,7 +69,7 @@ public sealed class AnafValidatorClientTests
     {
         var handler = new ScriptedHandler((HttpStatusCode.NotFound, """{"status":404,"error":"Not Found","message":"Versiune necunoscută","correlationId":"abc"}"""));
 
-        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(DeclarationType.D301, "2030-01", [1], "abc", CancellationToken.None);
+        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(nameof(DeclarationType.D301), "2030-01", [1], "abc", CancellationToken.None);
 
         result.Error.Description.ShouldBe("Validatorul ANAF: versiunea de validator 2030-01 nu e instalată în serviciu.");
         handler.Requests.Count.ShouldBe(1);
@@ -80,7 +80,7 @@ public sealed class AnafValidatorClientTests
     {
         var handler = new ScriptedHandler { Throw = true };
 
-        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(DeclarationType.D100, "2026-09", [1], "abc", CancellationToken.None);
+        Result<AnafValidatorResult> result = await Client(handler).ValidateAsync(nameof(DeclarationType.D100), "2026-09", [1], "abc", CancellationToken.None);
 
         result.Error.Description.ShouldBe("Validatorul ANAF: serviciul nu răspunde.");
         handler.Calls.ShouldBe(3);
@@ -91,13 +91,13 @@ public sealed class AnafValidatorClientTests
     {
         var handler = new ScriptedHandler();
 
-        Result<AnafValidatorResult> result = await Client(handler, baseUrl: null).ValidateAsync(DeclarationType.D100, "2026-09", [1], "abc", CancellationToken.None);
+        Result<AnafValidatorResult> result = await Client(handler, baseUrl: null).ValidateAsync(nameof(DeclarationType.D100), "2026-09", [1], "abc", CancellationToken.None);
 
         result.Error.Code.ShouldBe("Accounting.AnafValidatorUnavailable");
         handler.Calls.ShouldBe(0);
     }
 
-    private static AnafValidatorClient Client(ScriptedHandler handler, string? baseUrl = "http://anaf-validator:8080") => new(
+    private static AnafValidatorClient Client(ScriptedHandler handler, string? baseUrl = "http://anaf-validator:8080") => new AnafValidatorClient(
         new HttpClient(handler),
         Options.Create(new AnafValidatorOptions { BaseUrl = baseUrl, Token = "secret", RetryDelayMilliseconds = 1 }),
         NullLogger<AnafValidatorClient>.Instance);

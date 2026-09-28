@@ -220,6 +220,36 @@ internal sealed class DeclarationConfiguration : IEntityTypeConfiguration<Declar
     }
 }
 
+internal sealed class VatRegistrationRequestConfiguration : IEntityTypeConfiguration<VatRegistrationRequest>
+{
+    public void Configure(EntityTypeBuilder<VatRegistrationRequest> builder)
+    {
+        builder.ToTable("vat_registration_requests");
+        builder.HasKey(r => r.Id);
+
+        // Ca la versiunile declarațiilor: două acțiuni simultane nu se calcă una pe alta.
+        builder.Property<uint>("xmin").IsRowVersion();
+
+        builder.Property(r => r.Status).AsText();
+        builder.Property(r => r.Period).HasMaxLength(AccountingMapping.PeriodLength).IsRequired();
+        builder.Property(r => r.SnapshotJson).AsJson();
+        builder.Property(r => r.ValidationJson).AsJson();
+        builder.Property(r => r.StatusHistoryJson).AsJson();
+        builder.Property(r => r.MissingData).HasMaxLength(500);
+        builder.Property(r => r.RejectionReason).HasMaxLength(1000);
+        builder.Property(r => r.VatCode).HasMaxLength(16);
+
+        builder.HasIndex(r => r.PfaRegistrationId);
+        builder.HasIndex(r => r.Status);
+
+        builder.HasOne(r => r.PfaRegistration).WithMany().HasForeignKey(r => r.PfaRegistrationId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToDocument(r => r.XmlDocumentId);
+        builder.RestrictToDocument(r => r.PdfDocumentId);
+        builder.RestrictToDocument(r => r.CertificateDocumentId);
+        builder.RestrictToUser(r => r.CreatedByUserId);
+    }
+}
+
 internal sealed class DeclarationVersionConfiguration : IEntityTypeConfiguration<DeclarationVersion>
 {
     public void Configure(EntityTypeBuilder<DeclarationVersion> builder)

@@ -70,6 +70,7 @@ public sealed class AccountingModelTests
     [Theory]
     [InlineData(typeof(DeclarationVersion))]
     [InlineData(typeof(LedgerEntry))]
+    [InlineData(typeof(VatRegistrationRequest))]
     public void Concurrency_token_is_xmin(Type entity)
     {
         IProperty? xmin = NpgsqlModel().FindEntityType(entity)!.FindProperty("xmin");
@@ -147,7 +148,7 @@ public sealed class AccountingModelTests
         root.GetProperty("blockingReasons").GetArrayLength().ShouldBe(0);
     }
 
-    private static readonly Migration[] AccountingMigrations = [new AddAccountingModule(), new AddPlatformDocumentText(), new AddMonthProcessing(), new AddDeclarationLineSupersede(), new AddTaxPointAndWithheldTax(), new AddSupplierSoftDelete(), new AddPlatformDocumentSoftDelete()];
+    private static readonly Migration[] AccountingMigrations = [new AddAccountingModule(), new AddPlatformDocumentText(), new AddMonthProcessing(), new AddDeclarationLineSupersede(), new AddTaxPointAndWithheldTax(), new AddSupplierSoftDelete(), new AddPlatformDocumentSoftDelete(), new AddVatRegistrationRequests()];
 
     private static List<object?> Rows(InsertDataOperation insert, string column)
     {

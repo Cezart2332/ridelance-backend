@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Application.Abstractions.Anaf;
-using Domain.Accounting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SharedKernel;
@@ -53,7 +52,7 @@ internal sealed class AnafValidatorClient(HttpClient http, IOptions<AnafValidato
     ];
 
     public async Task<Result<AnafValidatorResult>> ValidateAsync(
-        DeclarationType type,
+        string declarationType,
         string validatorVersion,
         byte[] xml,
         string correlationId,
@@ -80,7 +79,7 @@ internal sealed class AnafValidatorClient(HttpClient http, IOptions<AnafValidato
             timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, settings.TimeoutSeconds)));
             try
             {
-                using HttpRequestMessage request = Request(endpoint, settings.Token, type, validatorVersion, xml, correlationId);
+                using HttpRequestMessage request = Request(endpoint, settings.Token, declarationType, validatorVersion, xml, correlationId);
                 using HttpResponseMessage response = await http.SendAsync(request, timeout.Token);
                 if (response.IsSuccessStatusCode)
                 {
@@ -107,7 +106,7 @@ internal sealed class AnafValidatorClient(HttpClient http, IOptions<AnafValidato
 
             logger.LogWarning(
                 "Validatorul ANAF, încercarea {Attempt} pentru {DeclarationType} ({CorrelationId}): {Problem}",
-                attempt + 1, type, correlationId, lastProblem);
+                attempt + 1, declarationType, correlationId, lastProblem);
         }
 
         return Result.Failure<AnafValidatorResult>(Unavailable(lastProblem ?? "serviciul nu răspunde."));
@@ -115,14 +114,14 @@ internal sealed class AnafValidatorClient(HttpClient http, IOptions<AnafValidato
 
     // Conținuturile trec în proprietatea formularului, iar formularul a cererii: le eliberează cererea.
 #pragma warning disable CA2000
-    private static HttpRequestMessage Request(Uri endpoint, string? token, DeclarationType type, string validatorVersion, byte[] xml, string correlationId)
+    private static HttpRequestMessage Request(Uri endpoint, string? token, string declarationType, string validatorVersion, byte[] xml, string correlationId)
     {
         var file = new ByteArrayContent(xml);
         file.Headers.ContentType = new MediaTypeHeaderValue("application/xml");
         var form = new MultipartFormDataContent
         {
-            { file, "xml", $"{type}.xml" },
-            { new StringContent(type.ToString()), "declarationType" },
+            { file, "xml", $"{declarationType}.xml" },
+            { new StringContent(declarationType), "declarationType" },
             { new StringContent(validatorVersion), "validatorVersion" },
             { new StringContent("VALIDATE_AND_PDF"), "mode" },
             { new StringContent(correlationId), "correlationId" },
