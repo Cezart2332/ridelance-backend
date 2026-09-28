@@ -26,6 +26,9 @@ public sealed class BankConsentFinalizer(
     ISecretProtector secretProtector,
     BankAccountSyncService syncService)
 {
+    public const string ProviderUnavailable =
+        "Nu putem verifica acum autorizarea la bancă: serviciul de open banking nu răspunde. Reîncercăm automat.";
+
     /// <summary>Stările în care banca spune că acordul e dat și conturile se pot citi.</summary>
     private static readonly string[] LiveConsentStatuses = ["valid", "partiallyAuthorised"];
 
@@ -84,6 +87,17 @@ public sealed class BankConsentFinalizer(
              */
             return await StillWaitingAsync(connection, cancellationToken);
         }
+        catch (BankDataProviderException)
+        {
+            /*
+             * Furnizorul nu poate fi întrebat acum (certificatul mTLS refuzat, serviciu căzut). Nu e un
+             * răspuns despre acordul omului, deci conexiunea nu se schimbă — doar pagina nu mai cade:
+             * starea rămâne „în curs”, cu motivul vizibil, iar următoarea citire reîncearcă.
+             */
+            connection.ErrorMessage = ProviderUnavailable;
+            await context.SaveChangesAsync(cancellationToken);
+            return connection.Status;
+        }
 
         connection.ConsentStatus = state.Status;
 
@@ -115,6 +129,12 @@ public sealed class BankConsentFinalizer(
         BankConnection connection,
         CancellationToken cancellationToken)
     {
+        // Furnizorul a răspuns din nou: motivul unei indisponibilități anterioare nu mai e valabil.
+        if (connection.ErrorMessage == ProviderUnavailable)
+        {
+            connection.ErrorMessage = null;
+        }
+
         if (connection.LinkExpiresAtUtc is { } expiry && expiry < DateTime.UtcNow)
         {
             connection.Status = BankConnectionStatus.Error;
