@@ -36,6 +36,16 @@ internal sealed class MonthEndpoints : IEndpoint
         group.MapPost("periods/{period}/validate", (string period, ICommandHandler<StartMonthJobCommand, JobRef> handler, CancellationToken cancellationToken) =>
             Start(BackgroundJobType.ValidateDeclarations, period, handler, cancellationToken));
 
+        // Același job, doar pentru un client (pagina clientului: „Procesează”, „Generează”, „Validează”).
+        group.MapPost("pfas/{pfaId:guid}/periods/{period}/process", (Guid pfaId, string period, ICommandHandler<StartMonthJobCommand, JobRef> handler, CancellationToken cancellationToken) =>
+            Start(BackgroundJobType.ProcessPeriod, period, handler, cancellationToken, pfaId));
+
+        group.MapPost("pfas/{pfaId:guid}/periods/{period}/generate", (Guid pfaId, string period, ICommandHandler<StartMonthJobCommand, JobRef> handler, CancellationToken cancellationToken) =>
+            Start(BackgroundJobType.GenerateDeclarations, period, handler, cancellationToken, pfaId));
+
+        group.MapPost("pfas/{pfaId:guid}/periods/{period}/validate", (Guid pfaId, string period, ICommandHandler<StartMonthJobCommand, JobRef> handler, CancellationToken cancellationToken) =>
+            Start(BackgroundJobType.ValidateDeclarations, period, handler, cancellationToken, pfaId));
+
         group.MapPost("periods/{period}/confirm-clean-documents", async (
             string period,
             ICommandHandler<ConfirmCleanDocumentsCommand, ConfirmBulkResult> handler,
@@ -69,9 +79,10 @@ internal sealed class MonthEndpoints : IEndpoint
         BackgroundJobType type,
         string period,
         ICommandHandler<StartMonthJobCommand, JobRef> handler,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? pfaId = null)
     {
-        Result<JobRef> result = await handler.Handle(new StartMonthJobCommand(type, period), cancellationToken);
+        Result<JobRef> result = await handler.Handle(new StartMonthJobCommand(type, period, pfaId), cancellationToken);
         return result.Match(Results.Ok, CustomResults.Problem);
     }
 }

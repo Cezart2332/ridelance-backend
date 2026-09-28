@@ -79,6 +79,16 @@ public sealed class MonthProcessingTests : IDisposable
     public void Dispose() => _db.Dispose();
 
     [Fact]
+    public async Task A_job_started_from_the_client_page_touches_only_that_client()
+    {
+        JobDto processed = await RunJob(BackgroundJobType.ProcessPeriod, _ion);
+
+        processed.Progress.ShouldBe(new JobProgress(1, 1));
+        processed.Results.ShouldHaveSingleItem().PfaId.ShouldBe(_ion);
+        (await Overview()).Stats.NotProcessed.ShouldBe(3);
+    }
+
+    [Fact]
     public async Task Month_goes_from_not_processed_to_generated_declarations()
     {
         PeriodOverview before = await Overview();
@@ -565,9 +575,9 @@ public sealed class MonthProcessingTests : IDisposable
     private Task<List<DeclarationVersion>> IonVersions() =>
         _db.DeclarationVersions.Include(v => v.Declaration).Where(v => v.Declaration.PfaRegistrationId == _ion).ToListAsync();
 
-    private async Task<JobDto> RunJob(BackgroundJobType type)
+    private async Task<JobDto> RunJob(BackgroundJobType type, Guid? pfaId = null)
     {
-        JobRef started = (await new StartMonthJobCommandHandler(_db, User()).Handle(new StartMonthJobCommand(type, Period), CancellationToken.None)).Value;
+        JobRef started = (await new StartMonthJobCommandHandler(_db, User()).Handle(new StartMonthJobCommand(type, Period, pfaId), CancellationToken.None)).Value;
         Result run = await new RunMonthJobCommandHandler(_db, new NoExtraction(), Files(), Validator(), _options).Handle(new RunMonthJobCommand(started.JobId), CancellationToken.None);
         run.IsSuccess.ShouldBeTrue();
         return (await new GetJobQueryHandler(_db).Handle(new GetJobQuery(started.JobId), CancellationToken.None)).Value;
