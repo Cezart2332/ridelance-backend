@@ -1,0 +1,19 @@
+<Project>
+  <!--
+    Aplicația desktop RIDElance SPV are propriile setări: e Windows (WPF, stickul prin magazinul de
+    certificate Windows) și nu intră în build-ul Docker al serverului.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <NoWarn>CA1848;CA2007;CA1515;CA1812</NoWarn>
+    <Version>1.0.0</Version>
+    <Company>RIDElance</Company>
+    <Product>RIDElance SPV</Product>
+  </PropertyGroup>
+</Project>

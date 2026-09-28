@@ -107,6 +107,10 @@ public sealed class ApplicationDbContext(
     public DbSet<AnafAuthorizationRequest> AnafAuthorizationRequests { get; set; }
     public DbSet<AnafPfaLink> AnafPfaLinks { get; set; }
     public DbSet<EFacturaMessage> EFacturaMessages { get; set; }
+    public DbSet<SpvAgentKey> SpvAgentKeys { get; set; }
+    public DbSet<SpvSyncRun> SpvSyncRuns { get; set; }
+    public DbSet<SpvMessage> SpvMessages { get; set; }
+    public DbSet<SpvRequest> SpvRequests { get; set; }
     public DbSet<PfaAccountingSetting> PfaAccountingSettings { get; set; }
     public DbSet<CashRegisterState> CashRegisterStates { get; set; }
     public DbSet<PfaAccountingEngagement> PfaAccountingEngagements { get; set; }

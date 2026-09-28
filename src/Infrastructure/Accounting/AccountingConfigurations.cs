@@ -220,6 +220,78 @@ internal sealed class DeclarationConfiguration : IEntityTypeConfiguration<Declar
     }
 }
 
+internal sealed class SpvAgentKeyConfiguration : IEntityTypeConfiguration<SpvAgentKey>
+{
+    public void Configure(EntityTypeBuilder<SpvAgentKey> builder)
+    {
+        builder.ToTable("spv_agent_keys");
+        builder.HasKey(k => k.Id);
+        builder.Property(k => k.Name).HasMaxLength(100).IsRequired();
+        builder.Property(k => k.Prefix).HasMaxLength(32).IsRequired();
+        builder.Property(k => k.KeyHash).HasMaxLength(64).IsRequired();
+        builder.HasIndex(k => k.KeyHash).IsUnique();
+        builder.RestrictToUser(k => k.UserId);
+    }
+}
+
+internal sealed class SpvSyncRunConfiguration : IEntityTypeConfiguration<SpvSyncRun>
+{
+    public void Configure(EntityTypeBuilder<SpvSyncRun> builder)
+    {
+        builder.ToTable("spv_sync_runs");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.Status).AsText();
+        builder.Property(r => r.Machine).HasMaxLength(100);
+        builder.Property(r => r.AgentVersion).HasMaxLength(40);
+        builder.Property(r => r.Error).HasMaxLength(1000);
+        builder.HasIndex(r => new { r.Status, r.StartedAtUtc });
+        builder.HasOne<SpvAgentKey>().WithMany().HasForeignKey(r => r.AgentKeyId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class SpvMessageConfiguration : IEntityTypeConfiguration<SpvMessage>
+{
+    public void Configure(EntityTypeBuilder<SpvMessage> builder)
+    {
+        builder.ToTable("spv_messages");
+        builder.HasKey(m => m.Id);
+        builder.Property(m => m.AnafMessageId).HasMaxLength(64).IsRequired();
+        builder.Property(m => m.Cif).HasMaxLength(32).IsRequired();
+        builder.Property(m => m.Type).HasMaxLength(100).IsRequired();
+        builder.Property(m => m.RequestId).HasMaxLength(64);
+        builder.Property(m => m.Details).HasMaxLength(2000);
+        builder.Property(m => m.FileHash).HasMaxLength(64);
+        builder.Property(m => m.Status).AsText();
+        builder.Property(m => m.Note).HasMaxLength(500);
+        // Un mesaj ANAF o singură dată: o trimitere reluată nu dublează nimic.
+        builder.HasIndex(m => m.AnafMessageId).IsUnique();
+        builder.HasIndex(m => new { m.PfaRegistrationId, m.AnafCreatedAtUtc });
+        builder.HasIndex(m => m.Status);
+        builder.HasOne(m => m.PfaRegistration).WithMany().HasForeignKey(m => m.PfaRegistrationId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToDocument(m => m.DocumentId);
+        builder.HasOne<DeclarationVersion>().WithMany().HasForeignKey(m => m.DeclarationVersionId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class SpvRequestConfiguration : IEntityTypeConfiguration<SpvRequest>
+{
+    public void Configure(EntityTypeBuilder<SpvRequest> builder)
+    {
+        builder.ToTable("spv_requests");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.Cui).HasMaxLength(16).IsRequired();
+        builder.Property(r => r.Type).HasMaxLength(100).IsRequired();
+        builder.Property(r => r.ParametersJson).AsJson();
+        builder.Property(r => r.Status).AsText();
+        builder.Property(r => r.AnafRequestId).HasMaxLength(64);
+        builder.Property(r => r.Error).HasMaxLength(1000);
+        builder.HasIndex(r => r.Status);
+        builder.HasIndex(r => r.AnafRequestId);
+        builder.HasOne(r => r.PfaRegistration).WithMany().HasForeignKey(r => r.PfaRegistrationId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToUser(r => r.RequestedByUserId);
+    }
+}
+
 internal sealed class AnafConnectionConfiguration : IEntityTypeConfiguration<AnafConnection>
 {
     public void Configure(EntityTypeBuilder<AnafConnection> builder)

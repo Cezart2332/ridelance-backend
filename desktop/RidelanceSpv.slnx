@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="RidelanceSpv.Core/RidelanceSpv.Core.csproj" />
+  <Project Path="RidelanceSpv/RidelanceSpv.csproj" />
+  <Project Path="RidelanceSpv.Tests/RidelanceSpv.Tests.csproj" />
+</Solution>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>RIDElance SPV</AssemblyName>
+    <RootNamespace>RidelanceSpv</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RidelanceSpv.Core\RidelanceSpv.Core.csproj" />
+  </ItemGroup>
+</Project>

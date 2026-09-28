@@ -148,7 +148,7 @@ public sealed class AccountingModelTests
         root.GetProperty("blockingReasons").GetArrayLength().ShouldBe(0);
     }
 
-    private static readonly Migration[] AccountingMigrations = [new AddAccountingModule(), new AddPlatformDocumentText(), new AddMonthProcessing(), new AddDeclarationLineSupersede(), new AddTaxPointAndWithheldTax(), new AddSupplierSoftDelete(), new AddPlatformDocumentSoftDelete(), new AddVatRegistrationRequests(), new AddAnafEFactura()];
+    private static readonly Migration[] AccountingMigrations = [new AddAccountingModule(), new AddPlatformDocumentText(), new AddMonthProcessing(), new AddDeclarationLineSupersede(), new AddTaxPointAndWithheldTax(), new AddSupplierSoftDelete(), new AddPlatformDocumentSoftDelete(), new AddVatRegistrationRequests(), new AddAnafEFactura(), new AddSpvIntegration()];
 
     private static List<object?> Rows(InsertDataOperation insert, string column)
     {
