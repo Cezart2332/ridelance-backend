@@ -220,6 +220,76 @@ internal sealed class DeclarationConfiguration : IEntityTypeConfiguration<Declar
     }
 }
 
+internal sealed class AnafConnectionConfiguration : IEntityTypeConfiguration<AnafConnection>
+{
+    public void Configure(EntityTypeBuilder<AnafConnection> builder)
+    {
+        builder.ToTable("anaf_connections");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Status).AsText();
+        builder.Property(c => c.AccessTokenProtected).IsRequired();
+        builder.Property(c => c.RefreshTokenProtected).IsRequired();
+        builder.Property(c => c.LastError).HasMaxLength(1000);
+        builder.HasIndex(c => c.Status);
+        builder.RestrictToUser(c => c.UserId);
+    }
+}
+
+internal sealed class AnafAuthorizationRequestConfiguration : IEntityTypeConfiguration<AnafAuthorizationRequest>
+{
+    public void Configure(EntityTypeBuilder<AnafAuthorizationRequest> builder)
+    {
+        builder.ToTable("anaf_authorization_requests");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.State).HasMaxLength(64).IsRequired();
+        builder.Property(r => r.ReturnPath).HasMaxLength(500).IsRequired();
+        builder.HasIndex(r => r.State).IsUnique();
+        builder.RestrictToUser(r => r.UserId);
+    }
+}
+
+internal sealed class AnafPfaLinkConfiguration : IEntityTypeConfiguration<AnafPfaLink>
+{
+    public void Configure(EntityTypeBuilder<AnafPfaLink> builder)
+    {
+        builder.ToTable("anaf_pfa_links");
+        builder.HasKey(l => l.Id);
+        builder.Property(l => l.Status).AsText();
+        builder.Property(l => l.LastError).HasMaxLength(1000);
+        builder.HasIndex(l => l.PfaRegistrationId).IsUnique();
+        builder.HasOne(l => l.PfaRegistration).WithMany().HasForeignKey(l => l.PfaRegistrationId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToUser(l => l.EnabledByUserId);
+    }
+}
+
+internal sealed class EFacturaMessageConfiguration : IEntityTypeConfiguration<EFacturaMessage>
+{
+    public void Configure(EntityTypeBuilder<EFacturaMessage> builder)
+    {
+        builder.ToTable("efactura_messages");
+        builder.HasKey(m => m.Id);
+        builder.Property(m => m.AnafMessageId).HasMaxLength(64).IsRequired();
+        builder.Property(m => m.Kind).AsText();
+        builder.Property(m => m.AnafType).HasMaxLength(100).IsRequired();
+        builder.Property(m => m.UploadId).HasMaxLength(64);
+        builder.Property(m => m.Details).HasMaxLength(2000);
+        builder.Property(m => m.DownloadError).HasMaxLength(1000);
+        builder.Property(m => m.InvoiceNumber).HasMaxLength(200);
+        builder.Property(m => m.SupplierName).HasMaxLength(500);
+        builder.Property(m => m.SupplierCif).HasMaxLength(64);
+        builder.Property(m => m.CustomerName).HasMaxLength(500);
+        builder.Property(m => m.CustomerCif).HasMaxLength(64);
+        builder.Property(m => m.Currency).HasMaxLength(3);
+        builder.Property(m => m.TotalAmount).AsMoney();
+        builder.Property(m => m.VatAmount).AsMoney();
+        // Un mesaj ANAF o singură dată pe PFA: sincronizarea repetată nu dublează.
+        builder.HasIndex(m => new { m.PfaRegistrationId, m.AnafMessageId }).IsUnique();
+        builder.RestrictToPfa(m => m.PfaRegistrationId);
+        builder.RestrictToDocument(m => m.ZipDocumentId);
+        builder.RestrictToDocument(m => m.PdfDocumentId);
+    }
+}
+
 internal sealed class VatRegistrationRequestConfiguration : IEntityTypeConfiguration<VatRegistrationRequest>
 {
     public void Configure(EntityTypeBuilder<VatRegistrationRequest> builder)

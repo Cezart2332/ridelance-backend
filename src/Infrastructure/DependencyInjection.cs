@@ -155,6 +155,10 @@ public static class DependencyInjection
         // Declarațiile ANAF (B4): XML-ul din schema perioadei, XSD-ul oficial și validatorul ANAF intern.
         services.AddSingleton<Application.Abstractions.Anaf.IDeclarationXmlService, Infrastructure.Accounting.Anaf.AnafDeclarationXmlService>();
         services.AddSingleton<Application.Abstractions.Anaf.IVatRegistrationXml, Infrastructure.Accounting.Anaf.D700Xml>();
+        // ANAF OAuth (logincert) și e-Factura: secretul aplicației vine doar din mediu.
+        services.Configure<Infrastructure.Accounting.Anaf.AnafOAuthOptions>(configuration.GetSection(Infrastructure.Accounting.Anaf.AnafOAuthOptions.SectionName));
+        services.AddHttpClient<Application.Abstractions.Anaf.IAnafEFacturaClient, Infrastructure.Accounting.Anaf.AnafEFacturaClient>(client =>
+            client.Timeout = TimeSpan.FromSeconds(60));
         services.Configure<Infrastructure.Accounting.Anaf.AnafValidatorOptions>(configuration.GetSection(Infrastructure.Accounting.Anaf.AnafValidatorOptions.SectionName));
         services.AddHttpClient<Application.Abstractions.Anaf.IAnafValidatorClient, Infrastructure.Accounting.Anaf.AnafValidatorClient>(client =>
             client.Timeout = Timeout.InfiniteTimeSpan);
@@ -191,6 +195,7 @@ public static class DependencyInjection
         // Prospețimea scorului nu are eveniment care s-o declanșeze — doar trecerea timpului.
         services.AddHostedService<ListingFreshnessScoreJob>();
         services.AddHostedService<BankSyncJob>();
+        services.AddHostedService<EFacturaSyncJob>();
         services.AddHostedService<DocumentAiVerificationJob>();
         services.AddHostedService<PlatformDocumentExtractionJob>();
         services.AddHostedService<Infrastructure.Accounting.BnrExchangeRateImportJob>();

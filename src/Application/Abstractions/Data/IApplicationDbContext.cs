@@ -97,6 +97,10 @@ public interface IApplicationDbContext
     DbSet<DeclarationVersion> DeclarationVersions { get; }
     DbSet<DeclarationLine> DeclarationLines { get; }
     DbSet<VatRegistrationRequest> VatRegistrationRequests { get; }
+    DbSet<AnafConnection> AnafConnections { get; }
+    DbSet<AnafAuthorizationRequest> AnafAuthorizationRequests { get; }
+    DbSet<AnafPfaLink> AnafPfaLinks { get; }
+    DbSet<EFacturaMessage> EFacturaMessages { get; }
     DbSet<PfaAccountingSetting> PfaAccountingSettings { get; }
     DbSet<CashRegisterState> CashRegisterStates { get; }
     DbSet<PfaAccountingEngagement> PfaAccountingEngagements { get; }

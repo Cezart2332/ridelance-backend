@@ -301,6 +301,39 @@ public sealed class PostgresQueryTranslationTests
             .Handle(new Application.Accounting.VatRegistration.ListVatRegistrationsQuery(), CancellationToken.None)).IsSuccess.ShouldBeTrue();
         (await new Application.Accounting.VatRegistration.GetPfaVatRegistrationQueryHandler(db)
             .Handle(new Application.Accounting.VatRegistration.GetPfaVatRegistrationQuery(Guid.NewGuid()), CancellationToken.None)).Value.ShouldBeNull();
+
+        // e-Factura: lista mesajelor unui PFA (unul care nu există → PfaNotFound) și conexiunea ANAF.
+        var anaf = new Application.Accounting.Anaf.AnafEFacturaService(
+            db, new NoAnaf(), new PlainSecrets(), new DeclarationFiles(db, new AnafDeclarationXmlService(), new MemoryFiles(), new PlainSecrets()),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Application.Accounting.Anaf.AnafEFacturaService>.Instance);
+        (await new Application.Accounting.Anaf.GetPfaEFacturaQueryHandler(db, anaf)
+            .Handle(new Application.Accounting.Anaf.GetPfaEFacturaQuery(Guid.NewGuid()), CancellationToken.None)).IsFailure.ShouldBeTrue();
+        (await new Application.Accounting.Anaf.GetAnafConnectionQueryHandler(db, anaf)
+            .Handle(new Application.Accounting.Anaf.GetAnafConnectionQuery(), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        if (await db.PfaRegistrations.Select(p => (Guid?)p.Id).FirstOrDefaultAsync() is { } anyPfa)
+        {
+            (await new Application.Accounting.Anaf.GetPfaEFacturaQueryHandler(db, anaf)
+                .Handle(new Application.Accounting.Anaf.GetPfaEFacturaQuery(anyPfa), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        }
+    }
+
+    /// <summary>ANAF neconfigurat: interogările nu ajung la el.</summary>
+    private sealed class NoAnaf : Application.Abstractions.Anaf.IAnafEFacturaClient
+    {
+        public bool IsConfigured => false;
+
+        public Uri AuthorizeUrl(string state) => new("https://logincert.anaf.ro/");
+
+        public Task<Result<Application.Abstractions.Anaf.AnafTokens>> ExchangeCodeAsync(string code, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Result<Application.Abstractions.Anaf.AnafTokens>> RefreshAsync(string refreshToken, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Result<Application.Abstractions.Anaf.EFacturaPage>> ListMessagesAsync(string accessToken, string cif, DateTime fromUtc, DateTime toUtc, int page, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<Result<byte[]>> DownloadAsync(string accessToken, string messageId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Result<byte[]>> ToPdfAsync(byte[] invoiceXml, bool creditNote, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class UserOf(Guid id) : Application.Abstractions.Authentication.IUserContext
