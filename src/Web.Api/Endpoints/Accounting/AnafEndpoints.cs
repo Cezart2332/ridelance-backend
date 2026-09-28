@@ -1,6 +1,7 @@
 using Application.Abstractions.Messaging;
 using Application.Accounting.Anaf;
 using Infrastructure.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
 using Web.Api.Extensions;
 using Web.Api.Infrastructure;
@@ -42,11 +43,18 @@ internal sealed class AnafEndpoints : IEndpoint
             string? code,
             string? state,
             string? error,
+            [FromQuery(Name = "error_description")] string? errorDescription,
             ICommandHandler<CompleteAnafAuthorizationCommand, AnafAuthorizationOutcome> handler,
             IConfiguration configuration,
             CancellationToken cancellationToken) =>
         {
-            Result<AnafAuthorizationOutcome> result = await handler.Handle(new CompleteAnafAuthorizationCommand(code, state, error), cancellationToken);
+            string? authorizationError = error;
+            if (!string.IsNullOrWhiteSpace(errorDescription))
+            {
+                authorizationError = string.IsNullOrWhiteSpace(error) ? errorDescription : $"{error}: {errorDescription}";
+            }
+
+            Result<AnafAuthorizationOutcome> result = await handler.Handle(new CompleteAnafAuthorizationCommand(code, state, authorizationError), cancellationToken);
             string baseUrl = (configuration["App:BaseUrl"] ?? string.Empty).TrimEnd('/');
             AnafAuthorizationOutcome outcome = result.IsSuccess ? result.Value : new AnafAuthorizationOutcome("/admin", result.Error.Description);
             string separator = outcome.ReturnPath.Contains('?', StringComparison.Ordinal) ? "&" : "?";
