@@ -23,10 +23,20 @@ public sealed record AnafValidatorResult(
 /// </summary>
 public interface IAnafValidatorClient
 {
+    /// <param name="declarationType">Codul declarației din kitul ANAF (<c>D100</c>, <c>D700</c>).</param>
+    Task<Result<AnafValidatorResult>> ValidateAsync(
+        string declarationType,
+        string validatorVersion,
+        byte[] xml,
+        string correlationId,
+        CancellationToken cancellationToken);
+
+    /// <summary>Declarațiile lunare au tipul lor; D700 (cererea de cod TVA) nu e una dintre ele.</summary>
     Task<Result<AnafValidatorResult>> ValidateAsync(
         DeclarationType type,
         string validatorVersion,
         byte[] xml,
         string correlationId,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken) =>
+        ValidateAsync(type.ToString(), validatorVersion, xml, correlationId, cancellationToken);
 }

@@ -295,6 +295,12 @@ public sealed class PostgresQueryTranslationTests
             .Handle(new Application.Accounting.Rules.GetExchangeRateQuery("EUR", new DateOnly(2026, 8, 31)), CancellationToken.None)).IsSuccess.ShouldBeTrue();
         (await new Application.Accounting.Pfas.GetMyCashPreferenceQueryHandler(db, new UserOf(Guid.NewGuid()))
             .Handle(new Application.Accounting.Pfas.GetMyCashPreferenceQuery(), CancellationToken.None)).IsFailure.ShouldBeTrue();
+
+        // Cererile D700: ultima cerere per PFA (subinterogare corelată) și cererea unui PFA.
+        (await new Application.Accounting.VatRegistration.ListVatRegistrationsQueryHandler(db, new UserOf(Guid.NewGuid()))
+            .Handle(new Application.Accounting.VatRegistration.ListVatRegistrationsQuery(), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        (await new Application.Accounting.VatRegistration.GetPfaVatRegistrationQueryHandler(db)
+            .Handle(new Application.Accounting.VatRegistration.GetPfaVatRegistrationQuery(Guid.NewGuid()), CancellationToken.None)).Value.ShouldBeNull();
     }
 
     private sealed class UserOf(Guid id) : Application.Abstractions.Authentication.IUserContext

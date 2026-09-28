@@ -44,7 +44,7 @@ public sealed class AnafValidatorIntegrationTests
             NullLogger<AnafValidatorClient>.Instance);
 
         Result<AnafValidatorResult> result = await client.ValidateAsync(
-            type,
+            type.ToString(),
             Environment.GetEnvironmentVariable("RIDELANCE_ANAF_VALIDATOR_VERSION") ?? "2026-09",
             xml,
             $"test-{type}",

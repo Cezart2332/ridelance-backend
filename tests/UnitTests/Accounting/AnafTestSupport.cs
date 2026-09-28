@@ -81,10 +81,22 @@ internal sealed class FakeAnafValidator : IAnafValidatorClient
 
     public List<(DeclarationType Type, string Version, byte[] Xml)> Calls { get; } = [];
 
+    /// <summary>Declarațiile din afara celor lunare (D700).</summary>
+    public Func<string, byte[], Result<AnafValidatorResult>> RespondOther { get; set; } =
+        (_, _) => new AnafValidatorResult(true, [], [], "ok", Pdf, 1500, "test");
+
+    public List<(string Type, string Version, byte[] Xml)> OtherCalls { get; } = [];
+
     public Task<Result<AnafValidatorResult>> ValidateAsync(
-        DeclarationType type, string validatorVersion, byte[] xml, string correlationId, CancellationToken cancellationToken)
+        string declarationType, string validatorVersion, byte[] xml, string correlationId, CancellationToken cancellationToken)
     {
-        Calls.Add((type, validatorVersion, xml));
-        return Task.FromResult(Respond(type, xml));
+        if (Enum.TryParse(declarationType, out DeclarationType type))
+        {
+            Calls.Add((type, validatorVersion, xml));
+            return Task.FromResult(Respond(type, xml));
+        }
+
+        OtherCalls.Add((declarationType, validatorVersion, xml));
+        return Task.FromResult(RespondOther(declarationType, xml));
     }
 }

@@ -1,12 +1,16 @@
 using System.Globalization;
 using System.Text.Json;
 using Application.Accounting;
+using Application.Accounting.Declarations;
 using Application.Accounting.Ledger;
+using Application.Accounting.Pfas;
+using Application.Accounting.VatRegistration;
 using Domain.Accounting;
 using Domain.Banking;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.Users;
+using Infrastructure.Accounting.Anaf;
 using Infrastructure.Authentication;
 using Infrastructure.Database;
 using Infrastructure.DomainEvents;
@@ -140,6 +144,58 @@ public sealed class AccountingE2ESeed
         LedgerImportResult bank = (await new RunLedgerImportCommandHandler(db, [new BankLedgerSource(db)], Options.Create(new AccountingOptions()))
             .Handle(new RunLedgerImportCommand(ion), CancellationToken.None)).Value.Single();
         bank.Created.ShouldBeGreaterThan(0);
+
+        // D700: Radu e încă în onboarding și a răspuns „Nu” la TVA intracomunitar. Cererea se
+        // generează ca în onboarding; validarea ANAF, aprobarea și codul le face contabilul în e2e.
+        Guid radu = OnboardingPfa(db, "Radu", "Ene", Cui("4100010"));
+        await db.SaveChangesAsync();
+        var vat = new VatRegistrationService(
+            db,
+            new DeclarationFiles(db, new AnafDeclarationXmlService(), files, secrets),
+            new D700Xml(),
+            new FakeAnafValidator(),
+            new UpdatePfaSettingsCommandHandler(db, new SeedUser(Accountant), Options.Create(new AccountingOptions())));
+        (await vat.EnsureRequestedAsync(radu, null, CancellationToken.None)).Value.Status.ShouldBe(VatRegistrationStatus.Generated);
+    }
+
+    /// <summary>Un client încă în onboarding (fără angajament contabil), cu „Nu” la TVA intracomunitar.</summary>
+    private Guid OnboardingPfa(ApplicationDbContext db, string firstName, string lastName, string cui)
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = $"{firstName}.{lastName}.e2e@ridelance.test",
+            FirstName = firstName,
+            LastName = lastName,
+            PasswordHash = "-",
+            EmailVerifiedAtUtc = DateTime.UtcNow,
+        };
+        var pfa = new PfaRegistration
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            FullName = $"{firstName} {lastName}",
+            LegalName = $"{lastName.ToUpperInvariant()} {firstName.ToUpperInvariant()} PFA",
+            Cui = cui,
+            AssignedContabilId = Accountant,
+        };
+        db.Users.Add(user);
+        db.PfaRegistrations.Add(pfa);
+        db.PfaFiscalProfiles.Add(new PfaFiscalProfile
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = pfa.Id,
+            VatAnswer = VatAnswer.No,
+            VatRegistrationKind = VatRegistrationKind.None,
+            SpecialVatCodeStatus = PfaSpecialVatCodeStatus.No,
+        });
+        return pfa.Id;
+    }
+
+    private sealed class SeedUser(Guid id) : Application.Abstractions.Authentication.IUserContext
+    {
+        public Guid UserId => id;
     }
 
     private Guid Pfa(ApplicationDbContext db, SecretProtector secrets, string firstName, string lastName, string cui)
