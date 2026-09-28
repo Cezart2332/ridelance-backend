@@ -101,6 +101,10 @@ public interface IApplicationDbContext
     DbSet<AnafAuthorizationRequest> AnafAuthorizationRequests { get; }
     DbSet<AnafPfaLink> AnafPfaLinks { get; }
     DbSet<EFacturaMessage> EFacturaMessages { get; }
+    DbSet<SpvAgentKey> SpvAgentKeys { get; }
+    DbSet<SpvSyncRun> SpvSyncRuns { get; }
+    DbSet<SpvMessage> SpvMessages { get; }
+    DbSet<SpvRequest> SpvRequests { get; }
     DbSet<PfaAccountingSetting> PfaAccountingSettings { get; }
     DbSet<CashRegisterState> CashRegisterStates { get; }
     DbSet<PfaAccountingEngagement> PfaAccountingEngagements { get; }
