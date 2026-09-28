@@ -36,6 +36,9 @@ internal sealed class RuleAndSettingsEndpoints : IEndpoint
         group.MapGet("pfas", async (string? status, string? search, IQueryHandler<ListPfasQuery, IReadOnlyList<PfaListItem>> handler, CancellationToken cancellationToken) =>
             (await handler.Handle(new ListPfasQuery(status, search), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
 
+        group.MapGet("clients", async (string period, IQueryHandler<ListClientWorkspaceQuery, IReadOnlyList<ClientWorkspaceRow>> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new ListClientWorkspaceQuery(period), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
         group.MapGet("pfas/{pfaId:guid}/settings", async (Guid pfaId, IQueryHandler<GetPfaSettingsQuery, PfaAccountingSettingsDto> handler, CancellationToken cancellationToken) =>
             (await handler.Handle(new GetPfaSettingsQuery(pfaId), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
 

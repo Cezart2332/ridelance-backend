@@ -13,10 +13,13 @@ using SharedKernel;
 
 namespace Application.Accounting.Months;
 
-/// <summary><c>POST /accounting/periods/{period}/process | generate | validate</c> — pornește un job.</summary>
-public sealed record StartMonthJobCommand(BackgroundJobType Type, string Period) : ICommand<JobRef>;
+/// <summary>
+/// <c>POST /accounting/periods/{period}/process | generate | validate</c> — pornește un job pe toată
+/// luna; cu <paramref name="PfaId"/> (<c>/accounting/pfas/{id}/periods/{period}/…</c>) doar pentru un client.
+/// </summary>
+public sealed record StartMonthJobCommand(BackgroundJobType Type, string Period, Guid? PfaId = null) : ICommand<JobRef>;
 
-internal sealed record MonthJobParameters(string Period);
+internal sealed record MonthJobParameters(string Period, Guid? PfaId = null);
 
 internal sealed record MonthJobResults(List<JobResultItem> Results, List<JobResultItem> Errors);
 
@@ -35,7 +38,7 @@ internal sealed class StartMonthJobCommandHandler(IApplicationDbContext db, IUse
             Id = Guid.NewGuid(),
             Type = command.Type,
             Status = BackgroundJobStatus.Queued,
-            ParametersJson = AccountingJson.Serialize(new MonthJobParameters(command.Period)),
+            ParametersJson = AccountingJson.Serialize(new MonthJobParameters(command.Period, command.PfaId)),
             ResultJson = AccountingJson.Serialize(new MonthJobResults([], [])),
             CreatedByUserId = userContext.UserId,
             CreatedAtUtc = DateTime.UtcNow,
@@ -74,11 +77,12 @@ internal sealed class RunMonthJobCommandHandler(
             return Result.Failure(Error.NotFound("Accounting.JobNotFound", "Jobul nu există."));
         }
 
-        string period = AccountingJson.Deserialize<MonthJobParameters>(job.ParametersJson, new MonthJobParameters(string.Empty)).Period;
+        MonthJobParameters parameters = AccountingJson.Deserialize(job.ParametersJson, new MonthJobParameters(string.Empty));
+        string period = parameters.Period;
         MonthJobResults results = AccountingJson.Deserialize(job.ResultJson, new MonthJobResults([], []));
         var settings = TaxEngineSettings.From(options.Value);
 
-        List<ScopePfa> pfas = await AccountingScope.InPeriodAsync(db, period, cancellationToken);
+        List<ScopePfa> pfas = await AccountingScope.InPeriodAsync(db, period, cancellationToken, parameters.PfaId);
         if (job.Type == BackgroundJobType.GenerateDeclarations)
         {
             List<Guid> ready = await db.PfaMonthChecks
