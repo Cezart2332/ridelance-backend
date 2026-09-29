@@ -191,6 +191,35 @@ public sealed class SpvTests : IDisposable
         (await _db.SpvMessages.SingleAsync()).SpvRequestId.ShouldBe(answered.Id);
     }
 
+    [Fact]
+    public async Task Shared_cui_messages_are_visible_on_each_pfa_and_replies_belong_to_the_requesting_pfa()
+    {
+        var secondPfa = Guid.NewGuid();
+        var user = new User { Id = Guid.NewGuid(), Email = "second@ridelance.ro", FirstName = "Second", LastName = "Client", Role = UserRole.Client };
+        _db.PfaRegistrations.Add(new PfaRegistration
+        {
+            Id = secondPfa, UserId = user.Id, User = user, FullName = "Second Client", LegalName = "SECOND CLIENT PFA", Cui = Cui,
+        });
+        await _db.SaveChangesAsync();
+
+        SpvService spv = Service();
+        SpvAgentKey key = await KeyAsync(spv);
+        await spv.QueueRequestAsync(secondPfa, "VECTOR FISCAL", null, _admin, CancellationToken.None);
+        SpvRunStart run = (await spv.StartRunAsync(key, "PC-1", "1.0", CancellationToken.None)).Value;
+        run.Cuis.ShouldBe([Cui]);
+        SpvRequestToSend request = run.Requests.ShouldHaveSingleItem();
+        await spv.RequestResultAsync(key, run.RunId, request.Id, "reply-1", null, CancellationToken.None);
+        await spv.ReceiveAsync(key, run.RunId,
+            new SpvIncomingMessage("906", Cui, "RASPUNS SOLICITARE", DateTime.UtcNow, "reply-1", "Vector fiscal"),
+            Pdf("vector"), CancellationToken.None);
+
+        (await _db.SpvMessages.SingleAsync()).PfaRegistrationId.ShouldBe(secondPfa);
+        (await _db.SpvRequests.SingleAsync()).Status.ShouldBe(SpvRequestStatus.Answered);
+        var query = new GetPfaSpvQueryHandler(_db);
+        (await query.Handle(new GetPfaSpvQuery(_pfa), CancellationToken.None)).Value.Messages.ShouldHaveSingleItem().HasDocument.ShouldBeTrue();
+        (await query.Handle(new GetPfaSpvQuery(secondPfa), CancellationToken.None)).Value.Messages.ShouldHaveSingleItem().HasDocument.ShouldBeTrue();
+    }
+
     [Theory]
     [InlineData("recipisa pentru CIF 12345674, tip D100, numar_inregistrare INTERNT-1-2026/10-09-2026, perioada raportare 8.2026", "D100", "2026-08", "INTERNT-1-2026/10-09-2026")]
     [InlineData("Recipisa: tip D301 perioada de raportare 12.2025", "D301", "2025-12", null)]

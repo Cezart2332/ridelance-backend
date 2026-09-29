@@ -222,9 +222,15 @@ internal sealed class SpvService(IApplicationDbContext db, DeclarationFiles file
         }
 
         string cif = Digits(incoming.Cif);
-        Guid? pfaId = cif.Length == 0
+        Guid? requestedPfaId = incoming.RequestId is { Length: > 0 } requestId && cif.Length > 0
+            ? await db.SpvRequests
+                .Where(r => r.AnafRequestId == requestId && r.Cui == cif)
+                .Select(r => (Guid?)r.PfaRegistrationId)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+        Guid? pfaId = requestedPfaId ?? (cif.Length == 0
             ? null
-            : await db.PfaRegistrations.Where(p => p.Cui != null && (p.Cui == cif || p.Cui == "RO" + cif)).Select(p => (Guid?)p.Id).FirstOrDefaultAsync(cancellationToken);
+            : await db.PfaRegistrations.Where(p => p.Cui != null && (p.Cui == cif || p.Cui == "RO" + cif)).Select(p => (Guid?)p.Id).FirstOrDefaultAsync(cancellationToken));
 
         var message = new SpvMessage
         {

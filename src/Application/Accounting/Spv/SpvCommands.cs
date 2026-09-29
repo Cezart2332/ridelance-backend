@@ -135,18 +135,23 @@ internal sealed class GetPfaSpvQueryHandler(IApplicationDbContext db) : IQueryHa
 {
     public async Task<Result<PfaSpvDto>> Handle(GetPfaSpvQuery query, CancellationToken cancellationToken)
     {
-        if (!await db.PfaRegistrations.AnyAsync(p => p.Id == query.PfaId, cancellationToken))
+        string? rawCui = await db.PfaRegistrations
+            .Where(p => p.Id == query.PfaId)
+            .Select(p => p.Cui)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (rawCui is null && !await db.PfaRegistrations.AnyAsync(p => p.Id == query.PfaId, cancellationToken))
         {
             return Result.Failure<PfaSpvDto>(AccountingErrors.PfaNotFound);
         }
 
+        string cif = new([.. (rawCui ?? string.Empty).Where(char.IsDigit)]);
         List<SpvRequest> requests = await db.SpvRequests.AsNoTracking()
             .Where(r => r.PfaRegistrationId == query.PfaId)
             .OrderByDescending(r => r.CreatedAtUtc)
             .ToListAsync(cancellationToken);
         var requestTypes = requests.ToDictionary(r => r.Id, r => r.Type);
         List<SpvMessage> messages = await db.SpvMessages.AsNoTracking()
-            .Where(m => m.PfaRegistrationId == query.PfaId)
+            .Where(m => m.PfaRegistrationId == query.PfaId || cif.Length > 0 && m.Cif == cif)
             .OrderByDescending(m => m.AnafCreatedAtUtc)
             .ToListAsync(cancellationToken);
 
