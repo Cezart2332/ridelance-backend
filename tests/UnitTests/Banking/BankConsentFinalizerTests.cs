@@ -150,6 +150,38 @@ public sealed class BankConsentFinalizerTests
     }
 
     [Fact]
+    public async Task ReconnectedAccount_StoresTheSameTransactionIdUnderTheNewConsent()
+    {
+        await using ApplicationDbContext db = Database();
+        BankConnection connection = await AddConnection(db);
+        connection.ProviderConsentId = "consent-new";
+        var account = new BankAccount
+        {
+            Id = Guid.NewGuid(), BankConnectionId = connection.Id, UserId = connection.UserId,
+            ProviderAccountId = "acc-1", LastTransactionsSyncedAtUtc = DateTime.UtcNow.AddDays(-1),
+        };
+        db.BankAccounts.Add(account);
+        db.BankTransactions.Add(new BankTransaction
+        {
+            Id = Guid.NewGuid(), BankAccountId = account.Id, UserId = connection.UserId,
+            ProviderConsentId = "consent-old", ProviderTransactionId = "same-id",
+            Amount = 100, Currency = "RON", ImportedAtUtc = DateTime.UtcNow.AddDays(-1),
+        });
+        await db.SaveChangesAsync();
+        var provider = new StubProvider
+        {
+            Transactions = new BankTransactionsPage(
+                [new BankTransactionInfo("same-id", DateOnly.FromDateTime(DateTime.UtcNow), null, 25, "RON", null, null, "{}")], []),
+        };
+
+        await new BankAccountSyncService(db, provider).SyncAccountAsync(account, connection, default);
+
+        provider.LastDateFrom.ShouldBe(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-120));
+        (await db.BankTransactions.CountAsync()).ShouldBe(2);
+        (await db.BankTransactions.SingleAsync(t => t.ProviderConsentId == "consent-new")).Amount.ShouldBe(25);
+    }
+
+    [Fact]
     public async Task ConnectionFromAPreviousProvider_IsRetiredInsteadOfProbed()
     {
         await using ApplicationDbContext db = Database();
@@ -206,6 +238,8 @@ public sealed class BankConsentFinalizerTests
 
         public IReadOnlyList<BankAccountDetailsInfo> Accounts { get; init; } = [];
 
+        public BankTransactionsPage Transactions { get; init; } = new([], []);
+
         public DateOnly? LastDateFrom { get; private set; }
 
         public DateOnly? LastDateTo { get; private set; }
@@ -225,7 +259,7 @@ public sealed class BankConsentFinalizerTests
         {
             LastDateFrom = dateFrom;
             LastDateTo = dateTo;
-            return Task.FromResult(new BankTransactionsPage([], []));
+            return Task.FromResult(Transactions);
         }
 
         public Task<IReadOnlyList<BankInstitutionInfo>> ListInstitutionsAsync(CancellationToken cancellationToken = default) =>

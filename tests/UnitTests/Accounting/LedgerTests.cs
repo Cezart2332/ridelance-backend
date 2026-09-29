@@ -47,7 +47,7 @@ public sealed class LedgerTests : IDisposable
         _db.Users.Add(new User { Id = _accountant, Email = "contabil@ridelance.ro", FirstName = "Contabil", LastName = "RIDElance", Role = UserRole.Contabil });
         var user = new User { Id = _user, Email = "ion@ridelance.ro", FirstName = "Ion", LastName = "Popescu" };
         _db.PfaRegistrations.Add(new PfaRegistration { Id = _pfa, UserId = _user, User = user, FullName = "Ion Popescu", Cui = "12345674" });
-        var connection = new BankConnection { Id = Guid.NewGuid(), UserId = _user, Provider = "test", InstitutionId = "BT", InstitutionName = "Banca Transilvania" };
+        var connection = new BankConnection { Id = Guid.NewGuid(), UserId = _user, Provider = "test", InstitutionId = "BT", InstitutionName = "Banca Transilvania", ProviderConsentId = "consent-ledger", Status = BankConnectionStatus.Linked };
         _db.BankConnections.Add(connection);
         _db.BankAccounts.Add(new BankAccount { Id = _account, BankConnectionId = connection.Id, UserId = _user, ProviderAccountId = "acc", IsActive = true });
         _db.ExpenseCategoryRules.AddRange(
@@ -350,6 +350,7 @@ public sealed class LedgerTests : IDisposable
             Id = Guid.NewGuid(),
             BankAccountId = _account,
             UserId = _user,
+            ProviderConsentId = "consent-ledger",
             ProviderTransactionId = Guid.NewGuid().ToString("N"),
             BookingDate = date ?? Day,
             Amount = amount,

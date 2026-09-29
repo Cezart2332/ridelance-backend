@@ -146,7 +146,7 @@ public sealed class PeriodsAndHandoverTests : IDisposable
     [Fact]
     public async Task Importers_ignore_operations_after_the_end_date()
     {
-        var connection = new BankConnection { Id = Guid.NewGuid(), UserId = _user, Provider = "test", InstitutionId = "BT", InstitutionName = "BT" };
+        var connection = new BankConnection { Id = Guid.NewGuid(), UserId = _user, Provider = "test", InstitutionId = "BT", InstitutionName = "BT", ProviderConsentId = "consent-period", Status = BankConnectionStatus.Linked };
         var account = new BankAccount { Id = Guid.NewGuid(), BankConnectionId = connection.Id, UserId = _user, ProviderAccountId = "a", IsActive = true };
         _db.BankConnections.Add(connection);
         _db.BankAccounts.Add(account);
@@ -155,6 +155,7 @@ public sealed class PeriodsAndHandoverTests : IDisposable
             _db.BankTransactions.Add(new BankTransaction
             {
                 Id = Guid.NewGuid(), BankAccountId = account.Id, UserId = _user, ProviderTransactionId = Guid.NewGuid().ToString("N"),
+                ProviderConsentId = "consent-period",
                 BookingDate = date, Amount = amount, Currency = "RON", CounterpartyName = "MAGAZIN", ImportedAtUtc = DateTime.UtcNow,
             });
         }

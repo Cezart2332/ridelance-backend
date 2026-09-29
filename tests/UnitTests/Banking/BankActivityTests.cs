@@ -120,6 +120,38 @@ public sealed class BankActivityTests
         activity.TotalOut.ShouldBe(50m);
     }
 
+    [Fact]
+    public async Task ReconnectingAnotherBankAccount_HidesTransactionsFromThePreviousConsent()
+    {
+        using ApplicationDbContext db = await Seeded();
+        BankConnection connection = await db.BankConnections.SingleAsync();
+        BankAccount account = await db.BankAccounts.SingleAsync();
+        connection.ProviderConsentId = "consent-next";
+        db.BankTransactions.Add(Transaction(account.Id, new DateOnly(2026, 9, 29), 25m, consentId: "consent-next"));
+        await db.SaveChangesAsync();
+
+        BankActivityResponse activity = await Activity(db, Client, null);
+        BankTransactionsResponse list = (await new GetBankTransactionsQueryHandler(db, new StubUser(Client))
+            .Handle(new GetBankTransactionsQuery(null, null, 1, 25), CancellationToken.None)).Value;
+
+        activity.TransactionCount.ShouldBe(1);
+        activity.TotalIn.ShouldBe(25m);
+        list.TotalCount.ShouldBe(1);
+        list.Items.Single().Amount.ShouldBe(25m);
+    }
+
+    [Fact]
+    public async Task DisconnectingTheBank_HidesItsHistoricalTransactions()
+    {
+        using ApplicationDbContext db = await Seeded();
+        (await db.BankConnections.SingleAsync()).Status = BankConnectionStatus.Revoked;
+        await db.SaveChangesAsync();
+
+        (await Activity(db, Client, null)).TransactionCount.ShouldBe(0);
+        (await new GetBankTransactionsQueryHandler(db, new StubUser(Client))
+            .Handle(new GetBankTransactionsQuery(null, null, 1, 25), CancellationToken.None)).Value.TotalCount.ShouldBe(0);
+    }
+
     private static async Task<BankActivityResponse> Activity(
         ApplicationDbContext db,
         Guid requester,
@@ -169,10 +201,21 @@ public sealed class BankActivityTests
             AssignedContabilId = Accountant,
         });
 
+        var connection = new BankConnection
+        {
+            Id = Guid.NewGuid(),
+            UserId = Client,
+            Provider = "SmartAccounts",
+            ProviderConsentId = "consent-current",
+            Status = BankConnectionStatus.Linked,
+            LinkedAtUtc = DateTime.UtcNow,
+        };
+        db.BankConnections.Add(connection);
+
         var account = new BankAccount
         {
             Id = Guid.NewGuid(),
-            BankConnectionId = Guid.NewGuid(),
+            BankConnectionId = connection.Id,
             UserId = Client,
             ProviderAccountId = "acc-1",
             IbanMasked = "RO** **** 1234",
@@ -187,18 +230,22 @@ public sealed class BankActivityTests
             Transaction(account.Id, new DateOnly(2026, 3, 20), -200m),
             Transaction(account.Id, new DateOnly(2026, 4, 5), -50m),
             // Al altui client: nu are ce căuta în totaluri.
-            Transaction(account.Id, new DateOnly(2026, 3, 15), 9999m, Stranger));
+            Transaction(account.Id, new DateOnly(2026, 3, 15), 9999m, Stranger),
+            // Același RIDElance și același rând de cont, dar alt acord bancar.
+            Transaction(account.Id, new DateOnly(2026, 3, 16), 9999m, consentId: "consent-old"));
 
         await db.SaveChangesAsync(CancellationToken.None);
         return db;
     }
 
-    private static BankTransaction Transaction(Guid accountId, DateOnly date, decimal amount, Guid? userId = null) =>
+    private static BankTransaction Transaction(
+        Guid accountId, DateOnly date, decimal amount, Guid? userId = null, string consentId = "consent-current") =>
         new()
         {
             Id = Guid.NewGuid(),
             BankAccountId = accountId,
             UserId = userId ?? Client,
+            ProviderConsentId = consentId,
             ProviderTransactionId = Guid.NewGuid().ToString(),
             BookingDate = date,
             Amount = amount,

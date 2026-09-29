@@ -58,13 +58,20 @@ internal sealed class GetBankTransactionsQueryHandler(
         }
 
         Guid userId = owner.Value;
+        BankConnection? connection = await BankAccess.CurrentConnectionAsync(context, userId, cancellationToken);
+        Guid connectionId = connection?.Id ?? Guid.Empty;
+        string? consentId = connection?.ProviderConsentId;
 
         int pageSize = Math.Clamp(query.PageSize, 1, 100);
         int page = Math.Max(query.Page, 1);
 
         IQueryable<BankTransaction> transactions = context.BankTransactions
             .AsNoTracking()
-            .Where(bt => bt.UserId == userId);
+            .Where(bt => bt.UserId == userId &&
+                bt.ProviderConsentId == consentId &&
+                bt.Account.UserId == userId &&
+                bt.Account.BankConnectionId == connectionId &&
+                bt.Account.IsActive);
 
         // Capete inclusive: „luna martie" înseamnă și 31 martie.
         if (query.From is DateOnly from)
