@@ -194,9 +194,11 @@ public sealed class SmartAccountsProviderTests
         var store = new StubTokenStore(new BankConsentTokens("acc-1", "ref-1", DateTime.UtcNow.AddMinutes(4)));
 
         BankTransactionsPage page = await Provider(handler, store)
-            .GetTransactionsAsync("BT", "4211", "RO49AAAA1B31007593840000", new DateOnly(2026, 8, 1), null);
+            .GetTransactionsAsync("BT", "4211", "RO49AAAA1B31007593840000", new DateOnly(2026, 8, 1), new DateOnly(2026, 9, 29));
 
         page.Booked.Count.ShouldBe(2);
+        handler.Requests[0].RequestUri!.Query.ShouldContain("dateFrom=2026-08-01");
+        handler.Requests[0].RequestUri!.Query.ShouldContain("dateTo=2026-09-29");
 
         // Suma vine pozitivă, cu direcția separat: fără semn, o plată ar intra ca încasare.
         page.Booked[0].Amount.ShouldBe(-150.25m);
@@ -232,6 +234,8 @@ public sealed class SmartAccountsProviderTests
 
         page.Booked.Count.ShouldBe(2);
         handler.Requests[1].RequestUri.ShouldBe(handler.Requests[0].RequestUri);
+        handler.Requests[0].RequestUri!.Query.ShouldContain("dateFrom=");
+        handler.Requests[0].RequestUri!.Query.ShouldContain("dateTo=");
         handler.Requests[1].Headers.GetValues("next").Single().ShouldBe("cursor-2");
     }
 
@@ -247,6 +251,21 @@ public sealed class SmartAccountsProviderTests
         await Provider(handler, store).GetTransactionsAsync("PCB", "4211", "acct", null, null);
 
         handler.Requests[0].RequestUri!.Query.ShouldContain("bookingStatus=booked");
+    }
+
+    [Fact]
+    public async Task BtSandbox_ClampsAnExistingLongHistoryRequestToNinetyDays()
+    {
+        StubHandler handler = new StubHandler().Enqueue("""
+            {"status":200,"messageStatus":"Success","payload":{"transactions":{"booked":[]}}}
+            """);
+        var store = new StubTokenStore(new BankConsentTokens("acc-1", "ref-1", DateTime.UtcNow.AddMinutes(4)));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        await Provider(handler, store, sandbox: true).GetTransactionsAsync("BT", "4211", "acct", today.AddDays(-120), today);
+
+        handler.Requests[0].RequestUri!.Query.ShouldContain($"dateFrom={today.AddDays(-90):yyyy-MM-dd}");
+        handler.Requests[0].RequestUri!.Query.ShouldContain($"dateTo={today:yyyy-MM-dd}");
     }
 
     [Fact]
@@ -268,13 +287,14 @@ public sealed class SmartAccountsProviderTests
 
     private static SmartAccountsBankDataProvider Provider(
         StubHandler handler,
-        IBankConsentTokenStore? tokenStore = null)
+        IBankConsentTokenStore? tokenStore = null,
+        bool sandbox = false)
     {
         var options = new SmartAccountsOptions
         {
             ClientId = "ridelance",
-            ApiBaseUrl = "https://api.test",
-            MtlsBaseUrl = "https://mtls.test",
+            ApiBaseUrl = sandbox ? "https://mtls.sandboxaccounts.smartfintech.eu" : "https://api.test",
+            MtlsBaseUrl = sandbox ? "https://mtls.sandboxaccounts.smartfintech.eu" : "https://mtls.test",
         };
 
         return new SmartAccountsBankDataProvider(

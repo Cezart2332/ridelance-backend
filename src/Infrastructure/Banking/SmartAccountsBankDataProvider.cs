@@ -252,22 +252,28 @@ internal sealed class SmartAccountsBankDataProvider(
         var booked = new List<BankTransactionInfo>();
         var pending = new List<BankTransactionInfo>();
 
+        // Smart Accounts cere dateFrom și dateTo inclusiv pentru conturile fără tranzacții.
+        // Păstrăm aceleași valori la fiecare pagină (cursorul `next` depinde de interval).
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        DateOnly from = dateFrom ?? today.AddDays(-90);
+        DateOnly to = dateTo ?? today;
+        if (bankCode.Equals("BT", StringComparison.OrdinalIgnoreCase) &&
+            (_options.ApiBaseUrl.Contains("sandboxaccounts", StringComparison.OrdinalIgnoreCase) ||
+             _options.MtlsBaseUrl.Contains("sandboxaccounts", StringComparison.OrdinalIgnoreCase)))
+        {
+            // BT limitează sandboxul la 90 de zile. Și conexiunile create înainte de corecția
+            // intervalului trebuie să poată fi sincronizate.
+            from = DateOnly.FromDayNumber(Math.Max(from.DayNumber, today.AddDays(-90).DayNumber));
+        }
+
         // ProCredit acceptă doar „booked"; restul băncilor înțeleg „both", adică și tranzacțiile
         // nefinalizate, care la un cont de firmă sunt jumătate din ce se vede în aplicația băncii.
         var query = new List<string>
         {
             $"bookingStatus={(bankCode.Equals("PCB", StringComparison.OrdinalIgnoreCase) ? "booked" : "both")}",
+            $"dateFrom={from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}",
+            $"dateTo={to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}",
         };
-
-        if (dateFrom is not null)
-        {
-            query.Add($"dateFrom={dateFrom.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
-        }
-
-        if (dateTo is not null)
-        {
-            query.Add($"dateTo={dateTo.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
-        }
 
         string url = CoreUrl(
             $"accounts/{Path(bankCode)}/{Path(resourceId)}/{Path(consentId)}/transactions?{string.Join('&', query)}");

@@ -23,7 +23,11 @@ public sealed class BankAccountSyncService(
         CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        DateOnly dateFrom = account.LastTransactionsSyncedAtUtc is DateTime lastSync
+        // O sincronizare veche putea fi marcată reușită deși apelul fără dateTo nu aducea
+        // tranzacții. Pentru conturile încă goale reluăm istoricul de la început.
+        bool hasTransactions = await context.BankTransactions
+            .AnyAsync(bt => bt.BankAccountId == account.Id, cancellationToken);
+        DateOnly dateFrom = hasTransactions && account.LastTransactionsSyncedAtUtc is DateTime lastSync
             ? DateOnly.FromDateTime(lastSync - ResyncOverlap)
             : today.AddDays(-Math.Max(1, connection.MaxHistoricalDays));
 
@@ -32,9 +36,8 @@ public sealed class BankAccountSyncService(
             connection.ProviderConsentId,
             account.ProviderAccountId,
             dateFrom,
-            // Fără capăt de sus: intervalul e legat de paginare, iar o dată de final calculată
-            // acum ar tăia tranzacțiile apărute cât ține sincronizarea.
-            dateTo: null,
+            // Smart Accounts cere ambele capete. Paginarea păstrează exact același interval.
+            dateTo: today,
             cancellationToken);
 
         // Pending-urile sunt tranzitorii: le ștergem și le reinserăm pe cele curente.
