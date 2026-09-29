@@ -37,7 +37,7 @@ public static class SpvRequestTypes
         ["Obligatii de plata"] = [],
         ["Nota obligatiilor de plata"] = [],
         ["Situatie Sintetica"] = ["an", "luna"],
-        ["Fisa Rol"] = ["an"],
+        ["Fisa Rol"] = [],
         ["Istoric declaratii"] = ["an"],
         ["Duplicat Recipisa"] = ["numar_inregistrare"],
         ["D100"] = ["an", "luna"],

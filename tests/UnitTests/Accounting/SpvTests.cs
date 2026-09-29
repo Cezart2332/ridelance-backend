@@ -181,7 +181,7 @@ public sealed class SpvTests : IDisposable
 
         SpvRunStart run = (await spv.StartRunAsync(key, "PC-1", "1.0", CancellationToken.None)).Value;
         SpvRequestToSend request = run.Requests.ShouldHaveSingleItem();
-        request.Parameters.ShouldBe(new Dictionary<string, string> { ["an"] = "2026" });
+        request.Parameters.ShouldBeEmpty();
 
         await spv.RequestResultAsync(key, run.RunId, request.Id, "5555", null, CancellationToken.None);
         await spv.ReceiveAsync(key, run.RunId, new SpvIncomingMessage("905", Cui, "RASPUNS SOLICITARE", DateTime.UtcNow, "5555", "Fisa Rol"), Pdf("fisa"), CancellationToken.None);
