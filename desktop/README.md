@@ -22,7 +22,7 @@ cererile, excepțiile) se face pe server și în aplicația web.
 
 ## Folosire
 
-1. În RIDElance (admin) → fișa unui client → tabul **ANAF** → **Aplicația SPV** → **Cheie nouă**.
+1. În RIDElance (admin) → **Contabilitate → ANAF** → **Aplicația SPV** → **Cheie nouă**.
 2. În aplicație: lipești cheia → **Conectează** → **Alege** certificatul de pe stick.
 
 ## Build
