@@ -213,7 +213,8 @@ internal sealed class InitiateBankConnectionCommandHandler(
     /// Câte zile de istoric cerem la prima sincronizare.
     ///
     /// Băncile au limite proprii, iar o cerere peste limita lor e refuzată cu totul, nu trunchiată:
-    /// BCR, Exim, Intesa și ING dau 90 de zile, BT 120, RZB și Vista 180, restul nelimitat.
+    /// BCR, Exim, Intesa și ING dau 90 de zile, BT 120 (90 în sandbox), RZB și Vista 180,
+    /// restul nelimitat.
     /// </summary>
     private static int HistoryDaysFor(IConfiguration configuration, string bankCode)
     {
@@ -224,7 +225,8 @@ internal sealed class InitiateBankConnectionCommandHandler(
         int cap = bankCode.ToUpperInvariant() switch
         {
             "BCR" or "EXIM" or "ISP" or "ING" => 90,
-            "BT" => 120,
+            "BT" => (configuration["SmartAccounts:MtlsBaseUrl"] ?? string.Empty)
+                .Contains("sandboxaccounts", StringComparison.OrdinalIgnoreCase) ? 90 : 120,
             "RZB" or "VST" => 180,
             _ => configured,
         };

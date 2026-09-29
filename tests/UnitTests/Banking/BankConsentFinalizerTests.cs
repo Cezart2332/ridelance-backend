@@ -123,6 +123,30 @@ public sealed class BankConsentFinalizerTests
         // IBAN-ul complet nu se stochează niciodată.
         account.IbanMasked.ShouldBe("RO49••••0000");
         account.OwnerName.ShouldBe("Ion Pop");
+        provider.LastDateTo.ShouldBe(DateOnly.FromDateTime(DateTime.UtcNow));
+    }
+
+    [Fact]
+    public async Task EmptyAccount_RetriesItsHistoryAfterAnEarlierEmptySync()
+    {
+        await using ApplicationDbContext db = Database();
+        BankConnection connection = await AddConnection(db);
+        var account = new BankAccount
+        {
+            Id = Guid.NewGuid(),
+            BankConnectionId = connection.Id,
+            UserId = connection.UserId,
+            ProviderAccountId = "acc-1",
+            LastTransactionsSyncedAtUtc = DateTime.UtcNow.AddDays(-1),
+        };
+        db.BankAccounts.Add(account);
+        await db.SaveChangesAsync();
+        var provider = new StubProvider();
+
+        await new BankAccountSyncService(db, provider).SyncAccountAsync(account, connection, default);
+
+        provider.LastDateFrom.ShouldBe(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-120));
+        provider.LastDateTo.ShouldBe(DateOnly.FromDateTime(DateTime.UtcNow));
     }
 
     [Fact]
@@ -182,6 +206,10 @@ public sealed class BankConsentFinalizerTests
 
         public IReadOnlyList<BankAccountDetailsInfo> Accounts { get; init; } = [];
 
+        public DateOnly? LastDateFrom { get; private set; }
+
+        public DateOnly? LastDateTo { get; private set; }
+
         public string ProviderName => "SmartAccounts";
 
         public bool IsConfigured => true;
@@ -193,8 +221,12 @@ public sealed class BankConsentFinalizerTests
             string bankCode, string consentId, CancellationToken cancellationToken = default) => Task.FromResult(Accounts);
 
         public Task<BankTransactionsPage> GetTransactionsAsync(
-            string bankCode, string consentId, string resourceId, DateOnly? dateFrom, DateOnly? dateTo, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new BankTransactionsPage([], []));
+            string bankCode, string consentId, string resourceId, DateOnly? dateFrom, DateOnly? dateTo, CancellationToken cancellationToken = default)
+        {
+            LastDateFrom = dateFrom;
+            LastDateTo = dateTo;
+            return Task.FromResult(new BankTransactionsPage([], []));
+        }
 
         public Task<IReadOnlyList<BankInstitutionInfo>> ListInstitutionsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<BankInstitutionInfo>>([]);
