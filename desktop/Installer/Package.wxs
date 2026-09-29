@@ -1,0 +1,47 @@
+<!--
+  RIDElance SPV: instalare pentru utilizatorul curent (fără drepturi de administrator), în
+  %LocalAppData%\Programs\RIDElance SPV, cu scurtături în Start și pe Desktop. O versiune nouă o
+  înlocuiește pe cea veche (MajorUpgrade). Setările (%AppData%\RIDElance SPV) rămân la dezinstalare.
+  Textele din MSI sunt fără diacritice: tabelele MSI folosesc o singură pagină de cod.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="RIDElance SPV"
+           Manufacturer="RIDElance"
+           Version="$(Version)"
+           UpgradeCode="6F2E8C1A-4B7D-4E0A-9C35-1D8A7F2B5E90"
+           Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="O versiune mai noua a RIDElance SPV este deja instalata." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="$(Assets)app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://ridelance.ro" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="RIDElance SPV" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="RIDElance SPV">
+      <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="3C9D1E57-8A2B-4F6C-B1D4-7E5A0C9F2B61">
+        <File Id="MainExe" Source="$(PublishDir)RIDElance SPV.exe" />
+        <!-- La instalarea per-utilizator, cheia componentei e în registrul utilizatorului. -->
+        <RegistryValue Root="HKCU" Key="Software\RIDElance\SPV" Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+        <RemoveFolder Id="RemoveProgramsFolder" Directory="ProgramsFolder" On="uninstall" />
+      </Component>
+
+      <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder">
+        <Shortcut Id="StartMenuShortcut" Name="RIDElance SPV" Target="[INSTALLFOLDER]RIDElance SPV.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
+        <RegistryValue Root="HKCU" Key="Software\RIDElance\SPV" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+
+      <Component Id="DesktopShortcut" Directory="DesktopFolder">
+        <Shortcut Id="DesktopShortcut" Name="RIDElance SPV" Target="[INSTALLFOLDER]RIDElance SPV.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
+        <RegistryValue Root="HKCU" Key="Software\RIDElance\SPV" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>

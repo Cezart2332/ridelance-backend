@@ -1,0 +1,12 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <!--
+    Installer-ul MSI al aplicației RIDElance SPV. Împachetează executabilul single-file din
+    ../publish (vezi README), deci publish-ul se face înainte.
+  -->
+  <PropertyGroup>
+    <OutputName>RIDElance-SPV-Setup</OutputName>
+    <!-- ICE91: fișier în profilul utilizatorului; pachetul e doar per-utilizator, deci e intenționat. -->
+    <SuppressIces>ICE91</SuppressIces>
+    <DefineConstants>Version=$(Version);PublishDir=$(MSBuildThisFileDirectory)..\publish\;Assets=$(MSBuildThisFileDirectory)..\RidelanceSpv\Assets\</DefineConstants>
+  </PropertyGroup>
+</Project>
