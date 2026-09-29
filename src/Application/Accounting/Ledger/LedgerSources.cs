@@ -86,7 +86,10 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
             .FirstOrDefaultAsync(cancellationToken);
 
         IQueryable<BankTransaction> transactions = db.BankTransactions.AsNoTracking()
-            .Where(t => !t.IsPending && (t.BookingDate != null || t.ValueDate != null) && t.Amount != 0);
+            .Where(t => !t.IsPending && (t.BookingDate != null || t.ValueDate != null) && t.Amount != 0 &&
+                t.UserId == context.UserId && t.Account.UserId == context.UserId && t.Account.IsActive &&
+                t.Account.Connection.Status == BankConnectionStatus.Linked &&
+                t.ProviderConsentId == t.Account.Connection.ProviderConsentId);
         transactions = connectionId is { } connection
             ? transactions.Where(t => t.Account.BankConnectionId == connection)
             : transactions.Where(t => t.UserId == context.UserId);

@@ -1,4 +1,5 @@
 using Application.Abstractions.Data;
+using Domain.Banking;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -41,4 +42,11 @@ internal static class BankAccess
 
         return isAssignedAccountant ? target : Result.Failure<Guid>(NotAllowed);
     }
+
+    public static Task<BankConnection?> CurrentConnectionAsync(
+        IApplicationDbContext context, Guid userId, CancellationToken cancellationToken) =>
+        context.BankConnections.AsNoTracking()
+            .Where(c => c.UserId == userId && c.Status == BankConnectionStatus.Linked)
+            .OrderByDescending(c => c.LinkedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
 }

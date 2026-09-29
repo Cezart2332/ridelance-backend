@@ -61,6 +61,9 @@ internal sealed class GetBankActivityQueryHandler(
         }
 
         Guid userId = owner.Value;
+        BankConnection? connection = await BankAccess.CurrentConnectionAsync(context, userId, cancellationToken);
+        Guid connectionId = connection?.Id ?? Guid.Empty;
+        string? consentId = connection?.ProviderConsentId;
 
         // Intervalul e inclusiv la ambele capete: „luna martie" înseamnă și 31 martie.
         DateOnly from = query.From <= query.To ? query.From : query.To;
@@ -69,6 +72,10 @@ internal sealed class GetBankActivityQueryHandler(
         List<BankTransaction> transactions = await context.BankTransactions
             .AsNoTracking()
             .Where(bt => bt.UserId == userId
+                && bt.ProviderConsentId == consentId
+                && bt.Account.UserId == userId
+                && bt.Account.BankConnectionId == connectionId
+                && bt.Account.IsActive
                 && bt.BookingDate != null
                 && bt.BookingDate >= from
                 && bt.BookingDate <= to)
@@ -76,7 +83,7 @@ internal sealed class GetBankActivityQueryHandler(
 
         List<BankActivityAccount> accounts = await context.BankAccounts
             .AsNoTracking()
-            .Where(a => a.UserId == userId && a.IsActive)
+            .Where(a => a.UserId == userId && a.BankConnectionId == connectionId && a.IsActive)
             .OrderBy(a => a.IbanMasked)
             .Select(a => new BankActivityAccount(
                 a.Id,

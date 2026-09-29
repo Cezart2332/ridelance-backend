@@ -10,10 +10,13 @@ internal sealed class BankTransactionConfiguration : IEntityTypeConfiguration<Ba
     {
         builder.HasKey(bt => bt.Id);
 
-        builder.HasIndex(bt => new { bt.BankAccountId, bt.ProviderTransactionId }).IsUnique();
+        builder.HasIndex(bt => new { bt.BankAccountId, bt.ProviderConsentId, bt.ProviderTransactionId })
+            .IsUnique()
+            .HasDatabaseName("ix_bank_transactions_account_consent_transaction");
         builder.HasIndex(bt => new { bt.UserId, bt.BookingDate });
 
         builder.Property(bt => bt.ProviderTransactionId).HasMaxLength(256).IsRequired();
+        builder.Property(bt => bt.ProviderConsentId).HasMaxLength(128);
         builder.Property(bt => bt.Amount).HasColumnType("decimal(18,2)");
         builder.Property(bt => bt.Currency).HasMaxLength(8).IsRequired();
         builder.Property(bt => bt.CounterpartyName).HasMaxLength(256);

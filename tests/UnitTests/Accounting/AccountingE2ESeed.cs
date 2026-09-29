@@ -355,7 +355,7 @@ public sealed class AccountingE2ESeed
         var connection = new BankConnection
         {
             Id = Guid.NewGuid(), UserId = pfa.UserId, Provider = "e2e", InstitutionId = "BTRLRO22", InstitutionName = "Banca Transilvania",
-            Status = BankConnectionStatus.Linked, CreatedAtUtc = DateTime.UtcNow,
+            Status = BankConnectionStatus.Linked, ProviderConsentId = "consent-e2e", CreatedAtUtc = DateTime.UtcNow,
         };
         var account = new BankAccount { Id = Guid.NewGuid(), BankConnectionId = connection.Id, UserId = pfa.UserId, ProviderAccountId = "e2e-ron", Currency = "RON", IsActive = true };
         db.BankConnections.Add(connection);
@@ -379,6 +379,7 @@ public sealed class AccountingE2ESeed
                 Id = Guid.NewGuid(),
                 BankAccountId = account.Id,
                 UserId = pfa.UserId,
+                ProviderConsentId = "consent-e2e",
                 ProviderTransactionId = Guid.NewGuid().ToString("N"),
                 BookingDate = DateOnly.ParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture),
                 Amount = amount,

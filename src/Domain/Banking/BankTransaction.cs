@@ -8,7 +8,10 @@ public sealed class BankTransaction : Entity
     public Guid BankAccountId { get; set; }
     public Guid UserId { get; set; }
 
-    /// <summary>Provider transaction id — unique per (BankAccountId, ProviderTransactionId) for idempotent upserts.</summary>
+    /// <summary>Acordul Smart Accounts care a furnizat tranzacția; null pentru datele vechi neverificabile.</summary>
+    public string? ProviderConsentId { get; set; }
+
+    /// <summary>Identificatorul furnizorului, unic în cadrul contului și acordului.</summary>
     public string ProviderTransactionId { get; set; } = string.Empty;
 
     public DateOnly? BookingDate { get; set; }

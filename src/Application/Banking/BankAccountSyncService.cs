@@ -26,7 +26,8 @@ public sealed class BankAccountSyncService(
         // O sincronizare veche putea fi marcată reușită deși apelul fără dateTo nu aducea
         // tranzacții. Pentru conturile încă goale reluăm istoricul de la început.
         bool hasTransactions = await context.BankTransactions
-            .AnyAsync(bt => bt.BankAccountId == account.Id, cancellationToken);
+            .AnyAsync(bt => bt.BankAccountId == account.Id &&
+                bt.ProviderConsentId == connection.ProviderConsentId, cancellationToken);
         DateOnly dateFrom = hasTransactions && account.LastTransactionsSyncedAtUtc is DateTime lastSync
             ? DateOnly.FromDateTime(lastSync - ResyncOverlap)
             : today.AddDays(-Math.Max(1, connection.MaxHistoricalDays));
@@ -42,7 +43,8 @@ public sealed class BankAccountSyncService(
 
         // Pending-urile sunt tranzitorii: le ștergem și le reinserăm pe cele curente.
         List<BankTransaction> oldPending = await context.BankTransactions
-            .Where(bt => bt.BankAccountId == account.Id && bt.IsPending)
+            .Where(bt => bt.BankAccountId == account.Id &&
+                bt.ProviderConsentId == connection.ProviderConsentId && bt.IsPending)
             .ToListAsync(cancellationToken);
         context.BankTransactions.RemoveRange(oldPending);
 
@@ -51,7 +53,9 @@ public sealed class BankAccountSyncService(
             .ToList();
 
         var existingIds = (await context.BankTransactions
-                .Where(bt => bt.BankAccountId == account.Id && incomingIds.Contains(bt.ProviderTransactionId))
+                .Where(bt => bt.BankAccountId == account.Id &&
+                    bt.ProviderConsentId == connection.ProviderConsentId &&
+                    incomingIds.Contains(bt.ProviderTransactionId))
                 .Select(bt => bt.ProviderTransactionId)
                 .ToListAsync(cancellationToken))
             .ToHashSet(StringComparer.Ordinal);
@@ -62,8 +66,8 @@ public sealed class BankAccountSyncService(
             existingIds.Remove(pending.ProviderTransactionId);
         }
 
-        AddNewTransactions(page.Booked, isPending: false, account, existingIds);
-        AddNewTransactions(page.Pending, isPending: true, account, existingIds);
+        AddNewTransactions(page.Booked, isPending: false, account, connection.ProviderConsentId, existingIds);
+        AddNewTransactions(page.Pending, isPending: true, account, connection.ProviderConsentId, existingIds);
 
         account.LastTransactionsSyncedAtUtc = DateTime.UtcNow;
         connection.LastSyncedAtUtc = DateTime.UtcNow;
@@ -75,6 +79,7 @@ public sealed class BankAccountSyncService(
         IReadOnlyList<BankTransactionInfo> transactions,
         bool isPending,
         Domain.Banking.BankAccount account,
+        string providerConsentId,
         HashSet<string> existingIds)
     {
         foreach (BankTransactionInfo tx in transactions)
@@ -89,6 +94,7 @@ public sealed class BankAccountSyncService(
                 Id = Guid.NewGuid(),
                 BankAccountId = account.Id,
                 UserId = account.UserId,
+                ProviderConsentId = providerConsentId,
                 ProviderTransactionId = tx.ProviderTransactionId,
                 BookingDate = tx.BookingDate,
                 ValueDate = tx.ValueDate,
