@@ -5,12 +5,9 @@ namespace Infrastructure.Authorization;
 
 internal sealed class PermissionAuthorizationPolicyProvider : DefaultAuthorizationPolicyProvider
 {
-    private readonly AuthorizationOptions _authorizationOptions;
-
     public PermissionAuthorizationPolicyProvider(IOptions<AuthorizationOptions> options)
         : base(options)
     {
-        _authorizationOptions = options.Value;
     }
 
     public override async Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
@@ -22,12 +19,10 @@ internal sealed class PermissionAuthorizationPolicyProvider : DefaultAuthorizati
             return policy;
         }
 
-        AuthorizationPolicy permissionPolicy = new AuthorizationPolicyBuilder()
+        // AuthorizationOptions este comun tuturor cererilor; AddPolicy modifică un Dictionary
+        // care nu acceptă scrieri concurente și poate corupe starea întregului proces.
+        return new AuthorizationPolicyBuilder()
             .AddRequirements(new PermissionRequirement(policyName))
             .Build();
-
-        _authorizationOptions.AddPolicy(policyName, permissionPolicy);
-
-        return permissionPolicy;
     }
 }
