@@ -35,5 +35,17 @@ dotnet publish RidelanceSpv -c Release -r win-x64 --self-contained -p:PublishSin
 
 `publish/RIDElance SPV.exe` rulează fără .NET instalat.
 
+Installer-ul (MSI, WiX din NuGet), după publish:
+
+```
+dotnet build Installer -c Release
+```
+
+`Installer/bin/Release/RIDElance-SPV-Setup.msi` instalează pentru utilizatorul curent (fără drepturi
+de administrator) în `%LocalAppData%\Programs\RIDElance SPV`, cu scurtături în Start și pe Desktop.
+O versiune nouă (`<Version>` din `Directory.Build.props`) o înlocuiește pe cea veche.
+
+Logo-ul și iconița (`RidelanceSpv/Assets`) sunt randate din `src/assets/logo.svg` al aplicației web.
+
 Testul de contract cu serverul (`ServerContractTests`) rulează doar cu `RIDELANCE_SPV_SERVER` și
 `RIDELANCE_SPV_KEY` setate (un backend de test cu o cheie SPV și un PFA cu CUI 12345674).

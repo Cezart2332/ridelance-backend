@@ -48,8 +48,8 @@ public partial class MainWindow : Window
     private async Task ShowStateAsync()
     {
         ServerBox.Text = _settings.ServerUrl;
-        IntervalBox.SelectedItem = IntervalBox.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.IntervalMinutes.ToString(CultureInfo.InvariantCulture))
-            ?? IntervalBox.Items[1];
+        List<RadioButton> intervals = [.. IntervalPanel.Children.OfType<RadioButton>()];
+        (intervals.FirstOrDefault(i => (string)i.Tag == _settings.IntervalMinutes.ToString(CultureInfo.InvariantCulture)) ?? intervals[1]).IsChecked = true;
         StartupBox.IsChecked = AppSettings.StartsWithWindows;
         _loading = false;
 
@@ -142,9 +142,9 @@ public partial class MainWindow : Window
 
     private async void OnSendNow(object sender, RoutedEventArgs e) => await SyncAsync();
 
-    private void OnIntervalChanged(object sender, SelectionChangedEventArgs e)
+    private void OnIntervalChanged(object sender, RoutedEventArgs e)
     {
-        if (_loading || IntervalBox.SelectedItem is not ComboBoxItem { Tag: string tag })
+        if (_loading || sender is not RadioButton { Tag: string tag })
         {
             return;
         }

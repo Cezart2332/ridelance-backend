@@ -5,7 +5,12 @@
     <AssemblyName>RIDElance SPV</AssemblyName>
     <RootNamespace>RidelanceSpv</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets/app.ico" />
+    <Resource Include="Assets/logo.png" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RidelanceSpv.Core\RidelanceSpv.Core.csproj" />
   </ItemGroup>

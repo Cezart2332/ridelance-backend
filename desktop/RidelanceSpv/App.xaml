@@ -8,10 +8,10 @@
     <SolidColorBrush x:Key="Page" Color="#F5FAFD" />
     <SolidColorBrush x:Key="Line" Color="#EEF1F4" />
 
-    <Style TargetType="TextBlock">
-      <Setter Property="Foreground" Value="{StaticResource Ink}" />
-      <Setter Property="FontSize" Value="14" />
-    </Style>
+    <!--
+      Fără stil implicit pentru TextBlock: s-ar aplica și textului din butoane (WPF îl folosește și în
+      șabloane), iar „Trimite acum” ar rămâne negru pe negru. Culoarea și mărimea vin din fereastră.
+    -->
 
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background" Value="White" />
@@ -56,6 +56,34 @@
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Box" Property="Opacity" Value="0.5" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Intervalul, ca pastilele de filtru din aplicația web: cea aleasă e plină. -->
+    <Style x:Key="Pill" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="{StaticResource Ink}" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="8,0,0,0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="Box" Background="White" BorderBrush="#DADDE3" BorderThickness="1" CornerRadius="18" Padding="14,7">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="#1A1A2E" />
+                <Setter TargetName="Box" Property="BorderBrush" Value="#1A1A2E" />
+                <Setter Property="Foreground" Value="White" />
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Box" Property="BorderBrush" Value="#5CCBF5" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
