@@ -145,7 +145,7 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
 
         PfaBankAccountDeclaration bank = registration.BankAccountDeclaration ?? AddBank(registration, now);
         bank.Status = BankDeclarationStatus.Verified;
-        bank.IbanMasked ??= "RO49••••1234";
+        bank.Iban ??= "RO49AAAA1B31007593841234";
         bank.UpdatedAtUtc = now;
 
         PfaOblioAccount oblio = registration.OblioAccount ?? AddOblio(registration, now);

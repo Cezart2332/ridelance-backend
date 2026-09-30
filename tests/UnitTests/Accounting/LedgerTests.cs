@@ -255,7 +255,7 @@ public sealed class LedgerTests : IDisposable
     [Fact]
     public async Task R42_R43_TaxPaymentsAndTransfersBetweenOwnAccounts()
     {
-        _db.BankAccounts.Add(new BankAccount { Id = Guid.NewGuid(), BankConnectionId = (await _db.BankConnections.FirstAsync()).Id, UserId = _user, ProviderAccountId = "savings", IbanMasked = "RO49••••0002", IsActive = true });
+        _db.BankAccounts.Add(new BankAccount { Id = Guid.NewGuid(), BankConnectionId = (await _db.BankConnections.FirstAsync()).Id, UserId = _user, ProviderAccountId = "savings", Iban = "RO49BTRL0000000000000002", IsActive = true });
         await _db.SaveChangesAsync();
         Transaction(-1500m, "Trezoreria Operativa Brasov", "CASS 2026");
         Transaction(-500m, "Popescu Ion PFA", "Transfer", iban: "RO49BTRL0000000000000002");

@@ -174,7 +174,7 @@ public static class OnboardingDevFixtures
             });
 
         bank.Status = BankDeclarationStatus.Verified;
-        bank.IbanMasked ??= $"{Iban[..4]}••••{Iban[^4..]}";
+        bank.Iban ??= Iban;
         bank.UpdatedAtUtc = nowUtc;
 
         PfaOblioAccount oblio = registration.OblioAccount ?? Add(context, registration, new PfaOblioAccount

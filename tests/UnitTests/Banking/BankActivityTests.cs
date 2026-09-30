@@ -218,7 +218,7 @@ public sealed class BankActivityTests
             BankConnectionId = connection.Id,
             UserId = Client,
             ProviderAccountId = "acc-1",
-            IbanMasked = "RO** **** 1234",
+            Iban = "RO49AAAA1B31007593841234",
             Currency = "RON",
             IsActive = true,
         };

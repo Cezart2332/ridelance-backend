@@ -13,7 +13,7 @@ public sealed record BankActivityBucket(DateOnly Start, decimal In, decimal Out,
 /// <summary>Un cont legat, cu ultima sincronizare — ca să se vadă cât de proaspete sunt datele.</summary>
 public sealed record BankActivityAccount(
     Guid Id,
-    string? IbanMasked,
+    string? Iban,
     string? Currency,
     string? OwnerName,
     DateTime? LastSyncedAtUtc);
@@ -84,10 +84,10 @@ internal sealed class GetBankActivityQueryHandler(
         List<BankActivityAccount> accounts = await context.BankAccounts
             .AsNoTracking()
             .Where(a => a.UserId == userId && a.BankConnectionId == connectionId && a.IsActive)
-            .OrderBy(a => a.IbanMasked)
+            .OrderBy(a => a.Iban)
             .Select(a => new BankActivityAccount(
                 a.Id,
-                a.IbanMasked,
+                a.Iban,
                 a.Currency,
                 a.OwnerName,
                 a.LastTransactionsSyncedAtUtc))

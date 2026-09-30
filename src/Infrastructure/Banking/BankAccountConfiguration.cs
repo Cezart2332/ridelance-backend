@@ -17,7 +17,7 @@ internal sealed class BankAccountConfiguration : IEntityTypeConfiguration<BankAc
         builder.HasIndex(ba => ba.UserId);
 
         builder.Property(ba => ba.ProviderAccountId).HasMaxLength(128).IsRequired();
-        builder.Property(ba => ba.IbanMasked).HasMaxLength(64);
+        builder.Property(ba => ba.Iban).HasMaxLength(64);
         builder.Property(ba => ba.Currency).HasMaxLength(8);
         builder.Property(ba => ba.OwnerName).HasMaxLength(256);
 

@@ -10,7 +10,7 @@ using SharedKernel;
 namespace Application.PfaRegistrations.Onboarding.Step2;
 
 /// <summary>Un cont legat prin open banking, cum îl vede adminul.</summary>
-public sealed record AdminBankAccountSummary(string? IbanMasked, string? Currency, string? OwnerName);
+public sealed record AdminBankAccountSummary(string? Iban, string? Currency, string? OwnerName);
 
 /// <summary>Conexiunea bancară a clientului, pe scurt.</summary>
 public sealed record AdminBankSummary(
@@ -81,7 +81,7 @@ internal sealed class GetAdminFiscalReviewQueryHandler(
                 connection.LinkedAtUtc,
                 [.. connection.Accounts
                     .Where(a => a.IsActive)
-                    .Select(a => new AdminBankAccountSummary(a.IbanMasked, a.Currency, a.OwnerName))]);
+                    .Select(a => new AdminBankAccountSummary(a.Iban, a.Currency, a.OwnerName))]);
 
         string? encryptedIban = await context.PfaRegistrations
             .AsNoTracking()

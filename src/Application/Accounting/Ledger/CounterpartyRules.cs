@@ -29,8 +29,8 @@ public enum CounterpartyKind
 
 /// <summary>Cine e PFA-ul pentru banca lui: numele titularului și conturile proprii.</summary>
 /// <param name="OwnerNames">Numele titularului, cum pot apărea ca contrapartidă (Nume Prenume, în orice ordine).</param>
-/// <param name="OwnIbansMasked">IBAN-urile conturilor PFA, mascate ca în <c>BankAccount.IbanMasked</c>.</param>
-public sealed record PfaIdentity(IReadOnlyList<string> OwnerNames, IReadOnlySet<string> OwnIbansMasked);
+/// <param name="OwnIbans">IBAN-urile conturilor PFA (<c>BankAccount.Iban</c>), normalizate.</param>
+public sealed record PfaIdentity(IReadOnlyList<string> OwnerNames, IReadOnlySet<string> OwnIbans);
 
 /// <summary>
 /// Clasificarea după contrapartidă, înainte de categoria cheltuielii. Funcție pură, pe date
@@ -59,8 +59,10 @@ public static class CounterpartyRules
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(options);
 
-        // R43: IBAN-ul contrapartidei e al unui cont al PFA-ului.
-        if (MaskIban(counterpartyIban) is { } masked && identity.OwnIbansMasked.Contains(masked))
+        // R43: IBAN-ul contrapartidei e al unui cont al PFA-ului. Conturile salvate înainte, cu IBAN-ul
+        // mascat („RO49••••0002”), se compară după mască până la recuperarea IBAN-ului complet.
+        if (NormalizeIban(counterpartyIban) is { } iban &&
+            (identity.OwnIbans.Contains(iban) || identity.OwnIbans.Contains(MaskIban(iban)!)))
         {
             return CounterpartyKind.InternalTransfer;
         }
@@ -136,7 +138,11 @@ public static class CounterpartyRules
     public static string NormalizeMerchant(string? value) =>
         string.Join(' ', Normalize(value).Split(' ').Where(word => !LegalForms.Contains(word)));
 
-    /// <summary>Același mascaj ca <c>BankAccount.IbanMasked</c>: primele 4 și ultimele 4 caractere.</summary>
+    /// <summary>IBAN-ul fără spații, cu majuscule.</summary>
+    public static string? NormalizeIban(string? iban) =>
+        string.IsNullOrWhiteSpace(iban) ? null : iban.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
+
+    /// <summary>Mascajul vechi al conturilor (primele 4 și ultimele 4 caractere), pentru datele salvate așa.</summary>
     public static string? MaskIban(string? iban)
     {
         if (string.IsNullOrWhiteSpace(iban))

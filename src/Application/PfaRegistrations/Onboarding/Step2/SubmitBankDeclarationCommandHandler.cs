@@ -51,13 +51,13 @@ internal sealed class SubmitBankDeclarationCommandHandler(
             return Result.Failure<Step2BankDto>(Step2Errors.NoRegistration);
         }
 
-        string? masked = hasIban ? MaskIban(iban) : null;
+        string? full = hasIban ? iban : null;
         DateTime nowUtc = DateTime.UtcNow;
 
         // Dacă userul are deja o conexiune PSD2 activă cu același IBAN, validăm automat.
-        var linkedAccount = masked is null ? null : await context.BankAccounts
+        var linkedAccount = full is null ? null : await context.BankAccounts
             .AsNoTracking()
-            .Where(a => a.UserId == command.UserId && a.IsActive && a.IbanMasked == masked)
+            .Where(a => a.UserId == command.UserId && a.IsActive && a.Iban == full)
             .Select(a => new { a.Id, a.BankConnectionId, a.OwnerName })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -81,7 +81,7 @@ internal sealed class SubmitBankDeclarationCommandHandler(
         if (hasIban)
         {
             declaration.IbanEncrypted = secretProtector.Protect(iban);
-            declaration.IbanMasked = masked;
+            declaration.Iban = full;
         }
 
         if (linkedAccount is not null)
@@ -100,7 +100,7 @@ internal sealed class SubmitBankDeclarationCommandHandler(
 
         return Result.Success(new Step2BankDto(
             declaration.BankName,
-            declaration.IbanMasked,
+            declaration.Iban,
             declaration.ConfirmationDocumentId is not null,
             declaration.OcrIbanMatches,
             declaration.Source.ToString(),
@@ -116,6 +116,4 @@ internal sealed class SubmitBankDeclarationCommandHandler(
         iban.Length >= 2 && char.IsLetter(iban[0]) && char.IsLetter(iban[1]) &&
         iban.Skip(2).All(char.IsLetterOrDigit);
 
-    private static string MaskIban(string iban) =>
-        iban.Length <= 8 ? iban : $"{iban[..4]}••••{iban[^4..]}";
 }

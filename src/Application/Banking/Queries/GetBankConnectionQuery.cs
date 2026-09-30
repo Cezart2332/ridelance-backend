@@ -8,7 +8,7 @@ using SharedKernel;
 namespace Application.Banking.Queries;
 
 public sealed record BankAccountResponse(
-    string? IbanMasked,
+    string? Iban,
     string? Currency,
     string? OwnerName);
 
@@ -95,6 +95,6 @@ internal sealed class GetBankConnectionQueryHandler(
             connection.ErrorMessage,
             [.. connection.Accounts
                 .Where(a => a.IsActive)
-                .Select(a => new BankAccountResponse(a.IbanMasked, a.Currency, a.OwnerName))],
+                .Select(a => new BankAccountResponse(a.Iban, a.Currency, a.OwnerName))],
             connection.LinkExpiresAtUtc);
 }

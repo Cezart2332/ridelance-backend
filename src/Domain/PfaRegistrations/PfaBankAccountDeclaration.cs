@@ -18,7 +18,7 @@ public sealed class PfaBankAccountDeclaration : Entity
     public string? IbanEncrypted { get; set; }
 
     /// <summary>IBAN mascat pentru afișare (ex. "RO49••••1234").</summary>
-    public string? IbanMasked { get; set; }
+    public string? Iban { get; set; }
 
     /// <summary>Documentul de confirmare a contului (extras/scrisoare bancă).</summary>
     public Guid? ConfirmationDocumentId { get; set; }

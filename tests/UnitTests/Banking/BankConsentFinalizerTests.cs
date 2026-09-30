@@ -121,7 +121,7 @@ public sealed class BankConsentFinalizerTests
         BankAccount account = await db.BankAccounts.SingleAsync(a => a.BankConnectionId == connection.Id);
         account.ProviderAccountId.ShouldBe("acc-1");
         // IBAN-ul complet nu se stochează niciodată.
-        account.IbanMasked.ShouldBe("RO49••••0000");
+        account.Iban.ShouldBe("RO49AAAA1B31007593840000");
         account.OwnerName.ShouldBe("Ion Pop");
         provider.LastDateTo.ShouldBe(DateOnly.FromDateTime(DateTime.UtcNow));
     }

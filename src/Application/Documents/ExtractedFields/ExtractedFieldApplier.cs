@@ -419,14 +419,13 @@ internal sealed class ExtractedFieldApplier(
             context.PfaBankAccountDeclarations.Add(declaration);
         }
 
-        string masked = iban.Length >= 8 ? $"{iban[..4]}••••{iban[^4..]}" : "••••";
+        string full = iban.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
         // OCR-ul citit din document coincide cu ce era deja declarat? (verificare pentru admin)
-        declaration.OcrIbanMatches = declaration.IbanMasked is null || declaration.IbanMasked == masked;
+        declaration.OcrIbanMatches = declaration.Iban is null || declaration.Iban == full;
 
-        // IBAN-ul complet se stochează DOAR criptat; în clar rămâne doar masca.
         declaration.IbanEncrypted = secretProtector.Protect(iban);
-        declaration.IbanMasked = masked;
+        declaration.Iban = full;
         declaration.ConfirmationDocumentId = document.Id;
         declaration.UpdatedAtUtc = DateTime.UtcNow;
     }

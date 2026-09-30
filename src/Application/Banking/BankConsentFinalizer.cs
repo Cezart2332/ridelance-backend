@@ -174,7 +174,7 @@ public sealed class BankConsentFinalizer(
                 existing.Add(account);
             }
 
-            account.IbanMasked = MaskIban(info.Iban) ?? account.IbanMasked;
+            account.Iban = NormalizeIban(info.Iban) ?? account.Iban;
             account.Currency = info.Currency ?? account.Currency;
             account.OwnerName = info.OwnerName ?? account.OwnerName;
             account.IsActive = true;
@@ -246,7 +246,7 @@ public sealed class BankConsentFinalizer(
             ? declaration.BankName
             : connection.InstitutionName;
         declaration.IbanEncrypted = secretProtector.Protect(primary.Iban);
-        declaration.IbanMasked = MaskIban(primary.Iban);
+        declaration.Iban = NormalizeIban(primary.Iban);
         declaration.BankConnectionId = connection.Id;
         declaration.Source = BankDeclarationSource.OpenBanking;
         declaration.Status = BankDeclarationStatus.Verified;
@@ -255,15 +255,10 @@ public sealed class BankConsentFinalizer(
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>„RO49••••1234" — IBAN-ul complet nu se stochează niciodată în clar.</summary>
-    internal static string? MaskIban(string? iban)
-    {
-        if (string.IsNullOrWhiteSpace(iban))
-        {
-            return null;
-        }
-
-        string trimmed = iban.Replace(" ", string.Empty, StringComparison.Ordinal);
-        return trimmed.Length <= 8 ? trimmed : $"{trimmed[..4]}••••{trimmed[^4..]}";
-    }
+    /// <summary>
+    /// IBAN-ul complet, fără spații și cu majuscule. Nu e o informație privată: e pe facturi și în
+    /// declarații, iar contabilitatea are nevoie de el întreg.
+    /// </summary>
+    internal static string? NormalizeIban(string? iban) =>
+        string.IsNullOrWhiteSpace(iban) ? null : iban.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 }

@@ -137,8 +137,8 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
             .Select(name => name!)];
 
         List<string?> ibans = await db.BankAccounts.AsNoTracking()
-            .Where(a => a.UserId == context.UserId && a.IbanMasked != null)
-            .Select(a => a.IbanMasked)
+            .Where(a => a.UserId == context.UserId && a.Iban != null)
+            .Select(a => a.Iban)
             .ToListAsync(cancellationToken);
         return new PfaIdentity(names, ibans.Where(i => i is not null).Select(i => i!.ToUpperInvariant()).ToHashSet(StringComparer.Ordinal));
     }
