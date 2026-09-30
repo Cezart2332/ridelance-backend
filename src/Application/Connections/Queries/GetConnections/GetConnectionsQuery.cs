@@ -18,8 +18,8 @@ namespace Application.Connections.Queries.GetConnections;
 public sealed record GetConnectionsQuery : IQuery<List<IntegrationDto>>;
 
 /// <param name="Available">
-/// Dacă integrarea poate fi conectată azi. Oblio e legat de dosarul PFA, iar eldrive nu are încă
-/// integrare deloc: preferăm să spunem asta pe card decât să oferim un buton care n-ar face nimic.
+/// Dacă integrarea poate fi conectată azi. Oblio e legat de dosarul PFA; eldrive se conectează
+/// din Conexiuni → Eldrive, printr-o invitație în contul de partener RIDElance.
 /// </param>
 public sealed record IntegrationDto(
     string Provider,
@@ -53,6 +53,10 @@ internal sealed class GetConnectionsQueryHandler(
 
         Domain.Invoicing.OblioIntegration? oblio = await context.OblioIntegrations.AsNoTracking()
             .SingleOrDefaultAsync(o => o.UserId == userContext.UserId, cancellationToken);
+
+        Domain.Eldrive.EldriveInvite? eldrive = await context.EldriveInvites.AsNoTracking()
+            .SingleOrDefaultAsync(i => i.UserId == userContext.UserId && i.RemovedAtUtc == null, cancellationToken);
+
         return Result.Success(new List<IntegrationDto>
         {
             // Aceeași conexiune per proprietar pe care o folosesc facturile și onboardingul.
@@ -60,7 +64,9 @@ internal sealed class GetConnectionsQueryHandler(
                 oblio?.UpdatedAtUtc, null, oblio?.LastSyncAtUtc, oblio?.ErrorMessage, Available: true,
                 oblio is null ? [] : [new("Email cont", oblio.ClientId), new("CIF", oblio.Cif)]),
             MapBank(bank),
-            new("Eldrive", "disconnected", null, null, null, null, Available: false, []),
+            new("Eldrive", eldrive is null ? "disconnected" : "connected",
+                eldrive?.CreatedAtUtc, null, null, null, Available: true,
+                eldrive is null ? [] : [new("Email cont", eldrive.Email)]),
         });
     }
 
