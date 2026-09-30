@@ -14,7 +14,7 @@ internal sealed class PfaBankAccountDeclarationConfiguration : IEntityTypeConfig
 
         builder.Property(d => d.BankName).HasMaxLength(128);
         builder.Property(d => d.IbanEncrypted).HasMaxLength(512);
-        builder.Property(d => d.IbanMasked).HasMaxLength(64);
+        builder.Property(d => d.Iban).HasMaxLength(64);
         builder.Property(d => d.Source).HasConversion<string>().HasMaxLength(16);
         builder.Property(d => d.Status).HasConversion<string>().HasMaxLength(16);
         builder.Property(d => d.AdminNote).HasMaxLength(1024);

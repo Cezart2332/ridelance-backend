@@ -13,7 +13,7 @@ public sealed class BankAccount : Entity
     public string ProviderAccountId { get; set; } = string.Empty;
 
     /// <summary>Masked IBAN only (e.g. "RO49••••1234") — the full IBAN is never stored.</summary>
-    public string? IbanMasked { get; set; }
+    public string? Iban { get; set; }
 
     public string? Currency { get; set; }
     public string? OwnerName { get; set; }

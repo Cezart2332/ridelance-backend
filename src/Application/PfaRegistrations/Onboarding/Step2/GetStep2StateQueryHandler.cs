@@ -36,7 +36,7 @@ internal sealed class GetStep2StateQueryHandler(IApplicationDbContext context)
         Step2BankDto? bank = registration.BankAccountDeclaration is { } bd
             ? new Step2BankDto(
                 bd.BankName,
-                bd.IbanMasked,
+                bd.Iban,
                 bd.ConfirmationDocumentId is not null,
                 bd.OcrIbanMatches,
                 bd.Source.ToString(),

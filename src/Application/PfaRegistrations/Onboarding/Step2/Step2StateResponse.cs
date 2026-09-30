@@ -4,7 +4,7 @@ public sealed record Step2FiscalDto(string VatAnswer, string VatRegistrationKind
 
 public sealed record Step2BankDto(
     string? BankName,
-    string? IbanMasked,
+    string? Iban,
     bool HasConfirmationDocument,
     bool? OcrIbanMatches,
     string Source,

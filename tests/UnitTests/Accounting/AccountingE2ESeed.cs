@@ -233,7 +233,7 @@ public sealed class AccountingE2ESeed
             PfaRegistrationId = pfa.Id,
             BankName = "Banca Transilvania",
             IbanEncrypted = secrets.Protect("RO49AAAA1B31007593840000"),
-            IbanMasked = "••••0000",
+            Iban = "RO49AAAA1B31007593840000",
         });
         db.PfaAccountingEngagements.Add(new PfaAccountingEngagement { Id = Guid.NewGuid(), PfaRegistrationId = pfa.Id, StartDate = new DateOnly(2026, 1, 1), Status = EngagementStatus.Active });
         db.PfaAccountingSettings.AddRange(
