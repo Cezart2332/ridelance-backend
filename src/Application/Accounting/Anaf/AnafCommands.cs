@@ -36,7 +36,9 @@ public sealed record EFacturaMessageDto(
     decimal? VatAmount,
     bool Downloaded,
     string? DownloadError,
-    string? Details);
+    string? Details,
+    InvoicePaymentStatus PaymentStatus,
+    decimal PaidAmount);
 
 /// <summary>Tabul „ANAF” din fișa clientului: conexiunea, legătura PFA-ului și mesajele e-Factura.</summary>
 public sealed record PfaEFacturaDto(AnafConnectionDto Connection, AnafPfaLinkDto? Link, IReadOnlyList<EFacturaMessageDto> Messages);
@@ -129,7 +131,8 @@ internal sealed class GetPfaEFacturaQueryHandler(IApplicationDbContext db, AnafE
             .OrderByDescending(m => m.AnafCreatedAtUtc)
             .Select(m => new EFacturaMessageDto(
                 m.Id, m.Kind, m.AnafType, m.AnafCreatedAtUtc, m.InvoiceNumber, m.IssueDate, m.SupplierName, m.SupplierCif,
-                m.CustomerName, m.CustomerCif, m.Currency, m.TotalAmount, m.VatAmount, m.ZipDocumentId != null, m.DownloadError, m.Details))
+                m.CustomerName, m.CustomerCif, m.Currency, m.TotalAmount, m.VatAmount, m.ZipDocumentId != null, m.DownloadError, m.Details,
+                m.PaymentStatus, m.PaidAmount))
             .ToListAsync(cancellationToken);
 
         return new PfaEFacturaDto(
