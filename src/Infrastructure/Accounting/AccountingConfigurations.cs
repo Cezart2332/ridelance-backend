@@ -354,6 +354,8 @@ internal sealed class EFacturaMessageConfiguration : IEntityTypeConfiguration<EF
         builder.Property(m => m.Currency).HasMaxLength(3);
         builder.Property(m => m.TotalAmount).AsMoney();
         builder.Property(m => m.VatAmount).AsMoney();
+        builder.Property(m => m.PaidAmount).AsMoney();
+        builder.Property(m => m.PaymentStatus).AsText();
         // Un mesaj ANAF o singură dată pe PFA: sincronizarea repetată nu dublează.
         builder.HasIndex(m => new { m.PfaRegistrationId, m.AnafMessageId }).IsUnique();
         builder.RestrictToPfa(m => m.PfaRegistrationId);

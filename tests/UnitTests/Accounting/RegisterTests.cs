@@ -104,6 +104,18 @@ public sealed class RegisterTests : IDisposable
         refView.Rows.Select(r => r.Value).ShouldBe([5000m, 350m, 4650m]);
     }
 
+    /// <summary>R01: o cheltuială fără document apare în RJIP (banii au plecat), dar nu se deduce în REF.</summary>
+    [Fact]
+    public async Task R01_UndocumentedExpense_IsInRjipButNotDeducted()
+    {
+        Entry(Day, -300m, LedgerTransactionType.Expense, PaymentMethod.Bank, "OMV", deductible: 300m).ReconciliationStatus = ReconciliationStatus.Unmatched;
+        Entry(Day, -100m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Orange", deductible: 100m);
+        await _db.SaveChangesAsync();
+
+        (await Rjip(Day, Day)).Rows.Sum(r => r.BankOut).ShouldBe(400m);
+        (await Ref(2026)).Rows.Single(r => r.CalculationElement == "Cheltuieli deductibile").Value.ShouldBe(100m);
+    }
+
     [Fact]
     public async Task Foreign_amounts_use_the_bnr_rate_of_the_previous_banking_day()
     {

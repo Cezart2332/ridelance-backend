@@ -141,6 +141,15 @@ public enum PaymentMethod
     Manual = 2,
 }
 
+/// <summary>Starea de plată a unei facturi primite prin e-Factura (spec flux contabil R03–R04b).</summary>
+[JsonConverter(typeof(UpperSnakeCaseEnumConverter<InvoicePaymentStatus>))]
+public enum InvoicePaymentStatus
+{
+    Unpaid = 0,
+    PartiallyPaid = 1,
+    Paid = 2,
+}
+
 /// <summary>
 /// Cât de sigur e legată o înregistrare de documentele și banii ei (spec flux contabil §4). Starea
 /// de lucru (verificat, blocat) rămâne în <see cref="LedgerEntryStatus"/>.
