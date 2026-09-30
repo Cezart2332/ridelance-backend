@@ -75,6 +75,31 @@ internal static class LedgerSupport
 
     public static string Cut(string value, int length) => value.Length <= length ? value : value[..length];
 
+    /// <summary>
+    /// Invarianții ledger-ului (spec flux contabil §4) pe o înregistrare modificată, ca eroare de afișat.
+    /// <c>SaveChanges</c> îi verifică oricum; aici se prind înainte, cu un mesaj pentru om.
+    /// </summary>
+    public static async Task<SharedKernel.Result> ValidateAsync(IApplicationDbContext db, LedgerEntry entry, CancellationToken cancellationToken)
+    {
+        List<string> violations = [.. LedgerInvariants.Check(entry)];
+        if (entry.BankTransactionId is { } transactionId)
+        {
+            decimal? amount = await db.BankTransactions.AsNoTracking()
+                .Where(t => t.Id == transactionId)
+                .Select(t => (decimal?)t.Amount)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (amount is { } total)
+            {
+                List<LedgerEntry> others = await db.LedgerEntries.AsNoTracking()
+                    .Where(e => e.PfaRegistrationId == entry.PfaRegistrationId && e.BankTransactionId == transactionId && e.Id != entry.Id)
+                    .ToListAsync(cancellationToken);
+                violations.AddRange(LedgerInvariants.CheckBankLinks(total, [.. others, entry]));
+            }
+        }
+
+        return violations.Count == 0 ? SharedKernel.Result.Success() : SharedKernel.Result.Failure(LedgerErrors.Invariant(violations));
+    }
+
     /// <summary>Înregistrările, cu versiunea rândului (<c>xmin</c>), în forma din contract.</summary>
     public static async Task<List<LedgerEntryDto>> DtosAsync(
         IQueryable<LedgerEntry> entries,
@@ -112,7 +137,12 @@ internal static class LedgerSupport
         e.Status,
         e.AccountingPeriod,
         e.ClosedPeriodFlag,
-        rowVersion.ToString(CultureInfo.InvariantCulture));
+        rowVersion.ToString(CultureInfo.InvariantCulture),
+        e.ReconciliationStatus,
+        e.SettlementGroupId,
+        e.EFacturaMessageId,
+        e.DocumentDate,
+        e.PersonalAmount);
 
     /// <summary>Regula sau setarea aplicată, pentru „sumă × % = deductibil”.</summary>
     private static DeductibilityRuleRef? RuleOf(LedgerEntry e)

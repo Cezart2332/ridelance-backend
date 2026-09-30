@@ -254,6 +254,12 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
         after["status"] = LedgerEntryStatus.Locked;
         entry.Status = LedgerEntryStatus.Locked;
         DeductibilityService.Resolve(entry, await LedgerSupport.RulesAsync(db, entry.PfaRegistrationId, cancellationToken));
+        Result valid = await LedgerSupport.ValidateAsync(db, entry, cancellationToken);
+        if (valid.IsFailure)
+        {
+            return valid;
+        }
+
         AccountingAudit.Record(db, entry.PfaRegistrationId, nameof(LedgerEntry), entry.Id, "PERIOD_CORRECTION", before, after, reason, userContext.UserId);
         return Result.Success();
     }

@@ -597,8 +597,13 @@ internal sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<Ledger
         builder.Property(e => e.DeductibleAmount).AsMoney();
         builder.Property(e => e.Status).AsText();
         builder.Property(e => e.AccountingPeriod).HasMaxLength(AccountingMapping.PeriodLength).IsRequired();
+        builder.Property(e => e.ReconciliationStatus).AsText();
+        builder.Property(e => e.PersonalAmount).AsMoney();
+        builder.Ignore(e => e.BusinessAmount);
+        builder.Ignore(e => e.NonDeductibleAmount);
 
         builder.HasIndex(e => new { e.PfaRegistrationId, e.Date });
+        builder.HasIndex(e => e.SettlementGroupId).HasFilter("settlement_group_id IS NOT NULL");
         builder.HasIndex(e => new { e.PfaRegistrationId, e.AccountingPeriod });
         // Importatorii sunt idempotenți prin (sursă, id extern) — B6.
         builder.HasIndex(e => new { e.Source, e.ExternalId }).IsUnique().HasFilter("external_id IS NOT NULL");
@@ -607,6 +612,7 @@ internal sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<Ledger
         builder.RestrictToDocument(e => e.SourceDocumentId);
         builder.HasOne<PlatformDocument>().WithMany().HasForeignKey(e => e.PlatformDocumentId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<BankTransaction>().WithMany().HasForeignKey(e => e.BankTransactionId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<EFacturaMessage>().WithMany().HasForeignKey(e => e.EFacturaMessageId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<PfaAccountingSetting>().WithMany().HasForeignKey(e => e.DeductibilitySettingId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ExpenseCategoryRule>().WithMany().HasForeignKey(e => e.DeductibilityRuleId).OnDelete(DeleteBehavior.Restrict);
         builder.RestrictToUser(e => e.CreatedByUserId);

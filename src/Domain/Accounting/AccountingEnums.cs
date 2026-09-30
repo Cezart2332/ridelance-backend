@@ -98,6 +98,9 @@ public enum LedgerSource
     Upload = 4,
     CashZ = 5,
     Manual = 6,
+
+    /// <summary>Factura primită prin RO e-Factura, plătită (spec flux contabil R04).</summary>
+    EFactura = 7,
 }
 
 [JsonConverter(typeof(UpperSnakeCaseEnumConverter<LedgerTransactionType>))]
@@ -110,13 +113,58 @@ public enum LedgerTransactionType
     Loan = 4,
     Tax = 5,
     Other = 6,
+
+    /// <summary>Bani scoși de titular din PFA (utilizare venit, R40): plată în RJIP, nu cheltuială.</summary>
+    OwnerWithdrawal = 7,
+
+    /// <summary>Transfer între conturile PFA-ului (R43): ambele capete în RJIP, fără efect fiscal.</summary>
+    InternalTransfer = 8,
+
+    /// <summary>
+    /// Payout-ul net Uber/Bolt înainte de reconciliere (R20): nu e venit. Cât timp e
+    /// <see cref="ReconciliationStatus.NeedsReconciliation"/>, nu apare în RJIP sau REF.
+    /// </summary>
+    PlatformSettlement = 9,
 }
 
+/// <summary>Canalul prin care s-au mișcat banii (spec flux contabil §4, <c>EntryChannel</c>).</summary>
 [JsonConverter(typeof(UpperSnakeCaseEnumConverter<PaymentMethod>))]
 public enum PaymentMethod
 {
     Bank = 0,
     Cash = 1,
+
+    /// <summary>
+    /// Card sau cont bancar neconectat (R34, R35): nu există tranzacție în contul conectat. Cum apare
+    /// în RJIP e configurabil (<c>Accounting:ManualChannelMapping</c>, întrebarea Q1).
+    /// </summary>
+    Manual = 2,
+}
+
+/// <summary>
+/// Cât de sigur e legată o înregistrare de documentele și banii ei (spec flux contabil §4). Starea
+/// de lucru (verificat, blocat) rămâne în <see cref="LedgerEntryStatus"/>.
+/// </summary>
+[JsonConverter(typeof(UpperSnakeCaseEnumConverter<ReconciliationStatus>))]
+public enum ReconciliationStatus
+{
+    /// <summary>Legată sigur de document și/sau plată.</summary>
+    Matched = 0,
+
+    /// <summary>Plată parțială a unei facturi (R04b).</summary>
+    Partial = 1,
+
+    /// <summary>Fără document găsit (R01, R02).</summary>
+    Unmatched = 2,
+
+    /// <summary>Potrivire ambiguă, CUI străin, diferență de sume: decide un om (R12, R23, R25, R33).</summary>
+    NeedsReview = 3,
+
+    /// <summary>
+    /// Payout de platformă fără descompunere în venit brut și comision (R20, R22). Nu există încă în
+    /// registre: RJIP și REF îl exclud, iar luna nu se poate închide.
+    /// </summary>
+    NeedsReconciliation = 4,
 }
 
 [JsonConverter(typeof(UpperSnakeCaseEnumConverter<DeductibilityType>))]

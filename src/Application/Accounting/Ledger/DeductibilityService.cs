@@ -34,7 +34,7 @@ public static class DeductibilityService
     }
 
     /// <summary>
-    /// Completează deductibilitatea înregistrării: <c>SPECIAL_RULE</c> (amortizare etc., DE CONFIRMAT)
+    /// Completează deductibilitatea înregistrării, pe partea din activitate (fără partea personală): <c>SPECIAL_RULE</c> (amortizare etc., DE CONFIRMAT)
     /// fără procent; categoriile auto după setarea <c>vehicle_deductibility</c> de la data
     /// cheltuielii (50% până la prima setare); restul după regula categoriei. Veniturile și cheltuielile fără categorie rămân fără.
     /// </summary>
@@ -113,8 +113,9 @@ public static class DeductibilityService
         entry.DeductibilityType = type;
         entry.DeductibilityValidFrom = validFrom;
         entry.DeductiblePercent = PercentOf(type);
+        // Doar partea din activitate: partea personală (R30) intră integral la nedeductibil.
         entry.DeductibleAmount = entry.DeductiblePercent is { } percent
-            ? Math.Round(Math.Abs(entry.Amount) * percent / 100, 2, MidpointRounding.AwayFromZero)
+            ? LedgerInvariants.Round(entry.BusinessAmount * percent / 100)
             : null;
     }
 
