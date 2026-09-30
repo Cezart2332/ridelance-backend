@@ -1,6 +1,7 @@
 using System.Text;
 using Application.Accounting.Contracts;
 using Application.Accounting.FiscalRegister;
+using Application.Accounting.Inventory;
 using Application.Accounting.Registers;
 using ClosedXML.Excel;
 using Application.Accounting;
@@ -305,14 +306,14 @@ public sealed class RegisterTests : IDisposable
         using (var workbook = new XLWorkbook(new MemoryStream(inventory.Content)))
         {
             IXLWorksheet sheet = workbook.Worksheet(1);
-            sheet.Cell(3, 1).GetString().ShouldBe("la data de 31.12.2026");
-            sheet.RowsUsed().Where(r => r.Cell(3).DataType == XLDataType.Number && r.Cell(2).GetString() != "Total").ShouldHaveSingleItem()
-                .Cell(2).GetString().ShouldStartWith("OI-0001 Casă de marcat — Datecs DP-25X");
-            sheet.RowsUsed().Single(r => r.Cell(2).GetString() == "Total").Cell(3).GetValue<decimal>().ShouldBe(1350m);
+            sheet.Cell(3, 1).GetString().ShouldBe("la data de 31.12.2026 (sfârșitul anului)");
+            // Fără inventariere, precompletarea: activul ieșit în an nu mai e, numerarul e cel din registru.
+            sheet.RowsUsed().Single(r => r.Cell(2).GetString().StartsWith("OI-0001 Casă de marcat — Datecs DP-25X", StringComparison.Ordinal))
+                .Cell(3).GetValue<decimal>().ShouldBe(1350m);
+            sheet.RowsUsed().Single(r => r.Cell(2).GetString() == "Total Numerar").Cell(3).GetValue<decimal>().ShouldBe(420m);
+            sheet.RowsUsed().Any(r => r.Cell(1).GetString() == "Situație precompletată din sistem, neconfirmată prin inventariere.").ShouldBeTrue();
         }
 
-        // Vizualizarea anului arată și activul ieșit în an.
-        (await new GetInventoryQueryHandler(_db).Handle(new GetInventoryQuery(_pfa, 2026), CancellationToken.None)).Value.Assets.Count.ShouldBe(2);
         Encoding.ASCII.GetString((await new ExportInventoryQueryHandler(_db, _exporter)
             .Handle(new ExportInventoryQuery(_pfa, 2026, RegisterFormat.Pdf), CancellationToken.None)).Value.Content, 0, 4).ShouldBe("%PDF");
     }
@@ -322,7 +323,8 @@ public sealed class RegisterTests : IDisposable
     {
         (await new GetRjipQueryHandler(_db).Handle(new GetRjipQuery(_pfa, Day, Day.AddDays(-1)), CancellationToken.None)).Error.Code.ShouldBe("Accounting.InvalidRange");
         (await new GetRefQueryHandler(_db).Handle(new GetRefQuery(_pfa, 2026, new DateOnly(2025, 5, 1)), CancellationToken.None)).Error.Code.ShouldBe("Accounting.InvalidYear");
-        (await new GetInventoryQueryHandler(_db).Handle(new GetInventoryQuery(Guid.NewGuid(), 2026), CancellationToken.None)).Error.Code.ShouldBe("Accounting.PfaNotFound");
+        (await new ExportInventoryQueryHandler(_db, _exporter).Handle(new ExportInventoryQuery(Guid.NewGuid(), 2026, RegisterFormat.Pdf), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.PfaNotFound");
     }
 
     // ─── Ajutoare ──────────────────────────────────────────────────────────────────────────────

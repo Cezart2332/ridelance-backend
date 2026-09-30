@@ -199,6 +199,7 @@ public static class DependencyInjection
 
         // Background Jobs
         services.AddHostedService<IbanBackfillJob>();
+        services.AddHostedService<YearEndInventoryJob>();
         services.AddHostedService<RecurringDocumentationNotificationJob>();
         services.AddHostedService<DocumentExpiryCheckJob>();
         services.AddHostedService<PfaIncomePeriodInitializationJob>();

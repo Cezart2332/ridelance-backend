@@ -530,7 +530,40 @@ public sealed record RefRow(
 
 public sealed record RefView(Guid PfaId, int Year, RefStatus Status, DateOnly? AsOf, IReadOnlyList<RefRow> Rows, IncomeSource Source = IncomeSource.Ridesharing);
 
-public sealed record InventoryView(Guid PfaId, int Year, IReadOnlyList<AssetDto> Assets);
+/// <summary>Un element inventariat: valoarea din sistem, cea confirmată și diferența (confirmat − sistem).</summary>
+public sealed record InventoryItemDto(
+    Guid Id,
+    InventoryCategory Category,
+    string Description,
+    decimal SystemValue,
+    decimal? ConfirmedValue,
+    decimal Difference,
+    string? SourceType,
+    Guid? SourceId,
+    InventoryItemStatus Status,
+    bool RequiresConfirmation,
+    string? Note);
+
+/// <summary>O inventariere (spec registre §5), cu valoarea totală de inventar.</summary>
+public sealed record InventoryCountDto(
+    Guid Id,
+    Guid PfaId,
+    DateOnly Date,
+    InventoryReason Reason,
+    InventoryStatus Status,
+    DateTime? SubmittedAt,
+    DateTime? FinalizedAt,
+    UserRef? FinalizedBy,
+    Guid? SnapshotDocumentId,
+    IReadOnlyList<InventoryItemDto> Items,
+    decimal Total);
+
+public sealed record StartInventoryCountRequest(DateOnly Date, InventoryReason Reason);
+
+/// <summary><c>action</c>: <c>CONFIRM</c>, <c>ADJUST</c> (cu <c>value</c>), <c>REMOVE</c> (cu notă) sau <c>NOTE</c>.</summary>
+public sealed record InventoryItemRequest(string Action, decimal? Value, string? Note);
+
+public sealed record AddInventoryItemRequest(InventoryCategory Category, string Description, decimal Value, string? Note);
 
 public sealed record AccountingPeriodDto(Guid PfaId, string Period, AccountingPeriodStatus Status, UserRef? ClosedBy, DateTime? ClosedAt);
 

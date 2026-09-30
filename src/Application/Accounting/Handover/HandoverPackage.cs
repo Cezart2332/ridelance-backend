@@ -8,6 +8,7 @@ using Application.Accounting.Contracts;
 using Application.Accounting.Declarations;
 using Application.Accounting.Pfas;
 using Application.Accounting.FiscalRegister;
+using Application.Accounting.Inventory;
 using Application.Accounting.Registers;
 using Domain.Accounting;
 using Microsoft.EntityFrameworkCore;

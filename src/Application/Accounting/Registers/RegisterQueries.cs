@@ -208,36 +208,6 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
     }
 }
 
-// ─── Registrul-inventar (cod 14-1-2/b) ──────────────────────────────────────────────────────────
-
-/// <summary><c>GET /accounting/pfas/{pfaId}/registers/inventory?year=</c> — activele folosite în an.</summary>
-public sealed record GetInventoryQuery(Guid PfaId, int Year) : IQuery<InventoryView>;
-
-internal sealed class GetInventoryQueryHandler(IApplicationDbContext db) : IQueryHandler<GetInventoryQuery, InventoryView>
-{
-    public async Task<Result<InventoryView>> Handle(GetInventoryQuery query, CancellationToken cancellationToken)
-    {
-        if (query.Year is < 2000 or > 2100)
-        {
-            return Result.Failure<InventoryView>(RegisterErrors.InvalidYear);
-        }
-
-        if (await RegisterData.PfaAsync(db, query.PfaId, cancellationToken) is null)
-        {
-            return Result.Failure<InventoryView>(AccountingErrors.PfaNotFound);
-        }
-
-        var start = new DateOnly(query.Year, 1, 1);
-        var end = new DateOnly(query.Year, 12, 31);
-        List<AssetDto> assets = await Assets.AssetSupport.DtosAsync(
-            db,
-            db.PfaAssets.Where(a => a.PfaRegistrationId == query.PfaId && a.EntryDate <= end && (a.DisposalDate == null || a.DisposalDate >= start)),
-            end,
-            cancellationToken);
-        return new InventoryView(query.PfaId, query.Year, assets);
-    }
-}
-
 // ─── Exporturi ──────────────────────────────────────────────────────────────────────────────────
 
 /// <summary><c>GET …/registers/rjip/export?from&amp;to&amp;format</c></summary>
@@ -317,59 +287,4 @@ internal sealed class ExportRjipQueryHandler(IApplicationDbContext db, IQueryHan
     }
 
 
-}
-
-/// <summary><c>GET …/registers/inventory/export?year&amp;format</c></summary>
-public sealed record ExportInventoryQuery(Guid PfaId, int Year, RegisterFormat Format) : IQuery<RegisterFile>;
-
-/// <summary>
-/// Registrul-inventar (OMFP 170/2015, cod 14-1-2/b), la sfârșitul anului sau la data încetării
-/// colaborării, dacă a încetat în acel an: elementele inventariate și valoarea de inventar
-/// (valoarea de intrare, din documentele justificative).
-/// </summary>
-internal sealed class ExportInventoryQueryHandler(IApplicationDbContext db, IRegisterExporter exporter) : IQueryHandler<ExportInventoryQuery, RegisterFile>
-{
-    public async Task<Result<RegisterFile>> Handle(ExportInventoryQuery query, CancellationToken cancellationToken)
-    {
-        if (query.Year is < 2000 or > 2100)
-        {
-            return Result.Failure<RegisterFile>(RegisterErrors.InvalidYear);
-        }
-
-        if (await RegisterData.PfaAsync(db, query.PfaId, cancellationToken) is not { } pfa)
-        {
-            return Result.Failure<RegisterFile>(AccountingErrors.PfaNotFound);
-        }
-
-        DateOnly? ended = await db.PfaAccountingEngagements.AsNoTracking()
-            .Where(e => e.PfaRegistrationId == query.PfaId && e.Status == EngagementStatus.Inactive && e.EndDate != null)
-            .OrderByDescending(e => e.EndDate)
-            .Select(e => e.EndDate)
-            .FirstOrDefaultAsync(cancellationToken);
-        DateOnly date = ended is { } end && end.Year == query.Year ? end : new DateOnly(query.Year, 12, 31);
-
-        List<AssetDto> assets = await Assets.AssetSupport.DtosAsync(
-            db,
-            db.PfaAssets.Where(a => a.PfaRegistrationId == query.PfaId && a.EntryDate <= date && (a.DisposalDate == null || a.DisposalDate > date)),
-            date,
-            cancellationToken);
-
-        List<RegisterLine> lines = [.. assets.Select((asset, index) => new RegisterLine(
-            [index + 1, $"{asset.InventoryNumber} {asset.Name} (intrat la {RegisterData.Date(asset.EntryDate)})", asset.Remaining]))];
-        lines.Add(new RegisterLine([null, "Total", assets.Sum(a => a.Remaining)], Emphasis: true));
-
-        var document = new RegisterDocument(
-            "REGISTRUL-INVENTAR",
-            "14-1-2/b",
-            [$"{pfa.Name} — CUI {pfa.Cui}", $"la data de {RegisterData.Date(date)}"],
-            [
-                new("Nr. crt.", Width: 0.5f),
-                new("Denumirea elementelor inventariate", Width: 4f),
-                new("Valoarea de inventar", Numeric: true, Width: 1.2f),
-            ],
-            ["1", "2", "3"],
-            lines,
-            ["Model conform OMFP nr. 170/2015. Creanțele și datoriile inventariate nu sunt încă evidențiate în aplicație."]);
-        return RegisterFiles.Export(exporter, document, query.Format, $"Registru-inventar_{pfa.Cui}_{date:yyyyMMdd}");
-    }
 }
