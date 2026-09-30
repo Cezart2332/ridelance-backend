@@ -162,18 +162,8 @@ internal sealed class ClosePeriodCommandHandler(
         return new AccountingPeriodDto(command.PfaId, command.Period, period.Status, users.GetValueOrDefault(userContext.UserId), period.ClosedAtUtc);
     }
 
-    /// <summary>
-    /// Registrele lunii, înghețate la închidere (§7): RJIP-ul lunii și REF-ul anului până la sfârșitul ei,
-    /// ca date, plus PDF-ul RJIP când exportul e disponibil.
-    /// </summary>
     private async Task SnapshotAsync(Guid pfaId, string period, DateOnly start, DateOnly end, CancellationToken cancellationToken)
     {
-        List<Registers.RegisterEntry> entries = await Registers.RegisterData.EntriesAsync(db, pfaId, start, end, cancellationToken);
-        RjipView rjip = Registers.GetRjipQueryHandler.Build(
-            pfaId, start, end, entries, options?.Value.ManualChannelMapping ?? ManualChannelMapping.OwnerContributionAndCash);
-        List<Registers.RegisterEntry> year = await Registers.RegisterData.EntriesAsync(db, pfaId, new DateOnly(end.Year, 1, 1), end, cancellationToken);
-        RefView refView = Registers.GetRefQueryHandler.Build(pfaId, end.Year, RefStatus.Intermediate, end, year);
-
         Guid? pdf = null;
         if (rjipExport is not null && files is not null)
         {
@@ -184,6 +174,26 @@ internal sealed class ClosePeriodCommandHandler(
             }
         }
 
+        await PeriodSnapshots.AddAsync(db, pfaId, period, options?.Value.ManualChannelMapping, pdf, userContext.UserId, cancellationToken);
+    }
+}
+
+/// <summary>
+/// Registrele lunii, înghețate la închidere (§7): RJIP-ul lunii și REF-ul anului până la sfârșitul ei,
+/// ca date, plus PDF-ul RJIP când exportul e disponibil. Un snapshot nou nu îl șterge pe cel vechi.
+/// </summary>
+internal static class PeriodSnapshots
+{
+    public static async Task AddAsync(
+        IApplicationDbContext db, Guid pfaId, string period, ManualChannelMapping? manual, Guid? pdf, Guid userId, CancellationToken cancellationToken)
+    {
+        var start = DateOnly.ParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        DateOnly end = start.AddMonths(1).AddDays(-1);
+        List<Registers.RegisterEntry> entries = await Registers.RegisterData.EntriesAsync(db, pfaId, start, end, cancellationToken);
+        RjipView rjip = Registers.GetRjipQueryHandler.Build(pfaId, start, end, entries, manual ?? ManualChannelMapping.OwnerContributionAndCash);
+        List<Registers.RegisterEntry> year = await Registers.RegisterData.EntriesAsync(db, pfaId, new DateOnly(end.Year, 1, 1), end, cancellationToken);
+        RefView refView = Registers.GetRefQueryHandler.Build(pfaId, end.Year, RefStatus.Intermediate, end, year);
+
         db.AccountingPeriodSnapshots.Add(new AccountingPeriodSnapshot
         {
             Id = Guid.NewGuid(),
@@ -192,7 +202,7 @@ internal sealed class ClosePeriodCommandHandler(
             RjipJson = AccountingJson.Serialize(rjip),
             RefJson = AccountingJson.Serialize(refView),
             RjipPdfDocumentId = pdf,
-            CreatedByUserId = userContext.UserId,
+            CreatedByUserId = userId,
             CreatedAtUtc = DateTime.UtcNow,
         });
     }
@@ -266,6 +276,12 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
         };
         db.PeriodCorrections.Add(correction);
         await db.SaveChangesAsync(cancellationToken);
+        if (entries.Storno is null && command.LedgerEntryId is not null)
+        {
+            // Un import căzut în luna închisă a intrat acum în ea: luna are un snapshot nou (registre §3).
+            await PeriodSnapshots.AddAsync(db, command.PfaId, command.Period, null, null, userContext.UserId, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
 
         Dictionary<Guid, UserRef> users = await PlatformDocumentSupport.UsersAsync(db, [userContext.UserId], cancellationToken);
         return new PeriodCorrectionDto(

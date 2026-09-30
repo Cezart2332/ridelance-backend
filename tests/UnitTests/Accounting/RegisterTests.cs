@@ -51,8 +51,8 @@ public sealed class RegisterTests : IDisposable
 
         rjip.Rows.Select(r => (r.Document, r.CashIn, r.CashOut, r.BankIn, r.BankOut)).ShouldBe(
         [
-            ("Extras 10.10.2026", 0m, 0m, 0m, 300m),
-            ("Extras 10.10.2026", 0m, 0m, 1850m, 0m),
+            ("Extras bancar", 0m, 0m, 0m, 300m),
+            ("Extras bancar", 0m, 0m, 1850m, 0m),
             ("Raport Z nr. 125", 420m, 0m, 0m, 0m),
         ]);
         rjip.Rows[0].Operation.ShouldBe("Plată combustibil – OMV Petrom");
@@ -191,6 +191,37 @@ public sealed class RegisterTests : IDisposable
         await _db.SaveChangesAsync();
 
         (await Ref(2026)).Rows[2].ShouldBe(new RefRow(2026, false, GetRefQueryHandler.IncomeCategory, "Pierdere netă anuală", 500m));
+    }
+
+    /// <summary>§3: la bancă, documentul e „Extras bancar” și justificativul trece în explicații.</summary>
+    [Fact]
+    public async Task Rjip_BankRowsShowTheStatementAndTheSupportingDocumentInTheExplanation()
+    {
+        Entry(new DateOnly(2026, 9, 3), -250m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Carburant", deductible: 200m).DocumentLabel = "Bon fiscal 381";
+        await _db.SaveChangesAsync();
+
+        RjipRow row = (await Rjip(new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30))).Rows.ShouldHaveSingleItem();
+
+        (row.Document, row.Operation, row.BankOut).ShouldBe(("Extras bancar", "Carburant – OMV Petrom, Bon fiscal 381", 250m));
+    }
+
+    /// <summary>§3: exportul CSV, cu totalul fiecărei luni și al anului.</summary>
+    [Fact]
+    public async Task Rjip_ExportsAYearAsCsvWithMonthlyAndYearTotals()
+    {
+        ADayInRidelance();
+        Entry(new DateOnly(2026, 11, 5), -100m, LedgerTransactionType.Expense, PaymentMethod.Cash, "Spălătorie");
+        await _db.SaveChangesAsync();
+
+        RegisterFile csv = (await new ExportRjipQueryHandler(_db, new GetRjipQueryHandler(_db), _exporter)
+            .Handle(new ExportRjipQuery(_pfa, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), RegisterFormat.Csv), CancellationToken.None)).Value;
+
+        (csv.FileName, csv.ContentType).ShouldBe(("RJIP_12345674_20260101_20261231.csv", "text/csv"));
+        string[] lines = Encoding.UTF8.GetString(csv.Content).TrimStart('\uFEFF').Split("\r\n");
+        lines.ShouldContain("Anul 2026");
+        lines.ShouldContain(";;;Total octombrie 2026;420,00;1850,00;0,00;300,00");
+        lines.ShouldContain(";;;Total noiembrie 2026;0,00;0,00;100,00;0,00");
+        lines.ShouldContain(";;;Total Anul 2026;420,00;1850,00;100,00;300,00");
     }
 
     [Fact]

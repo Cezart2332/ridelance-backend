@@ -13,6 +13,7 @@ public enum RegisterFormat
 {
     Pdf = 0,
     Xlsx = 1,
+    Csv = 2,
 }
 
 public sealed record RegisterFile(byte[] Content, string FileName, string ContentType);
@@ -26,13 +27,16 @@ internal static class RegisterErrors
 
 // ─── RJIP (cod 14-1-1/b) ─────────────────────────────────────────────────────────────────────────
 
-/// <summary><c>GET /accounting/pfas/{pfaId}/registers/rjip?from&amp;to</c></summary>
-public sealed record GetRjipQuery(Guid PfaId, DateOnly From, DateOnly To) : IQuery<RjipView>;
+/// <summary>
+/// <c>GET /accounting/pfas/{pfaId}/registers/rjip?from&amp;to&amp;regenerate</c>. Lunile închise vin din
+/// snapshot-ul închiderii (spec registre §3); <c>regenerate</c> le reface din ledger, pentru control.
+/// </summary>
+public sealed record GetRjipQuery(Guid PfaId, DateOnly From, DateOnly To, bool Regenerate = false) : IQuery<RjipView>;
 
 /// <summary>
 /// Registrul-jurnal de încasări și plăți (OMFP 170/2015, cod 14-1-1/b): cronologic, fiecare
 /// operațiune distinctă, cu sumele efectiv încasate sau plătite, în numerar sau prin bancă, în lei,
-/// totalizate lunar.
+/// totalizate lunar. Citește ledger-ul direct, la valori integrale.
 /// </summary>
 internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Extensions.Options.IOptions<AccountingOptions>? options = null)
     : IQueryHandler<GetRjipQuery, RjipView>
@@ -49,10 +53,55 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
             return Result.Failure<RjipView>(AccountingErrors.PfaNotFound);
         }
 
-        return Build(
+        RjipView live = Build(
             query.PfaId, query.From, query.To,
             await RegisterData.EntriesAsync(db, query.PfaId, query.From, query.To, cancellationToken),
             options?.Value.ManualChannelMapping ?? ManualChannelMapping.OwnerContributionAndCash);
+        return query.Regenerate ? live : await WithSnapshotsAsync(live, cancellationToken);
+    }
+
+    /// <summary>
+    /// Lunile închise, așa cum au fost la închidere: rândurile din ultimul snapshot al lunii, în locul
+    /// celor regenerate. Pentru o lună închisă cele două coincid (testul de acceptanță din §3).
+    /// </summary>
+    private async Task<RjipView> WithSnapshotsAsync(RjipView live, CancellationToken cancellationToken)
+    {
+        List<string> periods = [.. Months(live.From, live.To)];
+        List<string> closed = await db.PfaAccountingPeriods.AsNoTracking()
+            .Where(p => p.PfaRegistrationId == live.PfaId && periods.Contains(p.Period) && p.Status == AccountingPeriodStatus.Closed)
+            .Select(p => p.Period)
+            .ToListAsync(cancellationToken);
+        if (closed.Count == 0)
+        {
+            return live;
+        }
+
+        List<AccountingPeriodSnapshot> snapshots = await db.AccountingPeriodSnapshots.AsNoTracking()
+            .Where(s => s.PfaRegistrationId == live.PfaId && closed.Contains(s.Period))
+            .ToListAsync(cancellationToken);
+        var frozen = snapshots
+            .GroupBy(s => s.Period)
+            .Select(group => group.OrderByDescending(s => s.CreatedAtUtc).First())
+            .Select(s => AccountingJson.Deserialize<RjipView?>(s.RjipJson, null))
+            .OfType<RjipView>()
+            .ToDictionary(view => RegisterData.PeriodOf(view.From));
+        if (frozen.Count == 0)
+        {
+            return live;
+        }
+
+        IEnumerable<RjipRow> rows = live.Rows
+            .Where(row => !frozen.ContainsKey(RegisterData.PeriodOf(row.Date)))
+            .Concat(frozen.Values.SelectMany(view => view.Rows).Where(row => row.Date >= live.From && row.Date <= live.To));
+        return WithTotals(live.PfaId, live.From, live.To, [.. rows.OrderBy(row => row.Date)]);
+    }
+
+    private static IEnumerable<string> Months(DateOnly from, DateOnly to)
+    {
+        for (var month = new DateOnly(from.Year, from.Month, 1); month <= to; month = month.AddMonths(1))
+        {
+            yield return RegisterData.PeriodOf(month);
+        }
     }
 
     internal static RjipView Build(
@@ -62,6 +111,11 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
         List<RjipRow> rows = [.. entries
             .Where(e => RegisterData.IsCashMovement(e.Entry) && e.AmountLei != 0)
             .SelectMany(e => Rows(e, manual))];
+        return WithTotals(pfaId, from, to, rows);
+    }
+
+    private static RjipView WithTotals(Guid pfaId, DateOnly from, DateOnly to, List<RjipRow> rows)
+    {
         List<RjipMonthTotal> totals = [.. rows
             .GroupBy(row => RegisterData.PeriodOf(row.Date))
             .OrderBy(group => group.Key, StringComparer.Ordinal)
@@ -106,6 +160,12 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
             ? (item.AmountLei > 0, Math.Abs(item.AmountLei))
             : (item.AmountLei < 0, -Math.Abs(item.AmountLei));
 
+    /// <summary>
+    /// Coloana Document (spec registre §3, Q1): la bancă, „Extras bancar”, iar justificativul (factura,
+    /// bonul) trece în explicații; în numerar, documentul e chiar justificativul (Raport Z, bon fiscal).
+    /// </summary>
+    public const string BankStatement = "Extras bancar";
+
     private static RjipRow Row(RegisterEntry item, bool cash)
     {
         LedgerEntry entry = item.Entry;
@@ -113,6 +173,13 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
         string operation = entry.Counterparty is { Length: > 0 } counterparty && !entry.Description.Contains(counterparty, StringComparison.OrdinalIgnoreCase)
             ? $"{entry.Description} – {counterparty}"
             : entry.Description;
+        bool bank = entry.PaymentMethod == PaymentMethod.Bank;
+        string document = bank ? BankStatement : entry.DocumentLabel;
+        if (bank && entry.DocumentLabel is { Length: > 0 } label && !label.StartsWith("Extras", StringComparison.OrdinalIgnoreCase))
+        {
+            operation += $", {label}";
+        }
+
         if (item.CurrencyNote is not null)
         {
             operation += $" ({item.CurrencyNote})";
@@ -121,7 +188,7 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
         return new RjipRow(
             entry.Id,
             entry.Date,
-            entry.DocumentLabel,
+            document,
             operation,
             cash && incoming ? value : 0,
             cash && !incoming ? value : 0,
@@ -297,10 +364,18 @@ internal sealed class ExportRjipQueryHandler(IApplicationDbContext db, IQueryHan
                 [null, null, null, $"Total {MonthName(month.Key)}", total.CashIn, total.BankIn, total.CashOut, total.BankOut], Emphasis: true));
         }
 
+        if (view.Value.MonthTotals.Count > 1)
+        {
+            IReadOnlyList<RjipMonthTotal> months = view.Value.MonthTotals;
+            lines.Add(new RegisterLine(
+                [null, null, null, $"Total {Span(query.From, query.To)}", months.Sum(t => t.CashIn), months.Sum(t => t.BankIn), months.Sum(t => t.CashOut), months.Sum(t => t.BankOut)],
+                Emphasis: true));
+        }
+
         var document = new RegisterDocument(
             "REGISTRUL-JURNAL DE ÎNCASĂRI ȘI PLĂȚI",
             "14-1-1/b",
-            [$"{name} — CUI {cui}", $"Perioada {RegisterData.Date(query.From)} – {RegisterData.Date(query.To)}", "Sume în lei"],
+            [$"{name} — CUI {cui}", Span(query.From, query.To), "Sume în lei"],
             [
                 new("Nr. crt.", Width: 0.5f),
                 new("Data operațiunii de încasare/plată", Width: 1.1f),
@@ -319,16 +394,32 @@ internal sealed class ExportRjipQueryHandler(IApplicationDbContext db, IQueryHan
 
     private static decimal? Cell(decimal value) => value == 0 ? null : value;
 
+    /// <summary>Antetul: „Anul 2026”, „Luna octombrie 2026” sau intervalul.</summary>
+    private static string Span(DateOnly from, DateOnly to)
+    {
+        bool wholeMonths = from.Day == 1 && to == new DateOnly(to.Year, to.Month, DateTime.DaysInMonth(to.Year, to.Month));
+        if (wholeMonths && from.Month == 1 && to.Month == 12 && from.Year == to.Year)
+        {
+            return $"Anul {from.Year}";
+        }
+
+        return wholeMonths && from.Year == to.Year && from.Month == to.Month
+            ? $"Luna {MonthName(RegisterData.PeriodOf(from))}"
+            : $"Perioada {RegisterData.Date(from)} – {RegisterData.Date(to)}";
+    }
+
     private static string MonthName(string period)
     {
         var date = DateOnly.ParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture);
         return date.ToString("MMMM yyyy", RegisterData.Ro);
     }
 
-    internal static RegisterFile Export(IRegisterExporter exporter, RegisterDocument document, RegisterFormat format, string name) =>
-        format == RegisterFormat.Pdf
-            ? new RegisterFile(exporter.ToPdf(document), $"{name}.pdf", "application/pdf")
-            : new RegisterFile(exporter.ToXlsx(document), $"{name}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    internal static RegisterFile Export(IRegisterExporter exporter, RegisterDocument document, RegisterFormat format, string name) => format switch
+    {
+        RegisterFormat.Pdf => new RegisterFile(exporter.ToPdf(document), $"{name}.pdf", "application/pdf"),
+        RegisterFormat.Csv => new RegisterFile(RegisterCsv.Write(document), $"{name}.csv", "text/csv"),
+        _ => new RegisterFile(exporter.ToXlsx(document), $"{name}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    };
 }
 
 /// <summary><c>GET …/registers/ref/export?year&amp;format&amp;asOf?</c></summary>
