@@ -1,5 +1,6 @@
 using Application.Abstractions.Messaging;
 using Application.Accounting.Contracts;
+using Application.Accounting.FiscalRegister;
 using Application.Accounting.Registers;
 using Infrastructure.Authorization;
 using SharedKernel;

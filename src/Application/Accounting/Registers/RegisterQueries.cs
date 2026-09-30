@@ -18,6 +18,17 @@ public enum RegisterFormat
 
 public sealed record RegisterFile(byte[] Content, string FileName, string ContentType);
 
+/// <summary>Fișierul unui registru, în formatul cerut.</summary>
+internal static class RegisterFiles
+{
+    public static RegisterFile Export(IRegisterExporter exporter, RegisterDocument document, RegisterFormat format, string name) => format switch
+    {
+        RegisterFormat.Pdf => new RegisterFile(exporter.ToPdf(document), $"{name}.pdf", "application/pdf"),
+        RegisterFormat.Csv => new RegisterFile(RegisterCsv.Write(document), $"{name}.csv", "text/csv"),
+        _ => new RegisterFile(exporter.ToXlsx(document), $"{name}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    };
+}
+
 internal static class RegisterErrors
 {
     public static readonly Error InvalidRange = Error.Problem("Accounting.InvalidRange", "Intervalul nu e valid: „de la” trebuie să fie înainte de „până la”, în cel mult 3 ani.");
@@ -197,115 +208,6 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
     }
 }
 
-// ─── REF (OMFP 3254/2017) ────────────────────────────────────────────────────────────────────────
-
-/// <summary><c>GET /accounting/pfas/{pfaId}/registers/ref?year=</c>; <c>AsOf</c> = situație intermediară.</summary>
-public sealed record GetRefQuery(Guid PfaId, int Year, DateOnly? AsOf = null) : IQuery<RefView>;
-
-/// <summary>
-/// Registrul de evidență fiscală (OMFP 3254/2017, anexa 1): anul, rectificarea, sursa / categoria
-/// venitului și elementele de calcul ale venitului net anual. Folosește sumele <b>deductibile</b>.
-/// Status: <c>FINAL</c> când toate lunile de activitate ale anului sunt închise,
-/// <c>INTERMEDIATE</c> la o dată (cerută sau data încetării colaborării), altfel <c>CURRENT</c>.
-/// </summary>
-internal sealed class GetRefQueryHandler(IApplicationDbContext db) : IQueryHandler<GetRefQuery, RefView>
-{
-    /// <summary>Categoria de venit din Codul fiscal (titlul IV) și sursa, pe fila registrului (art. 3 alin. 3).</summary>
-    public const string IncomeCategory = "Venituri din activități independente – transport alternativ (ridesharing)";
-
-    public async Task<Result<RefView>> Handle(GetRefQuery query, CancellationToken cancellationToken)
-    {
-        if (query.Year is < 2000 or > 2100 || query.AsOf is { } date && date.Year != query.Year)
-        {
-            return Result.Failure<RefView>(RegisterErrors.InvalidYear);
-        }
-
-        if (await RegisterData.PfaAsync(db, query.PfaId, cancellationToken) is null)
-        {
-            return Result.Failure<RefView>(AccountingErrors.PfaNotFound);
-        }
-
-        (RefStatus status, DateOnly? asOf) = await StatusAsync(query, cancellationToken);
-        var start = new DateOnly(query.Year, 1, 1);
-        DateOnly end = asOf ?? new DateOnly(query.Year, 12, 31);
-        List<RegisterEntry> entries = await RegisterData.EntriesAsync(db, query.PfaId, start, end, cancellationToken);
-        return Build(query.PfaId, query.Year, status, asOf, entries);
-    }
-
-    internal static RefView Build(Guid pfaId, int year, RefStatus status, DateOnly? asOf, IEnumerable<RegisterEntry> entries)
-    {
-        // Doar încasările și plățile efective (§7): payout-ul nereconciliat nu e venit (invariantul 4),
-        // aporturile, retragerile titularului și transferurile nu sunt nici venit, nici cheltuială.
-        List<RegisterEntry> list = [.. entries.Where(e => RegisterData.IsCashMovement(e.Entry))];
-        decimal gross = list.Where(e => e.Entry.TransactionType == LedgerTransactionType.Income).Sum(e => e.AmountLei);
-        // R01: o cheltuială se deduce doar justificată cu documente — fără document („Document lipsă”)
-        // sau la verificare, suma ei deductibilă e doar o propunere și nu intră în registru.
-        decimal deductible = list
-            .Where(e => e.Entry.TransactionType == LedgerTransactionType.Expense &&
-                        e.Entry.ReconciliationStatus is ReconciliationStatus.Matched or ReconciliationStatus.Partial)
-            .Sum(e => e.DeductibleLei ?? 0);
-        decimal net = gross - deductible;
-
-        RefRow Row(string element, decimal value) => new(year, false, IncomeCategory, element, value);
-        return new RefView(
-            pfaId,
-            year,
-            status,
-            asOf,
-            [
-                Row("Venit brut", gross),
-                Row("Cheltuieli deductibile", deductible),
-                net >= 0 ? Row("Venit net anual", net) : Row("Pierdere netă anuală", -net),
-            ]);
-    }
-
-    private async Task<(RefStatus Status, DateOnly? AsOf)> StatusAsync(GetRefQuery query, CancellationToken cancellationToken)
-    {
-        var engagement = await db.PfaAccountingEngagements.AsNoTracking()
-            .Where(e => e.PfaRegistrationId == query.PfaId)
-            .OrderByDescending(e => e.StartDate)
-            .Select(e => new { e.StartDate, e.EndDate, e.Status })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        // Lunile de activitate ale anului: de la începutul colaborării până la încheierea ei.
-        var first = new DateOnly(query.Year, 1, 1);
-        var last = new DateOnly(query.Year, 12, 1);
-        if (engagement is not null && engagement.StartDate > first)
-        {
-            first = new DateOnly(engagement.StartDate.Year, engagement.StartDate.Month, 1);
-        }
-
-        if (engagement?.EndDate is { } endDate && endDate < last.AddMonths(1))
-        {
-            last = new DateOnly(endDate.Year, endDate.Month, 1);
-        }
-
-        List<string> months = [];
-        for (DateOnly month = first; month <= last; month = month.AddMonths(1))
-        {
-            months.Add(RegisterData.PeriodOf(month));
-        }
-
-        int closed = await db.PfaAccountingPeriods.CountAsync(
-            p => p.PfaRegistrationId == query.PfaId && months.Contains(p.Period) && p.Status == AccountingPeriodStatus.Closed,
-            cancellationToken);
-
-        if (query.AsOf is { } asOf)
-        {
-            return (RefStatus.Intermediate, asOf);
-        }
-
-        if (months.Count > 0 && closed == months.Count)
-        {
-            return (RefStatus.Final, null);
-        }
-
-        return engagement is { Status: EngagementStatus.Inactive, EndDate: { } end } && end.Year == query.Year
-            ? (RefStatus.Intermediate, end)
-            : (RefStatus.Current, null);
-    }
-}
-
 // ─── Registrul-inventar (cod 14-1-2/b) ──────────────────────────────────────────────────────────
 
 /// <summary><c>GET /accounting/pfas/{pfaId}/registers/inventory?year=</c> — activele folosite în an.</summary>
@@ -389,7 +291,7 @@ internal sealed class ExportRjipQueryHandler(IApplicationDbContext db, IQueryHan
             ["0", "1", "2", "3", "4", "5", "6", "7"],
             lines,
             ["Model conform OMFP nr. 170/2015. Sumele în valută sunt trecute în lei la cursul BNR din ultima zi bancară anterioară operațiunii."]);
-        return Export(exporter, document, query.Format, $"RJIP_{cui}_{query.From:yyyyMMdd}_{query.To:yyyyMMdd}");
+        return RegisterFiles.Export(exporter, document, query.Format, $"RJIP_{cui}_{query.From:yyyyMMdd}_{query.To:yyyyMMdd}");
     }
 
     private static decimal? Cell(decimal value) => value == 0 ? null : value;
@@ -414,57 +316,7 @@ internal sealed class ExportRjipQueryHandler(IApplicationDbContext db, IQueryHan
         return date.ToString("MMMM yyyy", RegisterData.Ro);
     }
 
-    internal static RegisterFile Export(IRegisterExporter exporter, RegisterDocument document, RegisterFormat format, string name) => format switch
-    {
-        RegisterFormat.Pdf => new RegisterFile(exporter.ToPdf(document), $"{name}.pdf", "application/pdf"),
-        RegisterFormat.Csv => new RegisterFile(RegisterCsv.Write(document), $"{name}.csv", "text/csv"),
-        _ => new RegisterFile(exporter.ToXlsx(document), $"{name}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-    };
-}
 
-/// <summary><c>GET …/registers/ref/export?year&amp;format&amp;asOf?</c></summary>
-public sealed record ExportRefQuery(Guid PfaId, int Year, RegisterFormat Format, DateOnly? AsOf) : IQuery<RegisterFile>;
-
-internal sealed class ExportRefQueryHandler(IApplicationDbContext db, IQueryHandler<GetRefQuery, RefView> refView, IRegisterExporter exporter)
-    : IQueryHandler<ExportRefQuery, RegisterFile>
-{
-    public async Task<Result<RegisterFile>> Handle(ExportRefQuery query, CancellationToken cancellationToken)
-    {
-        Result<RefView> view = await refView.Handle(new GetRefQuery(query.PfaId, query.Year, query.AsOf), cancellationToken);
-        if (view.IsFailure)
-        {
-            return Result.Failure<RegisterFile>(view.Error);
-        }
-
-        (string name, string cui) = (await RegisterData.PfaAsync(db, query.PfaId, cancellationToken))!.Value;
-        RefView data = view.Value;
-        string status = data.Status switch
-        {
-            RefStatus.Final => "Final",
-            RefStatus.Intermediate => $"Situație intermediară la {RegisterData.Date(data.AsOf!.Value)}",
-            _ => "Calcul curent",
-        };
-        var document = new RegisterDocument(
-            "REGISTRUL DE EVIDENȚĂ FISCALĂ",
-            "Anexa 1 la OMFP nr. 3254/2017",
-            [
-                $"{name} — CUI {cui}",
-                $"Anul {data.Year}",
-                $"Rectificare: {(data.Rows.Any(r => r.Rectification) ? "Da" : "Nu")}",
-                $"Sursa de venit/categorie de venit: {GetRefQueryHandler.IncomeCategory}",
-                status,
-            ],
-            [
-                new("Nr. crt.", Width: 0.5f),
-                new("Elemente de calcul pentru stabilirea venitului net anual/pierderii nete anuale", Width: 4f),
-                new("Valoare - lei -", Numeric: true, Width: 1.2f),
-            ],
-            null,
-            [.. data.Rows.Select((row, index) => new RegisterLine([index + 1, row.CalculationElement, row.Value], Emphasis: index == data.Rows.Count - 1))],
-            ["Cheltuielile deductibile sunt sumele deductibile (după regula de deductibilitate valabilă la data fiecărei cheltuieli), nu sumele plătite."]);
-        string suffix = data.Status == RefStatus.Intermediate ? $"_{data.AsOf:yyyyMMdd}" : string.Empty;
-        return ExportRjipQueryHandler.Export(exporter, document, query.Format, $"REF_{cui}_{data.Year}{suffix}");
-    }
 }
 
 /// <summary><c>GET …/registers/inventory/export?year&amp;format</c></summary>
@@ -518,6 +370,6 @@ internal sealed class ExportInventoryQueryHandler(IApplicationDbContext db, IReg
             ["1", "2", "3"],
             lines,
             ["Model conform OMFP nr. 170/2015. Creanțele și datoriile inventariate nu sunt încă evidențiate în aplicație."]);
-        return ExportRjipQueryHandler.Export(exporter, document, query.Format, $"Registru-inventar_{pfa.Cui}_{date:yyyyMMdd}");
+        return RegisterFiles.Export(exporter, document, query.Format, $"Registru-inventar_{pfa.Cui}_{date:yyyyMMdd}");
     }
 }

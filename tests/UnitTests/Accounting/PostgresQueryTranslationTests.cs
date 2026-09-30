@@ -260,7 +260,7 @@ public sealed class PostgresQueryTranslationTests
 
         var exporter = new Infrastructure.Accounting.RegisterExporter();
         var files = new DeclarationFiles(db, new AnafDeclarationXmlService(), new MemoryFiles(), new PlainSecrets());
-        var refQuery = new Application.Accounting.Registers.GetRefQueryHandler(db);
+        var refQuery = new Application.Accounting.FiscalRegister.GetRefQueryHandler(db);
         JobRef job = (await new Application.Accounting.Handover.StartHandoverPackageCommandHandler(db, new UserOf(user.Id))
             .Handle(new Application.Accounting.Handover.StartHandoverPackageCommand(pfa.Id), CancellationToken.None)).Value;
         (await new Application.Accounting.Handover.RunHandoverPackageCommandHandler(
@@ -269,7 +269,7 @@ public sealed class PostgresQueryTranslationTests
                 exporter,
                 refQuery,
                 new Application.Accounting.Registers.ExportRjipQueryHandler(db, new Application.Accounting.Registers.GetRjipQueryHandler(db), exporter),
-                new Application.Accounting.Registers.ExportRefQueryHandler(db, refQuery, exporter),
+                new Application.Accounting.FiscalRegister.ExportRefQueryHandler(db, refQuery, exporter),
                 new Application.Accounting.Registers.ExportInventoryQueryHandler(db, exporter))
             .Handle(new Application.Accounting.Handover.RunHandoverPackageCommand(job.JobId), CancellationToken.None)).IsSuccess.ShouldBeTrue();
         (await db.BackgroundJobs.AsNoTracking().SingleAsync(j => j.Id == job.JobId)).Status.ShouldBe(BackgroundJobStatus.Completed);

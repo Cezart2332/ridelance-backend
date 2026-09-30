@@ -8,7 +8,22 @@ using Microsoft.EntityFrameworkCore;
 namespace Application.Accounting.Registers;
 
 /// <summary>O înregistrare din ledger, în lei, cu mențiunea valutei (OMFP 170/2015, cap. III pct. 18).</summary>
-internal sealed record RegisterEntry(LedgerEntry Entry, decimal AmountLei, decimal? DeductibleLei, string? CurrencyNote);
+internal sealed record RegisterEntry(LedgerEntry Entry, decimal AmountLei, decimal? DeductibleLei, string? CurrencyNote)
+{
+    /// <summary>Venitul impozabil stabilit de Tax Engine, în lei (aceeași conversie ca suma).</summary>
+    public decimal TaxableLei
+    {
+        get
+        {
+            if (Entry.TaxableIncomeAmount == 0 || Entry.Amount == 0)
+            {
+                return 0;
+            }
+
+            return Entry.TaxableIncomeAmount == Entry.Amount ? AmountLei : LedgerInvariants.Round(AmountLei * Entry.TaxableIncomeAmount / Entry.Amount);
+        }
+    }
+}
 
 /// <summary>
 /// Registrele sunt proiecții din ledger (spec contabilitate B7), nu documente stocate. Aici se

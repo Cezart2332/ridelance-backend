@@ -8,6 +8,7 @@ using Application.Accounting.Handover;
 using Application.Accounting.Ledger;
 using Application.Accounting.Periods;
 using Application.Accounting.Pfas;
+using Application.Accounting.FiscalRegister;
 using Application.Accounting.Registers;
 using Domain.Accounting;
 using Domain.Banking;

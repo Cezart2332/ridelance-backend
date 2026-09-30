@@ -191,8 +191,7 @@ internal static class PeriodSnapshots
         DateOnly end = start.AddMonths(1).AddDays(-1);
         List<Registers.RegisterEntry> entries = await Registers.RegisterData.EntriesAsync(db, pfaId, start, end, cancellationToken);
         RjipView rjip = Registers.GetRjipQueryHandler.Build(pfaId, start, end, entries, manual ?? ManualChannelMapping.OwnerContributionAndCash);
-        List<Registers.RegisterEntry> year = await Registers.RegisterData.EntriesAsync(db, pfaId, new DateOnly(end.Year, 1, 1), end, cancellationToken);
-        RefView refView = Registers.GetRefQueryHandler.Build(pfaId, end.Year, RefStatus.Intermediate, end, year);
+        RefView refView = await FiscalRegister.GetRefQueryHandler.ComputeAsync(db, pfaId, end.Year, RefStatus.Intermediate, end, cancellationToken);
 
         db.AccountingPeriodSnapshots.Add(new AccountingPeriodSnapshot
         {
