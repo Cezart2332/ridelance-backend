@@ -36,6 +36,8 @@ internal static class PeriodErrors
 
     public static Error NotClosed(string period) => Error.Conflict("Accounting.PeriodOpen", $"Perioada {period} nu e închisă.");
 
+    public static Error YearClosed(int year) => Error.Conflict("Accounting.YearClosed", $"Anul {year} e închis; se redeschide întâi anul.");
+
     public static readonly Error AlreadyStorned = Error.Conflict(
         "Accounting.AlreadyStorned", "Înregistrarea e deja stornată; corectează înregistrarea care o înlocuiește, din luna curentă.");
 
@@ -151,6 +153,10 @@ internal sealed class ClosePeriodCommandHandler(
             .Where(e => e.PfaRegistrationId == command.PfaId && e.AccountingPeriod == command.Period && e.Status != LedgerEntryStatus.Locked && !e.ClosedPeriodFlag)
             .ToListAsync(cancellationToken);
         entries.ForEach(e => e.Status = LedgerEntryStatus.Locked);
+        List<DepreciationLine> depreciation = await db.DepreciationLines
+            .Where(l => l.PfaRegistrationId == command.PfaId && l.Year == start.Year && l.Month == start.Month && !l.IsLocked)
+            .ToListAsync(cancellationToken);
+        depreciation.ForEach(l => l.IsLocked = true);
         await SnapshotAsync(command.PfaId, command.Period, start, end, cancellationToken);
 
         AccountingAudit.Record(
@@ -480,6 +486,12 @@ internal sealed class ReopenPeriodCommandHandler(IApplicationDbContext db, IUser
             return Result.Failure<AccountingPeriodDto>(PeriodErrors.NotClosed(command.Period));
         }
 
+        int year = int.Parse(command.Period[..4], CultureInfo.InvariantCulture);
+        if (await db.AccountingYears.AnyAsync(y => y.PfaRegistrationId == command.PfaId && y.Year == year && y.Status == AccountingPeriodStatus.Closed, cancellationToken))
+        {
+            return Result.Failure<AccountingPeriodDto>(PeriodErrors.YearClosed(year));
+        }
+
         period.Status = AccountingPeriodStatus.Open;
         period.ClosedAtUtc = null;
         period.ClosedByUserId = null;
@@ -487,6 +499,11 @@ internal sealed class ReopenPeriodCommandHandler(IApplicationDbContext db, IUser
             .Where(e => e.PfaRegistrationId == command.PfaId && e.AccountingPeriod == command.Period && e.Status == LedgerEntryStatus.Locked)
             .ToListAsync(cancellationToken);
         entries.ForEach(e => e.Status = LedgerEntryStatus.Verified);
+        int month = int.Parse(command.Period[5..], CultureInfo.InvariantCulture);
+        List<DepreciationLine> depreciation = await db.DepreciationLines
+            .Where(l => l.PfaRegistrationId == command.PfaId && l.Year == year && l.Month == month && l.IsLocked)
+            .ToListAsync(cancellationToken);
+        depreciation.ForEach(l => l.IsLocked = false);
 
         AccountingAudit.Record(
             db, command.PfaId, nameof(PfaAccountingPeriod), period.Id, "REOPEN",

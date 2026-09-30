@@ -57,6 +57,16 @@ internal sealed class InventoryEndpoints : IEndpoint
             (await handler.Handle(new ClientAddInventoryItemCommand(id, request.Category, request.Description, request.Value, request.Note), cancellationToken))
                 .Match(Results.Ok, CustomResults.Problem));
 
+        RouteGroupBuilder years = app.MapGroup("pfa/years")
+            .RequireAuthorization()
+            .WithTags(Tags.Accounting);
+
+        years.MapGet(string.Empty, async (IQueryHandler<Application.Accounting.Periods.GetClientYearsQuery, IReadOnlyList<Application.Accounting.Periods.AccountingYearDto>> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new Application.Accounting.Periods.GetClientYearsQuery(), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
+        years.MapGet("{year:int}/package", async (int year, IQueryHandler<Application.Accounting.Periods.GetYearPackageQuery, Application.Accounting.Registers.RegisterFile> handler, CancellationToken cancellationToken) =>
+            RegisterEndpoints.File(await handler.Handle(new Application.Accounting.Periods.GetYearPackageQuery(null, year), cancellationToken)));
+
         client.MapPost("{id:guid}/submit", async (Guid id, ICommandHandler<ClientSubmitInventoryCommand, InventoryCountDto> handler, CancellationToken cancellationToken) =>
             (await handler.Handle(new ClientSubmitInventoryCommand(id), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
     }

@@ -55,6 +55,32 @@ internal sealed class PfaEndpoints : IEndpoint
             CancellationToken cancellationToken) =>
             (await handler.Handle(new GetMonthReconciliationQuery(pfaId, period), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
 
+        // Registre §7: explicația Adminului pentru Z vs cash platformă și payout-urile nereconciliate.
+        group.MapPost("pfas/{pfaId:guid}/periods/{period}/explanations", async (
+            Guid pfaId,
+            string period,
+            ExplainControlRequest request,
+            ICommandHandler<ExplainReconciliationControlCommand> handler,
+            CancellationToken cancellationToken) =>
+            Enum.TryParse(request.Control?.Replace("_", string.Empty, StringComparison.Ordinal), ignoreCase: true, out ReconciliationControl control)
+                ? (await handler.Handle(new ExplainReconciliationControlCommand(pfaId, period, control, request.Note), cancellationToken)).Match(Results.NoContent, CustomResults.Problem)
+                : Results.Problem(title: "Accounting.ControlNotExplainable", detail: "Controlul nu există.", statusCode: StatusCodes.Status400BadRequest));
+
+        // Registre §7: anul contabil — starea, „Închide anul”, redeschiderea (ADMIN) și pachetul anual.
+        group.MapGet("pfas/{pfaId:guid}/years/{year:int}", async (Guid pfaId, int year, IQueryHandler<GetAccountingYearQuery, AccountingYearDto> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new GetAccountingYearQuery(pfaId, year), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
+        group.MapPost("pfas/{pfaId:guid}/years/{year:int}/close", async (Guid pfaId, int year, ICommandHandler<CloseAccountingYearCommand, AccountingYearDto> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new CloseAccountingYearCommand(pfaId, year), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
+        group.MapPost("pfas/{pfaId:guid}/years/{year:int}/reopen", async (
+            Guid pfaId, int year, ReopenPeriodRequest request, ICommandHandler<ReopenAccountingYearCommand, AccountingYearDto> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new ReopenAccountingYearCommand(pfaId, year, request.Reason), cancellationToken)).Match(Results.Ok, CustomResults.Problem))
+            .RequireAuthorization(Permissions.ManagePfaRegistrations);
+
+        group.MapGet("pfas/{pfaId:guid}/years/{year:int}/package", async (Guid pfaId, int year, IQueryHandler<GetYearPackageQuery, Application.Accounting.Registers.RegisterFile> handler, CancellationToken cancellationToken) =>
+            RegisterEndpoints.File(await handler.Handle(new GetYearPackageQuery(pfaId, year), cancellationToken)));
+
         // Redeschiderea: doar ADMIN, cu motiv.
         group.MapPost("pfas/{pfaId:guid}/periods/{period}/reopen", async (
             Guid pfaId,
@@ -77,4 +103,6 @@ internal sealed class PfaEndpoints : IEndpoint
 }
 
 internal sealed record ReopenPeriodRequest(string? Reason);
+
+internal sealed record ExplainControlRequest(string? Control, string? Note);
 
