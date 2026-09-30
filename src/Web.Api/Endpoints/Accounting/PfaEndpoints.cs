@@ -47,6 +47,24 @@ internal sealed class PfaEndpoints : IEndpoint
             CancellationToken cancellationToken) =>
             (await handler.Handle(new ClosePeriodCommand(pfaId, period), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
 
+        // Spec flux contabil §8: checklist-ul lunii, pe care îl verifică și închiderea.
+        group.MapGet("pfas/{pfaId:guid}/periods/{period}/reconciliation", async (
+            Guid pfaId,
+            string period,
+            IQueryHandler<GetMonthReconciliationQuery, MonthReconciliationDto> handler,
+            CancellationToken cancellationToken) =>
+            (await handler.Handle(new GetMonthReconciliationQuery(pfaId, period), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
+        // Redeschiderea: doar ADMIN, cu motiv.
+        group.MapPost("pfas/{pfaId:guid}/periods/{period}/reopen", async (
+            Guid pfaId,
+            string period,
+            ReopenPeriodRequest request,
+            ICommandHandler<ReopenPeriodCommand, AccountingPeriodDto> handler,
+            CancellationToken cancellationToken) =>
+            (await handler.Handle(new ReopenPeriodCommand(pfaId, period, request.Reason), cancellationToken)).Match(Results.Ok, CustomResults.Problem))
+            .RequireAuthorization(Permissions.ManagePfaRegistrations);
+
         group.MapPost("pfas/{pfaId:guid}/periods/{period}/corrections", async (
             Guid pfaId,
             string period,
@@ -57,3 +75,6 @@ internal sealed class PfaEndpoints : IEndpoint
                 .Match(Results.Ok, CustomResults.Problem));
     }
 }
+
+internal sealed record ReopenPeriodRequest(string? Reason);
+

@@ -708,3 +708,20 @@ internal sealed class FiscalReceiptConfiguration : IEntityTypeConfiguration<Fisc
         builder.HasOne<ZReport>().WithMany().HasForeignKey(r => r.ZReportId).OnDelete(DeleteBehavior.Restrict);
     }
 }
+
+internal sealed class AccountingPeriodSnapshotConfiguration : IEntityTypeConfiguration<AccountingPeriodSnapshot>
+{
+    public void Configure(EntityTypeBuilder<AccountingPeriodSnapshot> builder)
+    {
+        builder.ToTable("accounting_period_snapshots");
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Period).HasMaxLength(AccountingMapping.PeriodLength).IsRequired();
+        builder.Property(s => s.RjipJson).AsJson();
+        builder.Property(s => s.RefJson).AsJson();
+        builder.HasIndex(s => new { s.PfaRegistrationId, s.Period });
+        builder.RestrictToPfa(s => s.PfaRegistrationId);
+        builder.RestrictToDocument(s => s.RjipPdfDocumentId);
+        builder.RestrictToUser(s => s.CreatedByUserId);
+    }
+}
+

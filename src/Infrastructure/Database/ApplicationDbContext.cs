@@ -149,6 +149,7 @@ public sealed class ApplicationDbContext(
     public DbSet<Domain.Eldrive.EldriveInvite> EldriveInvites { get; set; }
     public DbSet<Domain.Accounting.LedgerMatchProposal> LedgerMatchProposals { get; set; }
     public DbSet<Domain.Accounting.FiscalReceipt> FiscalReceipts { get; set; }
+    public DbSet<Domain.Accounting.AccountingPeriodSnapshot> AccountingPeriodSnapshots { get; set; }
     public DbSet<Domain.FiscalLink.FiscalLinkClient> FiscalLinkClients { get; set; }
     public DbSet<OfficeAppointment> OfficeAppointments { get; set; }
     public DbSet<OfficeScheduleDay> OfficeScheduleDays { get; set; }

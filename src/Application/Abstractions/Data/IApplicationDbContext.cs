@@ -143,6 +143,7 @@ public interface IApplicationDbContext
     DbSet<Domain.Eldrive.EldriveInvite> EldriveInvites { get; }
     DbSet<Domain.Accounting.LedgerMatchProposal> LedgerMatchProposals { get; }
     DbSet<Domain.Accounting.FiscalReceipt> FiscalReceipts { get; }
+    DbSet<Domain.Accounting.AccountingPeriodSnapshot> AccountingPeriodSnapshots { get; }
     DbSet<Domain.FiscalLink.FiscalLinkClient> FiscalLinkClients { get; }
     DbSet<OfficeAppointment> OfficeAppointments { get; }
     DbSet<OfficeScheduleDay> OfficeScheduleDays { get; }
