@@ -119,6 +119,11 @@ public static class DependencyInjection
         services.AddHttpClient<ISmsService, Infrastructure.Sms.VonageSmsService>(client =>
             client.Timeout = TimeSpan.FromSeconds(15));
 
+        // Eldrive: invitațiile în contul de partener RIDElance.
+        services.Configure<Infrastructure.Eldrive.EldriveOptions>(configuration.GetSection(Infrastructure.Eldrive.EldriveOptions.SectionName));
+        services.AddHttpClient<IEldriveService, Infrastructure.Eldrive.EldriveService>(client =>
+            client.Timeout = TimeSpan.FromSeconds(20));
+
         // Bolt
         services.AddHttpClient();
         services.AddScoped<IBoltService, BoltService>();

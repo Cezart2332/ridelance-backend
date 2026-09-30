@@ -146,6 +146,7 @@ public sealed class ApplicationDbContext(
 
     public DbSet<UberCsvImport> UberCsvImports { get; set; }
     public DbSet<UberTrip> UberTrips { get; set; }
+    public DbSet<Domain.Eldrive.EldriveInvite> EldriveInvites { get; set; }
     public DbSet<OfficeAppointment> OfficeAppointments { get; set; }
     public DbSet<OfficeScheduleDay> OfficeScheduleDays { get; set; }
     public DbSet<OfficeBlockedSlot> OfficeBlockedSlots { get; set; }
