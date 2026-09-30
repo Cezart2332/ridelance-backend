@@ -27,7 +27,7 @@ RUN dotnet publish "src/Web.Api/Web.Api.csproj" \
   --no-restore
 
 # OpenCvSharp manylinux binary links OpenEXR 2.x (libIlmImf-2_5.so.25); Noble only ships OpenEXR 3.x
-FROM ubuntu:22.04 AS openexr2
+FROM ubuntu:26.04 AS openexr2
 RUN apt-get update && apt-get install -y --no-install-recommends libopenexr25 \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /openexr-libs \
