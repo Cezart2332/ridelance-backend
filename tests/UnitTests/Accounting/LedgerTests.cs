@@ -40,7 +40,7 @@ public sealed class LedgerTests : IDisposable
     private readonly FakeReceipts _receipts = new();
     private readonly FakeOblio _oblio = new();
     private readonly MemoryFiles _files = new();
-    private AccountingOptions _options = new();
+    private readonly AccountingOptions _options = new();
 
     public LedgerTests()
     {
@@ -83,7 +83,8 @@ public sealed class LedgerTests : IDisposable
         (fuel.DocumentLabel, fuel.PaymentMethod, fuel.AccountingPeriod).ShouldBe(("Extras 10.10.2026", PaymentMethod.Bank, "2026-10"));
 
         LedgerEntry bolt = entries.Single(e => e.Amount == 1850m);
-        (bolt.TransactionType, bolt.Source, bolt.PaymentMethod, bolt.Status).ShouldBe((LedgerTransactionType.Income, LedgerSource.Bolt, PaymentMethod.Bank, LedgerEntryStatus.AutoImported));
+        (bolt.TransactionType, bolt.Source, bolt.PaymentMethod, bolt.ReconciliationStatus)
+            .ShouldBe((LedgerTransactionType.PlatformSettlement, LedgerSource.Bolt, PaymentMethod.Bank, ReconciliationStatus.NeedsReconciliation));
 
         (z.Extracted, z.LedgerEntry.Amount, z.LedgerEntry.Source, z.LedgerEntry.PaymentMethod, z.LedgerEntry.TransactionType, z.LedgerEntry.DocumentLabel, z.LedgerEntry.Status)
             .ShouldBe((new ZReportExtracted(Day, "125", 420m), 420m, LedgerSource.CashZ, PaymentMethod.Cash, LedgerTransactionType.Income, "Raport Z nr. 125", LedgerEntryStatus.NeedsReview));
@@ -95,7 +96,7 @@ public sealed class LedgerTests : IDisposable
     {
         Transaction(-300m, "OMV PETROM SA", null);
         Transaction(-49.99m, "MAGAZIN X", "Cumparaturi");
-        Transaction(200m, "POPESCU ION", "Depunere");
+        Transaction(200m, "CLIENT NECUNOSCUT SRL", "Depunere");
 
         await Import();
         IReadOnlyList<LedgerImportResult> again = await Import();
@@ -105,7 +106,8 @@ public sealed class LedgerTests : IDisposable
         LedgerEntry unknownExpense = await _db.LedgerEntries.SingleAsync(e => e.Amount == -49.99m);
         (unknownExpense.Category, unknownExpense.Status).ShouldBe((null, LedgerEntryStatus.NeedsReview));
         LedgerEntry unknownIncome = await _db.LedgerEntries.SingleAsync(e => e.Amount == 200m);
-        (unknownIncome.TransactionType, unknownIncome.Status).ShouldBe((LedgerTransactionType.Other, LedgerEntryStatus.NeedsReview));
+        (unknownIncome.TransactionType, unknownIncome.Status, unknownIncome.ReconciliationStatus)
+            .ShouldBe((LedgerTransactionType.Other, LedgerEntryStatus.NeedsReview, ReconciliationStatus.NeedsReview));
     }
 
     /// <summary>Spec §5.2: deductibilitatea urmează setarea valabilă la data cheltuielii.</summary>
@@ -151,52 +153,117 @@ public sealed class LedgerTests : IDisposable
         (await Verify(entry.Id)).Error.Code.ShouldBe("Accounting.PeriodClosed");
     }
 
+    /// <summary>Exemplul din spec: online 5.000, comision 350, payout 4.650.</summary>
     [Fact]
-    public async Task Net_payouts_are_linked_to_the_platform_report_of_the_month()
+    public async Task R21_BoltPayout_CreatesGrossAndCommission()
+    {
+        Transaction(4650m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 9, 2));
+        Guid report = Report(Platform.Bolt, income: 5000m, commission: 350m);
+        CommissionInvoice(Platform.Bolt);
+
+        await Import();
+        IReadOnlyList<LedgerImportResult> again = await Import();
+
+        again.Sum(r => r.Created + r.Updated).ShouldBe(0);
+        List<LedgerEntry> entries = await _db.LedgerEntries.OrderByDescending(e => e.Amount).ToListAsync();
+        entries.Select(e => (e.TransactionType, e.Amount, e.Date, e.ReconciliationStatus)).ShouldBe(
+        [
+            (LedgerTransactionType.Income, 5000m, new DateOnly(2026, 9, 2), ReconciliationStatus.Matched),
+            (LedgerTransactionType.Expense, -350m, new DateOnly(2026, 9, 2), ReconciliationStatus.Matched),
+        ]);
+        entries.Select(e => e.SettlementGroupId).Distinct().ShouldHaveSingleItem().ShouldNotBeNull();
+        entries.Select(e => e.BankTransactionId).Distinct().ShouldHaveSingleItem().ShouldNotBeNull();
+        entries.ShouldAllBe(e => e.PlatformDocumentId == report);
+        entries.Sum(e => e.Amount).ShouldBe(4650m);
+        (entries[1].Category, entries[1].DeductibleAmount).ShouldBe(("PLATFORM_COMMISSION", (decimal?)350m));
+    }
+
+    [Fact]
+    public async Task R21_WeeklyPayouts_EachBecomeGrossAndCommission()
     {
         Transaction(900m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 8, 10));
         Transaction(1100m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 9, 2));
-        Guid report = Report(Platform.Bolt, income: 2500m, commission: 500m);
+        Report(Platform.Bolt, income: 2500m, commission: 500m);
+        CommissionInvoice(Platform.Bolt);
 
         IReadOnlyList<LedgerImportResult> results = await Import();
 
-        (await _db.LedgerEntries.Where(e => e.PlatformDocumentId == report).CountAsync()).ShouldBe(2);
-        (await _db.LedgerEntries.Where(e => e.TransactionType == LedgerTransactionType.Income).SumAsync(e => e.Amount)).ShouldBe(2000m);
         results.SelectMany(r => r.Notes).ShouldBeEmpty();
+        List<LedgerEntry> entries = await _db.LedgerEntries.ToListAsync();
+        entries.Where(e => e.TransactionType == LedgerTransactionType.Income).Sum(e => e.Amount).ShouldBe(2500m);
+        entries.Where(e => e.TransactionType == LedgerTransactionType.Expense).Sum(e => e.Amount).ShouldBe(-500m);
+        // Fiecare payout e un grup: brut − comision = suma virată, la data virării.
+        entries.GroupBy(e => e.SettlementGroupId).Select(g => (g.First().Date, g.Sum(e => e.Amount)))
+            .ShouldBe([(new DateOnly(2026, 8, 10), 900m), (new DateOnly(2026, 9, 2), 1100m)], ignoreOrder: true);
     }
 
     [Fact]
-    public async Task Unmatched_payouts_are_reported_not_linked()
+    public async Task R22_PayoutWithoutReport_StaysNeedsReconciliation()
+    {
+        Transaction(1850m, "UBER BV", "Payout", new DateOnly(2026, 9, 2));
+
+        await Import();
+
+        LedgerEntry payout = await _db.LedgerEntries.SingleAsync();
+        (payout.TransactionType, payout.Source, payout.ReconciliationStatus, payout.SettlementGroupId)
+            .ShouldBe((LedgerTransactionType.PlatformSettlement, LedgerSource.Uber, ReconciliationStatus.NeedsReconciliation, (Guid?)null));
+    }
+
+    [Fact]
+    public async Task R22_ReportWithoutCommissionInvoice_DoesNotSplit()
+    {
+        Transaction(4650m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 9, 2));
+        Report(Platform.Bolt, income: 5000m, commission: 350m);
+
+        IReadOnlyList<LedgerImportResult> results = await Import();
+
+        (await _db.LedgerEntries.SingleAsync()).ReconciliationStatus.ShouldBe(ReconciliationStatus.NeedsReconciliation);
+        results.SelectMany(r => r.Notes).ShouldHaveSingleItem().ShouldContain("factura de comision");
+    }
+
+    [Fact]
+    public async Task R23_PayoutDifference_NeedsReview_WithoutEntries()
     {
         Transaction(900m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 8, 10));
         Report(Platform.Bolt, income: 2500m, commission: 500m);
+        CommissionInvoice(Platform.Bolt);
 
         IReadOnlyList<LedgerImportResult> results = await Import();
 
-        results.SelectMany(r => r.Notes).ShouldHaveSingleItem().ShouldBe("Raport Bolt 08.2026: payout-urile din bancă (900,00 lei) nu dau netul din raport (2.000,00 lei).");
-        (await _db.LedgerEntries.AnyAsync(e => e.PlatformDocumentId != null)).ShouldBeFalse();
+        results.SelectMany(r => r.Notes).ShouldHaveSingleItem()
+            .ShouldBe("Bolt 08.2026: payout-urile din bancă (900,00 lei) nu dau netul din raport (2.000,00 lei), diferență -1.100,00 lei.");
+        LedgerEntry payout = await _db.LedgerEntries.SingleAsync();
+        (payout.TransactionType, payout.ReconciliationStatus, payout.PlatformDocumentId)
+            .ShouldBe((LedgerTransactionType.PlatformSettlement, ReconciliationStatus.NeedsReview, (Guid?)null));
     }
 
     [Fact]
-    public async Task Gross_recognition_counts_the_report_once_and_payouts_as_transfers()
+    public async Task R40_R41_TransfersWithTheOwnerAreNotIncomeOrExpense()
     {
-        _options = new AccountingOptions { IncomeRecognition = LedgerIncomeRecognition.GrossReport };
-        Transaction(2000m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 9, 2));
-        Report(Platform.Bolt, income: 2500m, commission: 500m);
+        Transaction(-2000m, "Popescu Ion", "Transfer personal");
+        Transaction(2000m, "ION POPESCU", "Aport");
 
         await Import();
+
+        LedgerEntry withdrawal = await _db.LedgerEntries.SingleAsync(e => e.Amount < 0);
+        (withdrawal.TransactionType, withdrawal.DeductibleAmount, withdrawal.ReconciliationStatus)
+            .ShouldBe((LedgerTransactionType.OwnerWithdrawal, (decimal?)null, ReconciliationStatus.Matched));
+        LedgerEntry contribution = await _db.LedgerEntries.SingleAsync(e => e.Amount > 0);
+        (contribution.TransactionType, contribution.ReconciliationStatus).ShouldBe((LedgerTransactionType.OwnerContribution, ReconciliationStatus.Matched));
+    }
+
+    [Fact]
+    public async Task R42_R43_TaxPaymentsAndTransfersBetweenOwnAccounts()
+    {
+        _db.BankAccounts.Add(new BankAccount { Id = Guid.NewGuid(), BankConnectionId = (await _db.BankConnections.FirstAsync()).Id, UserId = _user, ProviderAccountId = "savings", IbanMasked = "RO49••••0002", IsActive = true });
+        await _db.SaveChangesAsync();
+        Transaction(-1500m, "Trezoreria Operativa Brasov", "CASS 2026");
+        Transaction(-500m, "Popescu Ion PFA", "Transfer", iban: "RO49BTRL0000000000000002");
+
         await Import();
 
-        List<LedgerEntry> entries = await _db.LedgerEntries.ToListAsync();
-        entries.Select(e => (e.TransactionType, e.Amount, e.Source)).ShouldBe(
-        [
-            (LedgerTransactionType.Transfer, 2000m, LedgerSource.Bolt),
-            (LedgerTransactionType.Income, 2500m, LedgerSource.Bolt),
-            (LedgerTransactionType.Expense, -500m, LedgerSource.Bolt),
-        ], ignoreOrder: true);
-        entries.Where(e => e.TransactionType == LedgerTransactionType.Income).Sum(e => e.Amount).ShouldBe(2500m);
-        LedgerEntry commission = entries.Single(e => e.TransactionType == LedgerTransactionType.Expense);
-        (commission.Category, commission.DeductibleAmount).ShouldBe(("PLATFORM_COMMISSION", (decimal?)500m));
+        (await _db.LedgerEntries.SingleAsync(e => e.Amount == -1500m)).TransactionType.ShouldBe(LedgerTransactionType.Tax);
+        (await _db.LedgerEntries.SingleAsync(e => e.Amount == -500m)).TransactionType.ShouldBe(LedgerTransactionType.InternalTransfer);
     }
 
     [Fact]
@@ -343,7 +410,7 @@ public sealed class LedgerTests : IDisposable
 
     private DeclarationFiles Files() => new(_db, new AnafDeclarationXmlService(), _files, new PlainSecrets());
 
-    private void Transaction(decimal amount, string counterparty, string? details, DateOnly? date = null)
+    private void Transaction(decimal amount, string counterparty, string? details, DateOnly? date = null, string? iban = null)
     {
         _db.BankTransactions.Add(new BankTransaction
         {
@@ -356,6 +423,7 @@ public sealed class LedgerTests : IDisposable
             Amount = amount,
             Currency = "RON",
             CounterpartyName = counterparty,
+            CounterpartyIban = iban,
             RemittanceInfo = details,
             ImportedAtUtc = DateTime.UtcNow,
         });
@@ -392,6 +460,25 @@ public sealed class LedgerTests : IDisposable
         });
         _db.SaveChanges();
         return document.Id;
+    }
+
+    /// <summary>Factura de comision confirmată a lunii raportului (august 2026).</summary>
+    private void CommissionInvoice(Platform platform)
+    {
+        var file = new Document { Id = Guid.NewGuid(), OriginalFileName = "factura.pdf", ContentType = "application/pdf", Origin = DocumentOrigin.AccountingUpload };
+        _db.Documents.Add(file);
+        _db.PlatformDocuments.Add(new PlatformDocument
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = _pfa,
+            Period = "2026-08",
+            Platform = platform,
+            DocumentType = PlatformDocumentType.CommissionInvoice,
+            SourceDocumentId = file.Id,
+            FileHash = Guid.NewGuid().ToString("N"),
+            Status = PlatformDocumentStatus.Confirmed,
+        });
+        _db.SaveChanges();
     }
 
     private static ExpenseCategoryRule Category(string code, bool vehicle, DeductibilityType deductibility, string? pattern) => new()

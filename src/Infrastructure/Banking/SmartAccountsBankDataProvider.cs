@@ -747,6 +747,10 @@ internal sealed class SmartAccountsBankDataProvider(
         string? counterparty = amount < 0
             ? SmartAccountsJson.String(item, "creditorName", "creditorAccount")
             : SmartAccountsJson.String(item, "debtorName", "debtorAccount");
+        string accountField = amount < 0 ? "creditorAccount" : "debtorAccount";
+        string? counterpartyIban = item.TryGetProperty(accountField, out JsonElement account) && account.ValueKind == JsonValueKind.Object
+            ? SmartAccountsJson.String(account, "iban")
+            : null;
 
         return new BankTransactionInfo(
             isPending ? $"pending:{id}" : id,
@@ -756,7 +760,8 @@ internal sealed class SmartAccountsBankDataProvider(
             SmartAccountsJson.String(amountNode, "currency") ?? "RON",
             counterparty,
             SmartAccountsJson.String(item, "remittanceInformationUnstructured", "additionalInformation"),
-            item.GetRawText());
+            item.GetRawText(),
+            counterpartyIban?.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant());
     }
 }
 

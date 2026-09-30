@@ -101,6 +101,7 @@ public sealed class BankAccountSyncService(
                 Amount = tx.Amount,
                 Currency = tx.Currency,
                 CounterpartyName = tx.CounterpartyName,
+                CounterpartyIban = tx.CounterpartyIban,
                 RemittanceInfo = tx.RemittanceInfo,
                 IsPending = isPending,
                 RawJson = tx.RawJson,

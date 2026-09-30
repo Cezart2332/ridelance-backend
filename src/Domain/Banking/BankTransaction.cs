@@ -22,6 +22,13 @@ public sealed class BankTransaction : Entity
 
     public string Currency { get; set; } = string.Empty;
     public string? CounterpartyName { get; set; }
+
+    /// <summary>
+    /// IBAN-ul contrapartidei (<c>creditorAccount</c> la plăți, <c>debtorAccount</c> la încasări), când banca
+    /// îl trimite. Recunoaște transferurile între conturile PFA și cele către titular (R40–R43).
+    /// </summary>
+    public string? CounterpartyIban { get; set; }
+
     public string? RemittanceInfo { get; set; }
     public bool IsPending { get; set; }
 

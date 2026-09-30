@@ -20,6 +20,7 @@ internal sealed class BankTransactionConfiguration : IEntityTypeConfiguration<Ba
         builder.Property(bt => bt.Amount).HasColumnType("decimal(18,2)");
         builder.Property(bt => bt.Currency).HasMaxLength(8).IsRequired();
         builder.Property(bt => bt.CounterpartyName).HasMaxLength(256);
+        builder.Property(bt => bt.CounterpartyIban).HasMaxLength(34);
         builder.Property(bt => bt.RemittanceInfo).HasMaxLength(1024);
         builder.Property(bt => bt.RawJson).HasColumnType("jsonb");
         builder.Property(bt => bt.Category).HasMaxLength(64);
