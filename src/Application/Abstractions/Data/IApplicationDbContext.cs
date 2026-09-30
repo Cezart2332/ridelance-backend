@@ -139,6 +139,7 @@ public interface IApplicationDbContext
     DbSet<BankTransaction> BankTransactions { get; }
 
     DbSet<UberCsvImport> UberCsvImports { get; }
+    DbSet<UberTrip> UberTrips { get; }
     DbSet<OfficeAppointment> OfficeAppointments { get; }
     DbSet<OfficeScheduleDay> OfficeScheduleDays { get; }
     DbSet<OfficeBlockedSlot> OfficeBlockedSlots { get; }

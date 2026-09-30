@@ -2,6 +2,7 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Bolt;
+using Domain.Uber;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -17,12 +18,12 @@ public sealed record PfaRideResponse(
     double? DistanceKm,
     double? DurationMin,
     string PaymentType,
-    decimal Net);
+    decimal? Net);
 
 /// <remarks>
-/// <c>UberRidesAvailable</c> e mereu <c>false</c> cât timp Uber livrează doar CSV-uri cu
-/// totaluri lunare: nu există curse individuale de listat. UI-ul spune asta explicit,
-/// în loc să lase impresia unui istoric incomplet.
+/// Cursele Uber vin din raportul de curse importat. Raportul nu are câștigul pe cursă, deci
+/// <c>Net</c> e <c>null</c> pe ele. <c>UberRidesAvailable</c> spune dacă PFA-ul are măcar o
+/// cursă Uber salvată; fără ea, UI-ul explică de ce lista are doar Bolt.
 /// </remarks>
 public sealed record PfaRidesPageResponse(
     List<PfaRideResponse> Items,
@@ -63,11 +64,6 @@ internal sealed class GetPfaDashboardRidesQueryHandler(
         string platform = GetPfaDashboardSummaryQueryHandler.NormalizePlatform(query.Platform);
         string payment = GetPfaDashboardSummaryQueryHandler.NormalizePayment(query.Payment);
 
-        if (platform == "uber")
-        {
-            return new PfaRidesPageResponse([], page, pageSize, 0, false);
-        }
-
         TimeZoneInfo timeZone = PfaDashboardPeriod.RomaniaTimeZone();
         (DateTime startUtc, DateTime endUtc) = new PfaDashboardPeriod(query.From, query.To).ToUtcBounds(timeZone);
         Guid userId = userContext.UserId;
@@ -76,27 +72,47 @@ internal sealed class GetPfaDashboardRidesQueryHandler(
         // de casă, ceea ce Postgres nu face nativ pe LIKE. Volumul e de ordinul sutelor de
         // curse pe perioadă, așa că se citește intervalul și se filtrează în memorie —
         // același compromis ca în GetAdminOverviewQuery.
-        List<BoltOrder> periodOrders = await context.BoltOrders
-            .AsNoTracking()
-            .Where(o => o.UserId == userId
-                && o.OrderStatus == "finished"
-                && o.OrderCreatedTime >= startUtc
-                && o.OrderCreatedTime < endUtc)
-            .ToListAsync(cancellationToken);
+        List<PfaRideResponse> rides = [];
 
-        IEnumerable<BoltOrder> filtered = payment switch
+        if (platform != "uber")
         {
-            "cash" => periodOrders.Where(IsCash),
-            "card" => periodOrders.Where(o => !IsCash(o)),
-            _ => periodOrders
+            List<BoltOrder> boltOrders = await context.BoltOrders
+                .AsNoTracking()
+                .Where(o => o.UserId == userId
+                    && o.OrderStatus == "finished"
+                    && o.OrderCreatedTime >= startUtc
+                    && o.OrderCreatedTime < endUtc)
+                .ToListAsync(cancellationToken);
+
+            rides.AddRange(boltOrders.Select(Map));
+        }
+
+        if (platform != "bolt")
+        {
+            List<UberTrip> uberTrips = await context.UberTrips
+                .AsNoTracking()
+                .Where(t => t.UserId == userId
+                    && t.Status == "completed"
+                    && t.RequestedAtUtc >= startUtc
+                    && t.RequestedAtUtc < endUtc)
+                .ToListAsync(cancellationToken);
+
+            rides.AddRange(uberTrips.Select(Map));
+        }
+
+        IEnumerable<PfaRideResponse> filtered = payment switch
+        {
+            "cash" => rides.Where(r => r.PaymentType == "cash"),
+            "card" => rides.Where(r => r.PaymentType != "cash"),
+            _ => rides
         };
 
         if (!string.IsNullOrWhiteSpace(query.Query))
         {
             string term = query.Query.Trim();
-            filtered = filtered.Where(o =>
-                o.PickupAddress.Contains(term, StringComparison.OrdinalIgnoreCase)
-                || o.DestinationAddress.Contains(term, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(r =>
+                (r.Pickup?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.Dropoff?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
         }
 
         var matches = filtered.ToList();
@@ -106,33 +122,41 @@ internal sealed class GetPfaDashboardRidesQueryHandler(
             .Take(pageSize)
             .ToList();
 
+        bool uberRidesAvailable = await context.UberTrips.AnyAsync(t => t.UserId == userId, cancellationToken);
+
         return new PfaRidesPageResponse(
-            items.Select(Map).ToList(),
+            items,
             page,
             pageSize,
             matches.Count,
-            UberRidesAvailable: false);
+            uberRidesAvailable);
     }
 
-    /// <summary>Sortabile: data, distanța, durata, netul. Prefixul „-” înseamnă descrescător.</summary>
-    private static IEnumerable<BoltOrder> ApplySort(List<BoltOrder> orders, string? sort)
+    /// <summary>
+    /// Sortabile: data, distanța, durata, netul. Prefixul „-” înseamnă descrescător. Valorile
+    /// lipsă (netul curselor Uber, o durată necunoscută) stau la coadă în ambele sensuri.
+    /// </summary>
+    private static IEnumerable<PfaRideResponse> ApplySort(List<PfaRideResponse> rides, string? sort)
     {
         bool descending = sort?.StartsWith('-') ?? true;
         string field = (sort ?? "-date").TrimStart('-', '+').ToUpperInvariant();
 
         return field switch
         {
-            "DISTANCE" => Order(orders, o => o.RideDistance, descending),
-            "DURATION" => Order(orders, DurationMinutes, descending),
-            "NET" => Order(orders, o => (double)o.NetEarnings, descending),
-            _ => Order(orders, o => (double)o.OrderCreatedTime.Ticks, descending)
+            "DISTANCE" => Order(rides, r => r.DistanceKm, descending),
+            "DURATION" => Order(rides, r => r.DurationMin, descending),
+            "NET" => Order(rides, r => (double?)r.Net, descending),
+            _ => Order(rides, r => r.StartedAtUtc.Ticks, descending)
         };
 
-        static IEnumerable<BoltOrder> Order(
-            List<BoltOrder> source,
-            Func<BoltOrder, double> key,
-            bool descending) =>
-            descending ? source.OrderByDescending(key) : source.OrderBy(key);
+        static IEnumerable<PfaRideResponse> Order(
+            List<PfaRideResponse> source,
+            Func<PfaRideResponse, double?> key,
+            bool descending)
+        {
+            IOrderedEnumerable<PfaRideResponse> known = source.OrderBy(r => key(r) is null);
+            return descending ? known.ThenByDescending(key) : known.ThenBy(key);
+        }
     }
 
     private static bool IsCash(BoltOrder order) =>
@@ -165,7 +189,33 @@ internal sealed class GetPfaDashboardRidesQueryHandler(
             string.IsNullOrWhiteSpace(order.DestinationAddress) ? null : order.DestinationAddress,
             order.RideDistance > 0 ? Math.Round(order.RideDistance / 1000.0, 1) : null,
             durationMin,
-            order.PaymentMethod.Contains("cash", StringComparison.OrdinalIgnoreCase) ? "cash" : "card",
+            IsCash(order) ? "cash" : "card",
             order.NetEarnings);
+    }
+
+    /// <summary>
+    /// O cursă Uber. Tipul plății vine ca <c>cash</c>, <c>braintree</c>, <c>apple_pay</c> etc. —
+    /// tot ce nu e numerar e card. Netul lipsește: Uber îl raportează doar pe lună.
+    /// </summary>
+    private static PfaRideResponse Map(UberTrip trip)
+    {
+        double? durationMin = null;
+        if (trip.DroppedOffAtUtc is DateTime droppedOff)
+        {
+            double minutes = (PfaDashboardPeriod.NormalizeUtc(droppedOff) - PfaDashboardPeriod.NormalizeUtc(trip.RequestedAtUtc)).TotalMinutes;
+            durationMin = minutes > 0 ? Math.Round(minutes) : null;
+        }
+
+        return new PfaRideResponse(
+            trip.Id,
+            "uber",
+            PfaDashboardPeriod.NormalizeUtc(trip.RequestedAtUtc),
+            string.IsNullOrWhiteSpace(trip.ProductType) ? null : trip.ProductType,
+            string.IsNullOrWhiteSpace(trip.PickupAddress) ? null : trip.PickupAddress,
+            string.IsNullOrWhiteSpace(trip.DestinationAddress) ? null : trip.DestinationAddress,
+            trip.DistanceKm > 0 ? Math.Round(trip.DistanceKm, 1) : null,
+            durationMin,
+            trip.PaymentType.Equals("cash", StringComparison.OrdinalIgnoreCase) ? "cash" : "card",
+            Net: null);
     }
 }

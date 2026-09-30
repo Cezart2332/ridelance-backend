@@ -400,3 +400,6 @@ FodyWeavers.xsd
 .containers/
 .env
 src/Web.Api/uploads/
+
+# Rapoarte Uber reale (nume, numere de înmatriculare, adrese): nu intră în repo, care e public.
+csv uber/

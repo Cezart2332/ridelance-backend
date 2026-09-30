@@ -75,6 +75,16 @@ internal static class UberCsvImporter
         }
 
         List<UberCsvImport> imports = [];
+        List<UberTrip> trips = [];
+        (int Year, int Month)? backfilledPeriod = null;
+
+        // Cursele deja salvate pe PFA: un rând Uber apare o singură dată, oricâte fișiere îl conțin.
+        var knownTripIds = (await context.UberTrips
+                .Where(t => t.PfaRegistrationId == pfa.Id)
+                .Select(t => t.TripUuid)
+                .ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         foreach (UberCsvUpload file in files)
         {
             Result<ParsedUberCsv> parsedResult = UberCsvParser.Parse(file.FileName, file.Content);
@@ -87,7 +97,7 @@ internal static class UberCsvImporter
             int year = commandYear ?? parsed.Year ?? DateTime.UtcNow.Year;
             int month = commandMonth ?? parsed.Month ?? DateTime.UtcNow.Month;
 
-            bool duplicate = await context.UberCsvImports.AnyAsync(
+            UberCsvImport? existing = await context.UberCsvImports.FirstOrDefaultAsync(
                 i => i.PfaRegistrationId == pfa.Id
                     && i.Year == year
                     && i.Month == month
@@ -95,13 +105,23 @@ internal static class UberCsvImporter
                     && i.FileName == file.FileName,
                 cancellationToken);
 
-            if (duplicate)
+            if (existing is not null)
             {
-                return Result.Failure<UberDashboardResponse>(
-                    Error.Conflict("Uber.DuplicateImport", $"Fișierul {file.FileName} a fost deja importat pentru perioada selectată."));
+                // Importurile de dinainte de salvarea curselor au doar totalurile. Același CSV
+                // încărcat din nou le completează cursele; totalurile lunii rămân neatinse.
+                List<UberTrip> missing = NewTrips(parsed, existing, knownTripIds);
+                if (missing.Count == 0)
+                {
+                    return Result.Failure<UberDashboardResponse>(
+                        Error.Conflict("Uber.DuplicateImport", $"Fișierul {file.FileName} a fost deja importat pentru perioada selectată."));
+                }
+
+                trips.AddRange(missing);
+                backfilledPeriod ??= (year, month);
+                continue;
             }
 
-            imports.Add(new UberCsvImport
+            var import = new UberCsvImport
             {
                 Id = Guid.NewGuid(),
                 UserId = pfa.UserId,
@@ -119,13 +139,13 @@ internal static class UberCsvImporter
                 Kilometers = parsed.Kilometers,
                 OnlineHours = parsed.OnlineHours,
                 RideHours = parsed.RideHours
-            });
+            };
+            imports.Add(import);
+            trips.AddRange(NewTrips(parsed, import, knownTripIds));
         }
 
-        foreach (UberCsvImport import in imports)
-        {
-            context.UberCsvImports.Add(import);
-        }
+        context.UberCsvImports.AddRange(imports);
+        context.UberTrips.AddRange(trips);
 
         await context.SaveChangesAsync(cancellationToken);
 
@@ -143,8 +163,9 @@ internal static class UberCsvImporter
 
         await context.SaveChangesAsync(cancellationToken);
 
-        int responseYear = commandYear ?? imports[0].Year;
-        int responseMonth = commandMonth ?? imports[0].Month;
+        (int Year, int Month) firstPeriod = imports.Count > 0 ? (imports[0].Year, imports[0].Month) : backfilledPeriod!.Value;
+        int responseYear = commandYear ?? firstPeriod.Year;
+        int responseMonth = commandMonth ?? firstPeriod.Month;
         return await UberDashboardProjector.GetDashboardAsync(
             context,
             pfa.Id,
@@ -152,6 +173,38 @@ internal static class UberCsvImporter
             responseYear,
             responseMonth,
             cancellationToken);
+    }
+
+    /// <summary>Rândurile fișierului care nu sunt încă salvate pe PFA, legate de importul dat.</summary>
+    private static List<UberTrip> NewTrips(ParsedUberCsv parsed, UberCsvImport import, HashSet<string> knownTripIds)
+    {
+        List<UberTrip> trips = [];
+        foreach (ParsedUberTrip row in parsed.TripRows)
+        {
+            if (!knownTripIds.Add(row.TripUuid))
+            {
+                continue;
+            }
+
+            trips.Add(new UberTrip
+            {
+                Id = Guid.NewGuid(),
+                UserId = import.UserId,
+                PfaRegistrationId = import.PfaRegistrationId,
+                UberCsvImportId = import.Id,
+                TripUuid = row.TripUuid,
+                RequestedAtUtc = row.RequestedAtUtc,
+                DroppedOffAtUtc = row.DroppedOffAtUtc,
+                PickupAddress = row.PickupAddress,
+                DestinationAddress = row.DestinationAddress,
+                DistanceKm = row.DistanceKm,
+                Status = row.Status,
+                ProductType = row.ProductType,
+                PaymentType = row.PaymentType,
+            });
+        }
+
+        return trips;
     }
 
 }
@@ -229,7 +282,22 @@ internal sealed record ParsedUberCsv(
     int Trips = 0,
     double Kilometers = 0,
     double OnlineHours = 0,
-    double RideHours = 0);
+    double RideHours = 0)
+{
+    /// <summary>Cursele, rând cu rând. Doar raportul de curse le are; celelalte două sunt totaluri.</summary>
+    public IReadOnlyList<ParsedUberTrip> TripRows { get; init; } = [];
+}
+
+internal sealed record ParsedUberTrip(
+    string TripUuid,
+    DateTime RequestedAtUtc,
+    DateTime? DroppedOffAtUtc,
+    string PickupAddress,
+    string DestinationAddress,
+    double DistanceKm,
+    string Status,
+    string ProductType,
+    string PaymentType);
 
 internal static class UberCsvParser
 {
@@ -306,26 +374,50 @@ internal static class UberCsvParser
         int distanceIndex = ContainsColumn(header, "distanta cursei");
         int statusIndex = ContainsColumn(header, "starea cursei");
         int dateIndex = ContainsColumn(header, "ora la care a fost comandata cursa");
+        int dropoffIndex = ContainsColumn(header, "ora sosirii la destinatie");
+        int pickupIndex = ContainsColumn(header, "adresa de preluare");
+        int destinationIndex = ContainsColumn(header, "adresa destinatiei");
+        int productIndex = ContainsColumn(header, "tipul produsului");
+        int paymentIndex = ContainsColumn(header, "tip de plata");
         int trips = 0;
         double km = 0;
         int? year = null;
         int? month = null;
+        List<ParsedUberTrip> tripRows = [];
 
         foreach (string[] row in rows.Where(r => r.Length > statusIndex && Guid.TryParse(Cell(r, 0), out _)))
         {
-            if (year is null && DateTime.TryParse(Cell(row, dateIndex), CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date))
+            DateTime? requested = ReadUberLocalTime(Cell(row, dateIndex));
+            if (year is null && requested is DateTime local)
             {
-                year = date.Year;
-                month = date.Month;
+                year = local.Year;
+                month = local.Month;
             }
 
-            if (!Cell(row, statusIndex).Equals("completed", StringComparison.OrdinalIgnoreCase))
+            string status = Cell(row, statusIndex);
+            double distance = ReadDouble(row, distanceIndex);
+
+            if (requested is DateTime requestedLocal)
+            {
+                tripRows.Add(new ParsedUberTrip(
+                    Cell(row, 0),
+                    ToUtc(requestedLocal),
+                    ReadUberLocalTime(Cell(row, dropoffIndex)) is DateTime dropoff ? ToUtc(dropoff) : null,
+                    Cell(row, pickupIndex),
+                    Cell(row, destinationIndex),
+                    distance,
+                    status,
+                    Cell(row, productIndex),
+                    Cell(row, paymentIndex)));
+            }
+
+            if (!status.Equals("completed", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
             trips++;
-            km += ReadDouble(row, distanceIndex);
+            km += distance;
         }
 
         if (trips == 0 && year is null)
@@ -333,7 +425,24 @@ internal static class UberCsvParser
             return Invalid(fileName);
         }
 
-        return new ParsedUberCsv(Trips, year, month, Trips: trips, Kilometers: km);
+        return new ParsedUberCsv(Trips, year, month, Trips: trips, Kilometers: km) { TripRows = tripRows };
+    }
+
+    /// <summary>
+    /// Orele din raport sunt ora României, fără fus („6/22/2026 17:32”). Luna importului se ia
+    /// din ora locală, ca înainte; cursa se salvează în UTC, ca restul istoricului.
+    /// </summary>
+    private static DateTime? ReadUberLocalTime(string value) =>
+        DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date)
+            ? DateTime.SpecifyKind(date, DateTimeKind.Unspecified)
+            : null;
+
+    private static DateTime ToUtc(DateTime romaniaLocal)
+    {
+        TimeZoneInfo zone = PfaDashboard.PfaDashboardPeriod.RomaniaTimeZone();
+        // Ora sărită la trecerea pe ora de vară (03:00–04:00) nu există local; conversia ar arunca.
+        DateTime valid = zone.IsInvalidTime(romaniaLocal) ? romaniaLocal.AddHours(1) : romaniaLocal;
+        return TimeZoneInfo.ConvertTimeToUtc(valid, zone);
     }
 
     private static Result<ParsedUberCsv> Invalid(string fileName) =>
