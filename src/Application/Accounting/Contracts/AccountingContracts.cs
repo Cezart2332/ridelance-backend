@@ -411,9 +411,33 @@ public sealed record ManualLedgerEntryRequest(
     string? Category,
     string Reason);
 
-public sealed record ExpenseDocumentExtracted(string? Merchant, string? MerchantCui, DateOnly? Date, decimal? Total, IReadOnlyList<string> Items);
+/// <param name="Number">Numărul bonului sau al facturii.</param>
+/// <param name="BeneficiaryCui">CUI-ul cumpărătorului de pe bon (R31–R33).</param>
+/// <param name="Lines">Liniile cu sumă și propunerea personal / activitate (R30).</param>
+public sealed record ExpenseDocumentExtracted(
+    string? Merchant,
+    string? MerchantCui,
+    DateOnly? Date,
+    decimal? Total,
+    IReadOnlyList<string> Items,
+    string? Number = null,
+    string? BeneficiaryCui = null,
+    IReadOnlyList<ExpenseLineDto>? Lines = null);
 
-public sealed record ExpenseDocumentUploadResult(Guid DocumentId, ExpenseDocumentExtracted Extracted, LedgerEntryDto? ProposedMatch);
+/// <summary>O linie de pe bon; <c>Personal</c> = nu ține de activitate (R30).</summary>
+public sealed record ExpenseLineDto(string Name, decimal? Amount, bool Personal);
+
+/// <param name="ExpenseDocumentId">Documentul de cheltuială, pentru confirmare (<c>.../confirm</c>).</param>
+/// <param name="SuggestedPersonalAmount">Partea personală propusă din linii.</param>
+public sealed record ExpenseDocumentUploadResult(
+    Guid DocumentId,
+    ExpenseDocumentExtracted Extracted,
+    LedgerEntryDto? ProposedMatch,
+    Guid ExpenseDocumentId = default,
+    decimal SuggestedPersonalAmount = 0);
+
+/// <summary>Corpul confirmării unui bon: cum a fost plătit (R34) și ce parte e personală (R30).</summary>
+public sealed record ConfirmExpenseDocumentRequest(string Payment, Guid? LedgerEntryId, decimal? PersonalAmount, string? Category);
 
 public sealed record ZReportExtracted(DateOnly? Date, string? ZNumber, decimal? Total);
 

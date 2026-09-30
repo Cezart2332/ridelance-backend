@@ -118,6 +118,21 @@ public sealed class ExpenseDocument : Entity, IAccountingRecord
     /// <summary>JSON: produsele citite.</summary>
     public string ItemsJson { get; set; } = "[]";
 
+    /// <summary>Numărul bonului sau al facturii, pentru coloana „Document” din RJIP.</summary>
+    public string? Number { get; set; }
+
+    /// <summary>
+    /// CUI-ul cumpărătorului de pe bon („CIF client”), doar cifrele. Același CUI ca PFA-ul = document sigur
+    /// (R31); lipsă = se clasifică după natura cheltuielii (R32); alt CUI = la verificare (R33).
+    /// </summary>
+    public string? BeneficiaryCui { get; set; }
+
+    /// <summary>
+    /// JSON: liniile cu sumă și partea lor (<c>[{ "name", "amount", "personal" }]</c>). Suma liniilor
+    /// personale devine <see cref="LedgerEntry.PersonalAmount"/> la confirmare (R30).
+    /// </summary>
+    public string LinesJson { get; set; } = "[]";
+
     /// <summary>Tranzacția confirmată de utilizator ca potrivire.</summary>
     public Guid? LedgerEntryId { get; set; }
     public Guid UploadedByUserId { get; set; }
@@ -149,4 +164,23 @@ public sealed class PfaAsset : Entity, IAccountingRecord
     public Guid? DocumentId { get; set; }
     public AssetStatus Status { get; set; } = AssetStatus.InUse;
     public DateOnly? DisposedDate { get; set; }
+}
+
+/// <summary>
+/// O potrivire propusă, nu aplicată: un bon plătit cu card, înregistrat manual, și o tranzacție bancară
+/// apărută ulterior, cu aceeași sumă și același comerciant (spec flux contabil R36). Până la răspuns,
+/// tranzacția nu devine înregistrare; la accept, înregistrarea manuală devine bancară.
+/// </summary>
+public sealed class LedgerMatchProposal : Entity, IAccountingRecord
+{
+    public Guid Id { get; set; }
+    public Guid PfaRegistrationId { get; set; }
+    public Guid BankTransactionId { get; set; }
+    public Guid LedgerEntryId { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary><c>null</c> cât timp așteaptă răspunsul; apoi acceptată sau respinsă.</summary>
+    public bool? Accepted { get; set; }
+    public DateTime? ResolvedAtUtc { get; set; }
+    public Guid? ResolvedByUserId { get; set; }
 }

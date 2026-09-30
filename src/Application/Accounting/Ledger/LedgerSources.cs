@@ -105,8 +105,10 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
             transactions = transactions.Where(t => (t.BookingDate ?? t.ValueDate) <= to);
         }
 
+        // O tranzacție cu propunerea de asociere în așteptare nu devine încă înregistrare (R36).
         List<BankTransaction> fresh = await transactions
-            .Where(t => !db.LedgerEntries.Any(e => e.PfaRegistrationId == context.PfaId && e.BankTransactionId == t.Id))
+            .Where(t => !db.LedgerEntries.Any(e => e.PfaRegistrationId == context.PfaId && e.BankTransactionId == t.Id) &&
+                        !db.LedgerMatchProposals.Any(p => p.PfaRegistrationId == context.PfaId && p.BankTransactionId == t.Id && p.Accepted != false))
             .OrderBy(t => t.BookingDate ?? t.ValueDate)
             .ToListAsync(cancellationToken);
         if (fresh.Count == 0)
@@ -115,14 +117,72 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
         }
 
         PfaIdentity identity = await IdentityAsync(context, cancellationToken);
-        foreach (BankTransaction transaction in fresh)
+        List<Guid> rejected = await db.LedgerMatchProposals
+            .Where(p => p.PfaRegistrationId == context.PfaId && p.Accepted == false)
+            .Select(p => p.BankTransactionId)
+            .ToListAsync(cancellationToken);
+        Dictionary<BankTransaction, LedgerEntry> proposals = await ReceiptPaymentsAsync(context, identity, fresh, rejected, cancellationToken);
+        foreach ((BankTransaction transaction, LedgerEntry receipt) in proposals)
+        {
+            db.LedgerMatchProposals.Add(new LedgerMatchProposal
+            {
+                Id = Guid.NewGuid(),
+                PfaRegistrationId = context.PfaId,
+                BankTransactionId = transaction.Id,
+                LedgerEntryId = receipt.Id,
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+        }
+
+        int created = 0;
+        foreach (BankTransaction transaction in fresh.Where(t => !proposals.ContainsKey(t)))
         {
             LedgerEntry entry = Entry(context, identity, transaction);
             DeductibilityService.Resolve(entry, context.Rules);
             db.LedgerEntries.Add(entry);
+            created++;
         }
 
-        return new LedgerImportResult(LedgerSource.Bank, fresh.Count, 0, []);
+        IReadOnlyList<string> notes = proposals.Count == 0
+            ? []
+            : [$"{proposals.Count} plăți din bancă par să fie ale unor bonuri deja înregistrate; confirmă asocierea."];
+        return new LedgerImportResult(LedgerSource.Bank, created, 0, notes);
+    }
+
+    /// <summary>
+    /// R36: bonurile plătite cu card neconectat (canal <c>MANUAL</c>, fără tranzacție) și plățile noi din bancă
+    /// cu aceeași sumă, același comerciant și data în ± N zile. Doar perechile unice, în ambele sensuri.
+    /// </summary>
+    private async Task<Dictionary<BankTransaction, LedgerEntry>> ReceiptPaymentsAsync(
+        LedgerImportContext context, PfaIdentity identity, List<BankTransaction> fresh, List<Guid> rejected, CancellationToken cancellationToken)
+    {
+        List<LedgerEntry> receipts = await db.LedgerEntries.AsNoTracking()
+            .Where(e => e.PfaRegistrationId == context.PfaId &&
+                        e.PaymentMethod == PaymentMethod.Manual &&
+                        e.BankTransactionId == null &&
+                        e.Amount < 0 &&
+                        e.Status != LedgerEntryStatus.Locked &&
+                        !db.LedgerMatchProposals.Any(p => p.LedgerEntryId == e.Id && p.Accepted != false))
+            .ToListAsync(cancellationToken);
+        if (receipts.Count == 0)
+        {
+            return [];
+        }
+
+        int days = context.Options.ExpenseMatchDays;
+        List<(BankTransaction Transaction, LedgerEntry Receipt)> pairs = [.. fresh
+            .Where(t => t.Amount < 0 && !rejected.Contains(t.Id) &&
+                        CounterpartyRules.Classify(t.Amount, t.CounterpartyName, t.CounterpartyIban, t.RemittanceInfo, identity, context.Options) == CounterpartyKind.None)
+            .SelectMany(t => receipts
+                .Where(r => r.Amount == t.Amount &&
+                            Math.Abs(r.Date.DayNumber - (t.BookingDate ?? t.ValueDate)!.Value.DayNumber) <= days &&
+                            (CounterpartyRules.SimilarMerchant(r.Counterparty, t.CounterpartyName) ||
+                             CounterpartyRules.SimilarMerchant(r.Counterparty, t.RemittanceInfo)))
+                .Select(r => (t, r)))];
+
+        return pairs
+            .Where(pair => pairs.Count(p => p.Transaction == pair.Transaction) == 1 && pairs.Count(p => p.Receipt.Id == pair.Receipt.Id) == 1)
+            .ToDictionary(pair => pair.Transaction, pair => pair.Receipt);
     }
 
     /// <summary>Numele titularului și conturile proprii, pentru R40–R43.</summary>

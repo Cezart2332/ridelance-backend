@@ -23,7 +23,10 @@ internal sealed class OpenRouterReceiptExtractor(
         "Ești un extractor de date pentru RIDElance. Primești un bon fiscal sau o factură de cheltuială a unui șofer PFA " +
         "din România (combustibil, service, telefon etc.). Sarcina ta e STRICT citirea: nu calcula, nu clasifica, nu decide nimic fiscal. " +
         "merchant: numele comerciantului; merchant_cui: codul fiscal al comerciantului, doar cifrele; date: data documentului, YYYY-MM-DD; " +
-        "total: totalul de plată, număr cu punct zecimal; items: denumirile produselor sau serviciilor, cum apar. " +
+        "total: totalul de plată, număr cu punct zecimal; items: denumirile produselor sau serviciilor, cum apar; " +
+        "lines: fiecare produs sau serviciu cu valoarea lui pe bon (name, amount, număr cu punct zecimal); " +
+        "buyer_cui: codul fiscal al cumpărătorului („CIF client”, „CUI cumpărător”), doar cifrele, dacă apare; " +
+        "number: numărul bonului sau al facturii. " +
         "Dacă o valoare nu se citește cu certitudine, întoarce null — nu ghici.";
 
     internal const string ZReportPrompt =
@@ -41,6 +44,19 @@ internal sealed class OpenRouterReceiptExtractor(
             ["date"] = nullableString,
             ["total"] = new { type = new[] { "number", "null" } },
             ["items"] = new { type = "array", items = new { type = "string" } },
+            ["lines"] = new
+            {
+                type = "array",
+                items = new
+                {
+                    type = "object",
+                    properties = new Dictionary<string, object> { ["name"] = new { type = "string" }, ["amount"] = new { type = new[] { "number", "null" } } },
+                    required = new[] { "name", "amount" },
+                    additionalProperties = false,
+                },
+            },
+            ["buyer_cui"] = nullableString,
+            ["number"] = nullableString,
         };
 
         Result<JsonElement> read = await ReadAsync(request, "expense_document", ExpensePrompt, properties, cancellationToken);
@@ -58,7 +74,14 @@ internal sealed class OpenRouterReceiptExtractor(
             Text(root, "merchant_cui") is { } cui ? new string([.. cui.Where(char.IsAsciiDigit)]) : null,
             Date(root, "date"),
             Number(root, "total"),
-            items);
+            items,
+            root.TryGetProperty("lines", out JsonElement lines) && lines.ValueKind == JsonValueKind.Array
+                ? [.. lines.EnumerateArray()
+                    .Where(line => line.ValueKind == JsonValueKind.Object && Text(line, "name") is not null)
+                    .Select(line => new ReceiptLine(Text(line, "name")!, Number(line, "amount")))]
+                : [],
+            Text(root, "buyer_cui") is { } buyer ? new string([.. buyer.Where(char.IsAsciiDigit)]) : null,
+            Text(root, "number"));
     }
 
     public async Task<Result<ZReportReading>> ReadZReportAsync(ReceiptExtractionRequest request, CancellationToken cancellationToken)

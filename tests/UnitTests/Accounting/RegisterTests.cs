@@ -2,7 +2,9 @@ using System.Text;
 using Application.Accounting.Contracts;
 using Application.Accounting.Registers;
 using ClosedXML.Excel;
+using Application.Accounting;
 using Domain.Accounting;
+using Microsoft.Extensions.Options;
 using Domain.PfaRegistrations;
 using Domain.Users;
 using Infrastructure.Accounting;
@@ -114,6 +116,22 @@ public sealed class RegisterTests : IDisposable
 
         (await Rjip(Day, Day)).Rows.Sum(r => r.BankOut).ShouldBe(400m);
         (await Ref(2026)).Rows.Single(r => r.CalculationElement == "Cheltuieli deductibile").Value.ShouldBe(100m);
+    }
+
+    /// <summary>Q1: plata cu card neconectat, după configurare.</summary>
+    [Theory]
+    [InlineData(ManualChannelMapping.OwnerContributionAndCash, 40, 40, 0)]
+    [InlineData(ManualChannelMapping.Cash, 0, 40, 0)]
+    [InlineData(ManualChannelMapping.Bank, 0, 0, 40)]
+    public async Task Q1_CardNotConnected_FollowsTheConfiguredMapping(ManualChannelMapping mapping, int cashIn, int cashOut, int bankOut)
+    {
+        Entry(Day, -40m, LedgerTransactionType.Expense, PaymentMethod.Manual, "Spălătorie");
+        await _db.SaveChangesAsync();
+
+        RjipView rjip = (await new GetRjipQueryHandler(_db, Options.Create(new AccountingOptions { ManualChannelMapping = mapping }))
+            .Handle(new GetRjipQuery(_pfa, Day, Day), CancellationToken.None)).Value;
+
+        (rjip.MonthTotals.Single().CashIn, rjip.MonthTotals.Single().CashOut, rjip.MonthTotals.Single().BankOut).ShouldBe(((decimal)cashIn, (decimal)cashOut, (decimal)bankOut));
     }
 
     [Fact]

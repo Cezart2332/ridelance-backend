@@ -6,7 +6,18 @@ namespace Application.Abstractions.Ai;
 public sealed record ReceiptExtractionRequest(byte[] FileBytes, string ContentType, string FileName);
 
 /// <summary>Ce s-a citit de pe un document de cheltuială (spec contabilitate B6).</summary>
-public sealed record ExpenseReceiptReading(string? Merchant, string? MerchantCui, DateOnly? Date, decimal? Total, IReadOnlyList<string> Items);
+public sealed record ExpenseReceiptReading(
+    string? Merchant,
+    string? MerchantCui,
+    DateOnly? Date,
+    decimal? Total,
+    IReadOnlyList<string> Items,
+    IReadOnlyList<ReceiptLine>? Lines = null,
+    string? BeneficiaryCui = null,
+    string? Number = null);
+
+/// <summary>O linie de pe bon, cu suma ei (R30: împărțirea business / personal).</summary>
+public sealed record ReceiptLine(string Name, decimal? Amount);
 
 /// <summary>Ce s-a citit de pe un raport Z al casei de marcat.</summary>
 public sealed record ZReportReading(DateOnly? Date, string? ZNumber, decimal? Total);

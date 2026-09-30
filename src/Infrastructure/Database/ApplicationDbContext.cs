@@ -147,6 +147,7 @@ public sealed class ApplicationDbContext(
     public DbSet<UberCsvImport> UberCsvImports { get; set; }
     public DbSet<UberTrip> UberTrips { get; set; }
     public DbSet<Domain.Eldrive.EldriveInvite> EldriveInvites { get; set; }
+    public DbSet<Domain.Accounting.LedgerMatchProposal> LedgerMatchProposals { get; set; }
     public DbSet<Domain.FiscalLink.FiscalLinkClient> FiscalLinkClients { get; set; }
     public DbSet<OfficeAppointment> OfficeAppointments { get; set; }
     public DbSet<OfficeScheduleDay> OfficeScheduleDays { get; set; }

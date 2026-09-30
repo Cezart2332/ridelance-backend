@@ -631,6 +631,9 @@ internal sealed class ExpenseDocumentConfiguration : IEntityTypeConfiguration<Ex
         builder.Property(d => d.MerchantCui).HasMaxLength(16);
         builder.Property(d => d.Total).AsMoney();
         builder.Property(d => d.ItemsJson).AsJson();
+        builder.Property(d => d.Number).HasMaxLength(64);
+        builder.Property(d => d.BeneficiaryCui).HasMaxLength(16);
+        builder.Property(d => d.LinesJson).AsJson();
         builder.HasIndex(d => d.PfaRegistrationId);
         builder.RestrictToPfa(d => d.PfaRegistrationId);
         builder.RestrictToDocument(d => d.DocumentId);
@@ -667,5 +670,19 @@ internal sealed class PfaAssetConfiguration : IEntityTypeConfiguration<PfaAsset>
         builder.HasIndex(a => a.PfaRegistrationId);
         builder.RestrictToPfa(a => a.PfaRegistrationId);
         builder.RestrictToDocument(a => a.DocumentId);
+    }
+}
+
+internal sealed class LedgerMatchProposalConfiguration : IEntityTypeConfiguration<LedgerMatchProposal>
+{
+    public void Configure(EntityTypeBuilder<LedgerMatchProposal> builder)
+    {
+        builder.ToTable("ledger_match_proposals");
+        builder.HasKey(p => p.Id);
+        builder.HasIndex(p => new { p.PfaRegistrationId, p.BankTransactionId });
+        builder.RestrictToPfa(p => p.PfaRegistrationId);
+        builder.HasOne<BankTransaction>().WithMany().HasForeignKey(p => p.BankTransactionId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<LedgerEntry>().WithMany().HasForeignKey(p => p.LedgerEntryId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToUser(p => p.ResolvedByUserId);
     }
 }
