@@ -1,6 +1,7 @@
 using Application.Abstractions.Messaging;
 using Application.Accounting.Contracts;
 using Application.Accounting.FiscalRegister;
+using Application.Accounting.Inventory;
 using Application.Accounting.Registers;
 using Infrastructure.Authorization;
 using SharedKernel;
@@ -45,9 +46,6 @@ internal sealed class RegisterEndpoints : IEndpoint
             TryFormat(format, out RegisterFormat parsed)
                 ? File(await handler.Handle(new ExportRefQuery(pfaId, year, parsed, asOf), cancellationToken))
                 : InvalidFormat());
-
-        group.MapGet("registers/inventory", async (Guid pfaId, int year, IQueryHandler<GetInventoryQuery, InventoryView> handler, CancellationToken cancellationToken) =>
-            (await handler.Handle(new GetInventoryQuery(pfaId, year), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
 
         group.MapGet("registers/inventory/export", async (
             Guid pfaId,
