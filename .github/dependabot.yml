@@ -1,6 +1,29 @@
+# Actualizări săptămânale: dependențele aplicației, imaginile de bază din Dockerfile și acțiunile
+# din workflow-uri (fixate pe SHA; Dependabot le mută pe SHA-ul versiunii noi). Minor și patch vin
+# într-un singur PR pe ecosistem; versiunile majore vin separat, că pot strica ceva.
 version: 2
 updates:
-  - package-ecosystem: "nuget"
-    directory: "/"
+  - package-ecosystem: nuget
+    directory: /
     schedule:
-      interval: "daily"
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
