@@ -237,6 +237,8 @@ internal sealed class UploadZReportCommandHandler(
         };
         db.LedgerEntries.Add(entry);
         db.ZReports.Add(report);
+        // R12: bonurile deja primite pentru ziua raportului îi verifică totalul.
+        await ZControls.CheckAsync(db, report, cancellationToken);
         AccountingAudit.Record(
             db, command.PfaId, nameof(ZReport), report.Id, "UPLOAD", null,
             new { date = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), zNumber, total }, null, userContext.UserId);

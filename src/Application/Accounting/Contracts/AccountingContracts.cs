@@ -146,7 +146,8 @@ public sealed record ExtractedFields(
     decimal? CommissionAmount,
     IReadOnlyList<OtherAmount> OtherAmounts,
     DateOnly? TaxPointDate = null,
-    decimal? WithheldTax = null);
+    decimal? WithheldTax = null,
+    decimal? CashAmount = null);
 
 public sealed record DocumentExtractionDto(
     int Version,

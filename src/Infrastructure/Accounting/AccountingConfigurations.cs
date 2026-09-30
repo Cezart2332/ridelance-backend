@@ -91,6 +91,7 @@ internal sealed class DocumentExtractionConfiguration : IEntityTypeConfiguration
         builder.Property(e => e.Currency).HasMaxLength(3);
         builder.Property(e => e.Amount).AsMoney();
         builder.Property(e => e.CommissionAmount).AsMoney();
+        builder.Property(e => e.CashAmount).AsMoney();
         builder.Property(e => e.WithheldTax).AsMoney();
         builder.Property(e => e.OtherAmountsJson).AsJson();
         builder.Property(e => e.SourceSnippetsJson).AsJson();
@@ -650,6 +651,9 @@ internal sealed class ZReportConfiguration : IEntityTypeConfiguration<ZReport>
         builder.HasKey(z => z.Id);
         builder.Property(z => z.ZNumber).HasMaxLength(32).IsRequired();
         builder.Property(z => z.Total).AsMoney();
+        builder.Property(z => z.TotalCash).AsMoney();
+        builder.Property(z => z.TotalCard).AsMoney();
+        builder.Property(z => z.RegisterSerial).HasMaxLength(32);
         builder.HasIndex(z => new { z.PfaRegistrationId, z.ZNumber }).IsUnique();
         builder.RestrictToPfa(z => z.PfaRegistrationId);
         builder.RestrictToDocument(z => z.DocumentId);
@@ -684,5 +688,23 @@ internal sealed class LedgerMatchProposalConfiguration : IEntityTypeConfiguratio
         builder.HasOne<BankTransaction>().WithMany().HasForeignKey(p => p.BankTransactionId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<LedgerEntry>().WithMany().HasForeignKey(p => p.LedgerEntryId).OnDelete(DeleteBehavior.Restrict);
         builder.RestrictToUser(p => p.ResolvedByUserId);
+    }
+}
+
+internal sealed class FiscalReceiptConfiguration : IEntityTypeConfiguration<FiscalReceipt>
+{
+    public void Configure(EntityTypeBuilder<FiscalReceipt> builder)
+    {
+        builder.ToTable("fiscal_receipts");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.RegisterSerial).HasMaxLength(32).IsRequired();
+        builder.Property(r => r.Number).HasMaxLength(32).IsRequired();
+        builder.Property(r => r.Total).AsMoney();
+        builder.Property(r => r.ExternalId).HasMaxLength(64);
+        // Idempotența importului (spec flux contabil §3): serie + număr + dată.
+        builder.HasIndex(r => new { r.PfaRegistrationId, r.RegisterSerial, r.Number, r.Date }).IsUnique();
+        builder.HasIndex(r => new { r.PfaRegistrationId, r.Date });
+        builder.RestrictToPfa(r => r.PfaRegistrationId);
+        builder.HasOne<ZReport>().WithMany().HasForeignKey(r => r.ZReportId).OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -97,6 +97,12 @@ public sealed class DocumentExtraction : Entity, IAccountingRecord
     /// </summary>
     public decimal? WithheldTax { get; set; }
 
+    /// <summary>
+    /// Venitul încasat numerar din raportul platformei (spec flux contabil R24). Doar control față de
+    /// rapoartele Z ale perioadei: nu creează nicio încasare.
+    /// </summary>
+    public decimal? CashAmount { get; set; }
+
     /// <summary>JSON: <c>[{ label, amount }]</c>.</summary>
     public string OtherAmountsJson { get; set; } = "[]";
 

@@ -554,6 +554,41 @@ public sealed class LedgerTests : IDisposable
         (await _db.LedgerMatchProposals.CountAsync()).ShouldBe(1);
     }
 
+    /// <summary>Scenariul 1: Z nr. 157, 384 lei, cu 20 de bonuri.</summary>
+    [Fact]
+    public async Task R10_R11_ZIsOneCashReceipt_ReceiptsOnlyCheckIt()
+    {
+        List<FiscalReceiptInput> receipts = [.. Enumerable.Range(1, 20).Select(i =>
+            new FiscalReceiptInput("flsim000001", i.ToString(System.Globalization.CultureInfo.InvariantCulture), new DateTime(2026, 10, 10, 8 + i / 3, 0, 0, DateTimeKind.Utc), 19.20m))];
+        (await RecordReceipts(receipts)).ShouldBe(20);
+        (await RecordReceipts(receipts)).ShouldBe(0); // idempotent pe serie + număr + dată
+        (await _db.LedgerEntries.AnyAsync()).ShouldBeFalse(); // R11: bonurile nu sunt încasări
+
+        _receipts.Z = new ZReportReading(Day, "157", 384m);
+        ZReportUploadResult z = (await UploadZ()).Value;
+
+        LedgerEntry cash = await _db.LedgerEntries.SingleAsync();
+        (cash.Amount, cash.PaymentMethod, cash.DocumentLabel, cash.ReconciliationStatus)
+            .ShouldBe((384m, PaymentMethod.Cash, "Raport Z nr. 157", ReconciliationStatus.Matched));
+        (await _db.FiscalReceipts.CountAsync(r => r.ZReportId != null)).ShouldBe(20);
+        z.LedgerEntry.Id.ShouldBe(cash.Id);
+    }
+
+    [Fact]
+    public async Task R12_ReceiptsThatDoNotAddUpToTheZ_PutItUnderReview()
+    {
+        _receipts.Z = new ZReportReading(Day, "158", 400m);
+        await UploadZ();
+
+        await RecordReceipts([new FiscalReceiptInput("FLSIM000001", "1", new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc), 390m)]);
+
+        (await _db.LedgerEntries.SingleAsync()).ReconciliationStatus.ShouldBe(ReconciliationStatus.NeedsReview);
+
+        await RecordReceipts([new FiscalReceiptInput("FLSIM000001", "2", new DateTime(2026, 10, 10, 10, 0, 0, DateTimeKind.Utc), 10m)]);
+
+        (await _db.LedgerEntries.SingleAsync()).ReconciliationStatus.ShouldBe(ReconciliationStatus.Matched);
+    }
+
     [Fact]
     public async Task Z_reports_need_an_active_cash_register_and_a_new_number()
     {
@@ -606,6 +641,9 @@ public sealed class LedgerTests : IDisposable
     private Task<Result<LedgerEntryDto>> Confirm(Guid expenseDocumentId, ExpensePaymentChoice payment, Guid? ledgerEntryId, decimal? personal = null, string? category = null) =>
         new ConfirmExpenseDocumentCommandHandler(_db, new FixedUser(_accountant))
             .Handle(new ConfirmExpenseDocumentCommand(_pfa, expenseDocumentId, payment, ledgerEntryId, personal, category), CancellationToken.None);
+
+    private async Task<int> RecordReceipts(IReadOnlyList<FiscalReceiptInput> receipts) =>
+        (await new RecordFiscalReceiptsCommandHandler(_db).Handle(new RecordFiscalReceiptsCommand(_pfa, receipts), CancellationToken.None)).Value;
 
     private Task<Result<ZReportUploadResult>> UploadZ() =>
         new UploadZReportCommandHandler(_db, Files(), _receipts, new FixedUser(_accountant), Options.Create(_options))
