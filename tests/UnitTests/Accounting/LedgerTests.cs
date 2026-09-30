@@ -589,6 +589,51 @@ public sealed class LedgerTests : IDisposable
         (await _db.LedgerEntries.SingleAsync()).ReconciliationStatus.ShouldBe(ReconciliationStatus.Matched);
     }
 
+    /// <summary>Ecranul Tranzacții (§8): un status pe rând și contorul „Cheltuieli care necesită atenție”.</summary>
+    [Fact]
+    public async Task ClientTransactions_ShowOneStatusPerRowAndCountWhatNeedsAttention()
+    {
+        Transaction(-250m, "OMV PETROM SA", "Plata card OMV");
+        Transaction(4650m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 9, 2));
+        Transaction(1850m, "UBER BV", "Payout", new DateOnly(2026, 9, 9));
+        Transaction(-2000m, "Popescu Ion", "Transfer personal");
+        Report(Platform.Bolt, income: 5000m, commission: 350m);
+        CommissionInvoice(Platform.Bolt);
+        await Import();
+
+        ClientTransactionsDto view = (await new GetClientTransactionsQueryHandler(_db, new FixedUser(_user))
+            .Handle(new GetClientTransactionsQuery(new DateOnly(2026, 8, 1), new DateOnly(2026, 10, 31)), CancellationToken.None)).Value;
+
+        view.Rows.Select(r => (r.Amount, r.State)).ShouldBe(
+        [
+            (-250m, ClientTransactionState.DocumentMissing),
+            (-2000m, ClientTransactionState.Transfer),
+            (1850m, ClientTransactionState.PayoutPending),
+            (4650m, ClientTransactionState.PayoutReconciled),
+        ], ignoreOrder: true);
+        view.Rows.Single(r => r.State == ClientTransactionState.DocumentMissing).LedgerEntryId.ShouldNotBeNull();
+        view.AttentionCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ClientActions_WorkOnlyOnTheUsersOwnPfa()
+    {
+        _receipts.Expense = new ExpenseReceiptReading("Spalatorie", null, Day, 40m, ["Spalare"]);
+        var mine = new FixedUser(_user);
+        ExpenseDocumentUploadResult uploaded = (await new UploadClientExpenseDocumentCommandHandler(_db, mine,
+                new UploadExpenseDocumentCommandHandler(_db, Files(), _receipts, mine, Options.Create(_options)))
+            .Handle(new UploadClientExpenseDocumentCommand(new LedgerUpload("bon.jpg", "image/jpeg", [1])), CancellationToken.None)).Value;
+
+        var stranger = new FixedUser(Guid.NewGuid());
+        (await new ConfirmClientExpenseDocumentCommandHandler(_db, stranger, new ConfirmExpenseDocumentCommandHandler(_db, stranger))
+            .Handle(new ConfirmClientExpenseDocumentCommand(uploaded.ExpenseDocumentId, ExpensePaymentChoice.Cash, null, null), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.NoPfa");
+
+        LedgerEntryDto cash = (await new ConfirmClientExpenseDocumentCommandHandler(_db, mine, new ConfirmExpenseDocumentCommandHandler(_db, mine))
+            .Handle(new ConfirmClientExpenseDocumentCommand(uploaded.ExpenseDocumentId, ExpensePaymentChoice.Cash, null, null), CancellationToken.None)).Value;
+        (cash.Amount, cash.PaymentMethod).ShouldBe((-40m, PaymentMethod.Cash));
+    }
+
     [Fact]
     public async Task Z_reports_need_an_active_cash_register_and_a_new_number()
     {
