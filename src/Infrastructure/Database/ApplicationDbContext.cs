@@ -162,6 +162,7 @@ public sealed class ApplicationDbContext(
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         RejectAccountingDeletes();
+        await EnsureLedgerInvariantsAsync(cancellationToken);
         List<IDomainEvent> domainEvents = ExtractDomainEvents();
         int result = await base.SaveChangesAsync(cancellationToken);
 
@@ -185,6 +186,59 @@ public sealed class ApplicationDbContext(
         if (deleted is not null)
         {
             throw new InvalidOperationException($"{deleted} e o înregistrare contabilă și nu se poate șterge fizic.");
+        }
+    }
+
+    /// <summary>
+    /// Invarianții ledger-ului (spec flux contabil §4) pe înregistrările adăugate sau modificate: fiecare
+    /// în parte, apoi împărțirea tranzacțiilor bancare de care se leagă.
+    /// </summary>
+    private async Task EnsureLedgerInvariantsAsync(CancellationToken cancellationToken)
+    {
+        List<Domain.Accounting.LedgerEntry> changed = [.. ChangeTracker
+            .Entries<Domain.Accounting.LedgerEntry>()
+            .Where(entry => entry.State is EntityState.Added or EntityState.Modified)
+            .Select(entry => entry.Entity)];
+        if (changed.Count == 0)
+        {
+            return;
+        }
+
+        changed.ForEach(Domain.Accounting.LedgerInvariants.EnsureValid);
+
+        List<Guid> transactionIds = [.. changed.Where(e => e.BankTransactionId is not null).Select(e => e.BankTransactionId!.Value).Distinct()];
+        if (transactionIds.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary<Guid, decimal> amounts = await BankTransactions.AsNoTracking()
+            .Where(t => transactionIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, t => t.Amount, cancellationToken);
+
+        // Starea după salvare: ce e în bază, înlocuit cu ce e urmărit acum (modificat sau nou).
+        var tracked = ChangeTracker.Entries<Domain.Accounting.LedgerEntry>()
+            .Where(entry => entry.State != EntityState.Deleted)
+            .ToDictionary(entry => entry.Entity.Id, entry => entry.Entity);
+        List<Domain.Accounting.LedgerEntry> stored = await LedgerEntries.AsNoTracking()
+            .Where(e => e.BankTransactionId != null && transactionIds.Contains(e.BankTransactionId.Value))
+            .ToListAsync(cancellationToken);
+        IEnumerable<Domain.Accounting.LedgerEntry> after = stored
+            .Where(e => !tracked.ContainsKey(e.Id))
+            .Concat(tracked.Values.Where(e => e.BankTransactionId is { } id && transactionIds.Contains(id)));
+
+        foreach (IGrouping<(Guid Pfa, Guid Transaction), Domain.Accounting.LedgerEntry> links in after.GroupBy(e => (e.PfaRegistrationId, e.BankTransactionId!.Value)))
+        {
+            if (!amounts.TryGetValue(links.Key.Transaction, out decimal amount))
+            {
+                continue;
+            }
+
+            IReadOnlyList<string> violations = Domain.Accounting.LedgerInvariants.CheckBankLinks(amount, [.. links]);
+            if (violations.Count > 0)
+            {
+                throw new Domain.Accounting.LedgerInvariantException(links.First().Id, violations);
+            }
         }
     }
 

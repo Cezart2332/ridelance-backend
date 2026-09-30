@@ -390,7 +390,12 @@ public sealed record LedgerEntryDto(
     LedgerEntryStatus Status,
     string AccountingPeriod,
     bool ClosedPeriodFlag,
-    string RowVersion);
+    string RowVersion,
+    ReconciliationStatus ReconciliationStatus,
+    Guid? SettlementGroupId,
+    Guid? EFacturaMessageId,
+    DateOnly? DocumentDate,
+    decimal PersonalAmount);
 
 /// <summary>Câmpurile trimise sunt doar cele schimbate; <c>Reason</c> e obligatoriu.</summary>
 public sealed record UpdateLedgerEntryRequest(JsonElement Fields, string Reason);

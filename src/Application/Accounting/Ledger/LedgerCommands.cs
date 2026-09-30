@@ -21,6 +21,9 @@ internal static class LedgerErrors
     public static readonly Error DescriptionRequired = Error.Problem("Accounting.DescriptionRequired", "Descrierea e obligatorie.");
 
     public static readonly Error AmountRequired = Error.Problem("Accounting.AmountRequired", "Suma trebuie să fie diferită de zero.");
+
+    public static Error Invariant(IEnumerable<string> violations) =>
+        Error.Problem("Accounting.LedgerInvariant", string.Join(" ", violations));
 }
 
 /// <summary><c>GET /accounting/pfas/{pfaId}/ledger?from&amp;to&amp;status&amp;type&amp;source&amp;page&amp;pageSize</c></summary>
@@ -130,6 +133,12 @@ internal sealed class UpdateLedgerEntryCommandHandler(IApplicationDbContext db, 
         }
 
         DeductibilityService.Resolve(entry, await LedgerSupport.RulesAsync(db, entry.PfaRegistrationId, cancellationToken));
+        Result valid = await LedgerSupport.ValidateAsync(db, entry, cancellationToken);
+        if (valid.IsFailure)
+        {
+            return Result.Failure<LedgerEntryDto>(valid.Error);
+        }
+
         AccountingAudit.Record(db, entry.PfaRegistrationId, nameof(LedgerEntry), entry.Id, "UPDATE", before, after, command.Reason.Trim(), userContext.UserId);
         await db.SaveChangesAsync(cancellationToken);
         return await LedgerSupport.DtoAsync(db, entry.Id, cancellationToken);
