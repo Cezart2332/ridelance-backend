@@ -251,6 +251,7 @@ internal sealed class SmartAccountsBankDataProvider(
     {
         var booked = new List<BankTransactionInfo>();
         var pending = new List<BankTransactionInfo>();
+        BankBalanceInfo? balance = null;
 
         // Smart Accounts cere dateFrom și dateTo inclusiv pentru conturile fără tranzacții.
         // Păstrăm aceleași valori la fiecare pagină (cursorul `next` depinde de interval).
@@ -299,6 +300,7 @@ internal sealed class SmartAccountsBankDataProvider(
 
             Collect(page1, "booked", isPending: false, booked);
             Collect(page1, "pending", isPending: true, pending);
+            balance ??= Balance(payload, to);
 
             next = SmartAccountsJson.NextPage(page1) ?? SmartAccountsJson.NextPage(payload);
 
@@ -308,7 +310,37 @@ internal sealed class SmartAccountsBankDataProvider(
             }
         }
 
-        return new BankTransactionsPage(booked, pending);
+        return new BankTransactionsPage(booked, pending, balance);
+    }
+
+    /// <summary>
+    /// Soldul din <c>balances</c> (Berlin Group), dacă banca îl trimite: întâi cel contabil de închidere,
+    /// apoi cel intermediar. Registrul-inventar îl folosește pentru disponibilul bancar la o dată.
+    /// </summary>
+    private static BankBalanceInfo? Balance(JsonElement payload, DateOnly fallbackDate)
+    {
+        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("balances", out JsonElement balances) || balances.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        string[] preferred = ["closingBooked", "interimBooked", "expected", "interimAvailable"];
+        foreach (string type in preferred)
+        {
+            foreach (JsonElement item in balances.EnumerateArray())
+            {
+                if (!string.Equals(SmartAccountsJson.String(item, "balanceType"), type, StringComparison.OrdinalIgnoreCase) ||
+                    !item.TryGetProperty("balanceAmount", out JsonElement amount) ||
+                    SmartAccountsJson.Decimal(amount, "amount") is not { } value)
+                {
+                    continue;
+                }
+
+                return new BankBalanceInfo(value, SmartAccountsJson.Date(item, "referenceDate") ?? fallbackDate);
+            }
+        }
+
+        return null;
     }
 
     public async Task DeleteConsentAsync(
