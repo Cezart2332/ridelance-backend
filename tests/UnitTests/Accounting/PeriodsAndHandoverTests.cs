@@ -203,6 +203,24 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         (await _db.DepreciationLines.SingleAsync(l => l.Month == 7)).IsLocked.ShouldBeFalse();
     }
 
+    /// <summary>Registre §8: panoul de stare — excepții RJIP, REF, inventar de confirmat, active de clasificat.</summary>
+    [Fact]
+    public async Task Status_ShowsWhatNeedsAttentionPerRegister()
+    {
+        LedgerEntry laptop = Entry(new DateOnly(2026, 8, 10), -6000m);
+        laptop.FixedAssetReview = FixedAssetReview.Pending;
+        laptop.ReconciliationStatus = ReconciliationStatus.Unmatched;
+        FinalInventory();
+        _db.InventoryCounts.Add(new InventoryCount { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Date = new DateOnly(2026, 12, 30), Reason = InventoryReason.Cessation });
+        await _db.SaveChangesAsync();
+
+        RegisterStatusDto status = (await new GetRegisterStatusQueryHandler(_db, new GetRefQueryHandler(_db))
+            .Handle(new GetRegisterStatusQuery(_pfa, 2026), CancellationToken.None)).Value;
+
+        (status.RjipOk, status.RjipExceptions, status.RefStatus, status.Inventory, status.AssetsInClassification, status.YearStatus)
+            .ShouldBe((false, 1, RefStatus.Current, (InventoryStatus?)InventoryStatus.Draft, 1, AccountingPeriodStatus.Open));
+    }
+
     /// <summary>Scenariul 9: „Închide anul” cu decembrie deschis e blocat, cu luna lipsă.</summary>
     [Fact]
     public async Task S9_ClosingTheYearWithAnOpenMonthIsBlocked()
