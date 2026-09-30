@@ -31,7 +31,10 @@ public static class LedgerInvariants
         }
 
         // Partea personală intră integral la nedeductibil, deci deductibilul încape în partea business.
-        if (entry.DeductibleAmount is { } deductible && (deductible < 0 || deductible > entry.BusinessAmount))
+        // Stornarea are deductibilul cu semn opus, ca suma.
+        if (entry.DeductibleAmount is { } value &&
+            (entry.StornoOfEntryId is null ? value : -value) is var deductible &&
+            (deductible < 0 || deductible > entry.BusinessAmount))
         {
             violations.Add("Suma deductibilă trebuie să fie între 0 și partea din activitate (suma fără partea personală).");
         }

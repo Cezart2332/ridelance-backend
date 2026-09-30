@@ -86,9 +86,9 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
             yield break;
         }
 
-        if (manual == ManualChannelMapping.OwnerContributionAndCash && item.AmountLei < 0)
+        (bool incoming, decimal value) = Column(item);
+        if (manual == ManualChannelMapping.OwnerContributionAndCash && !incoming)
         {
-            decimal value = Math.Abs(item.AmountLei);
             yield return new RjipRow(
                 item.Entry.Id, item.Entry.Date, item.Entry.DocumentLabel,
                 "Aport titular (plată cu card sau cont neconectat)", value, 0, 0, 0);
@@ -97,11 +97,19 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
         yield return Row(item, manual != ManualChannelMapping.Bank);
     }
 
+    /// <summary>
+    /// Coloana și suma rândului. Stornarea (§4) stă pe coloana operațiunii anulate, cu minus: stornarea
+    /// unei plăți de 250 e −250 la plăți, nu 250 la încasări.
+    /// </summary>
+    private static (bool Incoming, decimal Value) Column(RegisterEntry item) =>
+        item.Entry.StornoOfEntryId is null
+            ? (item.AmountLei > 0, Math.Abs(item.AmountLei))
+            : (item.AmountLei < 0, -Math.Abs(item.AmountLei));
+
     private static RjipRow Row(RegisterEntry item, bool cash)
     {
         LedgerEntry entry = item.Entry;
-        decimal value = Math.Abs(item.AmountLei);
-        bool incoming = item.AmountLei > 0;
+        (bool incoming, decimal value) = Column(item);
         string operation = entry.Counterparty is { Length: > 0 } counterparty && !entry.Description.Contains(counterparty, StringComparison.OrdinalIgnoreCase)
             ? $"{entry.Description} – {counterparty}"
             : entry.Description;

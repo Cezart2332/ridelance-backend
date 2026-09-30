@@ -142,7 +142,9 @@ internal static class LedgerSupport
         e.SettlementGroupId,
         e.EFacturaMessageId,
         e.DocumentDate,
-        e.PersonalAmount);
+        e.PersonalAmount,
+        e.StornoOfEntryId,
+        e.CorrectsEntryId);
 
     /// <summary>Regula sau setarea aplicată, pentru „sumă × % = deductibil”.</summary>
     private static DeductibilityRuleRef? RuleOf(LedgerEntry e)

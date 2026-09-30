@@ -208,6 +208,7 @@ public sealed class ApplicationDbContext(
         }
 
         changed.ForEach(Domain.Accounting.LedgerInvariants.EnsureValid);
+        RejectLockedChanges();
 
         List<Guid> transactionIds = [.. changed.Where(e => e.BankTransactionId is not null).Select(e => e.BankTransactionId!.Value).Distinct()];
         if (transactionIds.Count == 0)
@@ -241,6 +242,27 @@ public sealed class ApplicationDbContext(
             if (violations.Count > 0)
             {
                 throw new Domain.Accounting.LedgerInvariantException(links.First().Id, violations);
+            }
+        }
+    }
+
+    /// <summary>
+    /// O înregistrare blocată nu se modifică (spec flux contabil §4); se corectează prin stornare în
+    /// luna curentă. Singura schimbare permisă e starea, la redeschiderea lunii.
+    /// </summary>
+    private void RejectLockedChanges()
+    {
+        foreach (Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<Domain.Accounting.LedgerEntry> entry in ChangeTracker.Entries<Domain.Accounting.LedgerEntry>()
+                     .Where(e => e.State == EntityState.Modified &&
+                                 e.OriginalValues.GetValue<Domain.Accounting.LedgerEntryStatus>(nameof(Domain.Accounting.LedgerEntry.Status)) == Domain.Accounting.LedgerEntryStatus.Locked))
+        {
+            List<string> changed = [.. entry.Properties
+                .Where(p => p.IsModified && p.Metadata.Name != nameof(Domain.Accounting.LedgerEntry.Status) && !Equals(p.OriginalValue, p.CurrentValue))
+                .Select(p => p.Metadata.Name)];
+            if (changed.Count > 0)
+            {
+                throw new Domain.Accounting.LedgerInvariantException(
+                    entry.Entity.Id, [$"Înregistrarea e blocată; se corectează prin stornare ({string.Join(", ", changed)})."]);
             }
         }
     }

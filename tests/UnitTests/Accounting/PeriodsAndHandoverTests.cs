@@ -199,8 +199,9 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         (await _db.AuditLogs.SingleAsync(a => a.Action == "CLOSE")).EntityId.ShouldNotBeNullOrEmpty();
     }
 
+    /// <summary>§4: înregistrarea blocată rămâne neatinsă; în luna curentă intră stornarea ei și înlocuitoarea corectată.</summary>
     [Fact]
-    public async Task A_correction_changes_a_locked_entry_only_through_the_closed_month()
+    public async Task Storno_ALockedEntryIsCorrectedInTheCurrentMonth()
     {
         LedgerEntry entry = Entry(new DateOnly(2026, 8, 10), -300m);
         await _db.SaveChangesAsync();
@@ -209,17 +210,58 @@ public sealed class PeriodsAndHandoverTests : IDisposable
 
         (await Correct("2026-08", entry.Id, """{"amount":-280}""", " ")).Error.Code.ShouldBe("Accounting.ReasonRequired");
         (await Correct("2026-08", entry.Id, """{"date":"2026-09-01"}""", "Mutare")).Error.Code.ShouldBe("Accounting.EntryOutsidePeriod");
-        // Suma unei plăți bancare e suma tranzacției: o corecție n-o poate schimba (invariantul din §4).
+        // Suma unei plăți bancare e suma din extras: nici stornarea n-o poate schimba.
         (await Correct("2026-08", entry.Id, """{"amount":-280}""", "Bon greșit")).Error.Code.ShouldBe("Accounting.LedgerInvariant");
-        _db.ChangeTracker.Clear();
         PeriodCorrectionDto correction = (await Correct("2026-08", entry.Id, """{"category":"FUEL"}""", "Bon greșit")).Value;
 
         (correction.Period, correction.LedgerEntryId, correction.Reason, correction.By.Name).ShouldBe(("2026-08", (Guid?)entry.Id, "Bon greșit", "Contabil RIDElance"));
         correction.Change.GetProperty("category").GetString().ShouldBe("FUEL");
-        LedgerEntry corrected = await _db.LedgerEntries.SingleAsync();
-        (corrected.Amount, corrected.Category, corrected.Status).ShouldBe((-300m, "FUEL", LedgerEntryStatus.Locked));
+        LedgerEntry original = await _db.LedgerEntries.AsNoTracking().SingleAsync(e => e.Id == entry.Id);
+        (original.Amount, original.Category, original.Status).ShouldBe((-300m, (string?)null, LedgerEntryStatus.Locked));
+
+        LedgerEntry storno = await _db.LedgerEntries.SingleAsync(e => e.Id == correction.StornoEntryId);
+        (storno.StornoOfEntryId, storno.Amount, storno.Date, storno.AccountingPeriod, storno.Status, storno.BankTransactionId, storno.DocumentDate)
+            .ShouldBe(((Guid?)entry.Id, 300m, Today, "2026-10", LedgerEntryStatus.Locked, (Guid?)null, (DateOnly?)new DateOnly(2026, 8, 10)));
+        LedgerEntry replacement = await _db.LedgerEntries.SingleAsync(e => e.Id == correction.ReplacementEntryId);
+        (replacement.CorrectsEntryId, replacement.Amount, replacement.Category, replacement.DeductibleAmount, replacement.Status, replacement.AccountingPeriod)
+            .ShouldBe(((Guid?)entry.Id, -300m, "FUEL", (decimal?)300m, LedgerEntryStatus.Verified, "2026-10"));
+
+        (await Correct("2026-08", entry.Id, """{"category":"TOLLS"}""", "Altă categorie")).Error.Code.ShouldBe("Accounting.AlreadyStorned");
+        (await Rjip()).Rows.ShouldHaveSingleItem().BankOut.ShouldBe(300m);
+        RjipView october = await Rjip(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31));
+        october.Rows.Select(r => r.BankOut).ShouldBe([-300m, 300m], ignoreOrder: true);
+        october.MonthTotals.ShouldHaveSingleItem().BankOut.ShouldBe(0m);
         (await _db.AuditLogs.SingleAsync(a => a.Action == "PERIOD_CORRECTION")).Reason.ShouldBe("Bon greșit");
-        (await _db.PeriodCorrections.CountAsync()).ShouldBe(1);
+    }
+
+    /// <summary>§4: stornarea unei plăți în numerar poate schimba suma; REF-ul deduce doar suma corectată.</summary>
+    [Fact]
+    public async Task Storno_ChangesACashAmountAndTheDeduction()
+    {
+        LedgerEntry cash = CashEntry(new DateOnly(2026, 8, 12), -300m);
+        await _db.SaveChangesAsync();
+        (await Close("2026-08")).IsSuccess.ShouldBeTrue();
+
+        (await Correct("2026-08", cash.Id, """{"amount":-280}""", "Bon de 280")).IsSuccess.ShouldBeTrue();
+
+        RjipView october = await Rjip(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31));
+        october.Rows.Select(r => r.CashOut).ShouldBe([-300m, 280m], ignoreOrder: true);
+        october.Rows.ShouldContain(r => r.Document == "Stornare Bon 7" && r.CashIn == 0m);
+        RefView year = (await new GetRefQueryHandler(_db).Handle(new GetRefQuery(_pfa, 2026), CancellationToken.None)).Value;
+        year.Rows.Single(r => r.CalculationElement == "Cheltuieli deductibile").Value.ShouldBe(280m);
+    }
+
+    /// <summary>§4: ce ajunge la salvare nu poate modifica o înregistrare blocată, oricine ar încerca.</summary>
+    [Fact]
+    public async Task Storno_ALockedEntryCannotBeSavedChanged()
+    {
+        LedgerEntry entry = Entry(new DateOnly(2026, 8, 10), -300m);
+        await _db.SaveChangesAsync();
+        await Close("2026-08");
+
+        LedgerEntry locked = await _db.LedgerEntries.SingleAsync(e => e.Id == entry.Id);
+        locked.Description = "Altceva";
+        await Should.ThrowAsync<LedgerInvariantException>(() => _db.SaveChangesAsync());
     }
 
     [Fact]
@@ -359,10 +401,28 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         new ClosePeriodCommandHandler(_db, User()).Handle(new ClosePeriodCommand(_pfa, period), CancellationToken.None);
 
     private Task<Result<PeriodCorrectionDto>> Correct(string period, Guid? entryId, string change, string reason) =>
-        new CreatePeriodCorrectionCommandHandler(_db, User()).Handle(new CreatePeriodCorrectionCommand(_pfa, period, entryId, Json(change), reason), CancellationToken.None);
+        new CreatePeriodCorrectionCommandHandler(_db, User(), new FixedClock()).Handle(new CreatePeriodCorrectionCommand(_pfa, period, entryId, Json(change), reason), CancellationToken.None);
 
-    private async Task<RjipView> Rjip() =>
-        (await new GetRjipQueryHandler(_db).Handle(new GetRjipQuery(_pfa, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), CancellationToken.None)).Value;
+    private Task<RjipView> Rjip() => Rjip(new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31));
+
+    private async Task<RjipView> Rjip(DateOnly from, DateOnly to) =>
+        (await new GetRjipQueryHandler(_db).Handle(new GetRjipQuery(_pfa, from, to), CancellationToken.None)).Value;
+
+    /// <summary>„Azi” pentru stornări: luna curentă e octombrie 2026.</summary>
+    private static readonly DateOnly Today = new(2026, 10, 5);
+
+    private LedgerEntry CashEntry(DateOnly date, decimal amount)
+    {
+        var entry = new LedgerEntry
+        {
+            Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Date = date, DocumentLabel = "Bon 7", Source = LedgerSource.Manual,
+            Description = "Carburant", TransactionType = LedgerTransactionType.Expense, PaymentMethod = PaymentMethod.Cash, Amount = amount,
+            Category = "FUEL", DeductibilityType = DeductibilityType.Percent100, DeductiblePercent = 100m, DeductibleAmount = -amount,
+            Status = LedgerEntryStatus.Verified, AccountingPeriod = LedgerSupport.PeriodOf(date),
+        };
+        _db.LedgerEntries.Add(entry);
+        return entry;
+    }
 
     private LedgerEntry Entry(DateOnly date, decimal amount)
     {
@@ -405,6 +465,11 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         month.Controls.Single(c => c.Control == control);
 
     private FixedUser User() => new(_accountant);
+
+    private sealed class FixedClock : IDateTimeProvider
+    {
+        public DateTime UtcNow => Today.ToDateTime(new TimeOnly(9, 0), DateTimeKind.Utc);
+    }
 
     private sealed class FixedUser(Guid id) : IUserContext
     {

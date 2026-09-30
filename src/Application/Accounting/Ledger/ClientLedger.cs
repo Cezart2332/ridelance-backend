@@ -39,6 +39,9 @@ public enum ClientTransactionState
 
     /// <summary>Încasare: raport Z, factură Oblio.</summary>
     Income = 8,
+
+    /// <summary>§4: stornarea unei înregistrări dintr-o lună închisă, corectată de contabil.</summary>
+    Correction = 9,
 }
 
 /// <summary>Un rând din Tranzacții. Un payout reconciliat e un singur rând, cu suma virată.</summary>
@@ -102,6 +105,7 @@ internal static class ClientLedger
 
         ClientTransactionState state = main switch
         {
+            { StornoOfEntryId: not null } => ClientTransactionState.Correction,
             { TransactionType: LedgerTransactionType.PlatformSettlement } => ClientTransactionState.PayoutPending,
             { ReconciliationStatus: ReconciliationStatus.NeedsReview } or { Status: LedgerEntryStatus.NeedsReview, ReconciliationStatus: not ReconciliationStatus.Matched } => ClientTransactionState.NeedsReview,
             { TransactionType: LedgerTransactionType.OwnerWithdrawal or LedgerTransactionType.OwnerContribution or LedgerTransactionType.InternalTransfer or LedgerTransactionType.Transfer } => ClientTransactionState.Transfer,
