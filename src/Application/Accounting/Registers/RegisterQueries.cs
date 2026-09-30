@@ -34,7 +34,8 @@ public sealed record GetRjipQuery(Guid PfaId, DateOnly From, DateOnly To) : IQue
 /// operațiune distinctă, cu sumele efectiv încasate sau plătite, în numerar sau prin bancă, în lei,
 /// totalizate lunar.
 /// </summary>
-internal sealed class GetRjipQueryHandler(IApplicationDbContext db) : IQueryHandler<GetRjipQuery, RjipView>
+internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Extensions.Options.IOptions<AccountingOptions>? options = null)
+    : IQueryHandler<GetRjipQuery, RjipView>
 {
     public async Task<Result<RjipView>> Handle(GetRjipQuery query, CancellationToken cancellationToken)
     {
@@ -48,12 +49,19 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db) : IQueryHand
             return Result.Failure<RjipView>(AccountingErrors.PfaNotFound);
         }
 
-        return Build(query.PfaId, query.From, query.To, await RegisterData.EntriesAsync(db, query.PfaId, query.From, query.To, cancellationToken));
+        return Build(
+            query.PfaId, query.From, query.To,
+            await RegisterData.EntriesAsync(db, query.PfaId, query.From, query.To, cancellationToken),
+            options?.Value.ManualChannelMapping ?? ManualChannelMapping.OwnerContributionAndCash);
     }
 
-    internal static RjipView Build(Guid pfaId, DateOnly from, DateOnly to, IEnumerable<RegisterEntry> entries)
+    internal static RjipView Build(
+        Guid pfaId, DateOnly from, DateOnly to, IEnumerable<RegisterEntry> entries,
+        ManualChannelMapping manual = ManualChannelMapping.OwnerContributionAndCash)
     {
-        List<RjipRow> rows = [.. entries.Where(e => RegisterData.IsCashMovement(e.Entry) && e.AmountLei != 0).Select(Row)];
+        List<RjipRow> rows = [.. entries
+            .Where(e => RegisterData.IsCashMovement(e.Entry) && e.AmountLei != 0)
+            .SelectMany(e => Rows(e, manual))];
         List<RjipMonthTotal> totals = [.. rows
             .GroupBy(row => RegisterData.PeriodOf(row.Date))
             .OrderBy(group => group.Key, StringComparer.Ordinal)
@@ -66,12 +74,34 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db) : IQueryHand
         return new RjipView(pfaId, from, to, rows, totals);
     }
 
-    private static RjipRow Row(RegisterEntry item)
+    /// <summary>
+    /// Rândurile unei înregistrări. O plată cu card sau cont neconectat (Q1) nu are coloana ei: după
+    /// configurare, e o plată în numerar precedată de aportul titularului, doar numerar sau doar bancă.
+    /// </summary>
+    private static IEnumerable<RjipRow> Rows(RegisterEntry item, ManualChannelMapping manual)
+    {
+        if (item.Entry.PaymentMethod != PaymentMethod.Manual)
+        {
+            yield return Row(item, item.Entry.PaymentMethod == PaymentMethod.Cash);
+            yield break;
+        }
+
+        if (manual == ManualChannelMapping.OwnerContributionAndCash && item.AmountLei < 0)
+        {
+            decimal value = Math.Abs(item.AmountLei);
+            yield return new RjipRow(
+                item.Entry.Id, item.Entry.Date, item.Entry.DocumentLabel,
+                "Aport titular (plată cu card sau cont neconectat)", value, 0, 0, 0);
+        }
+
+        yield return Row(item, manual != ManualChannelMapping.Bank);
+    }
+
+    private static RjipRow Row(RegisterEntry item, bool cash)
     {
         LedgerEntry entry = item.Entry;
         decimal value = Math.Abs(item.AmountLei);
         bool incoming = item.AmountLei > 0;
-        bool cash = entry.PaymentMethod == PaymentMethod.Cash;
         string operation = entry.Counterparty is { Length: > 0 } counterparty && !entry.Description.Contains(counterparty, StringComparison.OrdinalIgnoreCase)
             ? $"{entry.Description} – {counterparty}"
             : entry.Description;

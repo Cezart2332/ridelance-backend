@@ -134,6 +134,28 @@ public static class CounterpartyRules
         return string.Join(' ', builder.ToString().Normalize(NormalizationForm.FormC).Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
+    /// <summary>
+    /// Același comerciant, pe numele normalizate: unul îl conține pe celălalt sau încep cu același cuvânt
+    /// semnificativ („OMV PETROM MARKETING” și „OMV PETROM SA”).
+    /// </summary>
+    public static bool SimilarMerchant(string? first, string? second)
+    {
+        string a = NormalizeMerchant(first);
+        string b = NormalizeMerchant(second);
+        if (a.Length < 3 || b.Length < 3)
+        {
+            return false;
+        }
+
+        if (a.Contains(b, StringComparison.Ordinal) || b.Contains(a, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        string firstWord = a.Split(' ')[0];
+        return firstWord.Length >= 3 && firstWord == b.Split(' ')[0];
+    }
+
     /// <summary>Numele comerciantului pentru potrivire: normalizat, fără forme juridice.</summary>
     public static string NormalizeMerchant(string? value) =>
         string.Join(' ', Normalize(value).Split(' ').Where(word => !LegalForms.Contains(word)));

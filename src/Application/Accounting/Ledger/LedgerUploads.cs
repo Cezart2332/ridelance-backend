@@ -76,6 +76,9 @@ internal sealed class UploadExpenseDocumentCommandHandler(
     IOptions<AccountingOptions> options)
     : ICommandHandler<UploadExpenseDocumentCommand, ExpenseDocumentUploadResult>
 {
+    /// <summary>Categoria benzinăriilor: pe bonul lor, ce nu ține de mașină e propus personal (R30).</summary>
+    private const string FuelCategory = "FUEL";
+
     public async Task<Result<ExpenseDocumentUploadResult>> Handle(UploadExpenseDocumentCommand command, CancellationToken cancellationToken)
     {
         Result allowed = await LedgerUploadErrors.CheckAsync(db, command.PfaId, command.File, options.Value, cancellationToken);
@@ -90,6 +93,10 @@ internal sealed class UploadExpenseDocumentCommandHandler(
             new ReceiptExtractionRequest(command.File.Content, command.File.ContentType, command.File.FileName), cancellationToken);
         // O citire eșuată nu pierde documentul: rămâne încărcat, fără propunere.
         ExpenseReceiptReading reading = read.IsSuccess ? read.Value : new ExpenseReceiptReading(null, null, null, null, []);
+        LedgerRules rules = await LedgerSupport.RulesAsync(db, command.PfaId, cancellationToken);
+        bool fuel = reading.Date is { } readDate &&
+                    DeductibilityService.Classify(rules.Categories, readDate, reading.Merchant)?.Category == FuelCategory;
+        IReadOnlyList<ExpenseLineDto> lines = ReceiptSplit.Suggest(reading.Lines ?? [], fuel);
 
         var expense = new ExpenseDocument
         {
@@ -101,6 +108,9 @@ internal sealed class UploadExpenseDocumentCommandHandler(
             Date = reading.Date,
             Total = reading.Total,
             ItemsJson = AccountingJson.Serialize(reading.Items),
+            Number = reading.Number is { Length: > 0 } number ? LedgerSupport.Cut(number.Trim(), 64) : null,
+            BeneficiaryCui = reading.BeneficiaryCui is { Length: > 0 } buyer ? LedgerSupport.Cut(buyer, 16) : null,
+            LinesJson = AccountingJson.Serialize(lines),
             UploadedByUserId = userContext.UserId,
             UploadedAtUtc = DateTime.UtcNow,
         };
@@ -113,8 +123,10 @@ internal sealed class UploadExpenseDocumentCommandHandler(
         LedgerEntryDto? proposed = await ProposeAsync(command.PfaId, reading, cancellationToken);
         return new ExpenseDocumentUploadResult(
             document.Id,
-            new ExpenseDocumentExtracted(reading.Merchant, reading.MerchantCui, reading.Date, reading.Total, reading.Items),
-            proposed);
+            new ExpenseDocumentExtracted(reading.Merchant, reading.MerchantCui, reading.Date, reading.Total, reading.Items, expense.Number, expense.BeneficiaryCui, lines),
+            proposed,
+            expense.Id,
+            reading.Total is { } total ? ReceiptSplit.PersonalAmount(lines, total) : 0);
     }
 
     /// <summary>Plata din bancă fără document, cu aceeași sumă, cea mai apropiată de dată; la egalitate, cea a comerciantului.</summary>

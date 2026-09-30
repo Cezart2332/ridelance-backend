@@ -444,6 +444,116 @@ public sealed class LedgerTests : IDisposable
         (await _db.Documents.SingleAsync(d => d.Id == uploaded.DocumentId)).Origin.ShouldBe(DocumentOrigin.AccountingUpload);
     }
 
+    /// <summary>Scenariul 5: OMV −250 în bancă, bon cu 200 carburant + 50 personal, pe CUI-ul PFA-ului.</summary>
+    [Fact]
+    public async Task R30_R31_ReceiptOnTheBankPayment_SplitsBusinessAndPersonal()
+    {
+        Transaction(-250m, "OMV PETROM SA", "Plata card OMV");
+        await Import();
+        _receipts.Expense = new ExpenseReceiptReading(
+            "OMV Petrom Marketing", "1590082", Day, 250m, ["Motorina", "Cafea"],
+            [new ReceiptLine("Motorina Efix", 200m), new ReceiptLine("Cafea", 50m)], BeneficiaryCui: "12345674", Number: "0042");
+
+        ExpenseDocumentUploadResult uploaded = await UploadReceipt();
+
+        uploaded.SuggestedPersonalAmount.ShouldBe(50m);
+        uploaded.Extracted.Lines!.Select(l => (l.Name, l.Personal)).ShouldBe([("Motorina Efix", false), ("Cafea", true)]);
+
+        LedgerEntryDto entry = (await Confirm(uploaded.ExpenseDocumentId, ExpensePaymentChoice.Bank, uploaded.ProposedMatch!.Id)).Value;
+
+        (entry.Amount, entry.PersonalAmount, entry.DeductibleAmount, entry.ReconciliationStatus, entry.PaymentMethod)
+            .ShouldBe((-250m, 50m, (decimal?)200m, ReconciliationStatus.Matched, PaymentMethod.Bank));
+        (await _db.LedgerEntries.CountAsync()).ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData("12345674", "FUEL", ReconciliationStatus.Matched)] // R31
+    [InlineData("RO 12345674", "FUEL", ReconciliationStatus.Matched)]
+    [InlineData(null, "FUEL", ReconciliationStatus.Matched)] // R32, categorie clară
+    [InlineData(null, null, ReconciliationStatus.NeedsReview)] // R32, categorie ambiguă
+    [InlineData("99999999", "FUEL", ReconciliationStatus.NeedsReview)] // R33
+    public void R31_R32_R33_TheBuyersCuiDecidesHowSureTheDocumentIs(string? buyer, string? category, ReconciliationStatus expected) =>
+        ReceiptSplit.Confidence(buyer, "12345674", category).ShouldBe(expected);
+
+    /// <summary>Scenariul 6: bon de spălătorie de 40 lei, plătit numerar.</summary>
+    [Fact]
+    public async Task R34_ReceiptPaidInCash_CreatesACashPayment()
+    {
+        _receipts.Expense = new ExpenseReceiptReading("Spalatorie Auto Express", null, Day, 40m, ["Spalare exterior"], [new ReceiptLine("Spalare exterior", 40m)], Number: "118");
+
+        ExpenseDocumentUploadResult uploaded = await UploadReceipt();
+        LedgerEntryDto entry = (await Confirm(uploaded.ExpenseDocumentId, ExpensePaymentChoice.Cash, null, category: "CAR_SERVICE")).Value;
+
+        (entry.Amount, entry.PaymentMethod, entry.DocumentLabel, entry.SourceDocumentId, entry.Date)
+            .ShouldBe((-40m, PaymentMethod.Cash, "Bon fiscal nr. 118", (Guid?)uploaded.DocumentId, Day));
+        (await Confirm(uploaded.ExpenseDocumentId, ExpensePaymentChoice.Cash, null)).Error.Code.ShouldBe("Accounting.ExpenseDocumentConfirmed");
+    }
+
+    [Fact]
+    public async Task R35_CardNotConnected_IsAManualPaymentWithoutAnInventedBankTransaction()
+    {
+        _receipts.Expense = new ExpenseReceiptReading("OMV Petrom", null, Day, 250m, ["Motorina"], [new ReceiptLine("Motorina", 250m)]);
+
+        LedgerEntryDto entry = (await Confirm((await UploadReceipt()).ExpenseDocumentId, ExpensePaymentChoice.Manual, null)).Value;
+
+        (entry.PaymentMethod, entry.Category).ShouldBe((PaymentMethod.Manual, "FUEL"));
+        (await _db.LedgerEntries.SingleAsync()).BankTransactionId.ShouldBeNull();
+        (await _db.BankTransactions.AnyAsync()).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task R30_ReceiptTotalMustBeTheBankPayment()
+    {
+        Transaction(-300m, "OMV PETROM SA", "Plata card");
+        await Import();
+        _receipts.Expense = new ExpenseReceiptReading("OMV Petrom", null, Day, 250m, ["Motorina"]);
+        LedgerEntry payment = await _db.LedgerEntries.SingleAsync();
+
+        (await Confirm((await UploadReceipt()).ExpenseDocumentId, ExpensePaymentChoice.Bank, payment.Id)).Error.Code.ShouldBe("Accounting.TotalMismatch");
+    }
+
+    /// <summary>Scenariul 7: bonul OMV de 250 înregistrat manual, apoi −250 în bancă la sync.</summary>
+    [Fact]
+    public async Task R36_ManualReceiptThenBankPayment_EndsAsOneEntryAfterAcceptance()
+    {
+        _receipts.Expense = new ExpenseReceiptReading("OMV Petrom", null, Day, 250m, ["Motorina"], [new ReceiptLine("Motorina", 250m)]);
+        LedgerEntryDto manual = (await Confirm((await UploadReceipt()).ExpenseDocumentId, ExpensePaymentChoice.Manual, null)).Value;
+        Transaction(-250m, "OMV PETROM SA", "Plata card", Day.AddDays(1));
+
+        IReadOnlyList<LedgerImportResult> imported = await Import();
+
+        (await _db.LedgerEntries.CountAsync()).ShouldBe(1);
+        imported.SelectMany(r => r.Notes).ShouldHaveSingleItem().ShouldContain("confirmă asocierea");
+        MatchProposalDto proposal = (await new ListMatchProposalsQueryHandler(_db).Handle(new ListMatchProposalsQuery(_pfa), CancellationToken.None)).Value.ShouldHaveSingleItem();
+        proposal.Entry.Id.ShouldBe(manual.Id);
+
+        LedgerEntryDto merged = (await new ResolveMatchProposalCommandHandler(_db, new FixedUser(_accountant))
+            .Handle(new ResolveMatchProposalCommand(proposal.Id, Accept: true), CancellationToken.None)).Value!;
+        await Import();
+
+        (merged.Id, merged.PaymentMethod, merged.Date, merged.DocumentLabel).ShouldBe((manual.Id, PaymentMethod.Bank, Day.AddDays(1), "Extras 11.10.2026"));
+        (await _db.LedgerEntries.CountAsync()).ShouldBe(1);
+        (await _db.LedgerEntries.SingleAsync()).BankTransactionId.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task R36_RejectedProposal_LetsTheBankPaymentBecomeItsOwnEntry()
+    {
+        _receipts.Expense = new ExpenseReceiptReading("OMV Petrom", null, Day, 250m, ["Motorina"]);
+        await Confirm((await UploadReceipt()).ExpenseDocumentId, ExpensePaymentChoice.Manual, null);
+        Transaction(-250m, "OMV PETROM SA", "Plata card", Day.AddDays(2));
+        await Import();
+        LedgerMatchProposal proposal = await _db.LedgerMatchProposals.SingleAsync();
+
+        (await new ResolveMatchProposalCommandHandler(_db, new FixedUser(_accountant))
+            .Handle(new ResolveMatchProposalCommand(proposal.Id, Accept: false), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        await Import();
+        await Import();
+
+        (await _db.LedgerEntries.CountAsync()).ShouldBe(2);
+        (await _db.LedgerMatchProposals.CountAsync()).ShouldBe(1);
+    }
+
     [Fact]
     public async Task Z_reports_need_an_active_cash_register_and_a_new_number()
     {
@@ -488,6 +598,14 @@ public sealed class LedgerTests : IDisposable
         return (await new RunLedgerImportCommandHandler(_db, sources, Options.Create(_options))
             .Handle(new RunLedgerImportCommand(_pfa), CancellationToken.None)).Value;
     }
+
+    private async Task<ExpenseDocumentUploadResult> UploadReceipt() =>
+        (await new UploadExpenseDocumentCommandHandler(_db, Files(), _receipts, new FixedUser(_accountant), Options.Create(_options))
+            .Handle(new UploadExpenseDocumentCommand(_pfa, new LedgerUpload("bon.jpg", "image/jpeg", [1, 2, 3])), CancellationToken.None)).Value;
+
+    private Task<Result<LedgerEntryDto>> Confirm(Guid expenseDocumentId, ExpensePaymentChoice payment, Guid? ledgerEntryId, decimal? personal = null, string? category = null) =>
+        new ConfirmExpenseDocumentCommandHandler(_db, new FixedUser(_accountant))
+            .Handle(new ConfirmExpenseDocumentCommand(_pfa, expenseDocumentId, payment, ledgerEntryId, personal, category), CancellationToken.None);
 
     private Task<Result<ZReportUploadResult>> UploadZ() =>
         new UploadZReportCommandHandler(_db, Files(), _receipts, new FixedUser(_accountant), Options.Create(_options))
@@ -623,7 +741,8 @@ public sealed class LedgerTests : IDisposable
     private sealed class ExtractedComparer : IEqualityComparer<ExpenseDocumentExtracted>
     {
         public bool Equals(ExpenseDocumentExtracted? x, ExpenseDocumentExtracted? y) =>
-            x is not null && y is not null && x with { Items = [] } == y with { Items = [] } && x.Items.SequenceEqual(y.Items);
+            x is not null && y is not null && x with { Items = [], Lines = null } == y with { Items = [], Lines = null } &&
+            x.Items.SequenceEqual(y.Items) && (x.Lines ?? []).SequenceEqual(y.Lines ?? []);
 
         public int GetHashCode(ExpenseDocumentExtracted obj) => obj.Merchant?.GetHashCode(StringComparison.Ordinal) ?? 0;
     }

@@ -48,6 +48,22 @@ public enum D100CorrectionProcedure
 }
 
 /// <summary>
+/// Cum apare în RJIP o plată cu card sau cont neconectat (canal <c>MANUAL</c>, spec flux contabil Q1):
+/// banii n-au trecut prin casa sau contul PFA-ului. DE CONFIRMAT.
+/// </summary>
+public enum ManualChannelMapping
+{
+    /// <summary>Aport titular în numerar urmat de plata în numerar: soldul de casă nu iese negativ.</summary>
+    OwnerContributionAndCash = 0,
+
+    /// <summary>Doar plata, în coloana de numerar.</summary>
+    Cash = 1,
+
+    /// <summary>Doar plata, în coloana de bancă.</summary>
+    Bank = 2,
+}
+
+/// <summary>
 /// Configurarea modulului de contabilitate (secțiunea <c>Accounting</c>). Pragurile verificărilor
 /// și regulile DE CONFIRMAT stau aici, nu în cod (spec §0 pct. 3).
 /// </summary>
@@ -82,6 +98,9 @@ public sealed class AccountingOptions
     /// <summary>Procedura de corecție D100 pentru rectificative. DE CONFIRMAT.</summary>
     public D100CorrectionProcedure D100CorrectionProcedure { get; init; } = D100CorrectionProcedure.D710;
 
+    /// <summary>Plățile cu card sau cont neconectat în RJIP (Q1). DE CONFIRMAT.</summary>
+    public ManualChannelMapping ManualChannelMapping { get; init; } = ManualChannelMapping.OwnerContributionAndCash;
+
     /// <summary>
     /// Contrapartidele plăților de taxe (R42), pe textul normalizat (majuscule, fără diacritice) al
     /// numelui și detaliilor. IBAN-urile Trezoreriei (<c>RO..TREZ..</c>) se recunosc oricum.
@@ -104,8 +123,8 @@ public sealed class AccountingOptions
     /// <summary>Zilele în care se caută încasarea unei facturi Oblio după emitere.</summary>
     public int InvoiceMatchDays { get; init; } = 60;
 
-    /// <summary>Toleranța de date la potrivirea unui document de cheltuială cu plata din bancă (± zile).</summary>
-    public int ExpenseMatchDays { get; init; } = 5;
+    /// <summary>Toleranța de date la potrivirea unui bon cu plata din bancă (± zile; spec flux contabil Q2, R36).</summary>
+    public int ExpenseMatchDays { get; init; } = 3;
 
     /// <summary>Statele UE (cod TVA; Grecia e <c>EL</c>): serviciile de la furnizori de aici intră în D301 și D390.</summary>
     public IList<string> EuCountries { get; init; } =

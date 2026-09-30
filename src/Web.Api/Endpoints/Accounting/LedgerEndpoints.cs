@@ -96,6 +96,52 @@ internal sealed class LedgerEndpoints : IEndpoint
         })
         .DisableAntiforgery();
 
+        // R30–R35: cum a fost plătit bonul (bancă / numerar / card neconectat) și partea personală.
+        group.MapPost("pfas/{pfaId:guid}/expense-documents/{id:guid}/confirm", async (
+            Guid pfaId,
+            Guid id,
+            ConfirmExpenseDocumentRequest request,
+            ICommandHandler<ConfirmExpenseDocumentCommand, LedgerEntryDto> handler,
+            CancellationToken cancellationToken) =>
+        {
+            if (!Enum.TryParse(request.Payment, ignoreCase: true, out ExpensePaymentChoice payment) || !Enum.IsDefined(payment))
+            {
+                return Results.Problem(title: "Accounting.InvalidPayment", detail: "Plata e BANK, CASH sau MANUAL.", statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            Result<LedgerEntryDto> result = await handler.Handle(
+                new ConfirmExpenseDocumentCommand(pfaId, id, payment, request.LedgerEntryId, request.PersonalAmount, request.Category), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        });
+
+        // R36: plățile din bancă găsite pentru bonuri deja înregistrate.
+        group.MapGet("pfas/{pfaId:guid}/match-proposals", async (
+            Guid pfaId,
+            IQueryHandler<ListMatchProposalsQuery, IReadOnlyList<MatchProposalDto>> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<IReadOnlyList<MatchProposalDto>> result = await handler.Handle(new ListMatchProposalsQuery(pfaId), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        });
+
+        group.MapPost("match-proposals/{id:guid}/accept", async (
+            Guid id,
+            ICommandHandler<ResolveMatchProposalCommand, LedgerEntryDto?> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<LedgerEntryDto?> result = await handler.Handle(new ResolveMatchProposalCommand(id, Accept: true), cancellationToken);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        });
+
+        group.MapPost("match-proposals/{id:guid}/reject", async (
+            Guid id,
+            ICommandHandler<ResolveMatchProposalCommand, LedgerEntryDto?> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<LedgerEntryDto?> result = await handler.Handle(new ResolveMatchProposalCommand(id, Accept: false), cancellationToken);
+            return result.Match(_ => Results.NoContent(), CustomResults.Problem);
+        });
+
         group.MapPost("pfas/{pfaId:guid}/z-reports", async (
             Guid pfaId,
             [FromForm] IFormFile file,
