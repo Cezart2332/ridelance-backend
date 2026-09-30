@@ -124,6 +124,11 @@ public static class DependencyInjection
         services.AddHttpClient<IEldriveService, Infrastructure.Eldrive.EldriveService>(client =>
             client.Timeout = TimeSpan.FromSeconds(20));
 
+        // FiscalLink: casele de marcat ale PFA-urilor (cheia de gestiune).
+        services.Configure<Infrastructure.FiscalLink.FiscalLinkOptions>(configuration.GetSection(Infrastructure.FiscalLink.FiscalLinkOptions.SectionName));
+        services.AddHttpClient<IFiscalLinkService, Infrastructure.FiscalLink.FiscalLinkService>(client =>
+            client.Timeout = TimeSpan.FromSeconds(20));
+
         // Bolt
         services.AddHttpClient();
         services.AddScoped<IBoltService, BoltService>();
