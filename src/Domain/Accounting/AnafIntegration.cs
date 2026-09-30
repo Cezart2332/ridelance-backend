@@ -137,5 +137,13 @@ public sealed class EFacturaMessage : Entity, IAccountingRecord
     /// <summary><c>true</c> pentru o notă de credit (<c>CreditNote</c>): PDF-ul se cere cu standardul FCN.</summary>
     public bool IsCreditNote { get; set; }
 
+    /// <summary>
+    /// Cât s-a plătit din factura primită, din plățile bancare legate de ea (spec flux contabil R03–R04b).
+    /// Factura nu apare în RJIP; apar doar plățile ei.
+    /// </summary>
+    public decimal PaidAmount { get; set; }
+
+    public InvoicePaymentStatus PaymentStatus { get; set; } = InvoicePaymentStatus.Unpaid;
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }

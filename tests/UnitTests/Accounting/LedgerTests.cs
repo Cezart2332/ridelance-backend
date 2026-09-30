@@ -267,6 +267,100 @@ public sealed class LedgerTests : IDisposable
     }
 
     [Fact]
+    public async Task R01_R02_BankExpenseWithoutDocument_IsUnmatchedUntilADocumentIsAttached()
+    {
+        Transaction(-300m, "OMV PETROM SA", "Plata card OMV");
+
+        await Import();
+
+        LedgerEntry fuel = await _db.LedgerEntries.SingleAsync();
+        (fuel.ReconciliationStatus, fuel.Category).ShouldBe((ReconciliationStatus.Unmatched, "FUEL"));
+
+        var file = new Document { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, OriginalFileName = "bon.jpg", ContentType = "image/jpeg", Origin = DocumentOrigin.AccountingUpload };
+        _db.Documents.Add(file);
+        await _db.SaveChangesAsync();
+        (await Update(fuel.Id, $$"""{"sourceDocumentId":"{{file.Id}}"}""", "Bon OMV")).IsSuccess.ShouldBeTrue();
+        (await _db.LedgerEntries.AsNoTracking().SingleAsync()).ReconciliationStatus.ShouldBe(ReconciliationStatus.Matched);
+
+        (await Update(fuel.Id, """{"sourceDocumentId":null}""", "Bon greșit")).IsSuccess.ShouldBeTrue();
+        (await _db.LedgerEntries.AsNoTracking().SingleAsync()).ReconciliationStatus.ShouldBe(ReconciliationStatus.Unmatched);
+    }
+
+    [Fact]
+    public async Task R03_UnpaidInvoice_IsNotInTheLedger()
+    {
+        Invoice("1234", "Service Auto SRL", "RO11223344", 1200m, new DateOnly(2026, 9, 29));
+
+        await Import();
+
+        (await _db.LedgerEntries.AnyAsync()).ShouldBeFalse();
+        (await _db.EFacturaMessages.SingleAsync()).PaymentStatus.ShouldBe(InvoicePaymentStatus.Unpaid);
+    }
+
+    /// <summary>Scenariul 2 din spec: factura 1234 din 29.09, plătită din bancă pe 03.10.</summary>
+    [Fact]
+    public async Task R04_BankPaymentMatchingTheInvoice_PaysItInTheMonthOfPayment()
+    {
+        EFacturaMessage invoice = Invoice("1234", "Service Auto SRL", "RO11223344", 1200m, new DateOnly(2026, 9, 29));
+        Transaction(-1200m, "SERVICE AUTO SRL", "OP", new DateOnly(2026, 10, 3));
+
+        await Import();
+        IReadOnlyList<LedgerImportResult> again = await Import();
+
+        again.Sum(r => r.Created + r.Updated).ShouldBe(0);
+        LedgerEntry payment = await _db.LedgerEntries.SingleAsync();
+        (payment.Date, payment.AccountingPeriod, payment.EFacturaMessageId, payment.DocumentDate, payment.ReconciliationStatus)
+            .ShouldBe((new DateOnly(2026, 10, 3), "2026-10", (Guid?)invoice.Id, (DateOnly?)new DateOnly(2026, 9, 29), ReconciliationStatus.Matched));
+        (payment.Description, payment.DocumentLabel).ShouldBe(("Plata facturii 1234 Service Auto SRL", "Extras 03.10.2026"));
+        EFacturaMessage paid = await _db.EFacturaMessages.SingleAsync();
+        (paid.PaymentStatus, paid.PaidAmount).ShouldBe((InvoicePaymentStatus.Paid, 1200m));
+    }
+
+    [Fact]
+    public async Task R04b_PartialPaymentsReferencingTheInvoice_PayItInParts()
+    {
+        Invoice("1234", "Service Auto SRL", "RO11223344", 1200m, new DateOnly(2026, 9, 29));
+        Transaction(-500m, "SERVICE AUTO SRL", "Avans fact.1234", new DateOnly(2026, 10, 3));
+
+        await Import();
+
+        (await _db.LedgerEntries.SingleAsync()).ReconciliationStatus.ShouldBe(ReconciliationStatus.Partial);
+        EFacturaMessage invoice = await _db.EFacturaMessages.SingleAsync();
+        (invoice.PaymentStatus, invoice.PaidAmount).ShouldBe((InvoicePaymentStatus.PartiallyPaid, 500m));
+
+        Transaction(-700m, "SERVICE AUTO SRL", "Rest factura 1234", new DateOnly(2026, 10, 20));
+        await Import();
+
+        (invoice.PaymentStatus, invoice.PaidAmount).ShouldBe((InvoicePaymentStatus.Paid, 1200m));
+        (await _db.LedgerEntries.CountAsync(e => e.EFacturaMessageId == invoice.Id)).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task R04_AmbiguousMatchIsNeverAppliedAutomatically()
+    {
+        Invoice("A-1", "Service Auto SRL", "RO11223344", 300m, new DateOnly(2026, 9, 20));
+        Invoice("A-2", "Service Auto SRL", "RO11223344", 300m, new DateOnly(2026, 9, 25));
+        Transaction(-300m, "SERVICE AUTO SRL", "OP", new DateOnly(2026, 10, 3));
+
+        IReadOnlyList<LedgerImportResult> results = await Import();
+
+        (await _db.LedgerEntries.SingleAsync()).EFacturaMessageId.ShouldBeNull();
+        (await _db.EFacturaMessages.AllAsync(m => m.PaymentStatus == InvoicePaymentStatus.Unpaid)).ShouldBeTrue();
+        results.SelectMany(r => r.Notes).ShouldHaveSingleItem().ShouldContain("mai multe facturi");
+    }
+
+    [Fact]
+    public async Task R04_InvoiceNumberMustBeAWholeNumberInTheDetails()
+    {
+        Invoice("123", "Alt Furnizor SRL", null, 1200m, new DateOnly(2026, 9, 29));
+        Transaction(-500m, "CINEVA", "Plata 41235", new DateOnly(2026, 10, 3));
+
+        await Import();
+
+        (await _db.LedgerEntries.SingleAsync()).EFacturaMessageId.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Oblio_invoices_label_their_bank_payment_or_wait_for_review()
     {
         _db.OblioIntegrations.Add(new OblioIntegration { Id = Guid.NewGuid(), UserId = _user, ClientId = "ion@x.ro", ClientSecretEncrypted = "secret", Cif = "12345674", IsConnected = true });
@@ -389,6 +483,7 @@ public sealed class LedgerTests : IDisposable
             new BankLedgerSource(_db),
             new PlatformLedgerSource(_db),
             new OblioLedgerSource(_db, new OwnerOblioResolver(_db, new PlainSecrets()), _oblio),
+            new EFacturaLedgerSource(_db),
         ];
         return (await new RunLedgerImportCommandHandler(_db, sources, Options.Create(_options))
             .Handle(new RunLedgerImportCommand(_pfa), CancellationToken.None)).Value;
@@ -460,6 +555,28 @@ public sealed class LedgerTests : IDisposable
         });
         _db.SaveChanges();
         return document.Id;
+    }
+
+    private EFacturaMessage Invoice(string number, string supplier, string? cif, decimal total, DateOnly issued)
+    {
+        var invoice = new EFacturaMessage
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = _pfa,
+            AnafMessageId = Guid.NewGuid().ToString("N"),
+            Kind = EFacturaMessageKind.Received,
+            AnafType = "FACTURA PRIMITA",
+            AnafCreatedAtUtc = DateTime.UtcNow,
+            InvoiceNumber = number,
+            IssueDate = issued,
+            SupplierName = supplier,
+            SupplierCif = cif,
+            Currency = "RON",
+            TotalAmount = total,
+        };
+        _db.EFacturaMessages.Add(invoice);
+        _db.SaveChanges();
+        return invoice;
     }
 
     /// <summary>Factura de comision confirmată a lunii raportului (august 2026).</summary>

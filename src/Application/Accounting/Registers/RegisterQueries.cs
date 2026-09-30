@@ -133,7 +133,12 @@ internal sealed class GetRefQueryHandler(IApplicationDbContext db) : IQueryHandl
         // aporturile, retragerile titularului și transferurile nu sunt nici venit, nici cheltuială.
         List<RegisterEntry> list = [.. entries.Where(e => RegisterData.IsCashMovement(e.Entry))];
         decimal gross = list.Where(e => e.Entry.TransactionType == LedgerTransactionType.Income).Sum(e => e.AmountLei);
-        decimal deductible = list.Where(e => e.Entry.TransactionType == LedgerTransactionType.Expense).Sum(e => e.DeductibleLei ?? 0);
+        // R01: o cheltuială se deduce doar justificată cu documente — fără document („Document lipsă”)
+        // sau la verificare, suma ei deductibilă e doar o propunere și nu intră în registru.
+        decimal deductible = list
+            .Where(e => e.Entry.TransactionType == LedgerTransactionType.Expense &&
+                        e.Entry.ReconciliationStatus is ReconciliationStatus.Matched or ReconciliationStatus.Partial)
+            .Sum(e => e.DeductibleLei ?? 0);
         decimal net = gross - deductible;
 
         RefRow Row(string element, decimal value) => new(year, false, IncomeCategory, element, value);

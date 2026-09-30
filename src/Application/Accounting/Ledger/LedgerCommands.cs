@@ -243,6 +243,16 @@ internal static class LedgerChanges
 
                     Set(field.Name, entry.SourceDocumentId, documentId, v => entry.SourceDocumentId = v);
                     await LinkExpenseDocumentAsync(db, entry, documentId, cancellationToken);
+
+                    // R01/R02: plata bancară fără justificativ e „Document lipsă”; cu el, reconciliată.
+                    if (entry.TransactionType == LedgerTransactionType.Expense && entry.EFacturaMessageId is null &&
+                        entry.ReconciliationStatus is ReconciliationStatus.Unmatched or ReconciliationStatus.Matched)
+                    {
+                        entry.ReconciliationStatus = documentId is not null || entry.BankTransactionId is null
+                            ? ReconciliationStatus.Matched
+                            : ReconciliationStatus.Unmatched;
+                    }
+
                     break;
                 default:
                     return Result.Failure(AccountingErrors.InvalidField(field.Name));
