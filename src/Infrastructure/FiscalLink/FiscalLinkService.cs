@@ -28,7 +28,7 @@ internal sealed class FiscalLinkService(
 
     public async Task<Result<Guid>> CreateClientAsync(FiscalLinkNewClient client, CancellationToken cancellationToken = default)
     {
-        Result<JsonElement> response = await SendAsync(HttpMethod.Post, "clients", client, "Crearea clientului FiscalLink", cancellationToken);
+        Result<JsonElement> response = await SendAsync(HttpMethod.Post, "clients", client, "crearea clientului", cancellationToken);
         return response.IsSuccess
             ? Result.Success(response.Value.GetProperty("id").GetGuid())
             : Result.Failure<Guid>(response.Error);
@@ -36,7 +36,7 @@ internal sealed class FiscalLinkService(
 
     public async Task<Result<FiscalLinkActivation>> GetActivationAsync(Guid clientId, CancellationToken cancellationToken = default)
     {
-        Result<JsonElement> response = await SendAsync(HttpMethod.Get, $"clients/{clientId}/activation", null, "Codul de activare FiscalLink", cancellationToken);
+        Result<JsonElement> response = await SendAsync(HttpMethod.Get, $"clients/{clientId}/activation", null, "codul de activare", cancellationToken);
         if (response.IsFailure)
         {
             return Result.Failure<FiscalLinkActivation>(response.Error);
@@ -52,7 +52,7 @@ internal sealed class FiscalLinkService(
     public async Task<Result<IReadOnlyList<FiscalLinkRegister>>> ListRegistersAsync(Guid clientId, CancellationToken cancellationToken = default)
     {
         Result<JsonElement> response = await SendAsync(
-            HttpMethod.Get, $"registers?clientId={clientId}&page=1&pageSize=100", null, "Casele de marcat FiscalLink", cancellationToken);
+            HttpMethod.Get, $"registers?clientId={clientId}&page=1&pageSize=100", null, "casele de marcat", cancellationToken);
         if (response.IsFailure)
         {
             return Result.Failure<IReadOnlyList<FiscalLinkRegister>>(response.Error);
@@ -92,7 +92,7 @@ internal sealed class FiscalLinkService(
                 logger.LogWarning("{Operation}: FiscalLink a răspuns {Status} {Body}", operation, (int)response.StatusCode, text.Length <= 500 ? text : text[..500]);
                 return Result.Failure<JsonElement>(Error.Problem(
                     "FiscalLink.Rejected",
-                    ReadMessage(text) is { } message ? $"FiscalLink: {message}" : $"{operation} a fost refuzat de FiscalLink."));
+                    ReadMessage(text) is { } message ? $"FiscalLink: {message}" : $"FiscalLink a refuzat cererea ({operation}, cod {(int)response.StatusCode})."));
             }
 
             using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text);
@@ -148,6 +148,13 @@ internal sealed class FiscalLinkService(
         try
         {
             using var document = JsonDocument.Parse(body);
+
+            // Unele erori vin ca un simplu string JSON: "No register with this serial on …".
+            if (document.RootElement.ValueKind == JsonValueKind.String)
+            {
+                return string.IsNullOrWhiteSpace(document.RootElement.GetString()) ? null : document.RootElement.GetString();
+            }
+
             foreach (string name in new[] { "message", "detail", "title", "error" })
             {
                 if (document.RootElement.ValueKind == JsonValueKind.Object
