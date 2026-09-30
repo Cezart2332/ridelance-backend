@@ -124,3 +124,15 @@ Aplicate până la confirmarea contabilului; toate sunt în configurare sau în 
 7. Fișa MF 14-2-2 + lista activelor.
 8. Închiderea lunii (controale noi) și a anului, pachet anual.
 9. Panou status per PFA; ecranele PFA.
+
+## Stare după implementare (01.10.2026)
+
+Toți pașii de mai sus sunt făcuți, cu teste pe scenariile 1–9 și pe criteriile de acceptanță:
+
+- regenerarea RJIP pentru o lună închisă = snapshot-ul închiderii (`Rjip_AClosedMonthRegeneratesExactlyItsSnapshot`);
+- REF nu depinde de RJIP (`ArchitectureTests.Layers.RegisterTests`);
+- niciun cod nu scrie în registre: RJIP, REF, Registrul-inventar și Fișa MF sunt generate; se salvează doar snapshot-uri.
+
+Rămase deschise, de confirmat cu contabilul: Q2 (rândurile exacte REF), Q3 (pragul și luna de start sunt în
+`fixed_asset_rules`, fără ecran de editare încă), Q4 (creanțele se adaugă doar manual la inventar), Q5.
+Soldul bancar vine doar dacă banca îl trimite în `balances`; altfel inventarul pornește din mișcările importate.
