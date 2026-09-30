@@ -234,6 +234,29 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         (await _db.AuditLogs.SingleAsync(a => a.Action == "PERIOD_CORRECTION")).Reason.ShouldBe("Bon greșit");
     }
 
+    /// <summary>
+    /// Registre §3 și criteriul de acceptanță: pentru o lună închisă, RJIP-ul e snapshot-ul închiderii,
+    /// iar regenerarea din ledger dă același conținut, și după o corecție prin stornare.
+    /// </summary>
+    [Fact]
+    public async Task Rjip_AClosedMonthRegeneratesExactlyItsSnapshot()
+    {
+        Entry(new DateOnly(2026, 8, 10), -300m);
+        LedgerEntry cash = CashEntry(new DateOnly(2026, 8, 12), -120m);
+        await _db.SaveChangesAsync();
+        (await Close("2026-08")).IsSuccess.ShouldBeTrue();
+        await Correct("2026-08", cash.Id, """{"amount":-100}""", "Bon de 100");
+
+        RjipView frozen = AccountingJson.Deserialize<RjipView?>((await _db.AccountingPeriodSnapshots.SingleAsync()).RjipJson, null)!;
+        RjipView regenerated = (await new GetRjipQueryHandler(_db)
+            .Handle(new GetRjipQuery(_pfa, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), Regenerate: true), CancellationToken.None)).Value;
+
+        frozen.Rows.Count.ShouldBe(2);
+        regenerated.Rows.ShouldBe(frozen.Rows);
+        regenerated.MonthTotals.ShouldBe(frozen.MonthTotals);
+        (await Rjip()).Rows.ShouldBe(frozen.Rows);
+    }
+
     /// <summary>§4: stornarea unei plăți în numerar poate schimba suma; REF-ul deduce doar suma corectată.</summary>
     [Fact]
     public async Task Storno_ChangesACashAmountAndTheDeduction()

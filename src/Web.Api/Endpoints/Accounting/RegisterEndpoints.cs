@@ -17,8 +17,8 @@ internal sealed class RegisterEndpoints : IEndpoint
             .RequireAuthorization(Permissions.ManageAccounting)
             .WithTags(Tags.Accounting);
 
-        group.MapGet("registers/rjip", async (Guid pfaId, DateOnly from, DateOnly to, IQueryHandler<GetRjipQuery, RjipView> handler, CancellationToken cancellationToken) =>
-            (await handler.Handle(new GetRjipQuery(pfaId, from, to), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+        group.MapGet("registers/rjip", async (Guid pfaId, DateOnly from, DateOnly to, bool? regenerate, IQueryHandler<GetRjipQuery, RjipView> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new GetRjipQuery(pfaId, from, to, regenerate ?? false), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
 
         group.MapGet("registers/rjip/export", async (
             Guid pfaId,
@@ -59,7 +59,7 @@ internal sealed class RegisterEndpoints : IEndpoint
                 : InvalidFormat());
     }
 
-    /// <summary><c>pdf</c> (implicit) sau <c>xlsx</c>, ca în contract.</summary>
+    /// <summary><c>pdf</c> (implicit), <c>xlsx</c> sau <c>csv</c>, ca în contract.</summary>
     private static bool TryFormat(string? format, out RegisterFormat parsed)
     {
         parsed = RegisterFormat.Pdf;
@@ -69,6 +69,9 @@ internal sealed class RegisterEndpoints : IEndpoint
                 return true;
             case "XLSX":
                 parsed = RegisterFormat.Xlsx;
+                return true;
+            case "CSV":
+                parsed = RegisterFormat.Csv;
                 return true;
             default:
                 return false;
