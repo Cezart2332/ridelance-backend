@@ -23,7 +23,8 @@ internal static class LedgerSupport
         await db.ExpenseCategoryRules.AsNoTracking().ToListAsync(cancellationToken),
         await db.PfaAccountingSettings.AsNoTracking()
             .Where(s => s.PfaRegistrationId == pfaId && s.Key == PfaAccountingSettingKeys.VehicleDeductibility)
-            .ToListAsync(cancellationToken));
+            .ToListAsync(cancellationToken),
+        await db.FixedAssetRules.AsNoTracking().ToListAsync(cancellationToken));
 
     public static async Task<HashSet<string>> ClosedPeriodsAsync(IApplicationDbContext db, Guid pfaId, CancellationToken cancellationToken) =>
         [.. await db.PfaAccountingPeriods

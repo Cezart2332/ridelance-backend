@@ -110,6 +110,29 @@ public sealed class LedgerEntry : Entity, IAccountingRecord
     /// <summary>Înregistrarea blocată pe care o înlocuiește, corectată, în luna curentă (după stornare).</summary>
     public Guid? CorrectsEntryId { get; set; }
 
+    /// <summary>
+    /// Venitul impozabil din înregistrare (spec registre §4), stabilit de Tax Engine: suma încasării
+    /// efective, 0 la aporturi, transferuri, rambursări și payout-uri nereconciliate. REF-ul îl citește.
+    /// </summary>
+    public decimal TaxableIncomeAmount { get; set; }
+    public IncomeSource IncomeSource { get; set; } = IncomeSource.Ridesharing;
+
+    /// <summary>Decizia de mijloc fix pentru o achiziție (spec registre §6).</summary>
+    public FixedAssetReview FixedAssetReview { get; set; }
+
+    /// <summary>
+    /// Încasare sau plată efectivă (spec Ledger §7): nu un payout încă nereconciliat (R20) și nu
+    /// un rând vechi din raportul platformei fără tranzacție bancară.
+    /// </summary>
+    public bool IsCashMovement =>
+        TransactionType != LedgerTransactionType.PlatformSettlement &&
+        ReconciliationStatus != ReconciliationStatus.NeedsReconciliation &&
+        !(BankTransactionId is null && PlatformDocumentId is not null);
+
+    /// <summary>Tax Engine: venitul impozabil e suma încasărilor efective din activitate, inclusiv stornările lor.</summary>
+    public void RefreshTaxableIncome() =>
+        TaxableIncomeAmount = TransactionType == LedgerTransactionType.Income && IsCashMovement && !ClosedPeriodFlag ? Amount : 0;
+
     public Guid? CreatedByUserId { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
@@ -172,20 +195,6 @@ public sealed class ZReport : Entity, IAccountingRecord
     public Guid? DocumentId { get; set; }
     public Guid? LedgerEntryId { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
-}
-
-/// <summary>Un activ din Registrul-inventar (B7). Prefixat ca restul entităților PFA (<c>PfaVehicle</c>).</summary>
-public sealed class PfaAsset : Entity, IAccountingRecord
-{
-    public Guid Id { get; set; }
-    public Guid PfaRegistrationId { get; set; }
-    public string Type { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public DateOnly AcquisitionDate { get; set; }
-    public decimal AcquisitionValue { get; set; }
-    public Guid? DocumentId { get; set; }
-    public AssetStatus Status { get; set; } = AssetStatus.InUse;
-    public DateOnly? DisposedDate { get; set; }
 }
 
 /// <summary>

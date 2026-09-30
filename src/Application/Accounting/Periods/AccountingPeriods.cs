@@ -432,6 +432,7 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
         DeductibilityValidFrom = entry.DeductibilityValidFrom,
         ReconciliationStatus = entry.ReconciliationStatus,
         PersonalAmount = entry.PersonalAmount,
+        FixedAssetReview = entry.FixedAssetReview,
         CreatedByUserId = userContext.UserId,
         CreatedAtUtc = DateTime.UtcNow,
     };

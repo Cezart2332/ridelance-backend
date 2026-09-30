@@ -18,6 +18,10 @@ public sealed class BankAccount : Entity
     public string? Currency { get; set; }
     public string? OwnerName { get; set; }
 
+    /// <summary>Soldul raportat de bancă la ultima sincronizare, dacă furnizorul îl trimite.</summary>
+    public decimal? Balance { get; set; }
+    public DateOnly? BalanceDate { get; set; }
+
     public DateTime? LastTransactionsSyncedAtUtc { get; set; }
 
     /// <summary>Persisted backoff after a provider/bank 429 — no sync until this passes.</summary>

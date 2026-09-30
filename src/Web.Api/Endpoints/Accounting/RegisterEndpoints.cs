@@ -57,15 +57,6 @@ internal sealed class RegisterEndpoints : IEndpoint
             TryFormat(format, out RegisterFormat parsed)
                 ? File(await handler.Handle(new ExportInventoryQuery(pfaId, year, parsed), cancellationToken))
                 : InvalidFormat());
-
-        group.MapGet("assets", async (Guid pfaId, IQueryHandler<ListAssetsQuery, IReadOnlyList<AssetDto>> handler, CancellationToken cancellationToken) =>
-            (await handler.Handle(new ListAssetsQuery(pfaId), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
-
-        group.MapPost("assets", async (Guid pfaId, AssetInput input, ICommandHandler<SaveAssetCommand, AssetDto> handler, CancellationToken cancellationToken) =>
-            (await handler.Handle(new SaveAssetCommand(pfaId, null, input), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
-
-        group.MapPut("assets/{id:guid}", async (Guid pfaId, Guid id, AssetInput input, ICommandHandler<SaveAssetCommand, AssetDto> handler, CancellationToken cancellationToken) =>
-            (await handler.Handle(new SaveAssetCommand(pfaId, id, input), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
     }
 
     /// <summary><c>pdf</c> (implicit) sau <c>xlsx</c>, ca în contract.</summary>

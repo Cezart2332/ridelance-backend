@@ -57,10 +57,7 @@ internal static class RegisterData
     /// Nu intră payout-urile nereconciliate (R20, R22: nu există încă), nici vechile înregistrări de
     /// venit brut și comision luate doar din raportul de platformă, fără plată (modul GrossReport, scos).
     /// </summary>
-    public static bool IsCashMovement(LedgerEntry entry) =>
-        entry.TransactionType != LedgerTransactionType.PlatformSettlement &&
-        entry.ReconciliationStatus != ReconciliationStatus.NeedsReconciliation &&
-        !(entry.BankTransactionId is null && entry.PlatformDocumentId is not null);
+    public static bool IsCashMovement(LedgerEntry entry) => entry.IsCashMovement;
 
     public static string Amount(decimal value) => value.ToString("#,##0.00", Ro);
 
