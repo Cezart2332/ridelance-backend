@@ -139,7 +139,10 @@ public sealed class ExpenseDocument : Entity, IAccountingRecord
     public DateTime UploadedAtUtc { get; set; } = DateTime.UtcNow;
 }
 
-/// <summary>Un raport Z al casei de marcat, legat de încasarea din ledger (B6).</summary>
+/// <summary>
+/// Un raport Z al casei de marcat, legat de încasarea din ledger (B6). Un Z = o singură încasare
+/// numerar pe zi (spec flux contabil R10); bonurile zilei doar îl verifică (R11, R12).
+/// </summary>
 public sealed class ZReport : Entity, IAccountingRecord
 {
     public Guid Id { get; set; }
@@ -147,6 +150,13 @@ public sealed class ZReport : Entity, IAccountingRecord
     public DateOnly Date { get; set; }
     public string ZNumber { get; set; } = string.Empty;
     public decimal Total { get; set; }
+
+    /// <summary>Seria casei de marcat (FiscalLink), dacă se știe.</summary>
+    public string? RegisterSerial { get; set; }
+
+    /// <summary>Din total, încasat numerar și cu cardul, când raportul le arată separat.</summary>
+    public decimal? TotalCash { get; set; }
+    public decimal? TotalCard { get; set; }
     public Guid? DocumentId { get; set; }
     public Guid? LedgerEntryId { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
@@ -183,4 +193,26 @@ public sealed class LedgerMatchProposal : Entity, IAccountingRecord
     public bool? Accepted { get; set; }
     public DateTime? ResolvedAtUtc { get; set; }
     public Guid? ResolvedByUserId { get; set; }
+}
+
+/// <summary>
+/// Un bon fiscal emis de casa de marcat a PFA-ului (spec flux contabil R11). Nu creează încasări: suma
+/// bonurilor unei zile verifică totalul raportului Z (R12). Unic după seria casei, număr și dată.
+/// </summary>
+public sealed class FiscalReceipt : Entity, IAccountingRecord
+{
+    public Guid Id { get; set; }
+    public Guid PfaRegistrationId { get; set; }
+    public string RegisterSerial { get; set; } = string.Empty;
+    public string Number { get; set; } = string.Empty;
+    public DateOnly Date { get; set; }
+    public DateTime IssuedAtUtc { get; set; }
+    public decimal Total { get; set; }
+
+    /// <summary>Comanda FiscalLink care l-a tipărit, dacă vine de acolo.</summary>
+    public string? ExternalId { get; set; }
+
+    /// <summary>Raportul Z care îl închide, după ce există.</summary>
+    public Guid? ZReportId { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }

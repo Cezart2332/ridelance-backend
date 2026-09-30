@@ -262,6 +262,7 @@ internal static class ExtractedFieldsPatch
                     "amount" => result with { Amount = Amount(value) },
                     "commissionAmount" => result with { CommissionAmount = Amount(value) },
                     "withheldTax" => result with { WithheldTax = Amount(value) },
+                    "cashAmount" => result with { CashAmount = Amount(value) },
                     "otherAmounts" => result with { OtherAmounts = value.Deserialize<List<OtherAmount>>(AccountingJson.Options) ?? [] },
                     _ => throw new FormatException(property.Name),
                 };
@@ -299,6 +300,7 @@ internal static class ExtractedFieldsPatch
         ["otherAmounts"] = fields.OtherAmounts,
         ["taxPointDate"] = fields.TaxPointDate,
         ["withheldTax"] = fields.WithheldTax,
+        ["cashAmount"] = fields.CashAmount,
     };
 
     /// <summary>Număr JSON sau text („2.535,66”, „2273.23”); altceva e o eroare de format.</summary>
