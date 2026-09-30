@@ -28,6 +28,13 @@ internal static class PeriodErrors
     public static Error AlreadyClosed(string period) => Error.Conflict("Accounting.PeriodClosed", $"Perioada {period} e deja închisă.");
 
     public static Error StillOpen(string period) => Error.Problem("Accounting.PeriodOpen", $"Perioada {period} e deschisă; modifică direct tranzacția.");
+
+    public static Error NotReconciled(IEnumerable<string> failed) =>
+        Error.Conflict("Accounting.MonthNotReconciled", $"Luna nu se poate închide: {string.Join(" ", failed)}");
+
+    public static readonly Error ReopenReasonRequired = Error.Problem("Accounting.ReasonRequired", "Motivul redeschiderii e obligatoriu.");
+
+    public static Error NotClosed(string period) => Error.Conflict("Accounting.PeriodOpen", $"Perioada {period} nu e închisă.");
 }
 
 /// <summary><c>GET /accounting/pfas/{pfaId}/periods</c> — lunile colaborării, cele mai noi întâi.</summary>
@@ -81,7 +88,12 @@ public sealed record ClosePeriodCommand(Guid PfaId, string Period) : ICommand<Ac
 /// <c>LOCKED</c>, iar de aici orice scriere (importatori, utilizatori) e refuzată; o corecție se face
 /// doar prin <see cref="CreatePeriodCorrectionCommand"/>.
 /// </summary>
-internal sealed class ClosePeriodCommandHandler(IApplicationDbContext db, IUserContext userContext)
+internal sealed class ClosePeriodCommandHandler(
+    IApplicationDbContext db,
+    IUserContext userContext,
+    Microsoft.Extensions.Options.IOptions<AccountingOptions>? options = null,
+    IQueryHandler<Registers.ExportRjipQuery, Registers.RegisterFile>? rjipExport = null,
+    Declarations.DeclarationFiles? files = null)
     : ICommandHandler<ClosePeriodCommand, AccountingPeriodDto>
 {
     public async Task<Result<AccountingPeriodDto>> Handle(ClosePeriodCommand command, CancellationToken cancellationToken)
@@ -115,6 +127,14 @@ internal sealed class ClosePeriodCommandHandler(IApplicationDbContext db, IUserC
             return Result.Failure<AccountingPeriodDto>(writable.Error.Code == "Accounting.PeriodClosed" ? PeriodErrors.AlreadyClosed(command.Period) : writable.Error);
         }
 
+        // §8: „Închide luna” doar cu toate controalele trecute — verificat aici, nu doar în interfață.
+        MonthReconciliationDto reconciliation = await MonthReconciliation.BuildAsync(
+            db, command.PfaId, command.Period, options?.Value ?? new AccountingOptions(), DateTime.UtcNow, cancellationToken);
+        if (!reconciliation.CanClose)
+        {
+            return Result.Failure<AccountingPeriodDto>(PeriodErrors.NotReconciled(reconciliation.Controls.Where(c => !c.Passed).Select(c => c.Detail)));
+        }
+
         PfaAccountingPeriod period = await db.PfaAccountingPeriods.FirstOrDefaultAsync(p => p.PfaRegistrationId == command.PfaId && p.Period == command.Period, cancellationToken)
             ?? db.PfaAccountingPeriods.Add(new PfaAccountingPeriod { Id = Guid.NewGuid(), PfaRegistrationId = command.PfaId, Period = command.Period }).Entity;
         period.Status = AccountingPeriodStatus.Closed;
@@ -125,6 +145,7 @@ internal sealed class ClosePeriodCommandHandler(IApplicationDbContext db, IUserC
             .Where(e => e.PfaRegistrationId == command.PfaId && e.AccountingPeriod == command.Period && e.Status != LedgerEntryStatus.Locked && !e.ClosedPeriodFlag)
             .ToListAsync(cancellationToken);
         entries.ForEach(e => e.Status = LedgerEntryStatus.Locked);
+        await SnapshotAsync(command.PfaId, command.Period, start, end, cancellationToken);
 
         AccountingAudit.Record(
             db, command.PfaId, nameof(PfaAccountingPeriod), period.Id, "CLOSE",
@@ -133,6 +154,41 @@ internal sealed class ClosePeriodCommandHandler(IApplicationDbContext db, IUserC
 
         Dictionary<Guid, UserRef> users = await PlatformDocumentSupport.UsersAsync(db, [userContext.UserId], cancellationToken);
         return new AccountingPeriodDto(command.PfaId, command.Period, period.Status, users.GetValueOrDefault(userContext.UserId), period.ClosedAtUtc);
+    }
+
+    /// <summary>
+    /// Registrele lunii, înghețate la închidere (§7): RJIP-ul lunii și REF-ul anului până la sfârșitul ei,
+    /// ca date, plus PDF-ul RJIP când exportul e disponibil.
+    /// </summary>
+    private async Task SnapshotAsync(Guid pfaId, string period, DateOnly start, DateOnly end, CancellationToken cancellationToken)
+    {
+        List<Registers.RegisterEntry> entries = await Registers.RegisterData.EntriesAsync(db, pfaId, start, end, cancellationToken);
+        RjipView rjip = Registers.GetRjipQueryHandler.Build(
+            pfaId, start, end, entries, options?.Value.ManualChannelMapping ?? ManualChannelMapping.OwnerContributionAndCash);
+        List<Registers.RegisterEntry> year = await Registers.RegisterData.EntriesAsync(db, pfaId, new DateOnly(end.Year, 1, 1), end, cancellationToken);
+        RefView refView = Registers.GetRefQueryHandler.Build(pfaId, end.Year, RefStatus.Intermediate, end, year);
+
+        Guid? pdf = null;
+        if (rjipExport is not null && files is not null)
+        {
+            Result<Registers.RegisterFile> file = await rjipExport.Handle(new Registers.ExportRjipQuery(pfaId, start, end, Registers.RegisterFormat.Pdf), cancellationToken);
+            if (file.IsSuccess)
+            {
+                pdf = (await files.StoreAsync(pfaId, file.Value.Content, $"RJIP-{period}.pdf", file.Value.ContentType, cancellationToken)).Id;
+            }
+        }
+
+        db.AccountingPeriodSnapshots.Add(new AccountingPeriodSnapshot
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = pfaId,
+            Period = period,
+            RjipJson = AccountingJson.Serialize(rjip),
+            RefJson = AccountingJson.Serialize(refView),
+            RjipPdfDocumentId = pdf,
+            CreatedByUserId = userContext.UserId,
+            CreatedAtUtc = DateTime.UtcNow,
+        });
     }
 }
 
@@ -264,3 +320,46 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
         return Result.Success();
     }
 }
+
+/// <summary><c>POST /accounting/pfas/{pfaId}/periods/{period}/reopen</c> — doar ADMIN, cu motiv.</summary>
+public sealed record ReopenPeriodCommand(Guid PfaId, string Period, string? Reason) : ICommand<AccountingPeriodDto>;
+
+/// <summary>
+/// Redeschiderea unei luni închise (§8): doar ADMIN (permisiunea o pune ruta), cu motiv obligatoriu și
+/// audit. Înregistrările blocate redevin verificate, deci modificabile; snapshot-ul închiderii rămâne ca
+/// istoric.
+/// </summary>
+internal sealed class ReopenPeriodCommandHandler(IApplicationDbContext db, IUserContext userContext)
+    : ICommandHandler<ReopenPeriodCommand, AccountingPeriodDto>
+{
+    public async Task<Result<AccountingPeriodDto>> Handle(ReopenPeriodCommand command, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(command.Reason))
+        {
+            return Result.Failure<AccountingPeriodDto>(PeriodErrors.ReopenReasonRequired);
+        }
+
+        PfaAccountingPeriod? period = await db.PfaAccountingPeriods
+            .SingleOrDefaultAsync(p => p.PfaRegistrationId == command.PfaId && p.Period == command.Period, cancellationToken);
+        if (period is not { Status: AccountingPeriodStatus.Closed })
+        {
+            return Result.Failure<AccountingPeriodDto>(PeriodErrors.NotClosed(command.Period));
+        }
+
+        period.Status = AccountingPeriodStatus.Open;
+        period.ClosedAtUtc = null;
+        period.ClosedByUserId = null;
+        List<LedgerEntry> entries = await db.LedgerEntries
+            .Where(e => e.PfaRegistrationId == command.PfaId && e.AccountingPeriod == command.Period && e.Status == LedgerEntryStatus.Locked)
+            .ToListAsync(cancellationToken);
+        entries.ForEach(e => e.Status = LedgerEntryStatus.Verified);
+
+        AccountingAudit.Record(
+            db, command.PfaId, nameof(PfaAccountingPeriod), period.Id, "REOPEN",
+            new { status = AccountingPeriodStatus.Closed }, new { status = AccountingPeriodStatus.Open, unlockedEntries = entries.Count },
+            command.Reason.Trim(), userContext.UserId);
+        await db.SaveChangesAsync(cancellationToken);
+        return new AccountingPeriodDto(command.PfaId, command.Period, period.Status, null, null);
+    }
+}
+

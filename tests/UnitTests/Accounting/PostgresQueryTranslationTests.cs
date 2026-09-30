@@ -239,8 +239,18 @@ public sealed class PostgresQueryTranslationTests
         db.Users.Add(user);
         db.PfaRegistrations.Add(pfa);
         db.PfaAccountingEngagements.Add(new PfaAccountingEngagement { Id = Guid.NewGuid(), PfaRegistrationId = pfa.Id, StartDate = new DateOnly(2026, 1, 1), Status = EngagementStatus.Active });
+        // Închiderea cere controalele lunii trecute (spec flux contabil §8): banca și e-Factura la zi.
+        var connection = new Domain.Banking.BankConnection
+        {
+            Id = Guid.NewGuid(), UserId = user.Id, Provider = "test", InstitutionId = "BT", ProviderConsentId = $"c-{Guid.NewGuid():N}",
+            Reference = Guid.NewGuid().ToString("N"), Status = Domain.Banking.BankConnectionStatus.Linked, LastSyncedAtUtc = DateTime.UtcNow,
+        };
+        db.BankConnections.Add(connection);
+        db.AnafPfaLinks.Add(new AnafPfaLink { Id = Guid.NewGuid(), PfaRegistrationId = pfa.Id, Status = AnafPfaLinkStatus.Active, EnabledByUserId = user.Id, LastSyncAtUtc = DateTime.UtcNow });
         await db.SaveChangesAsync();
 
+        (await new Application.Accounting.Periods.GetMonthReconciliationQueryHandler(db)
+            .Handle(new Application.Accounting.Periods.GetMonthReconciliationQuery(pfa.Id, "2026-02"), CancellationToken.None)).Value.CanClose.ShouldBeTrue();
         (await new Application.Accounting.Periods.ListPeriodsQueryHandler(db).Handle(new Application.Accounting.Periods.ListPeriodsQuery(pfa.Id), CancellationToken.None))
             .Value.Count.ShouldBeGreaterThan(7);
         (await new Application.Accounting.Periods.ClosePeriodCommandHandler(db, new UserOf(user.Id))

@@ -47,8 +47,20 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         _db.PfaAccountingEngagements.Add(new PfaAccountingEngagement { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, StartDate = new DateOnly(2026, 7, 15), Status = EngagementStatus.Active });
         _db.RetentionPolicies.Add(new RetentionPolicy { Id = Guid.NewGuid(), YearsAfter = 5, StartMonth = 7, StartDay = 1, ValidFrom = new DateOnly(2000, 1, 1) });
         _db.ExpenseCategoryRules.Add(new ExpenseCategoryRule { Id = Guid.NewGuid(), Category = "FUEL", Label = "Combustibil", DefaultDeductibility = DeductibilityType.Percent100, ValidFrom = new DateOnly(2025, 1, 1) });
+
+        // Controalele de închidere (spec flux contabil §8): banca sincronizată azi, e-Factura importată după lună.
+        var connection = new BankConnection
+        {
+            Id = Guid.NewGuid(), UserId = _user, Provider = "test", InstitutionId = "BT", ProviderConsentId = "consent",
+            Status = BankConnectionStatus.Linked, LastSyncedAtUtc = DateTime.UtcNow,
+        };
+        _db.BankConnections.Add(connection);
+        _db.BankAccounts.Add(new BankAccount { Id = _account, BankConnectionId = connection.Id, UserId = _user, ProviderAccountId = "acc", IsActive = true });
+        _db.AnafPfaLinks.Add(new AnafPfaLink { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Status = AnafPfaLinkStatus.Active, EnabledByUserId = _accountant, LastSyncAtUtc = DateTime.UtcNow });
         _db.SaveChanges();
     }
+
+    private readonly Guid _account = Guid.NewGuid();
 
     public void Dispose() => _db.Dispose();
 
@@ -68,6 +80,102 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         AccountingPeriodDto august = periods.Single(p => p.Period == "2026-08");
         (august.Status, august.ClosedBy!.Name).ShouldBe((AccountingPeriodStatus.Closed, "Contabil RIDElance"));
         periods.Single(p => p.Period == "2026-07").Status.ShouldBe(AccountingPeriodStatus.Open);
+    }
+
+    /// <summary>Scenariul 10: payout Uber fără raport → „Închide luna” blocat.</summary>
+    [Fact]
+    public async Task R22_UnreconciledPayout_BlocksClosingTheMonth()
+    {
+        LedgerEntry payout = Entry(new DateOnly(2026, 8, 12), 1850m);
+        (payout.Source, payout.TransactionType, payout.ReconciliationStatus) = (LedgerSource.Uber, LedgerTransactionType.PlatformSettlement, ReconciliationStatus.NeedsReconciliation);
+        await _db.SaveChangesAsync();
+
+        MonthReconciliationDto month = await Reconciliation("2026-08");
+
+        month.CanClose.ShouldBeFalse();
+        Control(month, ReconciliationControl.UnreconciledPayouts).Passed.ShouldBeFalse();
+        Control(month, ReconciliationControl.UberDocuments).Passed.ShouldBeFalse(); // activitate Uber, fără raport
+        month.Payouts.ShouldHaveSingleItem().ShouldBe(new PayoutReconciliationDto(payout.BankTransactionId!.Value, payout.Date, LedgerSource.Uber, 1850m, null, null, null, ReconciliationStatus.NeedsReconciliation));
+        (await Close("2026-08")).Error.Code.ShouldBe("Accounting.MonthNotReconciled");
+        (await _db.PfaAccountingPeriods.AnyAsync()).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task R21_ReconciledPayout_ShowsGrossCommissionAndNoDifference()
+    {
+        var group = Guid.NewGuid();
+        LedgerEntry gross = Entry(new DateOnly(2026, 8, 12), 4650m);
+        (gross.Source, gross.TransactionType, gross.SettlementGroupId, gross.Amount) = (LedgerSource.Bolt, LedgerTransactionType.Income, group, 5000m);
+        _db.LedgerEntries.Add(new LedgerEntry
+        {
+            Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Date = gross.Date, DocumentLabel = "Extras", Source = LedgerSource.Bolt,
+            BankTransactionId = gross.BankTransactionId, SettlementGroupId = group, Description = "Comision", TransactionType = LedgerTransactionType.Expense,
+            PaymentMethod = PaymentMethod.Bank, Amount = -350m, AccountingPeriod = "2026-08",
+        });
+        await _db.SaveChangesAsync();
+
+        PayoutReconciliationDto payout = (await Reconciliation("2026-08")).Payouts.ShouldHaveSingleItem();
+
+        (payout.Payout, payout.Gross, payout.Commission, payout.Difference).ShouldBe((4650m, (decimal?)5000m, (decimal?)350m, (decimal?)0m));
+        Control(await Reconciliation("2026-08"), ReconciliationControl.BankBalance).Passed.ShouldBeTrue();
+    }
+
+    /// <summary>Scenariul 4 și R25: cash-ul raportat de Bolt se compară cu Z-urile, nu se adună cu ele.</summary>
+    [Theory]
+    [InlineData(620, 620, true, "Cash raportat 620,00 lei = Z 620,00 lei.")]
+    [InlineData(620, 570, false, "Cash raportat 620,00 lei, Z 570,00 lei: diferență 50,00 lei.")]
+    public async Task R24_R25_PlatformCashIsOnlyCheckedAgainstZ(int cash, int z, bool passed, string detail)
+    {
+        var file = new Document { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, OriginalFileName = "raport.pdf", ContentType = "application/pdf", Origin = DocumentOrigin.AccountingUpload };
+        var report = new PlatformDocument
+        {
+            Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Period = "2026-08", Platform = Platform.Bolt, DocumentType = PlatformDocumentType.PlatformReport,
+            SourceDocumentId = file.Id, FileHash = Guid.NewGuid().ToString("N"), Status = PlatformDocumentStatus.Confirmed,
+        };
+        _db.Documents.Add(file);
+        _db.PlatformDocuments.Add(report);
+        _db.DocumentExtractions.Add(new DocumentExtraction { Id = Guid.NewGuid(), PlatformDocumentId = report.Id, Version = 1, IsCurrent = true, CashAmount = cash });
+        _db.ZReports.Add(new ZReport { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Date = new DateOnly(2026, 8, 20), ZNumber = "1", Total = z });
+        await _db.SaveChangesAsync();
+
+        ReconciliationControlDto control = Control(await Reconciliation("2026-08"), ReconciliationControl.PlatformCashVsZ);
+
+        (control.Passed, control.Detail).ShouldBe((passed, detail));
+        (await _db.LedgerEntries.AnyAsync()).ShouldBeFalse(); // R24: cash-ul din raport nu creează încasări
+    }
+
+    [Fact]
+    public async Task ClosingSavesTheRegisters_AndOnlyAReasonedReopenUnlocksThem()
+    {
+        Entry(new DateOnly(2026, 8, 10), -300m);
+        await _db.SaveChangesAsync();
+        await Close("2026-08");
+
+        AccountingPeriodSnapshot snapshot = await _db.AccountingPeriodSnapshots.SingleAsync();
+        snapshot.Period.ShouldBe("2026-08");
+        JsonDocument.Parse(snapshot.RjipJson).RootElement.GetProperty("rows").GetArrayLength().ShouldBe(1);
+
+        var reopen = new ReopenPeriodCommandHandler(_db, User());
+        (await reopen.Handle(new ReopenPeriodCommand(_pfa, "2026-08", " "), CancellationToken.None)).Error.Code.ShouldBe("Accounting.ReasonRequired");
+        (await reopen.Handle(new ReopenPeriodCommand(_pfa, "2026-08", "Factură primită după închidere"), CancellationToken.None)).Value.Status.ShouldBe(AccountingPeriodStatus.Open);
+
+        (await _db.LedgerEntries.SingleAsync()).Status.ShouldBe(LedgerEntryStatus.Verified);
+        (await _db.AuditLogs.SingleAsync(a => a.Action == "REOPEN")).Reason.ShouldBe("Factură primită după închidere");
+        (await reopen.Handle(new ReopenPeriodCommand(_pfa, "2026-08", "Din nou"), CancellationToken.None)).Error.Code.ShouldBe("Accounting.PeriodOpen");
+    }
+
+    [Fact]
+    public async Task OpenBankingAndEFacturaMustBeCurrentToClose()
+    {
+        (await _db.BankConnections.SingleAsync()).LastSyncedAtUtc = DateTime.UtcNow.AddDays(-2);
+        (await _db.AnafPfaLinks.SingleAsync()).LastSyncAtUtc = new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Utc);
+        await _db.SaveChangesAsync();
+
+        MonthReconciliationDto month = await Reconciliation("2026-08");
+
+        Control(month, ReconciliationControl.OpenBanking).Passed.ShouldBeFalse();
+        Control(month, ReconciliationControl.EFactura).Detail.ShouldBe("Importul SPV n-a rulat după sfârșitul lunii.");
+        month.CanClose.ShouldBeFalse();
     }
 
     [Fact]
@@ -101,12 +209,15 @@ public sealed class PeriodsAndHandoverTests : IDisposable
 
         (await Correct("2026-08", entry.Id, """{"amount":-280}""", " ")).Error.Code.ShouldBe("Accounting.ReasonRequired");
         (await Correct("2026-08", entry.Id, """{"date":"2026-09-01"}""", "Mutare")).Error.Code.ShouldBe("Accounting.EntryOutsidePeriod");
-        PeriodCorrectionDto correction = (await Correct("2026-08", entry.Id, """{"amount":-280}""", "Bon greșit")).Value;
+        // Suma unei plăți bancare e suma tranzacției: o corecție n-o poate schimba (invariantul din §4).
+        (await Correct("2026-08", entry.Id, """{"amount":-280}""", "Bon greșit")).Error.Code.ShouldBe("Accounting.LedgerInvariant");
+        _db.ChangeTracker.Clear();
+        PeriodCorrectionDto correction = (await Correct("2026-08", entry.Id, """{"category":"FUEL"}""", "Bon greșit")).Value;
 
         (correction.Period, correction.LedgerEntryId, correction.Reason, correction.By.Name).ShouldBe(("2026-08", (Guid?)entry.Id, "Bon greșit", "Contabil RIDElance"));
-        correction.Change.GetProperty("amount").GetDecimal().ShouldBe(-280m);
+        correction.Change.GetProperty("category").GetString().ShouldBe("FUEL");
         LedgerEntry corrected = await _db.LedgerEntries.SingleAsync();
-        (corrected.Amount, corrected.Status).ShouldBe((-280m, LedgerEntryStatus.Locked));
+        (corrected.Amount, corrected.Category, corrected.Status).ShouldBe((-300m, "FUEL", LedgerEntryStatus.Locked));
         (await _db.AuditLogs.SingleAsync(a => a.Action == "PERIOD_CORRECTION")).Reason.ShouldBe("Bon greșit");
         (await _db.PeriodCorrections.CountAsync()).ShouldBe(1);
     }
@@ -255,6 +366,12 @@ public sealed class PeriodsAndHandoverTests : IDisposable
 
     private LedgerEntry Entry(DateOnly date, decimal amount)
     {
+        var transaction = new BankTransaction
+        {
+            Id = Guid.NewGuid(), BankAccountId = _account, UserId = _user, ProviderConsentId = "consent",
+            ProviderTransactionId = Guid.NewGuid().ToString("N"), BookingDate = date, Amount = amount, Currency = "RON", ImportedAtUtc = DateTime.UtcNow,
+        };
+        _db.BankTransactions.Add(transaction);
         var entry = new LedgerEntry
         {
             Id = Guid.NewGuid(),
@@ -262,7 +379,7 @@ public sealed class PeriodsAndHandoverTests : IDisposable
             Date = date,
             DocumentLabel = "Extras",
             Source = LedgerSource.Bank,
-            BankTransactionId = Guid.NewGuid(),
+            BankTransactionId = transaction.Id,
             Description = "Plată",
             TransactionType = LedgerTransactionType.Expense,
             PaymentMethod = PaymentMethod.Bank,
@@ -280,6 +397,12 @@ public sealed class PeriodsAndHandoverTests : IDisposable
     };
 
     private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
+
+    private async Task<MonthReconciliationDto> Reconciliation(string period) =>
+        (await new GetMonthReconciliationQueryHandler(_db).Handle(new GetMonthReconciliationQuery(_pfa, period), CancellationToken.None)).Value;
+
+    private static ReconciliationControlDto Control(MonthReconciliationDto month, ReconciliationControl control) =>
+        month.Controls.Single(c => c.Control == control);
 
     private FixedUser User() => new(_accountant);
 

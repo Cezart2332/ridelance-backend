@@ -166,3 +166,23 @@ public sealed class BackgroundJob : Entity
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? FinishedAtUtc { get; set; }
 }
+
+/// <summary>
+/// Registrele lunii în momentul închiderii (spec flux contabil §7, §8): RJIP-ul lunii și REF-ul anului
+/// până la sfârșitul ei, ca date și PDF. O redeschidere și o nouă închidere lasă snapshot-ul vechi ca
+/// istoric și adaugă unul nou.
+/// </summary>
+public sealed class AccountingPeriodSnapshot : SharedKernel.Entity, IAccountingRecord
+{
+    public Guid Id { get; set; }
+    public Guid PfaRegistrationId { get; set; }
+
+    /// <summary><c>yyyy-MM</c></summary>
+    public string Period { get; set; } = string.Empty;
+    public string RjipJson { get; set; } = "{}";
+    public string RefJson { get; set; } = "{}";
+    public Guid? RjipPdfDocumentId { get; set; }
+    public Guid CreatedByUserId { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
