@@ -146,6 +146,115 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         (await _db.LedgerEntries.AnyAsync()).ShouldBeFalse(); // R24: cash-ul din raport nu creează încasări
     }
 
+    /// <summary>Registre §7: o diferență Z vs cash platformă trece cu explicația Adminului.</summary>
+    [Fact]
+    public async Task Explanation_LetsAnExplainedCashDifferenceClose()
+    {
+        _db.ZReports.Add(new ZReport { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Date = new DateOnly(2026, 8, 20), ZNumber = "1", Total = 570m });
+        var file = new Document { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, OriginalFileName = "raport.pdf", ContentType = "application/pdf", Origin = DocumentOrigin.AccountingUpload };
+        var report = new PlatformDocument
+        {
+            Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Period = "2026-08", Platform = Platform.Bolt, DocumentType = PlatformDocumentType.PlatformReport,
+            SourceDocumentId = file.Id, FileHash = "h1", Status = PlatformDocumentStatus.Confirmed,
+        };
+        _db.Documents.Add(file);
+        _db.PlatformDocuments.Add(report);
+        _db.DocumentExtractions.Add(new DocumentExtraction { Id = Guid.NewGuid(), PlatformDocumentId = report.Id, Version = 1, IsCurrent = true, CashAmount = 620m });
+        await _db.SaveChangesAsync();
+        var explain = new ExplainReconciliationControlCommandHandler(_db, User());
+
+        (await explain.Handle(new ExplainReconciliationControlCommand(_pfa, "2026-08", ReconciliationControl.BankBalance, "x"), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.ControlNotExplainable");
+        (await explain.Handle(new ExplainReconciliationControlCommand(_pfa, "2026-08", ReconciliationControl.PlatformCashVsZ, "Z-ul din 31.08 e în septembrie"), CancellationToken.None))
+            .IsSuccess.ShouldBeTrue();
+
+        ReconciliationControlDto control = Control(await Reconciliation("2026-08"), ReconciliationControl.PlatformCashVsZ);
+        (control.Passed, control.Detail).ShouldBe((true, "Cash raportat 620,00 lei, Z 570,00 lei: diferență 50,00 lei. Explicat: Z-ul din 31.08 e în septembrie"));
+    }
+
+    /// <summary>Registre §7: o achiziție nedecisă sau amortizarea lipsă blochează închiderea; la închidere liniile se blochează.</summary>
+    [Fact]
+    public async Task FixedAssets_MustBeClassifiedAndDepreciatedToClose()
+    {
+        LedgerEntry laptop = Entry(new DateOnly(2026, 8, 10), -6000m);
+        laptop.FixedAssetReview = FixedAssetReview.Pending;
+        laptop.DeductibleAmount = 0m;
+        var asset = new PfaAsset
+        {
+            Id = Guid.NewGuid(), PfaRegistrationId = _pfa, InventoryNumber = "MF-0001", Name = "Laptop", Kind = AssetKind.FixedAsset, Status = AssetStatus.Active,
+            DocumentRef = "Factura 1", EntryDate = new DateOnly(2026, 6, 1), InServiceDate = new DateOnly(2026, 6, 1), EntryValue = 3600m,
+            DepreciationClassCode = "2.2.9", NormalLifeMonths = 36,
+        };
+        _db.PfaAssets.Add(asset);
+        await _db.SaveChangesAsync();
+
+        MonthReconciliationDto month = await Reconciliation("2026-08");
+        Control(month, ReconciliationControl.FixedAssetsClassified).Detail.ShouldBe("1 posibile mijloace fixe fără decizie.");
+        Control(month, ReconciliationControl.Depreciation).Detail.ShouldBe("Lipsește amortizarea lunii pentru MF-0001.");
+
+        laptop.FixedAssetReview = FixedAssetReview.Expense;
+        _db.DepreciationLines.AddRange(
+            new DepreciationLine { Id = Guid.NewGuid(), AssetId = asset.Id, PfaRegistrationId = _pfa, Year = 2026, Month = 7, Amount = 100m, Accumulated = 100m, Remaining = 3500m },
+            new DepreciationLine { Id = Guid.NewGuid(), AssetId = asset.Id, PfaRegistrationId = _pfa, Year = 2026, Month = 8, Amount = 100m, Accumulated = 200m, Remaining = 3400m });
+        await _db.SaveChangesAsync();
+        (await Close("2026-08")).IsSuccess.ShouldBeTrue();
+
+        (await _db.DepreciationLines.SingleAsync(l => l.Month == 8)).IsLocked.ShouldBeTrue();
+        (await _db.DepreciationLines.SingleAsync(l => l.Month == 7)).IsLocked.ShouldBeFalse();
+    }
+
+    /// <summary>Scenariul 9: „Închide anul” cu decembrie deschis e blocat, cu luna lipsă.</summary>
+    [Fact]
+    public async Task S9_ClosingTheYearWithAnOpenMonthIsBlocked()
+    {
+        ClosedMonths(7, 8, 9, 10, 11);
+        FinalInventory();
+        await _db.SaveChangesAsync();
+
+        Result<AccountingYearDto> result = await CloseYear();
+
+        result.Error.Code.ShouldBe("Accounting.YearNotReady");
+        result.Error.Description.ShouldBe("Anul nu se poate închide: Luna decembrie 2026 nu e închisă.");
+    }
+
+    /// <summary>Registre §7: anul închis are REF-ul final, pachetul anual și nu mai primește modificări fără redeschidere.</summary>
+    [Fact]
+    public async Task ClosingTheYear_SavesTheFinalRefAndTheAnnualPackage()
+    {
+        LedgerEntry income = Entry(new DateOnly(2026, 8, 3), 5000m);
+        income.TransactionType = LedgerTransactionType.Income;
+        income.Status = LedgerEntryStatus.Locked;
+        ClosedMonths(7, 8, 9, 10, 11);
+        await _db.SaveChangesAsync();
+        (await CloseYear()).Error.Description.ShouldContain("Inventarul de la sfârșitul anului nu e final.");
+
+        ClosedMonths(12);
+        FinalInventory();
+        await _db.SaveChangesAsync();
+        AccountingYearDto closed = (await CloseYear()).Value;
+
+        (closed.Status, closed.HasPackage, closed.ClosedBy!.Name).ShouldBe((AccountingPeriodStatus.Closed, true, "Contabil RIDElance"));
+        RefView final = (await new GetRefQueryHandler(_db).Handle(new GetRefQuery(_pfa, 2026), CancellationToken.None)).Value;
+        (final.Status, final.Rows[0].Value).ShouldBe((RefStatus.Final, 5000m));
+
+        RegisterFile package = (await new GetYearPackageQueryHandler(_db, new FixedUser(_user), Files()).Handle(new GetYearPackageQuery(null, 2026), CancellationToken.None)).Value;
+        package.FileName.ShouldBe("RIDElance_Registre_12345674_2026.zip");
+        using (var zip = new ZipArchive(new MemoryStream(package.Content)))
+        {
+            zip.Entries.Select(e => e.FullName).ShouldBe(
+                ["RJIP_12345674_20260101_20261231.pdf", "REF_12345674_2026.pdf", "Registru-inventar_12345674_20261231.pdf", "Lista_active_12345674_20261231.pdf"],
+                ignoreOrder: true);
+        }
+
+        (await new ReopenPeriodCommandHandler(_db, User()).Handle(new ReopenPeriodCommand(_pfa, "2026-12", "Corectură"), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.YearClosed");
+        (await new ReopenAccountingYearCommandHandler(_db, User()).Handle(new ReopenAccountingYearCommand(_pfa, 2026, " "), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.ReasonRequired");
+        (await new ReopenAccountingYearCommandHandler(_db, User()).Handle(new ReopenAccountingYearCommand(_pfa, 2026, "Inventar refăcut"), CancellationToken.None))
+            .Value.Status.ShouldBe(AccountingPeriodStatus.Open);
+        (await _db.AuditLogs.CountAsync(a => a.Entity == nameof(AccountingYear))).ShouldBe(2);
+    }
+
     [Fact]
     public async Task ClosingSavesTheRegisters_AndOnlyAReasonedReopenUnlocksThem()
     {
@@ -490,6 +599,27 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         month.Controls.Single(c => c.Control == control);
 
     private FixedUser User() => new(_accountant);
+
+    private void ClosedMonths(params int[] months) => _db.PfaAccountingPeriods.AddRange(months.Select(month => new PfaAccountingPeriod
+    {
+        Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Period = $"2026-{month:00}", Status = AccountingPeriodStatus.Closed,
+    }));
+
+    private void FinalInventory() => _db.InventoryCounts.Add(new InventoryCount
+    {
+        Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Date = new DateOnly(2026, 12, 31), Reason = InventoryReason.YearEnd, Status = InventoryStatus.Final,
+    });
+
+    private Task<Result<AccountingYearDto>> CloseYear()
+    {
+        var exporter = new RegisterExporter();
+        var rjip = new ExportRjipQueryHandler(_db, new GetRjipQueryHandler(_db), exporter);
+        var refExport = new ExportRefQueryHandler(_db, new GetRefQueryHandler(_db), exporter);
+        return new CloseAccountingYearCommandHandler(
+                _db, User(), rjip, refExport, new ExportInventoryQueryHandler(_db, exporter),
+                new Application.Accounting.Assets.ExportAssetSheetQueryHandler(_db, exporter), new Application.Accounting.Assets.ExportAssetListQueryHandler(_db, exporter), Files())
+            .Handle(new CloseAccountingYearCommand(_pfa, 2026), CancellationToken.None);
+    }
 
     private sealed class FixedClock : IDateTimeProvider
     {

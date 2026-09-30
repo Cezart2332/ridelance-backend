@@ -25,6 +25,12 @@ public enum ReconciliationControl
     OpenTransactions = 6,
     PlatformCashVsZ = 7,
     BankBalance = 8,
+
+    /// <summary>Registre §7: nicio achiziție „posibil mijloc fix” nedecisă, niciun activ fără clasificare.</summary>
+    FixedAssetsClassified = 9,
+
+    /// <summary>Registre §7: amortizarea lunii calculată pentru toate mijloacele fixe active.</summary>
+    Depreciation = 10,
 }
 
 /// <param name="Applicable">Fals când controlul nu privește PFA-ul (fără casă de marcat, fără Uber): trece.</param>
@@ -104,7 +110,10 @@ internal static class MonthReconciliation
             await OpenTransactionsAsync(db, pfaId, start, end, entries, cancellationToken),
             await PlatformCashAsync(db, pfaId, period, start, end, cancellationToken),
             await BankBalanceAsync(db, pfaId, pfa.UserId, start, end, entries, options, cancellationToken),
+            await FixedAssetsClassifiedAsync(db, pfaId, end, cancellationToken),
+            await DepreciationAsync(db, pfaId, start, cancellationToken),
         ];
+        controls = await WithExplanationsAsync(db, pfaId, period, controls, cancellationToken);
 
         AccountingPeriodStatus status = await db.PfaAccountingPeriods.AsNoTracking()
             .Where(p => p.PfaRegistrationId == pfaId && p.Period == period)
@@ -115,6 +124,87 @@ internal static class MonthReconciliation
     }
 
     private static string Lei(decimal value) => value.ToString("#,##0.00", Ro) + " lei";
+
+    /// <summary>Controalele pe care Adminul le poate explica, în loc să le anuleze (registre §7).</summary>
+    public static readonly IReadOnlySet<ReconciliationControl> Explainable =
+        new HashSet<ReconciliationControl> { ReconciliationControl.PlatformCashVsZ, ReconciliationControl.UnreconciledPayouts };
+
+    /// <summary>Diferența Z vs cash platformă și payout-urile nereconciliate trec cu explicația salvată de Admin.</summary>
+    private static async Task<List<ReconciliationControlDto>> WithExplanationsAsync(
+        IApplicationDbContext db, Guid pfaId, string period, List<ReconciliationControlDto> controls, CancellationToken cancellationToken)
+    {
+        List<ReconciliationExplanation> explanations = await db.ReconciliationExplanations.AsNoTracking()
+            .Where(e => e.PfaRegistrationId == pfaId && e.Period == period)
+            .ToListAsync(cancellationToken);
+        return [.. controls.Select(control =>
+            !control.Passed && Explainable.Contains(control.Control) &&
+            explanations.Where(e => e.Control == control.Control.ToString()).MaxBy(e => e.CreatedAtUtc) is { } explanation
+                ? control with { Passed = true, Detail = $"{control.Detail} Explicat: {explanation.Note}" }
+                : control)];
+    }
+
+    /// <summary>Registre §7: achizițiile propuse ca mijloace fixe au decizie, iar activele decise sunt complete.</summary>
+    private static async Task<ReconciliationControlDto> FixedAssetsClassifiedAsync(IApplicationDbContext db, Guid pfaId, DateOnly end, CancellationToken cancellationToken)
+    {
+        int pending = await db.LedgerEntries.AsNoTracking()
+            .CountAsync(e => e.PfaRegistrationId == pfaId && e.Date <= end && e.FixedAssetReview == FixedAssetReview.Pending, cancellationToken);
+        int incomplete = await db.PfaAssets.AsNoTracking()
+            .CountAsync(a => a.PfaRegistrationId == pfaId && a.EntryDate <= end && a.Status == AssetStatus.PendingClassification, cancellationToken);
+        if (pending + incomplete == 0)
+        {
+            return new ReconciliationControlDto(ReconciliationControl.FixedAssetsClassified, true, true, "Nicio achiziție de clasificat.");
+        }
+
+        List<string> parts = [];
+        if (pending > 0)
+        {
+            parts.Add($"{pending} posibile mijloace fixe fără decizie");
+        }
+
+        if (incomplete > 0)
+        {
+            parts.Add($"{incomplete} active fără clasă, durată sau punere în funcțiune");
+        }
+
+        return new ReconciliationControlDto(ReconciliationControl.FixedAssetsClassified, false, true, string.Join(", ", parts) + ".");
+    }
+
+    /// <summary>
+    /// Registre §7: fiecare mijloc fix activ care se amortizează în lună are linia lunii. Luna de start
+    /// e cea din planul existent; un activ fără plan, dar cu punerea în funcțiune înaintea lunii, lipsește.
+    /// </summary>
+    private static async Task<ReconciliationControlDto> DepreciationAsync(IApplicationDbContext db, Guid pfaId, DateOnly start, CancellationToken cancellationToken)
+    {
+        List<PfaAsset> assets = await db.PfaAssets.AsNoTracking()
+            .Where(a => a.PfaRegistrationId == pfaId && a.Kind == AssetKind.FixedAsset && a.Status == AssetStatus.Active &&
+                        a.InServiceDate != null && a.InServiceDate < start && (a.DisposalDate == null || a.DisposalDate >= start))
+            .ToListAsync(cancellationToken);
+        if (assets.Count == 0)
+        {
+            return new ReconciliationControlDto(ReconciliationControl.Depreciation, true, false, "Fără mijloace fixe de amortizat.");
+        }
+
+        List<Guid> ids = [.. assets.Select(a => a.Id)];
+        HashSet<(Guid, int, int)> lines = [.. (await db.DepreciationLines.AsNoTracking()
+                .Where(l => ids.Contains(l.AssetId) && l.Year == start.Year && l.Month == start.Month)
+                .Select(l => new { l.AssetId, l.Year, l.Month })
+                .ToListAsync(cancellationToken))
+            .Select(l => (l.AssetId, l.Year, l.Month))];
+        List<FixedAssetRule> rules = await db.FixedAssetRules.AsNoTracking().ToListAsync(cancellationToken);
+
+        // Luna e datorată dacă planul întreg al activului o conține (lunile nu se schimbă la o recalculare).
+        List<string> missing = [.. assets
+            .Where(a =>
+            {
+                DepreciationStart rule = rules.Where(r => r.ValidFrom <= a.InServiceDate).MaxBy(r => r.ValidFrom)?.DepreciationStart ?? DepreciationStart.NextMonth;
+                bool due = Assets.Depreciation.Plan(a, rule, []).Any(l => l.Year == start.Year && l.Month == start.Month);
+                return due && !lines.Contains((a.Id, start.Year, start.Month));
+            })
+            .Select(a => a.InventoryNumber)];
+        return missing.Count == 0
+            ? new ReconciliationControlDto(ReconciliationControl.Depreciation, true, true, $"Amortizarea lunii e calculată pentru {assets.Count} mijloace fixe.")
+            : new ReconciliationControlDto(ReconciliationControl.Depreciation, false, true, $"Lipsește amortizarea lunii pentru {string.Join(", ", missing)}.");
+    }
 
     /// <summary>Open Banking: sincronizare reușită în ultimele 24 de ore, cu consimțământul valabil.</summary>
     private static async Task<ReconciliationControlDto> OpenBankingAsync(IApplicationDbContext db, Guid pfaId, Guid userId, DateTime nowUtc, CancellationToken cancellationToken)
