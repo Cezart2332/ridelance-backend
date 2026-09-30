@@ -110,6 +110,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
         Guid? paymentRecordIdForInvoice = null;
         // Dosarul de înființare tocmai achitat. Semnat + plătit = gata de trimis la Consulto.
         Guid? paidCompanyFormationId = null;
+        string? replacedStripeSubscriptionId = null;
 
         if (mode == "payment")
         {
@@ -195,6 +196,14 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
             if (existing is not null)
             {
+                // Checkoutul nou deschide alt abonament la Stripe. Cel vechi, lăsat în viață, ar
+                // continua să încaseze pe planul vechi, fără ca aplicația să mai știe de el.
+                if (!string.IsNullOrEmpty(existing.StripeSubscriptionId)
+                    && existing.StripeSubscriptionId != session.SubscriptionId)
+                {
+                    replacedStripeSubscriptionId = existing.StripeSubscriptionId;
+                }
+
                 // Schimbarea de plan intră în vigoare acum, nu la următoarea facturare: clientul
                 // tocmai a plătit planul nou. `PendingPlan` amâna trecerea până la ancora de luni
                 // 15:00 — nu mai are ce amâna, deci se golește pe orice checkout reușit.
@@ -262,6 +271,24 @@ internal sealed class HandleStripeWebhookCommandHandler(
         }
 
         await context.SaveChangesAsync(ct);
+
+        // După salvare: `customer.subscription.deleted` pentru cel vechi nu mai găsește rândul, care
+        // poartă deja abonamentul nou, deci nu-l poate marca anulat.
+        if (replacedStripeSubscriptionId is not null)
+        {
+            try
+            {
+                await stripeService.CancelSubscriptionAsync(replacedStripeSubscriptionId, ct);
+            }
+            catch (StripeException exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Abonamentul Stripe vechi {SubscriptionId} al clientului {UserId} nu a putut fi anulat după schimbarea de plan.",
+                    replacedStripeSubscriptionId,
+                    userId);
+            }
+        }
 
         // Generate Oblio invoice (never throws; failures are stored for admin review)
         if (paymentRecordIdForInvoice.HasValue)
@@ -505,8 +532,16 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return; // Already handled by checkout.session.completed
         }
 
-        string? stripeSubId = invoice.Lines?.FirstOrDefault()?.SubscriptionId;
+        string? stripeSubId = SubscriptionIdOf(invoice);
         if (string.IsNullOrEmpty(stripeSubId))
+        {
+            logger.LogWarning("Factura Stripe {InvoiceId} a fost plătită, dar nu poartă niciun abonament.", invoice.Id);
+            return;
+        }
+
+        // Stripe reîncearcă un webhook care n-a primit 200 — și îl poate trimite de două ori
+        // oricum. O factură e o singură încasare, deci o singură înregistrare.
+        if (await context.PaymentRecords.AnyAsync(p => p.StripePaymentId == invoice.Id && p.Status == PaymentStatus.Succeeded, ct))
         {
             return;
         }
@@ -527,7 +562,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 Status = PaymentStatus.Succeeded,
                 AmountBani = invoice.AmountPaid,
                 Description = $"Publicare mașină RIDElance — {paidCar.Brand} {paidCar.Model}",
-                StripePaymentId = invoice.Payments?.FirstOrDefault()?.Payment?.PaymentIntentId,
+                StripePaymentId = invoice.Id,
                 CreatedAtUtc = DateTime.UtcNow,
             };
             context.PaymentRecords.Add(carPaymentRecord);
@@ -575,12 +610,18 @@ internal sealed class HandleStripeWebhookCommandHandler(
 
         if (sub is null)
         {
+            logger.LogWarning(
+                "Factura Stripe {InvoiceId} a fost plătită pe abonamentul {SubscriptionId}, pe care nu-l are niciun client.",
+                invoice.Id,
+                stripeSubId);
             return;
         }
 
-        // O factură plătită înseamnă un ciclu nou: următoarea cade la o lună sau un an de acum.
+        // O factură plătită înseamnă un ciclu nou. Sfârșitul perioadei facturate e chiar data
+        // următoarei încasări la Stripe; „o lună de acum" rămâne doar pentru o factură fără perioadă.
+        DateTime? periodEnd = invoice.Lines?.Data?.FirstOrDefault()?.Period?.End;
         sub.Status = SubscriptionStatus.Active;
-        sub.NextBillingDateUtc = NextBillingFrom(DateTime.UtcNow, sub.BillingCycle);
+        sub.NextBillingDateUtc = periodEnd > DateTime.UtcNow ? periodEnd : NextBillingFrom(DateTime.UtcNow, sub.BillingCycle);
         sub.DashboardAccessGranted = true;
         sub.DashboardAccessGrantedUtc ??= DateTime.UtcNow;
 
@@ -599,7 +640,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
             Status = PaymentStatus.Succeeded,
             AmountBani = invoice.AmountPaid,
             Description = $"RIDElance {sub.Plan} — {CycleLabel(sub.BillingCycle)}",
-            StripePaymentId = invoice.Payments?.FirstOrDefault()?.Payment?.PaymentIntentId,
+            StripePaymentId = invoice.Id,
             CreatedAtUtc = DateTime.UtcNow,
         };
         context.PaymentRecords.Add(record);
@@ -652,7 +693,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return;
         }
 
-        string? stripeSubId = invoice.Lines?.FirstOrDefault()?.SubscriptionId;
+        string? stripeSubId = SubscriptionIdOf(invoice);
         if (string.IsNullOrEmpty(stripeSubId))
         {
             return;
@@ -759,6 +800,17 @@ internal sealed class HandleStripeWebhookCommandHandler(
     /// </summary>
     private static DateTime NextBillingFrom(DateTime fromUtc, SubscriptionBillingCycle cycle) =>
         cycle == SubscriptionBillingCycle.Annual ? fromUtc.AddYears(1) : fromUtc.AddMonths(1);
+
+    /// <summary>
+    /// Abonamentul Stripe căruia îi aparține factura. Din API-ul „basil" încoace id-ul stă în
+    /// <c>parent</c> — pe factură și pe fiecare linie. <c>InvoiceLineItem.SubscriptionId</c> a rămas
+    /// în SDK, dar nu mai e citit din JSON: era mereu null, așa că nicio reînnoire nu se înregistra.
+    /// </summary>
+    private static string? SubscriptionIdOf(Stripe.Invoice invoice) =>
+        invoice.Parent?.SubscriptionDetails?.SubscriptionId
+        ?? invoice.Lines?.Data?
+            .Select(line => line.Parent?.SubscriptionItemDetails?.Subscription)
+            .FirstOrDefault(id => !string.IsNullOrEmpty(id));
 
     /// <summary>Cum se numește ciclul pe factură și în emailul de confirmare.</summary>
     private static string CycleLabel(SubscriptionBillingCycle cycle) =>
