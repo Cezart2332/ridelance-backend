@@ -396,7 +396,9 @@ public sealed record LedgerEntryDto(
     Guid? SettlementGroupId,
     Guid? EFacturaMessageId,
     DateOnly? DocumentDate,
-    decimal PersonalAmount);
+    decimal PersonalAmount,
+    Guid? StornoOfEntryId = null,
+    Guid? CorrectsEntryId = null);
 
 /// <summary>Câmpurile trimise sunt doar cele schimbate; <c>Reason</c> e obligatoriu.</summary>
 public sealed record UpdateLedgerEntryRequest(JsonElement Fields, string Reason);
@@ -479,4 +481,16 @@ public sealed record AccountingPeriodDto(Guid PfaId, string Period, AccountingPe
 
 public sealed record PeriodCorrectionRequest(Guid? LedgerEntryId, JsonElement Change, string Reason);
 
-public sealed record PeriodCorrectionDto(Guid Id, Guid PfaId, string Period, Guid? LedgerEntryId, JsonElement Change, string Reason, UserRef By, DateTime At);
+/// <param name="StornoEntryId">Stornarea din luna curentă, când corecția privește o înregistrare blocată (§4).</param>
+/// <param name="ReplacementEntryId">Înregistrarea corectată, în luna curentă, care o înlocuiește pe cea stornată.</param>
+public sealed record PeriodCorrectionDto(
+    Guid Id,
+    Guid PfaId,
+    string Period,
+    Guid? LedgerEntryId,
+    JsonElement Change,
+    string Reason,
+    UserRef By,
+    DateTime At,
+    Guid? StornoEntryId = null,
+    Guid? ReplacementEntryId = null);

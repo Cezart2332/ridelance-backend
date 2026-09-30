@@ -96,7 +96,19 @@ public sealed class LedgerEntry : Entity, IAccountingRecord
     public decimal BusinessAmount => Math.Abs(Amount) - PersonalAmount;
 
     /// <summary>Partea nedeductibilă a unei cheltuieli cu deductibilitate stabilită, inclusiv partea personală.</summary>
-    public decimal? NonDeductibleAmount => DeductibleAmount is { } deductible ? Math.Abs(Amount) - deductible : null;
+    public decimal? NonDeductibleAmount => DeductibleAmount is { } deductible ? StornoSign * (Math.Abs(Amount) - Math.Abs(deductible)) : null;
+
+    /// <summary>−1 la stornare, unde suma deductibilă și cea nedeductibilă au semnul opus originalului.</summary>
+    private int StornoSign => StornoOfEntryId is null ? 1 : -1;
+
+    /// <summary>
+    /// Stornarea (§4): anulează, în luna curentă, înregistrarea blocată dintr-o lună închisă. Are suma
+    /// și deductibilul cu semn opus, iar în RJIP stă pe coloana originalului, cu minus.
+    /// </summary>
+    public Guid? StornoOfEntryId { get; set; }
+
+    /// <summary>Înregistrarea blocată pe care o înlocuiește, corectată, în luna curentă (după stornare).</summary>
+    public Guid? CorrectsEntryId { get; set; }
 
     public Guid? CreatedByUserId { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

@@ -35,6 +35,12 @@ internal static class PeriodErrors
     public static readonly Error ReopenReasonRequired = Error.Problem("Accounting.ReasonRequired", "Motivul redeschiderii e obligatoriu.");
 
     public static Error NotClosed(string period) => Error.Conflict("Accounting.PeriodOpen", $"Perioada {period} nu e închisă.");
+
+    public static readonly Error AlreadyStorned = Error.Conflict(
+        "Accounting.AlreadyStorned", "Înregistrarea e deja stornată; corectează înregistrarea care o înlocuiește, din luna curentă.");
+
+    public static readonly Error BankFacts = Error.Problem(
+        "Accounting.LedgerInvariant", "Suma și canalul unei plăți bancare sunt cele din extras; corecția poate schimba doar celelalte câmpuri.");
 }
 
 /// <summary><c>GET /accounting/pfas/{pfaId}/periods</c> — lunile colaborării, cele mai noi întâi.</summary>
@@ -197,11 +203,12 @@ public sealed record CreatePeriodCorrectionCommand(Guid PfaId, string Period, Gu
 
 /// <summary>
 /// Corecția controlată a unei luni închise (spec contabilitate B8): doar ADMIN / ACCOUNTANT (grupul
-/// de endpoint-uri), motiv obligatoriu, audit. Cu <c>ledgerEntryId</c>, schimbarea se aplică pe
-/// tranzacție, care rămâne în lună și blocată; un import căzut în luna închisă intră astfel în
-/// registre. Fără tranzacție, corecția rămâne o notă în jurnalul lunii.
+/// de endpoint-uri), motiv obligatoriu, audit. O înregistrare blocată nu se modifică (spec flux
+/// contabil §4): în luna curentă intră stornarea ei și înregistrarea corectată. Un import căzut în
+/// luna închisă, încă neblocat, intră în lună și se blochează. Fără tranzacție, corecția rămâne o
+/// notă în jurnalul lunii.
 /// </summary>
-internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext db, IUserContext userContext)
+internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext db, IUserContext userContext, IDateTimeProvider? clock = null)
     : ICommandHandler<CreatePeriodCorrectionCommand, PeriodCorrectionDto>
 {
     public async Task<Result<PeriodCorrectionDto>> Handle(CreatePeriodCorrectionCommand command, CancellationToken cancellationToken)
@@ -234,13 +241,16 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
         }
 
         string reason = command.Reason.Trim();
+        var entries = new StornoIds(null, null);
         if (command.LedgerEntryId is { } entryId)
         {
-            Result corrected = await CorrectEntryAsync(entryId, command, reason, cancellationToken);
+            Result<StornoIds> corrected = await CorrectEntryAsync(entryId, command, reason, cancellationToken);
             if (corrected.IsFailure)
             {
                 return Result.Failure<PeriodCorrectionDto>(corrected.Error);
             }
+
+            entries = corrected.Value;
         }
 
         var correction = new PeriodCorrection
@@ -266,15 +276,17 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
             JsonDocument.Parse(correction.ChangeJson).RootElement.Clone(),
             reason,
             users.GetValueOrDefault(userContext.UserId) ?? new UserRef(userContext.UserId, string.Empty),
-            correction.CreatedAtUtc);
+            correction.CreatedAtUtc,
+            entries.Storno,
+            entries.Replacement);
     }
 
-    private async Task<Result> CorrectEntryAsync(Guid entryId, CreatePeriodCorrectionCommand command, string reason, CancellationToken cancellationToken)
+    private async Task<Result<StornoIds>> CorrectEntryAsync(Guid entryId, CreatePeriodCorrectionCommand command, string reason, CancellationToken cancellationToken)
     {
         LedgerEntry? entry = await db.LedgerEntries.SingleOrDefaultAsync(e => e.Id == entryId, cancellationToken);
         if (entry is null || entry.PfaRegistrationId != command.PfaId || entry.AccountingPeriod != command.Period)
         {
-            return Result.Failure(PeriodErrors.EntryOutsidePeriod);
+            return Result.Failure<StornoIds>(PeriodErrors.EntryOutsidePeriod);
         }
 
         // Data se verifică înainte de orice modificare: o corecție nu mută tranzacția din lună.
@@ -284,7 +296,13 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
              !DateOnly.TryParseExact(date.GetString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly moved) ||
              LedgerSupport.PeriodOf(moved) != command.Period))
         {
-            return Result.Failure(PeriodErrors.CorrectionMovesPeriod);
+            return Result.Failure<StornoIds>(PeriodErrors.CorrectionMovesPeriod);
+        }
+
+        if (entry.Status == LedgerEntryStatus.Locked)
+        {
+            bool changes = command.Change.ValueKind == JsonValueKind.Object && command.Change.EnumerateObject().Any();
+            return changes ? await StornoAsync(entry, command.Change, reason, cancellationToken) : new StornoIds(null, null);
         }
 
         var before = new Dictionary<string, object?>();
@@ -294,7 +312,7 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
             Result applied = await LedgerChanges.ApplyAllAsync(db, entry, command.Change, before, after, cancellationToken);
             if (applied.IsFailure && applied.Error != AccountingErrors.NoChanges)
             {
-                return applied;
+                return Result.Failure<StornoIds>(applied.Error);
             }
         }
 
@@ -313,12 +331,112 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
         Result valid = await LedgerSupport.ValidateAsync(db, entry, cancellationToken);
         if (valid.IsFailure)
         {
-            return valid;
+            return Result.Failure<StornoIds>(valid.Error);
         }
 
         AccountingAudit.Record(db, entry.PfaRegistrationId, nameof(LedgerEntry), entry.Id, "PERIOD_CORRECTION", before, after, reason, userContext.UserId);
-        return Result.Success();
+        return new StornoIds(null, null);
     }
+
+    /// <summary>
+    /// Stornarea înregistrării blocate și înlocuitoarea ei corectată, amândouă în luna curentă. Legăturile
+    /// cu extrasul, factura și decontarea rămân pe original: suma și canalul unei plăți bancare nu se schimbă.
+    /// </summary>
+    private async Task<Result<StornoIds>> StornoAsync(LedgerEntry entry, JsonElement change, string reason, CancellationToken cancellationToken)
+    {
+        if (await db.LedgerEntries.AnyAsync(e => e.StornoOfEntryId == entry.Id, cancellationToken))
+        {
+            return Result.Failure<StornoIds>(PeriodErrors.AlreadyStorned);
+        }
+
+        var today = DateOnly.FromDateTime(clock?.UtcNow ?? DateTime.UtcNow);
+        string period = LedgerSupport.PeriodOf(today);
+        Result writable = await PlatformDocumentSupport.EnsureWritableAsync(db, entry.PfaRegistrationId, period, cancellationToken);
+        if (writable.IsFailure)
+        {
+            return Result.Failure<StornoIds>(writable.Error);
+        }
+
+        LedgerEntry replacement = Copy(entry);
+        replacement.CorrectsEntryId = entry.Id;
+        replacement.Status = LedgerEntryStatus.Verified;
+        var before = new Dictionary<string, object?>();
+        var after = new Dictionary<string, object?>();
+        Result applied = await LedgerChanges.ApplyAllAsync(db, replacement, change, before, after, cancellationToken);
+        if (applied.IsFailure)
+        {
+            return Result.Failure<StornoIds>(applied.Error);
+        }
+
+        if (entry.BankTransactionId is not null && (replacement.Amount != entry.Amount || replacement.PaymentMethod != entry.PaymentMethod))
+        {
+            return Result.Failure<StornoIds>(PeriodErrors.BankFacts);
+        }
+
+        // Deductibilitatea se stabilește la data operațiunii; înregistrarea intră apoi în luna curentă.
+        DeductibilityService.Resolve(replacement, await LedgerSupport.RulesAsync(db, entry.PfaRegistrationId, cancellationToken));
+        replacement.DocumentDate = after.ContainsKey("date") ? replacement.Date : entry.DocumentDate ?? entry.Date;
+        replacement.Date = today;
+        replacement.AccountingPeriod = period;
+
+        LedgerEntry storno = Copy(entry);
+        storno.StornoOfEntryId = entry.Id;
+        storno.Status = LedgerEntryStatus.Locked;
+        storno.Amount = -entry.Amount;
+        storno.DeductibleAmount = -entry.DeductibleAmount;
+        storno.DocumentLabel = $"Stornare {entry.DocumentLabel}".Trim();
+        storno.Description = $"Stornare: {entry.Description}";
+        storno.DocumentDate = entry.DocumentDate ?? entry.Date;
+        storno.Date = today;
+        storno.AccountingPeriod = period;
+
+        foreach (LedgerEntry added in new[] { storno, replacement })
+        {
+            Result valid = await LedgerSupport.ValidateAsync(db, added, cancellationToken);
+            if (valid.IsFailure)
+            {
+                return Result.Failure<StornoIds>(valid.Error);
+            }
+
+            db.LedgerEntries.Add(added);
+        }
+
+        after["stornoEntryId"] = storno.Id;
+        after["replacementEntryId"] = replacement.Id;
+        AccountingAudit.Record(db, entry.PfaRegistrationId, nameof(LedgerEntry), entry.Id, "PERIOD_CORRECTION", before, after, reason, userContext.UserId);
+        return new StornoIds(storno.Id, replacement.Id);
+    }
+
+    /// <summary>Operațiunea, fără legăturile care îi aparțin doar originalului (extras, factură, decontare, import).</summary>
+    private LedgerEntry Copy(LedgerEntry entry) => new()
+    {
+        Id = Guid.NewGuid(),
+        PfaRegistrationId = entry.PfaRegistrationId,
+        Date = entry.Date,
+        DocumentLabel = entry.DocumentLabel,
+        SourceDocumentId = entry.SourceDocumentId,
+        Source = LedgerSource.Manual,
+        Counterparty = entry.Counterparty,
+        Description = entry.Description,
+        TransactionType = entry.TransactionType,
+        PaymentMethod = entry.PaymentMethod,
+        Amount = entry.Amount,
+        Currency = entry.Currency,
+        Category = entry.Category,
+        VehicleRelated = entry.VehicleRelated,
+        DeductibilityType = entry.DeductibilityType,
+        DeductiblePercent = entry.DeductiblePercent,
+        DeductibleAmount = entry.DeductibleAmount,
+        DeductibilitySettingId = entry.DeductibilitySettingId,
+        DeductibilityRuleId = entry.DeductibilityRuleId,
+        DeductibilityValidFrom = entry.DeductibilityValidFrom,
+        ReconciliationStatus = entry.ReconciliationStatus,
+        PersonalAmount = entry.PersonalAmount,
+        CreatedByUserId = userContext.UserId,
+        CreatedAtUtc = DateTime.UtcNow,
+    };
+
+    private sealed record StornoIds(Guid? Storno, Guid? Replacement);
 }
 
 /// <summary><c>POST /accounting/pfas/{pfaId}/periods/{period}/reopen</c> — doar ADMIN, cu motiv.</summary>

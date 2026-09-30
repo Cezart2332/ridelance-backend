@@ -607,6 +607,8 @@ internal sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<Ledger
 
         builder.HasIndex(e => new { e.PfaRegistrationId, e.Date });
         builder.HasIndex(e => e.SettlementGroupId).HasFilter("settlement_group_id IS NOT NULL");
+        // O înregistrare blocată se stornează o singură dată; corecția următoare se face pe înlocuitoare.
+        builder.HasIndex(e => e.StornoOfEntryId).IsUnique().HasFilter("storno_of_entry_id IS NOT NULL");
         builder.HasIndex(e => new { e.PfaRegistrationId, e.AccountingPeriod });
         // Importatorii sunt idempotenți prin (sursă, id extern) — B6.
         builder.HasIndex(e => new { e.Source, e.ExternalId }).IsUnique().HasFilter("external_id IS NOT NULL");
@@ -616,6 +618,8 @@ internal sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<Ledger
         builder.HasOne<PlatformDocument>().WithMany().HasForeignKey(e => e.PlatformDocumentId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<BankTransaction>().WithMany().HasForeignKey(e => e.BankTransactionId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<EFacturaMessage>().WithMany().HasForeignKey(e => e.EFacturaMessageId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<LedgerEntry>().WithMany().HasForeignKey(e => e.StornoOfEntryId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<LedgerEntry>().WithMany().HasForeignKey(e => e.CorrectsEntryId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<PfaAccountingSetting>().WithMany().HasForeignKey(e => e.DeductibilitySettingId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ExpenseCategoryRule>().WithMany().HasForeignKey(e => e.DeductibilityRuleId).OnDelete(DeleteBehavior.Restrict);
         builder.RestrictToUser(e => e.CreatedByUserId);

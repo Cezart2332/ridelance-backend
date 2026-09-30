@@ -235,8 +235,10 @@ internal static class MonthReconciliation
     private static async Task<ReconciliationControlDto> OpenTransactionsAsync(
         IApplicationDbContext db, Guid pfaId, DateOnly start, DateOnly end, List<LedgerEntry> entries, CancellationToken cancellationToken)
     {
-        int unmatched = entries.Count(e => e.ReconciliationStatus == ReconciliationStatus.Unmatched);
-        int review = entries.Count(e => e.ReconciliationStatus == ReconciliationStatus.NeedsReview);
+        // Stornarea poartă starea originalului (pentru REF), dar nu e o tranzacție de lucrat.
+        List<LedgerEntry> own = [.. entries.Where(e => e.StornoOfEntryId is null)];
+        int unmatched = own.Count(e => e.ReconciliationStatus == ReconciliationStatus.Unmatched);
+        int review = own.Count(e => e.ReconciliationStatus == ReconciliationStatus.NeedsReview);
         int proposals = await db.LedgerMatchProposals.AsNoTracking()
             .Where(p => p.PfaRegistrationId == pfaId && p.Accepted == null)
             .Join(db.BankTransactions, p => p.BankTransactionId, t => t.Id, (p, t) => t.BookingDate ?? t.ValueDate)

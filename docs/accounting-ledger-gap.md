@@ -55,7 +55,7 @@ Spec-ul cere să extindem ce există, nu să creăm entități paralele.
 | `DeductibleAmount + NonDeductibleAmount == Amount`, partea personală integral nedeductibilă | **Parțial**: `DeductibleAmount` = procent × toată suma. `NonDeductibleAmount` nu e stocat (se poate deriva). |
 | Tranzacție bancară → mai multe entry-uri doar în același `SettlementGroupId`, cu net = suma tranzacției | **Lipsește**. Azi un `BankTransaction` are cel mult un entry „bancar”; rapoartele de platformă doar se leagă de el. |
 | Document → cel mult o plată (sau plăți parțiale ≤ totalul facturii) | **Parțial**: `ExpenseDocument.LedgerEntryId` și `ZReport.LedgerEntryId` sunt singulare prin schemă. Plățile parțiale de factură nu există. |
-| Entry blocat nemodificabil; corecții prin stornare în luna curentă | **Contrazice**: `CreatePeriodCorrectionCommand` modifică entry-ul blocat din luna închisă (cu audit), nu adaugă o stornare în luna curentă. |
+| Entry blocat nemodificabil; corecții prin stornare în luna curentă | **Rezolvat**: `CreatePeriodCorrectionCommand` lasă entry-ul blocat neatins și adaugă în luna curentă stornarea (`StornoOfEntryId`, pe coloana originalului în RJIP, cu minus) și înlocuitoarea corectată (`CorrectsEntryId`). `SaveChanges` refuză orice modificare a unui entry blocat, în afară de stare la redeschidere. Importul căzut într-o lună închisă (neblocat) intră în lună prin corecție, ca înainte. |
 | Rotunjire `decimal`, 2 zecimale, `AwayFromZero` | **Există** (deductibilitate, conversii valutare). |
 | Nicio ștergere fizică | **Există** (`IAccountingRecord`, refuzat în `SaveChanges`). |
 
