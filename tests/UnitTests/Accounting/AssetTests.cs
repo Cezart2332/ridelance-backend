@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Accounting.Assets;
 using Application.Accounting.Contracts;
+using Application.Accounting.FiscalRegister;
 using Application.Accounting.Ledger;
 using Domain.Accounting;
 using Domain.PfaRegistrations;
@@ -92,6 +93,13 @@ public sealed class AssetTests : IDisposable
 
         AssetDto yearEnd = (await new ListAssetsQueryHandler(_db).Handle(new ListAssetsQuery(_pfa, new DateOnly(2026, 12, 31)), CancellationToken.None)).Value.Single();
         (yearEnd.Accumulated, yearEnd.Remaining).ShouldBe((1500.03m, 4499.97m));
+
+        // Scenariul 4: plata de 6.000 nu se deduce; în REF intră doar amortizarea anului.
+        RefView refView = (await new GetRefQueryHandler(_db).Handle(new GetRefQuery(_pfa, 2026), CancellationToken.None)).Value;
+        RefRow expenses = refView.Rows.Single(r => r.CalculationElement == "Cheltuieli deductibile");
+        expenses.Value.ShouldBe(1500.03m);
+        expenses.Contributions!.ShouldAllBe(c => c.AssetId == created.Id && c.LedgerEntryId == null);
+        expenses.Contributions!.Count.ShouldBe(9);
     }
 
     /// <summary>§6 pas 3: „cheltuială curentă” deduce plata după categorie; decizia nu se ia de două ori.</summary>

@@ -517,9 +517,18 @@ public sealed record RjipMonthTotal(string Period, decimal CashIn, decimal CashO
 
 public sealed record RjipView(Guid PfaId, DateOnly From, DateOnly To, IReadOnlyList<RjipRow> Rows, IReadOnlyList<RjipMonthTotal> MonthTotals);
 
-public sealed record RefRow(int Year, bool Rectification, string IncomeCategory, string CalculationElement, decimal Value);
+/// <summary>Ce compune un rând REF (drill-down): o înregistrare din ledger sau o lună de amortizare.</summary>
+public sealed record RefContribution(Guid? LedgerEntryId, Guid? AssetId, DateOnly Date, string Label, decimal Value);
 
-public sealed record RefView(Guid PfaId, int Year, RefStatus Status, DateOnly? AsOf, IReadOnlyList<RefRow> Rows);
+public sealed record RefRow(
+    int Year,
+    bool Rectification,
+    string IncomeCategory,
+    string CalculationElement,
+    decimal Value,
+    IReadOnlyList<RefContribution>? Contributions = null);
+
+public sealed record RefView(Guid PfaId, int Year, RefStatus Status, DateOnly? AsOf, IReadOnlyList<RefRow> Rows, IncomeSource Source = IncomeSource.Ridesharing);
 
 public sealed record InventoryView(Guid PfaId, int Year, IReadOnlyList<AssetDto> Assets);
 

@@ -168,6 +168,13 @@ public sealed class ApplicationDbContext(
         modelBuilder.HasDefaultSchema(Schemas.Default);
     }
 
+    /// <summary>
+    /// Salvarea sincronă trece prin aceleași verificări (ștergeri, invarianți, Tax Engine): aplicația
+    /// folosește doar varianta asincronă, dar nicio cale nu le poate ocoli.
+    /// </summary>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) =>
+        SaveChangesAsync(CancellationToken.None).GetAwaiter().GetResult();
+
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         RejectAccountingDeletes();

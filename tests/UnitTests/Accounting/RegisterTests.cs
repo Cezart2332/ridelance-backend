@@ -1,5 +1,6 @@
 using System.Text;
 using Application.Accounting.Contracts;
+using Application.Accounting.FiscalRegister;
 using Application.Accounting.Registers;
 using ClosedXML.Excel;
 using Application.Accounting;
@@ -151,17 +152,47 @@ public sealed class RegisterTests : IDisposable
         (await Ref(2026)).Rows[1].Value.ShouldBe(500m);
     }
 
+    /// <summary>§4: REF-ul e provizoriu până la închiderea anului; apoi e snapshot-ul închiderii.</summary>
     [Fact]
-    public async Task Ref_is_final_when_every_active_month_is_closed()
+    public async Task Ref_IsFinalOnlyAfterTheYearIsClosed()
     {
-        _db.PfaAccountingEngagements.Add(new PfaAccountingEngagement { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, StartDate = new DateOnly(2026, 9, 15), Status = EngagementStatus.Active });
-        Close("2026-09", "2026-10", "2026-11");
+        ADayInRidelance();
+        Close("2026-10", "2026-11", "2026-12");
         await _db.SaveChangesAsync();
         (await Ref(2026)).Status.ShouldBe(RefStatus.Current);
 
-        Close("2026-12");
+        RefView closing = await Ref(2026);
+        _db.AccountingYears.Add(new AccountingYear
+        {
+            Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Year = 2026, Status = AccountingPeriodStatus.Closed,
+            RefJson = AccountingJson.Serialize(closing),
+        });
+        Entry(Day, 999m, LedgerTransactionType.Income, PaymentMethod.Cash, "Adăugat după închidere");
         await _db.SaveChangesAsync();
-        (await Ref(2026)).Status.ShouldBe(RefStatus.Final);
+
+        RefView final = await Ref(2026);
+        (final.Status, final.Rows[0].Value).ShouldBe((RefStatus.Final, 2270m));
+    }
+
+    /// <summary>Scenariile 1–3: bonul mixt, transferul către titular și decontarea Bolt, în RJIP și REF.</summary>
+    [Fact]
+    public async Task Ref_ScenariosMixedReceiptOwnerTransferAndBoltSettlement()
+    {
+        LedgerEntry receipt = Entry(new DateOnly(2027, 9, 3), -250m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Carburant", deductible: 200m);
+        receipt.PersonalAmount = 50m;
+        Entry(new DateOnly(2027, 9, 4), -2000m, LedgerTransactionType.OwnerWithdrawal, PaymentMethod.Bank, "Transfer personal", counterparty: "Popescu Ion");
+        var group = Guid.NewGuid();
+        Entry(new DateOnly(2027, 9, 2), 5000m, LedgerTransactionType.Income, PaymentMethod.Bank, "Venit curse Bolt online (decontare)", counterparty: "Bolt").SettlementGroupId = group;
+        Entry(new DateOnly(2027, 9, 2), -350m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Comision Bolt", deductible: 350m, counterparty: "Bolt").SettlementGroupId = group;
+        await _db.SaveChangesAsync();
+
+        RjipView rjip = await Rjip(new DateOnly(2027, 9, 1), new DateOnly(2027, 9, 30));
+        rjip.MonthTotals.ShouldHaveSingleItem().ShouldBe(new RjipMonthTotal("2027-09", 0m, 0m, 5000m, 2600m));
+
+        RefView refView = await Ref(2027);
+        refView.Rows.Select(r => (r.CalculationElement, r.Value)).ShouldBe([("Venit brut", 5000m), ("Cheltuieli deductibile", 550m), ("Venit net anual", 4450m)]);
+        refView.Rows[1].Contributions!.Select(c => (c.LedgerEntryId, c.Value)).ShouldContain(((Guid?)receipt.Id, 200m));
+        refView.Rows[1].Contributions!.Count.ShouldBe(2);
     }
 
     [Fact]
