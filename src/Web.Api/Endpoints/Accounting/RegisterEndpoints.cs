@@ -59,7 +59,7 @@ internal sealed class RegisterEndpoints : IEndpoint
     }
 
     /// <summary><c>pdf</c> (implicit), <c>xlsx</c> sau <c>csv</c>, ca în contract.</summary>
-    private static bool TryFormat(string? format, out RegisterFormat parsed)
+    internal static bool TryFormat(string? format, out RegisterFormat parsed)
     {
         parsed = RegisterFormat.Pdf;
         switch (format?.ToUpperInvariant())
@@ -77,9 +77,9 @@ internal sealed class RegisterEndpoints : IEndpoint
         }
     }
 
-    private static IResult InvalidFormat() =>
-        Results.Problem(title: "Accounting.InvalidFormat", detail: "Formatul exportului e „pdf” sau „xlsx”.", statusCode: StatusCodes.Status400BadRequest);
+    internal static IResult InvalidFormat() =>
+        Results.Problem(title: "Accounting.InvalidFormat", detail: "Formatul exportului e „pdf”, „xlsx” sau „csv”.", statusCode: StatusCodes.Status400BadRequest);
 
-    private static IResult File(Result<RegisterFile> result) =>
+    internal static IResult File(Result<RegisterFile> result) =>
         result.Match(file => Results.File(file.Content, file.ContentType, file.FileName), CustomResults.Problem);
 }

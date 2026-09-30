@@ -3,6 +3,7 @@ using Application.Accounting.Assets;
 using Application.Accounting.Contracts;
 using Application.Accounting.FiscalRegister;
 using Application.Accounting.Ledger;
+using Application.Accounting.Registers;
 using Domain.Accounting;
 using Domain.PfaRegistrations;
 using Domain.Users;
@@ -24,10 +25,11 @@ public sealed class AssetTests : IDisposable
 
     private readonly Guid _pfa = Guid.NewGuid();
     private readonly Guid _admin = Guid.NewGuid();
+    private readonly Guid _user = Guid.NewGuid();
 
     public AssetTests()
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "ion@ridelance.ro", FirstName = "Ion", LastName = "Popescu" };
+        var user = new User { Id = _user, Email = "ion@ridelance.ro", FirstName = "Ion", LastName = "Popescu" };
         _db.Users.Add(new User { Id = _admin, Email = "admin@ridelance.ro", FirstName = "Admin", LastName = "RIDElance" });
         _db.PfaRegistrations.Add(new PfaRegistration { Id = _pfa, UserId = user.Id, User = user, FullName = "Ion Popescu", LegalName = "POPESCU ION PFA", Cui = "12345674" });
         _db.FixedAssetRules.Add(new FixedAssetRule
@@ -100,6 +102,34 @@ public sealed class AssetTests : IDisposable
         expenses.Value.ShouldBe(1500.03m);
         expenses.Contributions!.ShouldAllBe(c => c.AssetId == created.Id && c.LedgerEntryId == null);
         expenses.Contributions!.Count.ShouldBe(9);
+    }
+
+    /// <summary>§6: Fișa MF (14-2-2) cu planul lunar și lista activelor; PFA-ul își vede doar activele lui.</summary>
+    [Fact]
+    public async Task S4_TheFixedAssetSheetAndTheAssetListAreGenerated()
+    {
+        AssetDto asset = await ActiveLaptop();
+        var exporter = new Infrastructure.Accounting.RegisterExporter();
+
+        RegisterFile sheet = (await new ExportAssetSheetQueryHandler(_db, exporter)
+            .Handle(new ExportAssetSheetQuery(_pfa, asset.Id, RegisterFormat.Xlsx), CancellationToken.None)).Value;
+        sheet.FileName.ShouldBe("Fisa_MF_MF-0001_12345674.xlsx");
+        using (var workbook = new ClosedXML.Excel.XLWorkbook(new MemoryStream(sheet.Content)))
+        {
+            var rows = workbook.Worksheet(1).RowsUsed().ToList();
+            rows.ShouldContain(r => r.Cell(1).GetString() == "Nr. inventar MF-0001 — Laptop Lenovo");
+            ClosedXML.Excel.IXLRow first = rows.First(r => r.Cell(2).GetString() == "04.2026");
+            (first.Cell(3).GetValue<decimal>(), first.Cell(5).GetValue<decimal>()).ShouldBe((166.67m, 5833.33m));
+            rows.Count(r => r.Cell(2).GetString().EndsWith(".2029", StringComparison.Ordinal)).ShouldBe(3);
+        }
+
+        RegisterFile list = (await new ExportAssetListQueryHandler(_db, exporter)
+            .Handle(new ExportAssetListQuery(_pfa, new DateOnly(2026, 12, 31), RegisterFormat.Csv), CancellationToken.None)).Value;
+        System.Text.Encoding.UTF8.GetString(list.Content).ShouldContain("MF-0001;Laptop Lenovo;Mijloc fix;12.02.2026;01.03.2026;6000,00;36;1500,03;4499,97;Activ");
+
+        (await new GetClientAssetsQueryHandler(_db, new FixedUser(_user)).Handle(new GetClientAssetsQuery(), CancellationToken.None)).Value.ShouldHaveSingleItem();
+        (await new GetClientAssetSheetQueryHandler(_db, new FixedUser(Guid.NewGuid()), new ExportAssetSheetQueryHandler(_db, exporter))
+            .Handle(new GetClientAssetSheetQuery(asset.Id), CancellationToken.None)).Error.Code.ShouldBe("Accounting.NoPfa");
     }
 
     /// <summary>§6 pas 3: „cheltuială curentă” deduce plata după categorie; decizia nu se ia de două ori.</summary>
