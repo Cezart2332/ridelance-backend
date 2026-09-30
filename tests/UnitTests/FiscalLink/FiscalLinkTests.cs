@@ -70,15 +70,19 @@ public sealed class FiscalLinkTests
         http.Requests[1].Uri.ShouldBe(new Uri(Tenant + $"registers?clientId={clientId}&page=1&pageSize=100"));
     }
 
-    [Fact]
-    public async Task RejectionsCarryFiscalLinksMessage()
+    /// <summary>Formele văzute pe sandbox: 403 fără corp, 404 cu un string JSON; plus obiectul clasic.</summary>
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden, "", "FiscalLink a refuzat cererea (crearea clientului, cod 403).")]
+    [InlineData(HttpStatusCode.NotFound, "\"No register with this serial on an active slot of this organization.\"", "FiscalLink: No register with this serial on an active slot of this organization.")]
+    [InlineData(HttpStatusCode.BadRequest, """{"title":"Numele este obligatoriu."}""", "FiscalLink: Numele este obligatoriu.")]
+    public async Task RejectionsCarryFiscalLinksMessage(HttpStatusCode status, string body, string expected)
     {
-        using var http = new RecordingHandler(HttpStatusCode.Forbidden, """{"title":"Cheia nu are dreptul de gestiune."}""");
+        using var http = new RecordingHandler(status, body);
         using var client = new HttpClient(http);
 
         Result<Guid> result = await Service(client).CreateClientAsync(new FiscalLinkNewClient("X", null, null, null, null, null));
 
-        result.Error.Description.ShouldBe("FiscalLink: Cheia nu are dreptul de gestiune.");
+        result.Error.Description.ShouldBe(expected);
     }
 
     [Fact]
