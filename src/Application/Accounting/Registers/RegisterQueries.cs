@@ -129,8 +129,9 @@ internal sealed class GetRefQueryHandler(IApplicationDbContext db) : IQueryHandl
 
     internal static RefView Build(Guid pfaId, int year, RefStatus status, DateOnly? asOf, IEnumerable<RegisterEntry> entries)
     {
-        List<RegisterEntry> list = [.. entries];
-        // Recunoașterea venitului urmează regula ledger-ului (Accounting:IncomeRecognition, DE CONFIRMAT).
+        // Doar încasările și plățile efective (§7): payout-ul nereconciliat nu e venit (invariantul 4),
+        // aporturile, retragerile titularului și transferurile nu sunt nici venit, nici cheltuială.
+        List<RegisterEntry> list = [.. entries.Where(e => RegisterData.IsCashMovement(e.Entry))];
         decimal gross = list.Where(e => e.Entry.TransactionType == LedgerTransactionType.Income).Sum(e => e.AmountLei);
         decimal deductible = list.Where(e => e.Entry.TransactionType == LedgerTransactionType.Expense).Sum(e => e.DeductibleLei ?? 0);
         decimal net = gross - deductible;

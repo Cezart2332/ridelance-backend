@@ -134,7 +134,8 @@ public sealed record BankTransactionInfo(
     string Currency,
     string? CounterpartyName,
     string? RemittanceInfo,
-    string RawJson);
+    string RawJson,
+    string? CounterpartyIban = null);
 
 public sealed record BankTransactionsPage(
     IReadOnlyList<BankTransactionInfo> Booked,

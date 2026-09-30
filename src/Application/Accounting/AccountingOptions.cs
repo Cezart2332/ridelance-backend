@@ -48,22 +48,6 @@ public enum D100CorrectionProcedure
 }
 
 /// <summary>
-/// Cum intră veniturile din Uber/Bolt în ledger. DE CONFIRMAT (spec §6 pct. 8, B6). Oricare ar fi
-/// regula, aceeași încasare nu se înregistrează de două ori.
-/// </summary>
-public enum LedgerIncomeRecognition
-{
-    /// <summary>Venitul e payout-ul net încasat în bancă; raportul platformei doar se leagă de payout-uri.</summary>
-    NetPayout = 0,
-
-    /// <summary>
-    /// Venitul brut din raport, plus comisionul ca cheltuială; payout-ul din bancă e doar decontarea
-    /// (<c>TRANSFER</c>), nu venit.
-    /// </summary>
-    GrossReport = 1,
-}
-
-/// <summary>
 /// Configurarea modulului de contabilitate (secțiunea <c>Accounting</c>). Pragurile verificărilor
 /// și regulile DE CONFIRMAT stau aici, nu în cod (spec §0 pct. 3).
 /// </summary>
@@ -98,8 +82,11 @@ public sealed class AccountingOptions
     /// <summary>Procedura de corecție D100 pentru rectificative. DE CONFIRMAT.</summary>
     public D100CorrectionProcedure D100CorrectionProcedure { get; init; } = D100CorrectionProcedure.D710;
 
-    /// <summary>Regula de recunoaștere a venitului din platforme în ledger. DE CONFIRMAT.</summary>
-    public LedgerIncomeRecognition IncomeRecognition { get; init; } = LedgerIncomeRecognition.NetPayout;
+    /// <summary>
+    /// Contrapartidele plăților de taxe (R42), pe textul normalizat (majuscule, fără diacritice) al
+    /// numelui și detaliilor. IBAN-urile Trezoreriei (<c>RO..TREZ..</c>) se recunosc oricum.
+    /// </summary>
+    public string TaxCounterpartyPattern { get; init; } = @"\b(TREZORERIA|TREZORERIE|ANAF|DGRFP|AJFP|BUGETUL DE STAT|BUGET DE STAT|IMPOZIT|CONTRIBUTII)\b";
 
     /// <summary>
     /// Contrapartidele bancare ale platformelor (expresii regulate pe numele plătitorului și pe

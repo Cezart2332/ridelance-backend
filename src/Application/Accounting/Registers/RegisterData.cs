@@ -53,10 +53,14 @@ internal static class RegisterData
     }
 
     /// <summary>
-    /// O mișcare de bani (încasare sau plată), deci un rând RJIP. Venitul brut și comisionul luate
-    /// dintr-un raport de platformă (<c>GrossReport</c>) nu sunt bani mișcați: nu intră în RJIP.
+    /// Înregistrarea există pentru registre (spec flux contabil §7): o încasare sau plată efectivă.
+    /// Nu intră payout-urile nereconciliate (R20, R22: nu există încă), nici vechile înregistrări de
+    /// venit brut și comision luate doar din raportul de platformă, fără plată (modul GrossReport, scos).
     /// </summary>
-    public static bool IsCashMovement(LedgerEntry entry) => !(entry.BankTransactionId is null && entry.PlatformDocumentId is not null);
+    public static bool IsCashMovement(LedgerEntry entry) =>
+        entry.TransactionType != LedgerTransactionType.PlatformSettlement &&
+        entry.ReconciliationStatus != ReconciliationStatus.NeedsReconciliation &&
+        !(entry.BankTransactionId is null && entry.PlatformDocumentId is not null);
 
     public static string Amount(decimal value) => value.ToString("#,##0.00", Ro);
 

@@ -69,9 +69,11 @@ internal static class PlatformPayouts
 }
 
 /// <summary>
-/// Open Banking: fiecare tranzacție rezervată a conturilor PFA-ului devine o înregistrare.
-/// Payout-urile platformelor sunt venit (sau decontare, după <see cref="LedgerIncomeRecognition"/>);
-/// plățile se clasifică după <see cref="ExpenseCategoryRule"/>; ce nu se recunoaște intră la verificare.
+/// Open Banking: fiecare tranzacție rezervată a conturilor PFA-ului devine o înregistrare. Întâi
+/// contrapartida (spec flux contabil §6): payout de platformă (R20, <c>NEEDS_RECONCILIATION</c>, nu venit),
+/// titularul (R40, R41), ANAF/Trezoreria (R42), alt cont al PFA-ului (R43). Restul: plățile se
+/// clasifică după <see cref="ExpenseCategoryRule"/> și rămân fără document (R01), încasările
+/// neidentificate intră la verificare.
 /// </summary>
 internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
 {
@@ -107,10 +109,15 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
             .Where(t => !db.LedgerEntries.Any(e => e.PfaRegistrationId == context.PfaId && e.BankTransactionId == t.Id))
             .OrderBy(t => t.BookingDate ?? t.ValueDate)
             .ToListAsync(cancellationToken);
+        if (fresh.Count == 0)
+        {
+            return new LedgerImportResult(LedgerSource.Bank, 0, 0, []);
+        }
 
+        PfaIdentity identity = await IdentityAsync(context, cancellationToken);
         foreach (BankTransaction transaction in fresh)
         {
-            LedgerEntry entry = Entry(context, transaction);
+            LedgerEntry entry = Entry(context, identity, transaction);
             DeductibilityService.Resolve(entry, context.Rules);
             db.LedgerEntries.Add(entry);
         }
@@ -118,61 +125,92 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
         return new LedgerImportResult(LedgerSource.Bank, fresh.Count, 0, []);
     }
 
-    private static LedgerEntry Entry(LedgerImportContext context, BankTransaction transaction)
+    /// <summary>Numele titularului și conturile proprii, pentru R40–R43.</summary>
+    private async Task<PfaIdentity> IdentityAsync(LedgerImportContext context, CancellationToken cancellationToken)
+    {
+        var pfa = await db.PfaRegistrations.AsNoTracking()
+            .Where(p => p.Id == context.PfaId)
+            .Select(p => new { p.HolderName, p.FullName, p.User.FirstName, p.User.LastName })
+            .SingleOrDefaultAsync(cancellationToken);
+        List<string> names = [.. new[] { pfa?.HolderName, pfa?.FullName, $"{pfa?.FirstName} {pfa?.LastName}" }
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)];
+
+        List<string?> ibans = await db.BankAccounts.AsNoTracking()
+            .Where(a => a.UserId == context.UserId && a.IbanMasked != null)
+            .Select(a => a.IbanMasked)
+            .ToListAsync(cancellationToken);
+        return new PfaIdentity(names, ibans.Where(i => i is not null).Select(i => i!.ToUpperInvariant()).ToHashSet(StringComparer.Ordinal));
+    }
+
+    private static LedgerEntry Entry(LedgerImportContext context, PfaIdentity identity, BankTransaction transaction)
     {
         DateOnly date = (transaction.BookingDate ?? transaction.ValueDate)!.Value;
         string label = $"Extras {date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)}";
         string? details = string.IsNullOrWhiteSpace(transaction.RemittanceInfo) ? null : transaction.RemittanceInfo.Trim();
-        LedgerSource? platform = PlatformPayouts.PlatformOf(context.Options, transaction.CounterpartyName, details);
+        string suffix = details is null ? string.Empty : $": {details}";
+        CounterpartyKind kind = CounterpartyRules.Classify(
+            transaction.Amount, transaction.CounterpartyName, transaction.CounterpartyIban, details, identity, context.Options);
 
-        (LedgerSource source, LedgerTransactionType type, string description, string? category, LedgerEntryStatus status) = transaction.Amount switch
+        (LedgerSource source, LedgerTransactionType type, string description, ReconciliationStatus reconciliation, LedgerEntryStatus status) = kind switch
         {
-            > 0 when platform is { } payout => (
-                payout,
-                context.Options.IncomeRecognition == LedgerIncomeRecognition.NetPayout ? LedgerTransactionType.Income : LedgerTransactionType.Transfer,
-                $"Payout {(payout == LedgerSource.Bolt ? "Bolt" : "Uber")}{(details is null ? string.Empty : $": {details}")}",
-                null,
+            CounterpartyKind.PlatformSettlement => (
+                PlatformPayouts.PlatformOf(context.Options, transaction.CounterpartyName, details)!.Value,
+                LedgerTransactionType.PlatformSettlement,
+                $"Payout {(PlatformPayouts.PlatformOf(context.Options, transaction.CounterpartyName, details) == LedgerSource.Bolt ? "Bolt" : "Uber")}{suffix}",
+                ReconciliationStatus.NeedsReconciliation,
                 LedgerEntryStatus.AutoImported),
-            > 0 => (
+            CounterpartyKind.OwnerWithdrawal => (LedgerSource.Bank, LedgerTransactionType.OwnerWithdrawal, $"Transfer către titular (utilizare venit){suffix}", ReconciliationStatus.Matched, LedgerEntryStatus.AutoImported),
+            CounterpartyKind.OwnerContribution => (LedgerSource.Bank, LedgerTransactionType.OwnerContribution, $"Aport titular{suffix}", ReconciliationStatus.Matched, LedgerEntryStatus.AutoImported),
+            CounterpartyKind.Tax => (LedgerSource.Bank, LedgerTransactionType.Tax, $"Plată ANAF / Trezorerie{suffix}", ReconciliationStatus.Matched, LedgerEntryStatus.AutoImported),
+            CounterpartyKind.InternalTransfer => (LedgerSource.Bank, LedgerTransactionType.InternalTransfer, $"Transfer între conturile PFA{suffix}", ReconciliationStatus.Matched, LedgerEntryStatus.AutoImported),
+            _ when transaction.Amount > 0 => (
                 LedgerSource.Bank,
                 LedgerTransactionType.Other,
-                $"Încasare neidentificată{(details is null ? string.Empty : $": {details}")}",
-                null,
+                $"Încasare neidentificată{suffix}",
+                ReconciliationStatus.NeedsReview,
                 LedgerEntryStatus.NeedsReview),
-            _ => Expense(context, date, transaction.CounterpartyName, details),
+            _ => (LedgerSource.Bank, LedgerTransactionType.Expense, details ?? transaction.CounterpartyName ?? "Plată bancară", ReconciliationStatus.Unmatched, LedgerEntryStatus.AutoImported),
         };
 
         LedgerEntry entry = LedgerSupport.New(
             context.PfaId, date, source, transaction.Id.ToString("N"), label, transaction.CounterpartyName, description,
             type, PaymentMethod.Bank, transaction.Amount, transaction.Currency, status, context.ClosedPeriods);
         entry.BankTransactionId = transaction.Id;
-        entry.Category = category;
-        return entry;
-    }
+        entry.ReconciliationStatus = reconciliation;
 
-    private static (LedgerSource, LedgerTransactionType, string, string?, LedgerEntryStatus) Expense(
-        LedgerImportContext context, DateOnly date, string? counterparty, string? details)
-    {
-        ExpenseCategoryRule? rule = DeductibilityService.Classify(context.Rules.Categories, date, counterparty, details);
-        return (
-            LedgerSource.Bank,
-            LedgerTransactionType.Expense,
-            details ?? counterparty ?? "Plată bancară",
-            rule?.Category,
-            rule is null ? LedgerEntryStatus.NeedsReview : LedgerEntryStatus.AutoImported);
+        if (type == LedgerTransactionType.Expense)
+        {
+            ExpenseCategoryRule? rule = DeductibilityService.Classify(context.Rules.Categories, date, transaction.CounterpartyName, details);
+            entry.Category = rule?.Category;
+            if (rule is null && !entry.ClosedPeriodFlag)
+            {
+                entry.Status = LedgerEntryStatus.NeedsReview;
+            }
+        }
+
+        return entry;
     }
 }
 
 /// <summary>
-/// Uber / Bolt: rapoartele lunare confirmate (B1). Se leagă de payout-urile din bancă ale lunii
-/// (sumă netă + dată ± N zile + contrapartidă), ca aceeași încasare să nu fie venit de două ori.
-/// Cu <see cref="LedgerIncomeRecognition.GrossReport"/>, raportul aduce venitul brut și comisionul.
+/// Uber / Bolt: reconcilierea payout-urilor cu raportul lunar (spec flux contabil R21–R23).
 /// </summary>
+/// <remarks>
+/// <para>
+/// Cu raportul confirmat (venit online și comision) și factura de comision a lunii, payout-urile din
+/// perioadă (până la N zile după ea) care dau exact netul raportului se descompun: fiecare payout devine
+/// venitul brut + comisionul lui, la data decontării, legate de aceeași tranzacție bancară și de același
+/// <see cref="LedgerEntry.SettlementGroupId"/>. La mai multe payout-uri, comisionul se împarte
+/// proporțional, iar brutul fiecăruia e payout + comision.
+/// </para>
+/// <para>
+/// Fără documente suficiente payout-ul rămâne <c>NEEDS_RECONCILIATION</c> (R22); cu o diferență de
+/// sumă, <c>NEEDS_REVIEW</c>, cu diferența în note, fără nicio înregistrare automată (R23).
+/// </para>
+/// </remarks>
 internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSource
 {
-    /// <summary>Diferența acceptată între suma payout-urilor și netul din raport (rotunjiri).</summary>
-    private const decimal Tolerance = 0.05m;
-
     public int Order => 1;
 
     public async Task<LedgerImportResult> ImportAsync(LedgerImportContext context, CancellationToken cancellationToken)
@@ -181,16 +219,17 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
             .AsNoTracking()
             .Where(e => e.IsCurrent &&
                         e.PlatformDocument.PfaRegistrationId == context.PfaId &&
+                        e.PlatformDocument.DeletedAtUtc == null &&
                         e.PlatformDocument.DocumentType == PlatformDocumentType.PlatformReport &&
                         e.PlatformDocument.Platform != null &&
                         (e.PlatformDocument.Status == PlatformDocumentStatus.Confirmed || e.PlatformDocument.Status == PlatformDocumentStatus.Locked))
             .Select(e => new { e.PlatformDocumentId, e.PlatformDocument.Platform, e.PlatformDocument.Period, e.PeriodFrom, e.PeriodTo, e.Amount, e.CommissionAmount, e.Currency })
             .ToListAsync(cancellationToken);
 
-        int created = 0;
         int updated = 0;
+        int created = 0;
         var notes = new List<string>();
-        foreach (var report in reports)
+        foreach (var report in reports.OrderBy(r => r.Period, StringComparer.Ordinal))
         {
             LedgerSource source = report.Platform == Platform.Bolt ? LedgerSource.Bolt : LedgerSource.Uber;
             string name = source == LedgerSource.Bolt ? "Bolt" : "Uber";
@@ -201,80 +240,92 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
                 continue;
             }
 
-            string label = $"Raport {name} {to.ToString("MM.yyyy", CultureInfo.InvariantCulture)}";
-
-            if (context.Options.IncomeRecognition == LedgerIncomeRecognition.GrossReport && report.Amount is { } gross)
-            {
-                created += await AddOnceAsync(context, report.PlatformDocumentId, "income", to, source, label,
-                    $"Venit brut din curse, {name}", LedgerTransactionType.Income, gross, report.Currency, cancellationToken);
-                if (report.CommissionAmount is { } commission)
-                {
-                    created += await AddOnceAsync(context, report.PlatformDocumentId, "commission", to, source, label,
-                        $"Comision reținut de {name}", LedgerTransactionType.Expense, -Math.Abs(commission), report.Currency, cancellationToken);
-                }
-            }
-
-            if (report.Amount is not { } income || await db.LedgerEntries.AnyAsync(e => e.PlatformDocumentId == report.PlatformDocumentId && e.BankTransactionId != null, cancellationToken))
+            string month = to.ToString("MM.yyyy", CultureInfo.InvariantCulture);
+            if (await db.LedgerEntries.AnyAsync(e => e.PlatformDocumentId == report.PlatformDocumentId && e.SettlementGroupId != null, cancellationToken))
             {
                 continue;
             }
 
-            decimal net = income - (report.CommissionAmount ?? 0);
             DateOnly until = to.AddDays(context.Options.PayoutMatchDays);
             List<LedgerEntry> payouts = await db.LedgerEntries
                 .Where(e => e.PfaRegistrationId == context.PfaId &&
                             e.Source == source &&
+                            e.TransactionType == LedgerTransactionType.PlatformSettlement &&
                             e.BankTransactionId != null &&
-                            e.PlatformDocumentId == null &&
-                            e.Amount > 0 &&
+                            e.Status != LedgerEntryStatus.Locked &&
+                            !e.ClosedPeriodFlag &&
                             e.Date >= from && e.Date <= until)
+                .OrderBy(e => e.Date)
+                .ThenBy(e => e.CreatedAtUtc)
                 .ToListAsync(cancellationToken);
 
-            if (payouts.Count > 0 && Math.Abs(payouts.Sum(e => e.Amount) - net) <= Tolerance)
+            // R22: fără venitul online, comision și factura de comision nu se descompune nimic.
+            bool invoice = await db.PlatformDocuments.AnyAsync(
+                d => d.PfaRegistrationId == context.PfaId && d.Platform == report.Platform && d.Period == report.Period &&
+                     d.DeletedAtUtc == null && d.DocumentType == PlatformDocumentType.CommissionInvoice &&
+                     (d.Status == PlatformDocumentStatus.Confirmed || d.Status == PlatformDocumentStatus.Locked),
+                cancellationToken);
+            if (report.Amount is not { } gross || report.CommissionAmount is not { } rawCommission || !invoice)
             {
-                payouts.ForEach(e => e.PlatformDocumentId = report.PlatformDocumentId);
-                updated += payouts.Count;
+                notes.Add($"{name} {month}: raportul sau factura de comision lipsesc; payout-urile rămân nereconciliate.");
+                continue;
             }
-            else
+
+            decimal commission = Math.Abs(rawCommission);
+            decimal net = gross - commission;
+            decimal paid = payouts.Sum(e => e.Amount);
+            if (payouts.Count == 0 || net <= 0 || !string.Equals(report.Currency ?? "RON", "RON", StringComparison.OrdinalIgnoreCase) || paid != net)
             {
-                notes.Add($"{label}: payout-urile din bancă ({AccountingJson.Amount(payouts.Sum(e => e.Amount))} lei) nu dau netul din raport ({AccountingJson.Amount(net)} lei).");
+                // R23: diferența se arată, nu se înregistrează.
+                payouts.Where(e => e.ReconciliationStatus == ReconciliationStatus.NeedsReconciliation)
+                    .ToList()
+                    .ForEach(e => e.ReconciliationStatus = ReconciliationStatus.NeedsReview);
+                notes.Add($"{name} {month}: payout-urile din bancă ({AccountingJson.Amount(paid)} lei) nu dau netul din raport ({AccountingJson.Amount(net)} lei), diferență {AccountingJson.Amount(paid - net)} lei.");
+                continue;
+            }
+
+            decimal allocated = 0;
+            for (int i = 0; i < payouts.Count; i++)
+            {
+                LedgerEntry payout = payouts[i];
+                decimal share = i == payouts.Count - 1
+                    ? commission - allocated
+                    : LedgerInvariants.Round(commission * payout.Amount / net);
+                allocated += share;
+                db.LedgerEntries.Add(Settle(context, payout, report.PlatformDocumentId, name, month, share));
+                created++;
+                updated++;
             }
         }
 
         return new LedgerImportResult(LedgerSource.Bolt, created, updated, notes);
     }
 
-    private async Task<int> AddOnceAsync(
-        LedgerImportContext context,
-        Guid documentId,
-        string part,
-        DateOnly date,
-        LedgerSource source,
-        string label,
-        string description,
-        LedgerTransactionType type,
-        decimal amount,
-        string? currency,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Payout-ul devine venitul brut (payout + comision), iar comisionul o plată separată, pe aceeași
+    /// tranzacție și în același grup: împreună dau exact suma virată.
+    /// </summary>
+    private static LedgerEntry Settle(LedgerImportContext context, LedgerEntry payout, Guid reportId, string name, string month, decimal commission)
     {
-        string externalId = $"{documentId:N}:{part}";
-        if (await db.LedgerEntries.AnyAsync(e => e.Source == source && e.ExternalId == externalId, cancellationToken))
-        {
-            return 0;
-        }
+        var group = Guid.NewGuid();
+        payout.Amount = LedgerInvariants.Round(payout.Amount + commission);
+        payout.TransactionType = LedgerTransactionType.Income;
+        payout.Description = LedgerSupport.Cut($"Venit brut din curse {name}, raport {month}", LedgerSupport.DescriptionLength);
+        payout.PlatformDocumentId = reportId;
+        payout.SettlementGroupId = group;
+        payout.ReconciliationStatus = ReconciliationStatus.Matched;
 
-        LedgerEntry entry = LedgerSupport.New(
-            context.PfaId, date, source, externalId, label, source == LedgerSource.Bolt ? "Bolt" : "Uber", description,
-            type, PaymentMethod.Bank, amount, currency ?? "RON", LedgerEntryStatus.AutoImported, context.ClosedPeriods);
-        entry.PlatformDocumentId = documentId;
-        if (type == LedgerTransactionType.Expense)
-        {
-            entry.Category = LedgerSupport.PlatformCommissionCategory;
-            DeductibilityService.Resolve(entry, context.Rules);
-        }
-
-        db.LedgerEntries.Add(entry);
-        return 1;
+        LedgerEntry fee = LedgerSupport.New(
+            context.PfaId, payout.Date, payout.Source, $"{payout.BankTransactionId:N}:commission", payout.DocumentLabel, name,
+            $"Comision {name} reținut din payout, raport {month}", LedgerTransactionType.Expense, PaymentMethod.Bank,
+            -commission, payout.Currency, LedgerEntryStatus.AutoImported, context.ClosedPeriods);
+        fee.BankTransactionId = payout.BankTransactionId;
+        fee.PlatformDocumentId = reportId;
+        fee.SettlementGroupId = group;
+        fee.ReconciliationStatus = ReconciliationStatus.Matched;
+        fee.Category = LedgerSupport.PlatformCommissionCategory;
+        DeductibilityService.Resolve(fee, context.Rules);
+        return fee;
     }
 }
 

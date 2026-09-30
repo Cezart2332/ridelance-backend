@@ -72,22 +72,36 @@ public sealed class RegisterTests : IDisposable
         (await Ref(2027)).Rows.Single(r => r.CalculationElement == "Cheltuieli deductibile").Value.ShouldBe(500m);
     }
 
+    /// <summary>
+    /// Spec flux contabil §7: în registre intră doar încasările și plățile efective. Payout-ul
+    /// nereconciliat nu există încă (R20, R22), venitul brut luat doar din raport nu e bani mișcați,
+    /// iar aportul și retragerea titularului sunt în RJIP, dar nu în REF (R40, R41).
+    /// </summary>
     [Fact]
-    public async Task Registers_skip_closed_month_imports_and_report_figures_are_not_cash()
+    public async Task R20_R21_R40_R41_RegistersCountOnlyReconciledMoneyMovements()
     {
         Entry(Day, -300m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Plată în lună închisă", deductible: 300m).ClosedPeriodFlag = true;
-        // GrossReport: venitul brut din raport nu e o încasare; payout-ul din bancă e decontarea.
-        LedgerEntry gross = Entry(new DateOnly(2026, 8, 31), 2500m, LedgerTransactionType.Income, PaymentMethod.Bank, "Venit brut din curse, Bolt");
-        gross.BankTransactionId = null;
-        gross.PlatformDocumentId = Guid.NewGuid();
-        Entry(new DateOnly(2026, 9, 2), 2000m, LedgerTransactionType.Transfer, PaymentMethod.Bank, "Payout Bolt");
+        LedgerEntry reportOnly = Entry(new DateOnly(2026, 8, 31), 2500m, LedgerTransactionType.Income, PaymentMethod.Bank, "Venit brut din raport, fără plată");
+        reportOnly.BankTransactionId = null;
+        reportOnly.PlatformDocumentId = Guid.NewGuid();
+        LedgerEntry pending = Entry(new DateOnly(2026, 9, 9), 1850m, LedgerTransactionType.PlatformSettlement, PaymentMethod.Bank, "Payout Uber");
+        pending.ReconciliationStatus = ReconciliationStatus.NeedsReconciliation;
+
+        var group = Guid.NewGuid();
+        LedgerEntry gross = Entry(new DateOnly(2026, 9, 2), 5000m, LedgerTransactionType.Income, PaymentMethod.Bank, "Venit brut din curse Bolt", counterparty: "Bolt");
+        LedgerEntry commission = Entry(new DateOnly(2026, 9, 2), -350m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Comision Bolt", deductible: 350m, counterparty: "Bolt");
+        commission.BankTransactionId = gross.BankTransactionId;
+        gross.SettlementGroupId = commission.SettlementGroupId = group;
+
+        Entry(new DateOnly(2026, 9, 20), -2000m, LedgerTransactionType.OwnerWithdrawal, PaymentMethod.Bank, "Transfer către titular", counterparty: null);
+        Entry(new DateOnly(2026, 9, 21), 2000m, LedgerTransactionType.OwnerContribution, PaymentMethod.Bank, "Aport titular", counterparty: null);
         await _db.SaveChangesAsync();
 
         RjipView rjip = await Rjip(new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
         RefView refView = await Ref(2026);
 
-        rjip.Rows.ShouldHaveSingleItem().BankIn.ShouldBe(2000m);
-        refView.Rows.Select(r => r.Value).ShouldBe([2500m, 0m, 2500m]);
+        rjip.Rows.Select(r => (r.BankIn, r.BankOut)).ShouldBe([(5000m, 0m), (0m, 350m), (0m, 2000m), (2000m, 0m)]);
+        refView.Rows.Select(r => r.Value).ShouldBe([5000m, 350m, 4650m]);
     }
 
     [Fact]
