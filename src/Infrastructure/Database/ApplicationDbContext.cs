@@ -150,6 +150,12 @@ public sealed class ApplicationDbContext(
     public DbSet<Domain.Accounting.LedgerMatchProposal> LedgerMatchProposals { get; set; }
     public DbSet<Domain.Accounting.FiscalReceipt> FiscalReceipts { get; set; }
     public DbSet<Domain.Accounting.AccountingPeriodSnapshot> AccountingPeriodSnapshots { get; set; }
+    public DbSet<Domain.Accounting.FixedAssetRule> FixedAssetRules { get; set; }
+    public DbSet<Domain.Accounting.DepreciationLine> DepreciationLines { get; set; }
+    public DbSet<Domain.Accounting.InventoryCount> InventoryCounts { get; set; }
+    public DbSet<Domain.Accounting.InventoryItem> InventoryItems { get; set; }
+    public DbSet<Domain.Accounting.AccountingYear> AccountingYears { get; set; }
+    public DbSet<Domain.Accounting.ReconciliationExplanation> ReconciliationExplanations { get; set; }
     public DbSet<Domain.FiscalLink.FiscalLinkClient> FiscalLinkClients { get; set; }
     public DbSet<OfficeAppointment> OfficeAppointments { get; set; }
     public DbSet<OfficeScheduleDay> OfficeScheduleDays { get; set; }
@@ -207,6 +213,7 @@ public sealed class ApplicationDbContext(
             return;
         }
 
+        changed.ForEach(e => e.RefreshTaxableIncome());
         changed.ForEach(Domain.Accounting.LedgerInvariants.EnsureValid);
         RejectLockedChanges();
 

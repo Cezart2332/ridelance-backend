@@ -446,24 +446,70 @@ public sealed record ZReportExtracted(DateOnly? Date, string? ZNumber, decimal? 
 
 public sealed record ZReportUploadResult(ZReportExtracted Extracted, LedgerEntryDto LedgerEntry);
 
+/// <summary>Un activ (spec registre §6), cu amortizarea cumulată și valoarea rămasă la <c>AsOf</c>.</summary>
 public sealed record AssetDto(
     Guid Id,
     Guid PfaId,
-    string Type,
-    string Description,
-    DateOnly AcquisitionDate,
-    decimal AcquisitionValue,
+    string InventoryNumber,
+    string Name,
+    AssetKind Kind,
+    AssetStatus Status,
+    Guid? AcquisitionEntryId,
+    string DocumentRef,
+    string? SupplierName,
+    DateOnly EntryDate,
+    DateOnly? InServiceDate,
+    decimal EntryValue,
+    string? DepreciationClassCode,
+    int? NormalLifeMonths,
+    string Method,
+    DateOnly? DisposalDate,
+    string? DisposalReason,
     StoredFileRef? Document,
-    AssetStatus Status,
-    DateOnly? DisposedDate);
+    decimal? MonthlyDepreciation,
+    DateOnly AsOf,
+    decimal Accumulated,
+    decimal Remaining);
 
-public sealed record AssetInput(
-    string Type,
+public sealed record DepreciationLineDto(int Year, int Month, decimal Amount, decimal Accumulated, decimal Remaining, bool IsLocked);
+
+public sealed record AssetDetailDto(AssetDto Asset, IReadOnlyList<DepreciationLineDto> Lines);
+
+/// <summary>O achiziție propusă ca posibil mijloc fix, până la decizia Adminului.</summary>
+public sealed record FixedAssetCandidateDto(
+    Guid LedgerEntryId,
+    DateOnly Date,
+    string DocumentLabel,
     string Description,
-    DateOnly AcquisitionDate,
-    decimal AcquisitionValue,
-    AssetStatus Status,
-    DateOnly? DisposedDate);
+    string? Counterparty,
+    decimal Amount,
+    string? Category,
+    FixedAssetReview Review);
+
+/// <summary>Decizia Adminului: <c>EXPENSE</c>, <c>FIXED_ASSET</c> sau <c>INVENTORY_OBJECT</c>.</summary>
+public sealed record FixedAssetDecisionRequest(FixedAssetReview Decision, string? Name, string? Reason);
+
+/// <summary>Ce completează Adminul la un activ: clasa, durata și punerea în funcțiune fac un mijloc fix activ.</summary>
+public sealed record AssetClassificationRequest(
+    string Name,
+    string DocumentRef,
+    string? SupplierName,
+    DateOnly? InServiceDate,
+    string? DepreciationClassCode,
+    int? NormalLifeMonths,
+    string? Reason);
+
+public sealed record AssetDisposalRequest(DateOnly Date, string? Reason);
+
+/// <summary>Un activ fără plată în ledger (aport al titularului), creat de Admin.</summary>
+public sealed record ManualAssetRequest(
+    string Name,
+    AssetKind Kind,
+    DateOnly EntryDate,
+    decimal EntryValue,
+    string DocumentRef,
+    string? SupplierName,
+    string? Reason);
 
 public sealed record RjipRow(Guid LedgerEntryId, DateOnly Date, string Document, string Operation, decimal CashIn, decimal CashOut, decimal BankIn, decimal BankOut);
 

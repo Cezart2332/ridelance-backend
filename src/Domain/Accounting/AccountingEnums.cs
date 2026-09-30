@@ -237,8 +237,13 @@ public enum EngagementStatus
 [JsonConverter(typeof(UpperSnakeCaseEnumConverter<AssetStatus>))]
 public enum AssetStatus
 {
-    InUse = 0,
+    /// <summary>Complet (clasă, durată, punere în funcțiune) și în folosință.</summary>
+    Active = 0,
     Disposed = 1,
+
+    /// <summary>Decis ca activ, dar fără clasă, durată sau punere în funcțiune.</summary>
+    PendingClassification = 2,
+    FullyDepreciated = 3,
 }
 
 [JsonConverter(typeof(UpperSnakeCaseEnumConverter<BackgroundJobStatus>))]

@@ -20,6 +20,7 @@ internal sealed class BankAccountConfiguration : IEntityTypeConfiguration<BankAc
         builder.Property(ba => ba.Iban).HasMaxLength(64);
         builder.Property(ba => ba.Currency).HasMaxLength(8);
         builder.Property(ba => ba.OwnerName).HasMaxLength(256);
+        builder.Property(ba => ba.Balance).HasPrecision(18, 2);
 
         builder.HasOne(ba => ba.Connection)
             .WithMany(bc => bc.Accounts)

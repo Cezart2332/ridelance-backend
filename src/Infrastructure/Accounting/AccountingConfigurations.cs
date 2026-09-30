@@ -602,6 +602,10 @@ internal sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<Ledger
         builder.Property(e => e.AccountingPeriod).HasMaxLength(AccountingMapping.PeriodLength).IsRequired();
         builder.Property(e => e.ReconciliationStatus).AsText();
         builder.Property(e => e.PersonalAmount).AsMoney();
+        builder.Property(e => e.TaxableIncomeAmount).AsMoney();
+        builder.Property(e => e.IncomeSource).AsText();
+        builder.Property(e => e.FixedAssetReview).AsText();
+        builder.Ignore(e => e.IsCashMovement);
         builder.Ignore(e => e.BusinessAmount);
         builder.Ignore(e => e.NonDeductibleAmount);
 
@@ -671,13 +675,117 @@ internal sealed class PfaAssetConfiguration : IEntityTypeConfiguration<PfaAsset>
     {
         builder.ToTable("pfa_assets");
         builder.HasKey(a => a.Id);
-        builder.Property(a => a.Type).HasMaxLength(64).IsRequired();
-        builder.Property(a => a.Description).HasMaxLength(500).IsRequired();
-        builder.Property(a => a.AcquisitionValue).AsMoney();
+        builder.Property(a => a.InventoryNumber).HasMaxLength(16).IsRequired();
+        builder.Property(a => a.Name).HasMaxLength(500).IsRequired();
+        builder.Property(a => a.Kind).AsText();
         builder.Property(a => a.Status).AsText();
-        builder.HasIndex(a => a.PfaRegistrationId);
+        builder.Property(a => a.DocumentRef).HasMaxLength(256).IsRequired();
+        builder.Property(a => a.SupplierName).HasMaxLength(256);
+        builder.Property(a => a.EntryValue).AsMoney();
+        builder.Property(a => a.DepreciationClassCode).HasMaxLength(32);
+        builder.Property(a => a.Method).HasMaxLength(32).IsRequired();
+        builder.Property(a => a.DisposalReason).HasMaxLength(500);
+        builder.Ignore(a => a.IsComplete);
+        builder.HasIndex(a => new { a.PfaRegistrationId, a.InventoryNumber }).IsUnique();
+        // O plată devine cel mult un activ.
+        builder.HasIndex(a => a.AcquisitionEntryId).IsUnique().HasFilter("acquisition_entry_id IS NOT NULL");
         builder.RestrictToPfa(a => a.PfaRegistrationId);
         builder.RestrictToDocument(a => a.DocumentId);
+        builder.HasOne<LedgerEntry>().WithMany().HasForeignKey(a => a.AcquisitionEntryId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToUser(a => a.CreatedByUserId);
+    }
+}
+
+internal sealed class FixedAssetRuleConfiguration : IEntityTypeConfiguration<FixedAssetRule>
+{
+    public void Configure(EntityTypeBuilder<FixedAssetRule> builder)
+    {
+        builder.ToTable("fixed_asset_rules");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.Threshold).AsMoney();
+        builder.Property(r => r.DepreciationStart).AsText();
+        builder.Property(r => r.ExcludedCategories).HasMaxLength(1000).IsRequired();
+        builder.HasIndex(r => r.ValidFrom).IsUnique();
+    }
+}
+
+internal sealed class DepreciationLineConfiguration : IEntityTypeConfiguration<DepreciationLine>
+{
+    public void Configure(EntityTypeBuilder<DepreciationLine> builder)
+    {
+        builder.ToTable("depreciation_lines");
+        builder.HasKey(l => l.Id);
+        builder.Property(l => l.Amount).AsMoney();
+        builder.Property(l => l.Accumulated).AsMoney();
+        builder.Property(l => l.Remaining).AsMoney();
+        builder.Ignore(l => l.Period);
+        builder.HasIndex(l => new { l.AssetId, l.Year, l.Month }).IsUnique();
+        builder.HasIndex(l => new { l.PfaRegistrationId, l.Year, l.Month });
+        builder.HasOne<PfaAsset>().WithMany().HasForeignKey(l => l.AssetId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToPfa(l => l.PfaRegistrationId);
+    }
+}
+
+internal sealed class InventoryCountConfiguration : IEntityTypeConfiguration<InventoryCount>
+{
+    public void Configure(EntityTypeBuilder<InventoryCount> builder)
+    {
+        builder.ToTable("inventory_counts");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Reason).AsText();
+        builder.Property(c => c.Status).AsText();
+        builder.HasIndex(c => new { c.PfaRegistrationId, c.Date, c.Reason }).IsUnique();
+        builder.HasMany(c => c.Items).WithOne().HasForeignKey(i => i.InventoryCountId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToPfa(c => c.PfaRegistrationId);
+        builder.RestrictToDocument(c => c.SnapshotDocumentId);
+        builder.RestrictToUser(c => c.FinalizedByUserId);
+    }
+}
+
+internal sealed class InventoryItemConfiguration : IEntityTypeConfiguration<InventoryItem>
+{
+    public void Configure(EntityTypeBuilder<InventoryItem> builder)
+    {
+        builder.ToTable("inventory_items");
+        builder.HasKey(i => i.Id);
+        builder.Property(i => i.Category).AsText();
+        builder.Property(i => i.Description).HasMaxLength(500).IsRequired();
+        builder.Property(i => i.SystemValue).AsMoney();
+        builder.Property(i => i.ConfirmedValue).AsMoney();
+        builder.Property(i => i.SourceType).HasMaxLength(48);
+        builder.Property(i => i.Status).AsText();
+        builder.Property(i => i.Note).HasMaxLength(1000);
+        builder.Ignore(i => i.Difference);
+    }
+}
+
+internal sealed class AccountingYearConfiguration : IEntityTypeConfiguration<AccountingYear>
+{
+    public void Configure(EntityTypeBuilder<AccountingYear> builder)
+    {
+        builder.ToTable("accounting_years");
+        builder.HasKey(y => y.Id);
+        builder.Property(y => y.Status).AsText();
+        builder.Property(y => y.RefJson).AsJson();
+        builder.HasIndex(y => new { y.PfaRegistrationId, y.Year }).IsUnique();
+        builder.RestrictToPfa(y => y.PfaRegistrationId);
+        builder.RestrictToDocument(y => y.PackageDocumentId);
+        builder.RestrictToUser(y => y.ClosedByUserId);
+    }
+}
+
+internal sealed class ReconciliationExplanationConfiguration : IEntityTypeConfiguration<ReconciliationExplanation>
+{
+    public void Configure(EntityTypeBuilder<ReconciliationExplanation> builder)
+    {
+        builder.ToTable("reconciliation_explanations");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Period).HasMaxLength(AccountingMapping.PeriodLength).IsRequired();
+        builder.Property(e => e.Control).HasMaxLength(AccountingMapping.EnumLength).IsRequired();
+        builder.Property(e => e.Note).HasMaxLength(1000).IsRequired();
+        builder.HasIndex(e => new { e.PfaRegistrationId, e.Period, e.Control });
+        builder.RestrictToPfa(e => e.PfaRegistrationId);
+        builder.RestrictToUser(e => e.CreatedByUserId);
     }
 }
 

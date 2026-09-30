@@ -43,12 +43,29 @@ public sealed class AccountingModelTests
         // Toate migrațiile modulului, în ordine: tabelele din B0 și ce s-a adăugat după.
         List<MigrationOperation> operations = [.. AccountingMigrations.SelectMany(migration => migration.UpOperations)];
         List<CreateTableOperation> created = [.. operations.OfType<CreateTableOperation>()];
-        List<AddColumnOperation> added = [.. operations.OfType<AddColumnOperation>()];
 
         created.Select(table => table.Name).ToHashSet().ShouldBe(expected.Keys.ToHashSet(), ignoreOrder: true);
         foreach (CreateTableOperation table in created)
         {
-            HashSet<string> columns = [.. table.Columns.Select(column => column.Name), .. added.Where(column => column.Table == table.Name).Select(column => column.Name)];
+            // Coloanele în ordinea migrațiilor: create, adăugate, redenumite, șterse.
+            HashSet<string> columns = [.. table.Columns.Select(column => column.Name)];
+            foreach (MigrationOperation operation in operations)
+            {
+                switch (operation)
+                {
+                    case AddColumnOperation add when add.Table == table.Name:
+                        columns.Add(add.Name);
+                        break;
+                    case RenameColumnOperation rename when rename.Table == table.Name:
+                        columns.Remove(rename.Name);
+                        columns.Add(rename.NewName);
+                        break;
+                    case DropColumnOperation drop when drop.Table == table.Name:
+                        columns.Remove(drop.Name);
+                        break;
+                }
+            }
+
             columns.ShouldBe(expected[table.Name], ignoreOrder: true, customMessage: table.Name);
         }
     }
@@ -148,7 +165,7 @@ public sealed class AccountingModelTests
         root.GetProperty("blockingReasons").GetArrayLength().ShouldBe(0);
     }
 
-    private static readonly Migration[] AccountingMigrations = [new AddAccountingModule(), new AddPlatformDocumentText(), new AddMonthProcessing(), new AddDeclarationLineSupersede(), new AddTaxPointAndWithheldTax(), new AddSupplierSoftDelete(), new AddPlatformDocumentSoftDelete(), new AddVatRegistrationRequests(), new AddAnafEFactura(), new AddSpvIntegration(), new ExtendLedgerForAccountingFlow(), new AddEFacturaPaymentStatus(), new AddReceiptLinesAndMatchProposals(), new AddFiscalReceiptsAndCashControls(), new AddPeriodSnapshots(), new AddLedgerStorno()];
+    private static readonly Migration[] AccountingMigrations = [new AddAccountingModule(), new AddPlatformDocumentText(), new AddMonthProcessing(), new AddDeclarationLineSupersede(), new AddTaxPointAndWithheldTax(), new AddSupplierSoftDelete(), new AddPlatformDocumentSoftDelete(), new AddVatRegistrationRequests(), new AddAnafEFactura(), new AddSpvIntegration(), new ExtendLedgerForAccountingFlow(), new AddEFacturaPaymentStatus(), new AddReceiptLinesAndMatchProposals(), new AddFiscalReceiptsAndCashControls(), new AddPeriodSnapshots(), new AddLedgerStorno(), new AddRegistersModel()];
 
     private static List<object?> Rows(InsertDataOperation insert, string column)
     {

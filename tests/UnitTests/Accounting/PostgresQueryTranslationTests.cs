@@ -213,7 +213,7 @@ public sealed class PostgresQueryTranslationTests
 
         (await Application.Accounting.Registers.RegisterData.EntriesAsync(db, pfaId, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None)).ShouldBeEmpty();
         (await Application.Accounting.Registers.RegisterData.PfaAsync(db, pfaId, CancellationToken.None)).ShouldBeNull();
-        (await Application.Accounting.Registers.Assets.DtosAsync(db, db.PfaAssets.Where(a => a.PfaRegistrationId == pfaId), CancellationToken.None)).ShouldBeEmpty();
+        (await Application.Accounting.Assets.AssetSupport.DtosAsync(db, db.PfaAssets.Where(a => a.PfaRegistrationId == pfaId), new DateOnly(2026, 12, 31), CancellationToken.None)).ShouldBeEmpty();
         (await db.ExchangeRates.Where(r => new List<string> { "EUR" }.Contains(r.Currency) && r.Date >= new DateOnly(2026, 1, 1)).CountAsync()).ShouldBeGreaterThanOrEqualTo(0);
         (await db.ExpenseCategoryRules.AnyAsync(r => r.Category == Application.Accounting.Ledger.LedgerSupport.PlatformCommissionCategory)).ShouldBeTrue();
     }

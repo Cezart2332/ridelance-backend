@@ -260,9 +260,10 @@ internal sealed class GetInventoryQueryHandler(IApplicationDbContext db) : IQuer
 
         var start = new DateOnly(query.Year, 1, 1);
         var end = new DateOnly(query.Year, 12, 31);
-        List<AssetDto> assets = await Assets.DtosAsync(
+        List<AssetDto> assets = await Assets.AssetSupport.DtosAsync(
             db,
-            db.PfaAssets.Where(a => a.PfaRegistrationId == query.PfaId && a.AcquisitionDate <= end && (a.DisposedDate == null || a.DisposedDate >= start)),
+            db.PfaAssets.Where(a => a.PfaRegistrationId == query.PfaId && a.EntryDate <= end && (a.DisposalDate == null || a.DisposalDate >= start)),
+            end,
             cancellationToken);
         return new InventoryView(query.PfaId, query.Year, assets);
     }
@@ -404,14 +405,15 @@ internal sealed class ExportInventoryQueryHandler(IApplicationDbContext db, IReg
             .FirstOrDefaultAsync(cancellationToken);
         DateOnly date = ended is { } end && end.Year == query.Year ? end : new DateOnly(query.Year, 12, 31);
 
-        List<PfaAsset> assets = await db.PfaAssets.AsNoTracking()
-            .Where(a => a.PfaRegistrationId == query.PfaId && a.AcquisitionDate <= date && (a.DisposedDate == null || a.DisposedDate > date))
-            .OrderBy(a => a.AcquisitionDate)
-            .ToListAsync(cancellationToken);
+        List<AssetDto> assets = await Assets.AssetSupport.DtosAsync(
+            db,
+            db.PfaAssets.Where(a => a.PfaRegistrationId == query.PfaId && a.EntryDate <= date && (a.DisposalDate == null || a.DisposalDate > date)),
+            date,
+            cancellationToken);
 
         List<RegisterLine> lines = [.. assets.Select((asset, index) => new RegisterLine(
-            [index + 1, $"{asset.Type} — {asset.Description} (intrat la {RegisterData.Date(asset.AcquisitionDate)})", asset.AcquisitionValue]))];
-        lines.Add(new RegisterLine([null, "Total", assets.Sum(a => a.AcquisitionValue)], Emphasis: true));
+            [index + 1, $"{asset.InventoryNumber} {asset.Name} (intrat la {RegisterData.Date(asset.EntryDate)})", asset.Remaining]))];
+        lines.Add(new RegisterLine([null, "Total", assets.Sum(a => a.Remaining)], Emphasis: true));
 
         var document = new RegisterDocument(
             "REGISTRUL-INVENTAR",

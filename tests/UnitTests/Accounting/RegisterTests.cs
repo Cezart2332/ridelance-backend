@@ -245,7 +245,7 @@ public sealed class RegisterTests : IDisposable
             IXLWorksheet sheet = workbook.Worksheet(1);
             sheet.Cell(3, 1).GetString().ShouldBe("la data de 31.12.2026");
             sheet.RowsUsed().Where(r => r.Cell(3).DataType == XLDataType.Number && r.Cell(2).GetString() != "Total").ShouldHaveSingleItem()
-                .Cell(2).GetString().ShouldStartWith("Casă de marcat — Datecs DP-25X");
+                .Cell(2).GetString().ShouldStartWith("OI-0001 Casă de marcat — Datecs DP-25X");
             sheet.RowsUsed().Single(r => r.Cell(2).GetString() == "Total").Cell(3).GetValue<decimal>().ShouldBe(1350m);
         }
 
@@ -253,25 +253,6 @@ public sealed class RegisterTests : IDisposable
         (await new GetInventoryQueryHandler(_db).Handle(new GetInventoryQuery(_pfa, 2026), CancellationToken.None)).Value.Assets.Count.ShouldBe(2);
         Encoding.ASCII.GetString((await new ExportInventoryQueryHandler(_db, _exporter)
             .Handle(new ExportInventoryQuery(_pfa, 2026, RegisterFormat.Pdf), CancellationToken.None)).Value.Content, 0, 4).ShouldBe("%PDF");
-    }
-
-    [Fact]
-    public async Task Assets_are_validated_and_never_deleted()
-    {
-        var handler = new SaveAssetCommandHandler(_db);
-
-        (await handler.Handle(new SaveAssetCommand(_pfa, null, new AssetInput("", "x", Day, 10m, AssetStatus.InUse, null)), CancellationToken.None))
-            .Error.Code.ShouldBe("Accounting.AssetInvalid");
-        AssetDto created = (await handler.Handle(new SaveAssetCommand(_pfa, null, new AssetInput("Casă de marcat", "Datecs", Day, 1350m, AssetStatus.InUse, Day)), CancellationToken.None)).Value;
-        created.DisposedDate.ShouldBeNull();
-        (await handler.Handle(new SaveAssetCommand(_pfa, created.Id, new AssetInput("Casă de marcat", "Datecs", Day, 1350m, AssetStatus.Disposed, null)), CancellationToken.None))
-            .Error.Description.ShouldStartWith("Data ieșirii e obligatorie");
-
-        AssetDto disposed = (await handler.Handle(
-            new SaveAssetCommand(_pfa, created.Id, new AssetInput("Casă de marcat", "Datecs", Day, 1350m, AssetStatus.Disposed, new DateOnly(2027, 1, 5))), CancellationToken.None)).Value;
-
-        (disposed.Status, disposed.DisposedDate).ShouldBe((AssetStatus.Disposed, (DateOnly?)new DateOnly(2027, 1, 5)));
-        (await new ListAssetsQueryHandler(_db).Handle(new ListAssetsQuery(_pfa), CancellationToken.None)).Value.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -330,16 +311,21 @@ public sealed class RegisterTests : IDisposable
     private void Close(params string[] periods) => _db.PfaAccountingPeriods.AddRange(periods.Select(period =>
         new PfaAccountingPeriod { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Period = period, Status = AccountingPeriodStatus.Closed }));
 
+    private int _assets;
+
     private PfaAsset Asset(string type, string description, DateOnly acquired, decimal value, DateOnly? disposed = null) => new()
     {
         Id = Guid.NewGuid(),
         PfaRegistrationId = _pfa,
-        Type = type,
-        Description = description,
-        AcquisitionDate = acquired,
-        AcquisitionValue = value,
-        Status = disposed is null ? AssetStatus.InUse : AssetStatus.Disposed,
-        DisposedDate = disposed,
+        InventoryNumber = $"OI-{++_assets:0000}",
+        Name = $"{type} — {description}",
+        Kind = AssetKind.InventoryObject,
+        DocumentRef = "Factura 1",
+        EntryDate = acquired,
+        InServiceDate = acquired,
+        EntryValue = value,
+        Status = disposed is null ? AssetStatus.Active : AssetStatus.Disposed,
+        DisposalDate = disposed,
     };
 
     private async Task<RjipView> Rjip(DateOnly from, DateOnly to) =>

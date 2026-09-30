@@ -144,6 +144,12 @@ public interface IApplicationDbContext
     DbSet<Domain.Accounting.LedgerMatchProposal> LedgerMatchProposals { get; }
     DbSet<Domain.Accounting.FiscalReceipt> FiscalReceipts { get; }
     DbSet<Domain.Accounting.AccountingPeriodSnapshot> AccountingPeriodSnapshots { get; }
+    DbSet<Domain.Accounting.FixedAssetRule> FixedAssetRules { get; }
+    DbSet<Domain.Accounting.DepreciationLine> DepreciationLines { get; }
+    DbSet<Domain.Accounting.InventoryCount> InventoryCounts { get; }
+    DbSet<Domain.Accounting.InventoryItem> InventoryItems { get; }
+    DbSet<Domain.Accounting.AccountingYear> AccountingYears { get; }
+    DbSet<Domain.Accounting.ReconciliationExplanation> ReconciliationExplanations { get; }
     DbSet<Domain.FiscalLink.FiscalLinkClient> FiscalLinkClients { get; }
     DbSet<OfficeAppointment> OfficeAppointments { get; }
     DbSet<OfficeScheduleDay> OfficeScheduleDays { get; }

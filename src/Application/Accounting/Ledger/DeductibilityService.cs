@@ -5,10 +5,21 @@ namespace Application.Accounting.Ledger;
 
 /// <summary>
 /// Regulile de clasificare și deductibilitate valabile pentru un PFA: categoriile
-/// (<see cref="ExpenseCategoryRule"/>, cu toate versiunile) și istoricul setării
-/// <c>vehicle_deductibility</c>.
+/// (<see cref="ExpenseCategoryRule"/>, cu toate versiunile), istoricul setării
+/// <c>vehicle_deductibility</c> și pragul de mijloc fix (<see cref="FixedAssetRule"/>).
 /// </summary>
-public sealed record LedgerRules(IReadOnlyList<ExpenseCategoryRule> Categories, IReadOnlyList<PfaAccountingSetting> VehicleDeductibility);
+public sealed record LedgerRules(
+    IReadOnlyList<ExpenseCategoryRule> Categories,
+    IReadOnlyList<PfaAccountingSetting> VehicleDeductibility,
+    IReadOnlyList<FixedAssetRule>? FixedAssets = null)
+{
+    /// <summary>Regula de mijloc fix valabilă la <paramref name="date"/>.</summary>
+    public FixedAssetRule? FixedAssetRuleAt(DateOnly date) =>
+        FixedAssets?
+            .Where(r => r.ValidFrom <= date && (r.ValidTo is null || date <= r.ValidTo))
+            .OrderByDescending(r => r.ValidFrom)
+            .FirstOrDefault();
+}
 
 /// <summary>
 /// Clasificarea deterministă și deductibilitatea unei cheltuieli (spec contabilitate B6), funcții
@@ -42,6 +53,36 @@ public static class DeductibilityService
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(rules);
+        ResolveCategory(entry, rules);
+        ApplyFixedAssetReview(entry, rules);
+    }
+
+    /// <summary>
+    /// Achizițiile care pot fi mijloace fixe (spec registre §6): peste prag, cu natură care nu e de
+    /// consum. Până la decizia Adminului, și după decizia „mijloc fix”, plata nu se deduce: în REF
+    /// intră doar amortizarea. Decizia Adminului nu se mai schimbă la o reclasificare.
+    /// </summary>
+    private static void ApplyFixedAssetReview(LedgerEntry entry, LedgerRules rules)
+    {
+        if (entry.FixedAssetReview is FixedAssetReview.None or FixedAssetReview.Pending)
+        {
+            FixedAssetRule? rule = rules.FixedAssetRuleAt(entry.DocumentDate ?? entry.Date);
+            bool candidate = entry.TransactionType == LedgerTransactionType.Expense &&
+                entry.StornoOfEntryId is null &&
+                rule is not null &&
+                !rule.Excludes(entry.Category) &&
+                entry.BusinessAmount >= rule.Threshold;
+            entry.FixedAssetReview = candidate ? FixedAssetReview.Pending : FixedAssetReview.None;
+        }
+
+        if (entry.FixedAssetReview is FixedAssetReview.Pending or FixedAssetReview.FixedAsset)
+        {
+            entry.DeductibleAmount = 0m;
+        }
+    }
+
+    private static void ResolveCategory(LedgerEntry entry, LedgerRules rules)
+    {
         entry.VehicleRelated = false;
         entry.DeductibilityType = null;
         entry.DeductiblePercent = null;
