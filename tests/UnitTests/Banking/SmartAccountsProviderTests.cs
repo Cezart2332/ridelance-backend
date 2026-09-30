@@ -213,6 +213,25 @@ public sealed class SmartAccountsProviderTests
         page.Pending[0].ProviderTransactionId.ShouldBe("pending:p1");
     }
 
+    /// <summary>Registre §5: soldul contabil, dacă banca îl trimite, e baza disponibilului bancar la inventar.</summary>
+    [Fact]
+    public async Task Balance_IsTheClosingBookedBalanceWhenTheBankSendsIt()
+    {
+        StubHandler handler = new StubHandler().Enqueue("""
+            {"status":200,"messageStatus":"Success","payload":{
+                "balances":[
+                    {"balanceType":"interimAvailable","balanceAmount":{"amount":"9100.00","currency":"RON"}},
+                    {"balanceType":"closingBooked","balanceAmount":{"amount":"8000.50","currency":"RON"},"referenceDate":"2027-01-10"}],
+                "transactions":{"booked":[]}}}
+            """);
+
+        var store = new StubTokenStore(new BankConsentTokens("acc-1", "ref-1", DateTime.UtcNow.AddMinutes(4)));
+
+        BankTransactionsPage page = await Provider(handler, store).GetTransactionsAsync("BT", "4211", "acct", new DateOnly(2027, 1, 1), new DateOnly(2027, 1, 10));
+
+        page.Balance.ShouldBe(new BankBalanceInfo(8000.50m, new DateOnly(2027, 1, 10)));
+    }
+
     [Fact]
     public async Task Pagination_SendsTheNextLinkBackAsAHeaderOnTheSameAddress()
     {

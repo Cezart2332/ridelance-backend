@@ -68,6 +68,11 @@ public sealed class BankAccountSyncService(
 
         AddNewTransactions(page.Booked, isPending: false, account, connection.ProviderConsentId, existingIds);
         AddNewTransactions(page.Pending, isPending: true, account, connection.ProviderConsentId, existingIds);
+        if (page.Balance is { } balance)
+        {
+            account.Balance = balance.Amount;
+            account.BalanceDate = balance.Date;
+        }
 
         account.LastTransactionsSyncedAtUtc = DateTime.UtcNow;
         connection.LastSyncedAtUtc = DateTime.UtcNow;

@@ -137,9 +137,13 @@ public sealed record BankTransactionInfo(
     string RawJson,
     string? CounterpartyIban = null);
 
+/// <param name="Balance">Soldul contabil al contului, dacă banca îl trimite odată cu tranzacțiile (Berlin Group <c>balances</c>).</param>
 public sealed record BankTransactionsPage(
     IReadOnlyList<BankTransactionInfo> Booked,
-    IReadOnlyList<BankTransactionInfo> Pending);
+    IReadOnlyList<BankTransactionInfo> Pending,
+    BankBalanceInfo? Balance = null);
+
+public sealed record BankBalanceInfo(decimal Amount, DateOnly Date);
 
 /// <summary>Generic provider error (network, HTTP, unexpected payload).</summary>
 public class BankDataProviderException : Exception
