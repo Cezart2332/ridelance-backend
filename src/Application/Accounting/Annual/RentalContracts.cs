@@ -73,6 +73,22 @@ internal sealed class ListRentalContractsQueryHandler(IApplicationDbContext db, 
     }
 }
 
+/// <summary>O regulă de reținere pentru chirie, de ales pe contract (F43: doar <c>RentWithholding</c>).</summary>
+public sealed record RentRuleDto(Guid Id, string LegalBasis, decimal? Rate, string? Formula, bool Confirmed, DateOnly ValidFrom, DateOnly? ValidTo);
+
+/// <summary><c>GET /accounting/rental-contracts/rules</c></summary>
+public sealed record ListRentRulesQuery : IQuery<IReadOnlyList<RentRuleDto>>;
+
+internal sealed class ListRentRulesQueryHandler(IApplicationDbContext db) : IQueryHandler<ListRentRulesQuery, IReadOnlyList<RentRuleDto>>
+{
+    public async Task<Result<IReadOnlyList<RentRuleDto>>> Handle(ListRentRulesQuery query, CancellationToken cancellationToken) =>
+        await db.TaxRules.AsNoTracking()
+            .Where(r => r.RuleType == TaxRuleTypes.RentWithholding)
+            .OrderByDescending(r => r.ValidFrom)
+            .Select(r => new RentRuleDto(r.Id, r.LegalBasis, r.Rate, r.Formula, r.Confirmed, r.ValidFrom, r.ValidTo))
+            .ToListAsync(cancellationToken);
+}
+
 /// <summary><c>POST /accounting/pfas/{pfaId}/rental-contracts</c> — CNP-ul se salvează criptat.</summary>
 public sealed record CreateRentalContractCommand(
     Guid PfaId,

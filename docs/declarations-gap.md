@@ -78,3 +78,22 @@ Convenție: **Există**, **Parțial**, **Lipsește**, **Contrazice** (încalcă 
 4. Starea record-ului: index ANAF, `ReceiptError` → `NeedsAttention`, `XmlHash`, versiunea regulilor, task de rectificare.
 5. D207 (F30–F32), D205 (F40–F43), D212 (F50–F55), C801 (F60–F61).
 6. UI Admin (lot lunar, card PFA, anual) și PFA.
+
+## Stare după implementare (03.10.2026)
+
+| Pas | Commit | Stare |
+| --- | --- | --- |
+| 1. `TaxRule` versionat, `TaxRuleSet.Resolve/Find/Validate`, seed = migrare | `9145b15` | **Există**. `634`, codul bugetar, termenele, statele UE, cursul și rotunjirea vin din reguli. `634` rămâne doar ca enumerare în patch-ul XSD din `AnafSchemas.cs` (adaptarea schemei, nu regulă fiscală). |
+| 2. D301/D390 pe `TaxPointDate` explicit (F10–F18), F03, F04 cu task D700 | `7f64066` | **Există**. |
+| 3. D100 pe data plății (F20–F25), `NonResidentTaxEngine`, coada de confirmare | `676fdfa` | **Există**. Regulile pe furnizor rămân în registrul de furnizori, expuse ca `TaxRule`. |
+| 4. Record: `IndexReceived`, index ANAF, recipisă cu erori → „Necesită atenție”, `XmlHash`, `RulesetVersion`, task de rectificare | `677af63` | **Există**. |
+| 5. D207, D205, D212, C801 (F30–F61) | `55ed118` | **Există**. Anualele sunt `Declaration` cu perioada `yyyy`, fără XML (depunere manuală, Q4); validarea recalculează și compară snapshot-ul, hash-ul e stabil la recalcul. |
+| 6. UI Admin (tab „Anual”, coada de reguli, C801, index ANAF) și PFA (întrebarea F53, sumele D212) | acest commit | **Există**. |
+
+Rămân deschise:
+
+- D100 cu obligația de chirie: generatorul XML D100 scrie o singură obligație; o lună cu reținere pe chirie e blocată cu motivul afișat și se depune manual până la un mapper cu mai multe obligații (și până la confirmarea Q3).
+- D207 nu are generator XML (nu există XSD D207 în repo); modelul se transcrie în Soft J.
+- Formularul D212 2027: câmpurile sunt pe secțiuni, fără numerele de rând ANAF; se completează când ANAF publică modelul.
+- Pierderile reportate: istoricul vine din D212 anterioară depusă prin RIDElance sau din suma preluată în profilul fiscal; expirarea după 7 ani nu e modelată.
+- Regulile pe brand: testul `NoBrandBranchesInTheTaxEngine` caută în motor; `PlatformLabels` e doar afișare.

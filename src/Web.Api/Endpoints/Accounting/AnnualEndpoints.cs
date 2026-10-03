@@ -68,6 +68,11 @@ internal sealed class AnnualEndpoints : IEndpoint
                 new CreateRentalContractCommand(pfaId, request.OwnerName, request.OwnerCnp, request.ContractNumber, request.ContractDate, request.GrossRent, request.PaymentFrequency, request.WithholdingRuleId),
                 cancellationToken)).Match(id => Results.Ok(new { id }), CustomResults.Problem));
 
+        group.MapGet("rental-contracts/rules", async (
+            IQueryHandler<ListRentRulesQuery, IReadOnlyList<RentRuleDto>> handler,
+            CancellationToken cancellationToken) =>
+            (await handler.Handle(new ListRentRulesQuery(), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
         group.MapPost("rental-contracts/{id:guid}/payments", async (
             Guid id,
             RentPaymentRequest request,
