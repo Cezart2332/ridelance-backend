@@ -18,7 +18,8 @@ internal static class DeclarationStateMachine
         [DeclarationStatus.Validated] = [DeclarationStatus.ReadyToSign],
         [DeclarationStatus.ReadyToSign] = [DeclarationStatus.Signed],
         [DeclarationStatus.Signed] = [DeclarationStatus.Submitted],
-        [DeclarationStatus.Submitted] = [DeclarationStatus.Accepted, DeclarationStatus.Rejected],
+        [DeclarationStatus.Submitted] = [DeclarationStatus.IndexReceived, DeclarationStatus.Accepted, DeclarationStatus.Rejected],
+        [DeclarationStatus.IndexReceived] = [DeclarationStatus.Accepted, DeclarationStatus.Rejected],
         // Din ACCEPTED versiunea nu se mai mișcă: corecția e o versiune nouă, RECTIFICATIVE.
         [DeclarationStatus.Accepted] = [],
         [DeclarationStatus.Rejected] = [DeclarationStatus.Generated],
@@ -30,7 +31,8 @@ internal static class DeclarationStateMachine
         [DeclarationAction.Validate] = [DeclarationStatus.Generated],
         [DeclarationAction.MarkSigned] = [DeclarationStatus.ReadyToSign],
         [DeclarationAction.MarkSubmitted] = [DeclarationStatus.Signed],
-        [DeclarationAction.MarkRejected] = [DeclarationStatus.Submitted],
+        [DeclarationAction.MarkRejected] = [DeclarationStatus.Submitted, DeclarationStatus.IndexReceived],
+        [DeclarationAction.RecordIndex] = [DeclarationStatus.Submitted],
         [DeclarationAction.Regenerate] = [DeclarationStatus.ValidationFailed, DeclarationStatus.Rejected],
     };
 

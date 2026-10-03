@@ -18,6 +18,10 @@ internal sealed class DeclarationEndpoints : IEndpoint
             .RequireAuthorization(Permissions.ManageAccounting)
             .WithTags(Tags.Accounting);
 
+        // Spec declarații §6–§7: recipise cu erori, validări eșuate, rectificări de făcut, D100 de confirmat.
+        group.MapGet("declarations/attention", async (IQueryHandler<GetDeclarationsAttentionQuery, IReadOnlyList<DeclarationAttentionDto>> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new GetDeclarationsAttentionQuery(), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
         group.MapGet("declarations/{declarationId:guid}", async (
             Guid declarationId,
             IQueryHandler<GetDeclarationQuery, DeclarationDetail> handler,

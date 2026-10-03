@@ -153,6 +153,7 @@ internal sealed class DeclarationValidator(
             level3,
         ];
         version.ValidationResultJson = AccountingJson.Serialize(new StoredValidation(levels, DateTime.UtcNow, schema?.Version, schema?.ValidatorVersion, raw));
+        version.ValidatorVersion = schema?.ValidatorVersion;
 
         ValidationRun run;
         if (levels.All(level => level.Passed))

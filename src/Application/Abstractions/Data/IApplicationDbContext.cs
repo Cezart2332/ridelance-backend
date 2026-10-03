@@ -147,6 +147,7 @@ public interface IApplicationDbContext
     DbSet<Domain.Accounting.FixedAssetRule> FixedAssetRules { get; }
     DbSet<Domain.Accounting.TaxRule> TaxRules { get; }
     DbSet<Domain.Accounting.NonResidentPayment> NonResidentPayments { get; }
+    DbSet<Domain.Accounting.DeclarationRectificationTask> DeclarationRectificationTasks { get; }
     DbSet<Domain.Accounting.NonResidentTaxDecision> NonResidentTaxDecisions { get; }
     DbSet<Domain.Accounting.DepreciationLine> DepreciationLines { get; }
     DbSet<Domain.Accounting.InventoryCount> InventoryCounts { get; }

@@ -47,6 +47,18 @@ public sealed class DeclarationVersion : Entity, IAccountingRecord
 
     public Guid? ReceiptDocumentId { get; set; }
     public string? ReceiptNumber { get; set; }
+
+    /// <summary>Indexul de încărcare ANAF, primit la depunere; SPV asociază recipisa după el.</summary>
+    public string? AnafIndex { get; set; }
+
+    /// <summary>SHA-256 al XML-ului: recalcularea unei perioade închise trebuie să dea același hash.</summary>
+    public string? XmlHash { get; set; }
+
+    /// <summary>Versiunea setului de reguli fiscale folosit la calcul.</summary>
+    public string? RulesetVersion { get; set; }
+
+    /// <summary>Versiunea validatorului ANAF (Soft J) folosit.</summary>
+    public string? ValidatorVersion { get; set; }
     public string? RectificationReason { get; set; }
 
     /// <summary>JSON: <c>[{ from, to, at, byUserId, note }]</c>.</summary>
@@ -68,6 +80,27 @@ public sealed class DeclarationVersion : Entity, IAccountingRecord
 /// declarații se derivă de aici (B0). Datele furnizorului sunt copiate, ca linia să rămână
 /// corectă și după ce registrul de furnizori se schimbă.
 /// </summary>
+/// <summary>
+/// Task de rectificare (spec declarații §6): datele unei perioade cu declarație acceptată de ANAF s-au
+/// schimbat (după redeschiderea lunii); diff-ul față de versiunea depusă, până la rectificativă.
+/// </summary>
+public sealed class DeclarationRectificationTask : Entity, IAccountingRecord
+{
+    public Guid Id { get; set; }
+    public Guid DeclarationId { get; set; }
+
+    /// <summary>Versiunea acceptată față de care s-a calculat diff-ul.</summary>
+    public Guid AcceptedVersionId { get; set; }
+
+    /// <summary>JSON: totalul depus, totalul de acum, liniile adăugate, scoase sau schimbate.</summary>
+    public string DiffJson { get; set; } = "{}";
+    public DateTime DetectedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Rectificativa care a rezolvat task-ul.</summary>
+    public Guid? ResolvedByVersionId { get; set; }
+    public DateTime? ResolvedAtUtc { get; set; }
+}
+
 public sealed class DeclarationLine : Entity, IAccountingRecord
 {
     public Guid Id { get; set; }
