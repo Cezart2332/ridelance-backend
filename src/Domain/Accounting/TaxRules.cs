@@ -177,6 +177,9 @@ public static class TaxRuleTypes
 
     /// <summary>Reținerea la sursă pe chiria plătită unei persoane fizice (ramura D205).</summary>
     public const string RentWithholding = "RentWithholding";
+
+    /// <summary>Un cod de completare al unui formular (de ex. tipul de activitate din C801).</summary>
+    public const string FormCode = "FormCode";
 }
 
 /// <summary>

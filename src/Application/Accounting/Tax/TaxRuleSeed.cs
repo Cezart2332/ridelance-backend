@@ -70,6 +70,14 @@ public static class TaxRuleSeed
                 confirmed: false),
         ];
         rules.AddRange(EuCountries.Select(country => Rule(TaxRuleTypes.EuMember, "Tratatul de aderare / statele membre UE", _ => { }, country)));
+
+        // Adăugate după primul seed: id-urile de mai sus nu se schimbă (migrarea AddAnnualDeclarations).
+        rules.Add(Rule(TaxRuleTypes.FormCode, "Instrucțiunile C801 (documentul sursă): tipul de activitate transport alternativ", r =>
+        {
+            r.DeclarationCode = "C801";
+            r.IncomeType = "RIDESHARING";
+            r.Formula = "4";
+        }));
         return rules;
     }
 }

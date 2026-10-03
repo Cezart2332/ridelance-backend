@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<Accounting.Declarations.DeclarationFiles>();
         services.AddScoped<Accounting.Declarations.DeclarationValidator>();
         services.AddScoped<Accounting.Declarations.DeclarationActions>();
+        services.AddScoped<Accounting.Annual.AnnualDeclarationService>();
         services.AddScoped<Accounting.VatRegistration.VatRegistrationService>();
         services.AddScoped<Accounting.Anaf.AnafEFacturaService>();
         services.AddScoped<Accounting.Spv.SpvService>();

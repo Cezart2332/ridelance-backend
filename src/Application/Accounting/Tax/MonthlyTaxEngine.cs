@@ -59,11 +59,11 @@ public sealed record TaxEngineSettings(
         return new TaxEngineSettings(
             [.. rules.Rules.Where(rule => rule.RuleType == TaxRuleTypes.EuMember && rules.IsEuMember(rule.Jurisdiction, end)).Select(rule => rule.Jurisdiction).Distinct()],
             Enum.TryParse(rules.Find(TaxRuleTypes.ExchangeRate, "RO", end)?.Formula, out ExchangeRateDateRule exchange) ? exchange : ExchangeRateDateRule.SameDayOrPrevious,
-            Enum.GetValues<DeclarationType>()
+            DeclarationTypes.Monthly
                 .Select(type => (type, rule: rules.Find(TaxRuleTypes.Rounding, "RO", end, new TaxRuleContext(Code(type)))))
                 .Where(pair => pair.rule is not null && Enum.TryParse(pair.rule.Formula, out DeclarationRounding _))
                 .ToDictionary(pair => pair.type, pair => Enum.Parse<DeclarationRounding>(pair.rule!.Formula!)),
-            Enum.GetValues<DeclarationType>().ToDictionary(type => type, type => new DeclarationRules(
+            DeclarationTypes.Monthly.ToDictionary(type => type, type => new DeclarationRules(
                 (rules.Find(TaxRuleTypes.ObligationCode, "RO", end, new TaxRuleContext(Code(type), IncomeType: "COMMISSION")) ??
                  rules.Find(TaxRuleTypes.ObligationCode, "RO", end, new TaxRuleContext(Code(type))))?.Formula,
                 (rules.Find(TaxRuleTypes.BudgetCode, "RO", end, new TaxRuleContext(Code(type), IncomeType: "COMMISSION")) ??
@@ -91,7 +91,8 @@ public sealed record PfaTaxInput(
     IReadOnlyList<ExchangeRate> ExchangeRates,
     IReadOnlyList<Art317Period> Art317,
     TaxEngineSettings Settings,
-    IReadOnlyList<NonResidentLine>? NonResident = null);
+    IReadOnlyList<NonResidentLine>? NonResident = null,
+    IReadOnlyList<Annual.RentWithholding>? Rent = null);
 
 /// <summary>O plată către nerezident din luna D100, cu decizia de impozit (spec declarații F20–F25).</summary>
 /// <param name="SourceDocumentId">Factura de comision a plății (sursa rândului D100).</param>
@@ -162,19 +163,6 @@ public sealed record TaxResult(IReadOnlyList<string> BlockingReasons, IReadOnlyD
 }
 
 /// <summary>
-/// <c>D100_RENT_INDIVIDUAL</c>: interfața există, calculul nu. Regula e DE CONFIRMAT (bază, cotă,
-/// sursa datelor — §6 pct. 7); până atunci nu produce nicio linie, chiar dacă ar fi activată.
-/// </summary>
-public static class D100RentIndividualRule
-{
-    public static IReadOnlyList<TaxLine> Calculate(PfaTaxInput input)
-    {
-        ArgumentNullException.ThrowIfNull(input);
-        return [];
-    }
-}
-
-/// <summary>
 /// Motorul fiscal lunar (spec contabilitate B2): facturi de comision confirmate → D100, D301, D390.
 /// Funcție pură, fără bază de date: ce intră determină complet ce iese, deci se testează pe
 /// exemple „golden”. Nicio cotă nu e scrisă aici; toate vin din reguli, cu valabilitatea lor.
@@ -182,6 +170,7 @@ public static class D100RentIndividualRule
 public static class MonthlyTaxEngine
 {
     public const string D100CommissionRule = "D100_COMMISSION_NONRESIDENT";
+    public const string D100RentRule = "D100_RENT_INDIVIDUAL";
     public const string D301Rule = "D301_EU_SERVICES";
     public const string D390Rule = "D390_EU_SERVICES";
     public const string D390ServicesOperation = "S";
@@ -199,10 +188,8 @@ public static class MonthlyTaxEngine
         // F20: D100 din plățile lunii (data plății/decontării), cu decizia de impozit a fiecăreia.
         (List<TaxLine> d100, List<string> d100Blockers) = NonResidentLines(input);
 
-        if (input.D100Rules.Any(rule => rule.Code == D100RuleCode.D100RentIndividual && rule.Enabled && !rule.PendingConfirmation))
-        {
-            d100.AddRange(D100RentIndividualRule.Calculate(input));
-        }
+        // F41: reținerea pe chiria plătită unei persoane fizice, în luna plății.
+        RentLines(input, d100, d100Blockers);
 
         List<TaxLine> d390 = [.. d301
             .GroupBy(line => line.SupplierVatId)
@@ -261,6 +248,34 @@ public static class MonthlyTaxEngine
                     d301Warnings),
                 [DeclarationType.D390] = new(DeclarationType.D390, d390.Count > 0, d390, 0, "0 lei de plată, doar raportare.", null),
             });
+    }
+
+    /// <summary>
+    /// Rândurile D100 de chirie (F41), cu regula de chirie a contractului (F43). Regula neconfirmată
+    /// juridic (Q3) oprește D100; la fel obligația de chirie, pe care generatorul XML D100 (o singură
+    /// obligație) nu o scrie încă: luna se completează manual până atunci.
+    /// </summary>
+    private static void RentLines(PfaTaxInput input, List<TaxLine> d100, List<string> blockers)
+    {
+        List<Annual.RentWithholding> rent = [.. input.Rent ?? []];
+        foreach (Annual.RentWithholding payment in rent)
+        {
+            string label = $"Chirie {payment.OwnerName}, plata din {AccountingJson.Date(payment.PaymentDate)}";
+            if (!payment.RuleConfirmed)
+            {
+                blockers.Add($"{label}: regula de reținere pentru chirie e de confirmat juridic.");
+            }
+
+            d100.Add(new TaxLine(
+                payment.ContractId, label, D100RentRule, payment.Gross, payment.Gross, payment.Rate, payment.Tax, "RON", null,
+                Calculation(payment.Gross, payment.Rate, payment.Tax),
+                payment.OwnerName, "RO", payment.OwnerCnpMasked, null, null, null, null, [payment.ContractId]));
+        }
+
+        if (rent.Count > 0)
+        {
+            blockers.Add("D100 cu reținere pe chirie: obligația de chirie nu are încă generator XML; luna se depune manual.");
+        }
     }
 
     private static (List<TaxLine> Lines, List<string> Blockers) NonResidentLines(PfaTaxInput input)

@@ -126,7 +126,7 @@ internal static class DeclarationSummaries
         List<string> reasons = check is null ? [] : AccountingJson.Deserialize<List<string>>(check.ReasonsJson, []);
         TaxResult? calculated = null;
 
-        return [.. Enum.GetValues<DeclarationType>().Select(type =>
+        return [.. DeclarationTypes.Monthly.Select(type =>
         {
             CurrentVersion? version = own.FirstOrDefault(v => v.Type == type);
             if (version is not null)

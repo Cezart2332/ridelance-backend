@@ -56,6 +56,14 @@ public sealed class CashRegisterState : Entity, IAccountingRecord
 
     /// <summary>Dovada de fiscalizare, obligatorie pentru <c>Active</c>.</summary>
     public Guid? EvidenceDocumentId { get; set; }
+
+    /// <summary>C801 (spec declarații F60–F61): starea, documentul și NUI-ul; nu se dublează depunerea furnizorului.</summary>
+    public C801Status C801Status { get; set; }
+    public Guid? C801DocumentId { get; set; }
+    public string? NuiNumber { get; set; }
+
+    /// <summary>Numărul de înmatriculare al mașinii pe care e montată casa (F60).</summary>
+    public string? VehiclePlate { get; set; }
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public PfaRegistration PfaRegistration { get; set; } = null!;

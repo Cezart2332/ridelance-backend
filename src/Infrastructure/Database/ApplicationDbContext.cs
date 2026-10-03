@@ -155,6 +155,9 @@ public sealed class ApplicationDbContext(
     public DbSet<Domain.Accounting.NonResidentPayment> NonResidentPayments { get; set; }
     public DbSet<Domain.Accounting.DeclarationRectificationTask> DeclarationRectificationTasks { get; set; }
     public DbSet<Domain.Accounting.NonResidentTaxDecision> NonResidentTaxDecisions { get; set; }
+    public DbSet<Domain.Accounting.RentalContract> RentalContracts { get; set; }
+    public DbSet<Domain.Accounting.RentPayment> RentPayments { get; set; }
+    public DbSet<Domain.Accounting.AnnualTaxAnswers> AnnualTaxAnswers { get; set; }
     public DbSet<Domain.Accounting.DepreciationLine> DepreciationLines { get; set; }
     public DbSet<Domain.Accounting.InventoryCount> InventoryCounts { get; set; }
     public DbSet<Domain.Accounting.InventoryItem> InventoryItems { get; set; }

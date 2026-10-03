@@ -1,6 +1,7 @@
 using Application.Accounting.Tax;
 using Domain.Accounting;
 using Infrastructure.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Shouldly;
 using Xunit;
@@ -103,14 +104,17 @@ public sealed class TaxRuleTests
     [Fact]
     public void Migration_SeedsExactlyTheRulesOfTaxRuleSeed()
     {
-        InsertDataOperation insert = new AddTaxRules().UpOperations.OfType<InsertDataOperation>().Single();
-        int id = Array.IndexOf(insert.Columns, "id");
-        int type = Array.IndexOf(insert.Columns, "rule_type");
-        int formula = Array.IndexOf(insert.Columns, "formula");
-        int jurisdiction = Array.IndexOf(insert.Columns, "jurisdiction");
-
-        var seeded = Enumerable.Range(0, insert.Values.GetLength(0))
-            .Select(row => ((Guid)insert.Values[row, id]!, (string)insert.Values[row, type]!, (string)insert.Values[row, jurisdiction]!, insert.Values[row, formula] as string))
+        var seeded = new Migration[] { new AddTaxRules(), new AddAnnualDeclarations() }
+            .SelectMany(migration => migration.UpOperations.OfType<InsertDataOperation>().Where(op => op.Table == "tax_rules"))
+            .SelectMany(insert =>
+            {
+                int id = Array.IndexOf(insert.Columns, "id");
+                int type = Array.IndexOf(insert.Columns, "rule_type");
+                int formula = Array.IndexOf(insert.Columns, "formula");
+                int jurisdiction = Array.IndexOf(insert.Columns, "jurisdiction");
+                return Enumerable.Range(0, insert.Values.GetLength(0))
+                    .Select(row => ((Guid)insert.Values[row, id]!, (string)insert.Values[row, type]!, (string)insert.Values[row, jurisdiction]!, insert.Values[row, formula] as string));
+            })
             .ToList();
         seeded.ShouldBe([.. TaxRuleSeed.Rules.Select(rule => (rule.Id, rule.RuleType, rule.Jurisdiction, rule.Formula))], ignoreOrder: true);
     }
