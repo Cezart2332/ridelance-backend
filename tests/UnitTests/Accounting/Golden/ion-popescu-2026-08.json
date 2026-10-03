@@ -10,8 +10,8 @@
   "art317": [ { "enabled": true, "validFrom": "2025-09-01" } ],
   "exchangeRates": [],
   "invoices": [
-    { "label": "Factura Bolt EE-BOLT-2026-08-1000", "supplierVatId": "EE102090374", "invoiceDate": "2026-08-31", "servicePeriodEnd": "2026-08-31", "currency": "RON", "commissionAmount": 1000 },
-    { "label": "Factura Uber UBR-RO-2026-08-1002", "supplierVatId": "NL852071589B01", "invoiceDate": "2026-08-31", "servicePeriodEnd": "2026-08-31", "currency": "RON", "commissionAmount": 600 }
+    { "label": "Factura Bolt EE-BOLT-2026-08-1000", "supplierVatId": "EE102090374", "invoiceDate": "2026-08-31", "servicePeriodEnd": "2026-08-31", "taxPointDate": "2026-08-31", "currency": "RON", "commissionAmount": 1000 },
+    { "label": "Factura Uber UBR-RO-2026-08-1002", "supplierVatId": "NL852071589B01", "invoiceDate": "2026-08-31", "servicePeriodEnd": "2026-08-31", "taxPointDate": "2026-08-31", "currency": "RON", "commissionAmount": 600 }
   ],
   "reports": [ { "currency": "RON", "income": 8000, "periodTo": "2026-08-31" }, { "currency": "RON", "income": 5000, "periodTo": "2026-08-31" } ],
   "expected": {

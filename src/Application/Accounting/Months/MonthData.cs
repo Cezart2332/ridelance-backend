@@ -106,9 +106,14 @@ internal sealed class MonthData
         List<Guid> ids = [.. pfaIds];
         (DateOnly start, DateOnly end) = AccountingScope.Bounds(period);
 
+        // F12: o factură de comision ține de luna datei impozitării, oricare ar fi perioada sub care a
+        // fost încărcată; restul documentelor, de perioada lor.
         var documents = await db.PlatformDocuments
             .AsNoTracking()
-            .Where(d => ids.Contains(d.PfaRegistrationId) && d.Period == period)
+            .Where(d => ids.Contains(d.PfaRegistrationId) &&
+                        (d.Period == period ||
+                         d.DocumentType == PlatformDocumentType.CommissionInvoice &&
+                         d.Extractions.Any(e => e.IsCurrent && e.TaxPointDate >= start && e.TaxPointDate <= end)))
             .Select(d => new
             {
                 Document = d,
@@ -183,6 +188,11 @@ internal sealed class MonthData
             Period,
             [.. confirmed
                 .Where(d => d.Document.DocumentType == PlatformDocumentType.CommissionInvoice)
+                // F12: în lună intră facturile cu data impozitării în lună; cele fără dată, din perioada
+                // lor, ca să oprească generarea (nu se ghicește luna).
+                .Where(d => d.Extraction!.TaxPointDate is { } taxPoint
+                    ? taxPoint >= Start && taxPoint <= End
+                    : d.Document.Period == Period)
                 .Select(d => new TaxInvoice(
                     d.Document.Id,
                     Label(d),

@@ -61,7 +61,7 @@ internal static class PreCheck
                     }
                     else if (type == PlatformDocumentType.CommissionInvoice)
                     {
-                        missing.AddRange(InvoiceCoverageGaps(data.Period, platform, present, settings.VatExigibility));
+                        missing.AddRange(InvoiceCoverageGaps(data.Period, platform, present));
                     }
                 }
             }
@@ -99,7 +99,7 @@ internal static class PreCheck
 
         if (!data.Art317ActiveAtEnd(pfa.Id))
         {
-            review.Add("Codul special de TVA art. 317 nu e activ în perioadă (Setări contabilitate).");
+            review.Add($"{MonthlyTaxEngine.Art317Missing} în perioadă (Setări contabilitate).");
         }
 
         if (missing.Count == 0 && review.Count == 0)
@@ -133,7 +133,7 @@ internal static class PreCheck
     /// </list>
     /// Facturile fără perioadă citită nu intră în verificare (le semnalează documentul însuși).
     /// </summary>
-    internal static IEnumerable<string> InvoiceCoverageGaps(string period, Platform platform, IReadOnlyList<MonthDocument> invoices, VatExigibilityRule rule)
+    internal static IEnumerable<string> InvoiceCoverageGaps(string period, Platform platform, IReadOnlyList<MonthDocument> invoices)
     {
         List<(DateOnly From, DateOnly To)> spans = [.. invoices
             .Where(d => d.Extraction is { PeriodFrom: not null, PeriodTo: not null })
@@ -147,7 +147,8 @@ internal static class PreCheck
 
         (DateOnly start, DateOnly end) = AccountingScope.Bounds(period);
         string name = PlatformName(platform);
-        bool edges = rule != VatExigibilityRule.InvoiceDate;
+        // Luna fiscală vine din data impozitării (F12): facturile de la margini trebuie să existe.
+        const bool edges = true;
 
         if (edges && spans[0].From > start)
         {
@@ -198,7 +199,7 @@ internal static class PreCheck
         }
 
         MonthData data = await MonthData.LoadAsync(db, period, [pfaId], cancellationToken);
-        PreCheckResult result = Evaluate(scope[0], data, TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), period, options.VatExigibility));
+        PreCheckResult result = Evaluate(scope[0], data, TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), period));
         await SaveAsync(db, pfaId, period, result, cancellationToken);
         return result;
     }

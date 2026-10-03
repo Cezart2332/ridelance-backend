@@ -51,12 +51,12 @@ public sealed record ClientWorkspaceRow(
 /// </summary>
 public sealed record ListClientWorkspaceQuery(string Period) : IQuery<IReadOnlyList<ClientWorkspaceRow>>;
 
-internal sealed class ListClientWorkspaceQueryHandler(IApplicationDbContext db, IUserContext userContext, IOptions<AccountingOptions> options)
+internal sealed class ListClientWorkspaceQueryHandler(IApplicationDbContext db, IUserContext userContext)
     : IQueryHandler<ListClientWorkspaceQuery, IReadOnlyList<ClientWorkspaceRow>>
 {
     public async Task<Result<IReadOnlyList<ClientWorkspaceRow>>> Handle(ListClientWorkspaceQuery query, CancellationToken cancellationToken)
     {
-        Result<PeriodOverview> overview = await new GetPeriodOverviewQueryHandler(db, options)
+        Result<PeriodOverview> overview = await new GetPeriodOverviewQueryHandler(db)
             .Handle(new GetPeriodOverviewQuery(query.Period), cancellationToken);
         if (overview.IsFailure)
         {

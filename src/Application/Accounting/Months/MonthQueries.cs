@@ -17,7 +17,7 @@ public sealed record GetPeriodOverviewQuery(string Period) : IQuery<PeriodOvervi
 /// Privirea de ansamblu a lunii (spec B3): toate PFA-urile, dintr-un număr fix de interogări —
 /// PFA-urile, documentele, setările și regulile, pre-check-urile, declarațiile — nu câte una pe PFA.
 /// </summary>
-internal sealed class GetPeriodOverviewQueryHandler(IApplicationDbContext db, IOptions<AccountingOptions> options)
+internal sealed class GetPeriodOverviewQueryHandler(IApplicationDbContext db)
     : IQueryHandler<GetPeriodOverviewQuery, PeriodOverview>
 {
     public async Task<Result<PeriodOverview>> Handle(GetPeriodOverviewQuery query, CancellationToken cancellationToken)
@@ -34,7 +34,7 @@ internal sealed class GetPeriodOverviewQueryHandler(IApplicationDbContext db, IO
             .Where(c => c.Period == query.Period && ids.Contains(c.PfaRegistrationId))
             .ToDictionaryAsync(c => c.PfaRegistrationId, cancellationToken);
         List<DeclarationSummaries.CurrentVersion> versions = await DeclarationSummaries.CurrentVersionsAsync(db, query.Period, ids, cancellationToken);
-        var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), query.Period, options.Value.VatExigibility);
+        var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), query.Period);
 
         List<OverviewRow> rows = [.. pfas.Select(pfa =>
         {
@@ -79,7 +79,7 @@ internal sealed class GetPeriodOverviewQueryHandler(IApplicationDbContext db, IO
 /// <summary><c>GET /accounting/pfas/{pfaId}/declarations?period=</c> — D100, D301, D390.</summary>
 public sealed record ListDeclarationsQuery(Guid PfaId, string Period) : IQuery<IReadOnlyList<DeclarationSummary>>;
 
-internal sealed class ListDeclarationsQueryHandler(IApplicationDbContext db, IOptions<AccountingOptions> options)
+internal sealed class ListDeclarationsQueryHandler(IApplicationDbContext db)
     : IQueryHandler<ListDeclarationsQuery, IReadOnlyList<DeclarationSummary>>
 {
     public async Task<Result<IReadOnlyList<DeclarationSummary>>> Handle(ListDeclarationsQuery query, CancellationToken cancellationToken)
@@ -105,7 +105,7 @@ internal sealed class ListDeclarationsQueryHandler(IApplicationDbContext db, IOp
         MonthData? data = check?.Status == PfaMonthStatus.Ready && versions.Count == 0
             ? await MonthData.LoadAsync(db, query.Period, [pfa.Id], cancellationToken)
             : null;
-        var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), query.Period, options.Value.VatExigibility);
+        var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), query.Period);
 
         return Result.Success(DeclarationSummaries.For(pfa, query.Period, check, versions, () => MonthlyTaxEngine.Calculate(data!.TaxInput(pfa.Id, settings))));
     }

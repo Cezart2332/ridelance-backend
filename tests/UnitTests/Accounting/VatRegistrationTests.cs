@@ -2,7 +2,9 @@ using System.Text;
 using Application.Abstractions.Anaf;
 using Application.Abstractions.Authentication;
 using Application.Accounting;
+using Application.Accounting.Contracts;
 using Application.Accounting.Declarations;
+using Application.Accounting.Months;
 using Application.Accounting.Pfas;
 using Application.Accounting.VatRegistration;
 using Domain.Accounting;
@@ -89,7 +91,7 @@ public sealed class VatRegistrationTests : IDisposable
     }
 
     [Fact]
-    public async Task No_generates_the_D700_from_the_pfa_data_once()
+    public async Task F01_F02_No_generates_the_D700_from_the_pfa_data_once()
     {
         VatRegistrationRequest request = (await Service().EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value;
 
@@ -126,7 +128,7 @@ public sealed class VatRegistrationTests : IDisposable
     }
 
     [Fact]
-    public async Task Validated_approved_submitted_then_the_vat_code_reaches_settings_and_profile()
+    public async Task F03_TheCodeIsActiveOnlyAfterSubmissionAndTheFiscalVectorProof()
     {
         VatRegistrationService service = Service();
         Guid id = (await service.EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value.Id;
@@ -140,9 +142,15 @@ public sealed class VatRegistrationTests : IDisposable
 
         (await service.TransitionAsync(id, VatRegistrationStatus.Approved, null, _accountant, CancellationToken.None)).Value.Status.ShouldBe(VatRegistrationStatus.Approved);
         (await service.GenerateAsync(_pfa, _accountant, CancellationToken.None)).Error.ShouldBe(VatRegistrationErrors.Locked);
-        (await service.TransitionAsync(id, VatRegistrationStatus.Submitted, null, _accountant, CancellationToken.None)).Value.Status.ShouldBe(VatRegistrationStatus.Submitted);
-
         var certificate = new VatCertificateFile("certificat.pdf", "application/pdf", "%PDF-1.4 certificat"u8.ToArray());
+
+        // F03: nu înainte de depunere și nu fără dovada din vectorul fiscal.
+        (await service.RegisterAsync(id, "RO12345674", new DateOnly(2026, 10, 1), certificate, _accountant, CancellationToken.None))
+            .Error.Code.ShouldBe("VatRegistration.WrongStatus");
+        (await service.TransitionAsync(id, VatRegistrationStatus.Submitted, null, _accountant, CancellationToken.None)).Value.Status.ShouldBe(VatRegistrationStatus.Submitted);
+        (await service.RegisterAsync(id, "RO12345674", new DateOnly(2026, 10, 1), null, _accountant, CancellationToken.None))
+            .Error.ShouldBe(VatRegistrationErrors.CertificateRequired);
+
         VatRegistrationRequest registered = (await service.RegisterAsync(id, "ro 1234 5674", new DateOnly(2026, 10, 1), certificate, _accountant, CancellationToken.None)).Value;
         registered.Status.ShouldBe(VatRegistrationStatus.Registered);
         registered.VatCode.ShouldBe("RO12345674");
@@ -198,6 +206,25 @@ public sealed class VatRegistrationTests : IDisposable
         (await new ListVatRegistrationsQueryHandler(_db, new FixedUser(other)).Handle(new ListVatRegistrationsQuery(), CancellationToken.None)).Value.ShouldBeEmpty();
     }
 
+    /// <summary>F04: procesarea lunii pe un PFA fără art. 317 activ oprește D301/D390 și creează task-ul D700.</summary>
+    [Fact]
+    public async Task F04_ProcessingAMonthWithoutArt317CreatesTheD700Task()
+    {
+        _db.PfaAccountingEngagements.Add(new PfaAccountingEngagement { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, StartDate = new DateOnly(2026, 1, 1), Status = EngagementStatus.Active });
+        _db.TaxRules.AddRange(Application.Accounting.Tax.TaxRuleSeed.Rules);
+        await _db.SaveChangesAsync();
+        var files = new DeclarationFiles(_db, new AnafDeclarationXmlService(), _files, new PlainSecrets());
+        var validator = new DeclarationValidator(_db, new AnafDeclarationXmlService(), _anaf, files, Options.Create(new AccountingOptions()));
+
+        JobRef job = (await new StartMonthJobCommandHandler(_db, new FixedUser(_accountant))
+            .Handle(new StartMonthJobCommand(BackgroundJobType.ProcessPeriod, "2026-09", _pfa), CancellationToken.None)).Value;
+        (await new RunMonthJobCommandHandler(_db, new NoExtraction(), files, validator, Service()).Handle(new RunMonthJobCommand(job.JobId), CancellationToken.None))
+            .IsSuccess.ShouldBeTrue();
+
+        (await _db.PfaMonthChecks.SingleAsync()).ReasonsJson.ShouldContain("art. 317");
+        (await _db.VatRegistrationRequests.SingleAsync(r => r.PfaRegistrationId == _pfa)).Status.ShouldBe(VatRegistrationStatus.Generated);
+    }
+
     [Fact]
     public async Task A_pfa_without_a_request_gets_null_not_an_error()
     {
@@ -207,6 +234,12 @@ public sealed class VatRegistrationTests : IDisposable
 
         await Service().EnsureRequestedAsync(_pfa, null, CancellationToken.None);
         (await new GetPfaVatRegistrationQueryHandler(_db).Handle(new GetPfaVatRegistrationQuery(_pfa), CancellationToken.None)).Value!.Status.ShouldBe(VatRegistrationStatus.Generated);
+    }
+
+    private sealed class NoExtraction : Application.Abstractions.Messaging.ICommandHandler<Application.Accounting.Documents.RunPlatformDocumentExtractionCommand>
+    {
+        public Task<Result> Handle(Application.Accounting.Documents.RunPlatformDocumentExtractionCommand command, CancellationToken cancellationToken) =>
+            Task.FromResult(Result.Success());
     }
 
     private VatRegistrationService Service()

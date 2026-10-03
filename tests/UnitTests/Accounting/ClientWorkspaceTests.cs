@@ -77,7 +77,7 @@ public sealed class ClientWorkspaceTests : IDisposable
     }
 
     private async Task<IReadOnlyList<ClientWorkspaceRow>> List(Guid user) =>
-        (await new ListClientWorkspaceQueryHandler(_db, new FixedUser(user), Options.Create(new AccountingOptions()))
+        (await new ListClientWorkspaceQueryHandler(_db, new FixedUser(user))
             .Handle(new ListClientWorkspaceQuery("2026-08"), CancellationToken.None)).Value;
 
     private Guid Pfa(string firstName, string lastName, string cui, Guid? accountant, bool onboarded)

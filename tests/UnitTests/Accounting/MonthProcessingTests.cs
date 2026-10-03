@@ -578,7 +578,7 @@ public sealed class MonthProcessingTests : IDisposable
     private async Task<JobDto> RunJob(BackgroundJobType type, Guid? pfaId = null)
     {
         JobRef started = (await new StartMonthJobCommandHandler(_db, User()).Handle(new StartMonthJobCommand(type, Period, pfaId), CancellationToken.None)).Value;
-        Result run = await new RunMonthJobCommandHandler(_db, new NoExtraction(), Files(), Validator(), _options).Handle(new RunMonthJobCommand(started.JobId), CancellationToken.None);
+        Result run = await new RunMonthJobCommandHandler(_db, new NoExtraction(), Files(), Validator()).Handle(new RunMonthJobCommand(started.JobId), CancellationToken.None);
         run.IsSuccess.ShouldBeTrue();
         return (await new GetJobQueryHandler(_db).Handle(new GetJobQuery(started.JobId), CancellationToken.None)).Value;
     }
@@ -590,10 +590,10 @@ public sealed class MonthProcessingTests : IDisposable
     private DeclarationActions Actions() => new(_db, Files(), Validator(), _options);
 
     private async Task<PeriodOverview> Overview() =>
-        (await new GetPeriodOverviewQueryHandler(_db, _options).Handle(new GetPeriodOverviewQuery(Period), CancellationToken.None)).Value;
+        (await new GetPeriodOverviewQueryHandler(_db).Handle(new GetPeriodOverviewQuery(Period), CancellationToken.None)).Value;
 
     private async Task<IReadOnlyList<DeclarationSummary>> Declarations(Guid pfaId) =>
-        (await new ListDeclarationsQueryHandler(_db, _options).Handle(new ListDeclarationsQuery(pfaId, Period), CancellationToken.None)).Value;
+        (await new ListDeclarationsQueryHandler(_db).Handle(new ListDeclarationsQuery(pfaId, Period), CancellationToken.None)).Value;
 
     private static OverviewRow Row(PeriodOverview overview, Guid pfaId) => overview.Rows.Single(r => r.PfaId == pfaId);
 
@@ -686,6 +686,7 @@ public sealed class MonthProcessingTests : IDisposable
             InvoiceDate = new DateOnly(2026, 8, 31),
             PeriodFrom = new DateOnly(2026, 8, 1),
             PeriodTo = new DateOnly(2026, 8, 31),
+            TaxPointDate = new DateOnly(2026, 8, 31),
             Currency = "RON",
             Amount = commission,
             CommissionAmount = commission,
