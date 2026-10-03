@@ -67,6 +67,25 @@ public enum DeclarationType
     D100 = 0,
     D301 = 1,
     D390 = 2,
+
+    /// <summary>Informativă anuală pe beneficiarii nerezidenți (spec declarații F30–F32).</summary>
+    D207 = 3,
+
+    /// <summary>Informativă anuală pe beneficiarii rezidenți, doar cu chirie de la persoane fizice (F40–F43).</summary>
+    D205 = 4,
+
+    /// <summary>Declarația unică: impozitul anual și CAS/CASS (F50–F55).</summary>
+    D212 = 5,
+}
+
+/// <summary>Grupele de declarații: lunarele se calculează din luna fiscală, anualele din anul închis.</summary>
+public static class DeclarationTypes
+{
+    public static readonly IReadOnlyList<DeclarationType> Monthly = [DeclarationType.D100, DeclarationType.D301, DeclarationType.D390];
+
+    public static readonly IReadOnlyList<DeclarationType> Annual = [DeclarationType.D207, DeclarationType.D205, DeclarationType.D212];
+
+    public static bool IsAnnual(DeclarationType type) => Annual.Contains(type);
 }
 
 [JsonConverter(typeof(UpperSnakeCaseEnumConverter<DeclarationVersionKind>))]

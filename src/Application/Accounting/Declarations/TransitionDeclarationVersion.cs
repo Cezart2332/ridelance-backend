@@ -20,7 +20,8 @@ internal sealed class DeclarationActions(
     IApplicationDbContext db,
     DeclarationFiles files,
     DeclarationValidator validator,
-    IOptions<AccountingOptions> options)
+    IOptions<AccountingOptions> options,
+    Annual.AnnualDeclarationService? annual = null)
 {
     public async Task<Result> TransitionAsync(Guid versionId, DeclarationAction action, string? note, Guid? userId, CancellationToken cancellationToken)
     {
@@ -39,6 +40,10 @@ internal sealed class DeclarationActions(
         string? text = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         switch (action)
         {
+            // Anualele (D207, D205, D212) se depun manual: validarea recalculează și compară cu snapshot-ul.
+            case DeclarationAction.Validate when DeclarationTypes.IsAnnual(version.Declaration.Type):
+                return annual is null ? Result.Failure(DeclarationErrors.AnnualUnavailable) : await annual.ValidateAsync(version, userId, cancellationToken);
+
             case DeclarationAction.Validate:
                 Result<ValidationRun> run = await validator.ValidateAsync(version.Id, userId, cancellationToken);
                 return run.IsSuccess ? Result.Success() : Result.Failure(run.Error);
@@ -140,6 +145,11 @@ internal sealed class DeclarationActions(
             return Result.Failure<Guid>(DeclarationErrors.RectificationOnlyWhenAccepted);
         }
 
+        if (DeclarationTypes.IsAnnual(declaration.Type))
+        {
+            return await CreateAnnualRectificationAsync(declaration, current, reason.Trim(), userId, cancellationToken);
+        }
+
         Result<DeclarationDraft> draft = await DeclarationContent.CalculateAsync(
             db, declaration.PfaRegistrationId, declaration.Period, declaration.Type,
             TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), declaration.Period), cancellationToken);
@@ -184,10 +194,70 @@ internal sealed class DeclarationActions(
         return version.Id;
     }
 
+    /// <summary>Rectificativa anuală: versiune nouă din datele de acum; cea depusă rămâne neschimbată.</summary>
+    private async Task<Result<Guid>> CreateAnnualRectificationAsync(Declaration declaration, DeclarationVersion current, string text, Guid? userId, CancellationToken cancellationToken)
+    {
+        if (annual is null)
+        {
+            return Result.Failure<Guid>(DeclarationErrors.AnnualUnavailable);
+        }
+
+        Result<Annual.AnnualData> draft = await annual.DraftAsync(declaration, cancellationToken);
+        if (draft.IsFailure)
+        {
+            return Result.Failure<Guid>(draft.Error);
+        }
+
+        var version = new DeclarationVersion
+        {
+            Id = Guid.NewGuid(),
+            DeclarationId = declaration.Id,
+            VersionNo = current.VersionNo + 1,
+            Kind = DeclarationVersionKind.Rectificative,
+            Status = DeclarationStatus.Generated,
+            RectificationReason = text,
+            StatusHistoryJson = AccountingJson.Serialize(new[] { new Months.StatusHistoryRecord(null, DeclarationStatus.Generated, DateTime.UtcNow, userId, text) }),
+            CreatedByUserId = userId,
+            CreatedAtUtc = DateTime.UtcNow,
+        };
+        Annual.AnnualDeclarationService.Apply(version, draft.Value, declaration.Type);
+        db.DeclarationVersions.Add(version);
+        AccountingAudit.Record(
+            db, declaration.PfaRegistrationId, nameof(DeclarationVersion), version.Id, "RECTIFICATION",
+            new { versionNo = current.VersionNo, amount = current.Amount },
+            new { type = declaration.Type, versionNo = version.VersionNo, amount = version.Amount },
+            text,
+            userId);
+        await RectificationTasks.ResolveAsync(db, declaration.Id, version.Id, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return version.Id;
+    }
+
     /// <summary>Regenerarea, pe aceeași versiune: recalcul din datele de acum, XML nou, validarea de la capăt.</summary>
     private async Task<Result> RegenerateAsync(DeclarationVersion version, string? note, Guid? userId, CancellationToken cancellationToken)
     {
         Declaration declaration = version.Declaration;
+        if (DeclarationTypes.IsAnnual(declaration.Type))
+        {
+            if (annual is null)
+            {
+                return Result.Failure(DeclarationErrors.AnnualUnavailable);
+            }
+
+            Result<Annual.AnnualData> annualDraft = await annual.DraftAsync(declaration, cancellationToken);
+            if (annualDraft.IsFailure)
+            {
+                return annualDraft;
+            }
+
+            decimal previous = version.Amount;
+            DeclarationStatus source = version.Status;
+            Annual.AnnualDeclarationService.Apply(version, annualDraft.Value, declaration.Type);
+            DeclarationStateMachine.Move(version, DeclarationStatus.Generated, userId, note);
+            Audit(version, "REGENERATE", new { status = source, amount = previous }, new { status = DeclarationStatus.Generated, amount = version.Amount }, note, userId);
+            await db.SaveChangesAsync(cancellationToken);
+            return Result.Success();
+        }
         Result<DeclarationDraft> draft = await DeclarationContent.CalculateAsync(
             db, declaration.PfaRegistrationId, declaration.Period, declaration.Type,
             TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), declaration.Period), cancellationToken);

@@ -70,6 +70,7 @@ internal sealed class MonthData
     private readonly ILookup<Guid, PfaAccountingSetting> _settings;
     private readonly ILookup<Guid, Platform> _onboardingPlatforms;
     private readonly ILookup<Guid, NonResidentLine> _nonResident;
+    private readonly ILookup<Guid, Annual.RentWithholding> _rent;
 
     private MonthData(
         string period,
@@ -77,6 +78,7 @@ internal sealed class MonthData
         ILookup<Guid, PfaAccountingSetting> settings,
         ILookup<Guid, Platform> onboardingPlatforms,
         ILookup<Guid, NonResidentLine> nonResident,
+        ILookup<Guid, Annual.RentWithholding> rent,
         List<SupplierTaxProfile> suppliers,
         List<VatRate> vatRates,
         List<D100Rule> d100Rules,
@@ -88,6 +90,7 @@ internal sealed class MonthData
         _settings = settings;
         _onboardingPlatforms = onboardingPlatforms;
         _nonResident = nonResident;
+        _rent = rent;
         Suppliers = suppliers;
         VatRates = vatRates;
         D100Rules = d100Rules;
@@ -148,6 +151,7 @@ internal sealed class MonthData
             settings.ToLookup(s => s.PfaRegistrationId),
             accounts.ToLookup(a => a.PfaRegistrationId, a => a.Provider == PfaPlatformProvider.Bolt ? Platform.Bolt : Platform.Uber),
             await NonResident.NonResidentSync.LinesAsync(db, ids, start, end, cancellationToken),
+            await Annual.RentLines.LoadAsync(db, null, ids, start, end, cancellationToken),
             await db.SupplierTaxProfiles.AsNoTracking().ToListAsync(cancellationToken),
             await db.VatRates.AsNoTracking().ToListAsync(cancellationToken),
             await db.D100Rules.AsNoTracking().ToListAsync(cancellationToken),
@@ -224,7 +228,8 @@ internal sealed class MonthData
             ExchangeRates,
             Art317Of(pfaId),
             settings,
-            [.. _nonResident[pfaId]]);
+            [.. _nonResident[pfaId]],
+            [.. _rent[pfaId]]);
     }
 
     /// <summary>„Factura Bolt EE-BOLT-2026-08-1000”, „Raportul Uber”.</summary>

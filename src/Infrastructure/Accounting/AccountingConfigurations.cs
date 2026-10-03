@@ -481,6 +481,11 @@ internal sealed class CashRegisterStateConfiguration : IEntityTypeConfiguration<
         builder.ToTable("cash_register_states");
         builder.HasKey(c => c.PfaRegistrationId);
         builder.Property(c => c.Status).AsText();
+        builder.Property(c => c.C801Status).AsText().HasColumnName("c801_status");
+        builder.Property(c => c.C801DocumentId).HasColumnName("c801_document_id");
+        builder.Property(c => c.NuiNumber).HasMaxLength(64);
+        builder.Property(c => c.VehiclePlate).HasMaxLength(16);
+        builder.RestrictToDocument(c => c.C801DocumentId);
         builder.HasOne(c => c.PfaRegistration).WithOne().HasForeignKey<CashRegisterState>(c => c.PfaRegistrationId).OnDelete(DeleteBehavior.Restrict);
         builder.RestrictToUser(c => c.VerifiedByUserId);
         builder.RestrictToDocument(c => c.EvidenceDocumentId);
@@ -785,6 +790,50 @@ internal sealed class NonResidentTaxDecisionConfiguration : IEntityTypeConfigura
         builder.HasIndex(d => d.PaymentId).IsUnique();
         builder.HasOne<NonResidentPayment>().WithMany().HasForeignKey(d => d.PaymentId).OnDelete(DeleteBehavior.Restrict);
         builder.RestrictToUser(d => d.ConfirmedByUserId);
+    }
+}
+
+internal sealed class RentalContractConfiguration : IEntityTypeConfiguration<RentalContract>
+{
+    public void Configure(EntityTypeBuilder<RentalContract> builder)
+    {
+        builder.ToTable("rental_contracts");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.OwnerName).HasMaxLength(256).IsRequired();
+        builder.Property(c => c.OwnerCnpEncrypted).HasMaxLength(1024).IsRequired();
+        builder.Property(c => c.ContractNumber).HasMaxLength(64).IsRequired();
+        builder.Property(c => c.GrossRent).AsMoney();
+        builder.Property(c => c.PaymentFrequency).HasMaxLength(16).IsRequired();
+        builder.HasIndex(c => c.PfaRegistrationId);
+        builder.RestrictToPfa(c => c.PfaRegistrationId);
+        builder.HasOne<TaxRule>().WithMany().HasForeignKey(c => c.WithholdingRuleId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToDocument(c => c.ContractDocumentId);
+    }
+}
+
+internal sealed class RentPaymentConfiguration : IEntityTypeConfiguration<RentPayment>
+{
+    public void Configure(EntityTypeBuilder<RentPayment> builder)
+    {
+        builder.ToTable("rent_payments");
+        builder.HasKey(p => p.Id);
+        builder.Property(p => p.GrossAmount).AsMoney();
+        builder.HasIndex(p => new { p.RentalContractId, p.PaymentDate });
+        builder.HasOne<RentalContract>().WithMany().HasForeignKey(p => p.RentalContractId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<LedgerEntry>().WithMany().HasForeignKey(p => p.LedgerEntryId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class AnnualTaxAnswersConfiguration : IEntityTypeConfiguration<AnnualTaxAnswers>
+{
+    public void Configure(EntityTypeBuilder<AnnualTaxAnswers> builder)
+    {
+        builder.ToTable("annual_tax_answers");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.AnafPrefilledNetIncome).AsMoney();
+        builder.HasIndex(a => new { a.PfaRegistrationId, a.TaxYear }).IsUnique();
+        builder.RestrictToPfa(a => a.PfaRegistrationId);
+        builder.RestrictToUser(a => a.AnsweredByUserId);
     }
 }
 

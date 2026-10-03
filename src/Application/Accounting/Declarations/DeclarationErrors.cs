@@ -39,4 +39,6 @@ internal static class DeclarationErrors
         $"Acțiunea {AccountingJson.Serialize(action).Trim('"')} nu e permisă din statusul {AccountingJson.Serialize(status).Trim('"')}.");
 
     public static readonly Error IndexRequired = Error.Problem("Accounting.IndexRequired", "Indexul de încărcare ANAF e obligatoriu.");
+
+    public static readonly Error AnnualUnavailable = Error.Problem("Accounting.AnnualUnavailable", "Calculul declarațiilor anuale nu e disponibil.");
 }
