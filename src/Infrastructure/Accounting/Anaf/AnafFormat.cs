@@ -17,13 +17,6 @@ internal static class AnafFormat
         return (start.Month, start.Year);
     }
 
-    /// <summary>Scadența D100 / D301: 25 a lunii următoare perioadei de raportare.</summary>
-    public static DateOnly DueDate(string period)
-    {
-        (int month, int year) = Period(period);
-        return new DateOnly(year, month, 25).AddMonths(1);
-    }
-
     /// <summary>
     /// Numărul de evidență a plății (23 de cifre): primele 21 de poziții, plus suma lor de control
     /// (ultimele două cifre ale sumei cifrelor).
@@ -39,11 +32,13 @@ internal static class AnafFormat
         return first21 + (sum % 100).ToString("00", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Poz. 8–17 ale numărului de evidență: <c>LLAA</c> perioada și <c>ZZLLAA</c> scadența.</summary>
-    public static string PeriodAndDue(string period)
+    /// <summary>
+    /// Poz. 8–17 ale numărului de evidență: <c>LLAA</c> perioada și <c>ZZLLAA</c> scadența (termenul
+    /// vine din regula <c>Deadline</c> a perioadei).
+    /// </summary>
+    public static string PeriodAndDue(string period, DateOnly due)
     {
         (int month, int year) = Period(period);
-        DateOnly due = DueDate(period);
         return string.Create(CultureInfo.InvariantCulture, $"{month:00}{year % 100:00}{due.Day:00}{due.Month:00}{due.Year % 100:00}");
     }
 

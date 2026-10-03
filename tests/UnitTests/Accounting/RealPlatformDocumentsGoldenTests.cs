@@ -88,7 +88,7 @@ public sealed class RealPlatformDocumentsGoldenTests
         ],
         [],
         [new Art317Period(true, new DateOnly(2025, 9, 1))],
-        TaxEngineSettings.From(new AccountingOptions()));
+        TaxEngineSettings.ForPeriod(new TaxRuleSet(TaxRuleSeed.Rules), "2026-08"));
 
     [Fact]
     public void August_2026_real_documents_give_the_expected_declarations()

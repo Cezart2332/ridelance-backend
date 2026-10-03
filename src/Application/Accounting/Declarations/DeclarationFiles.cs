@@ -84,8 +84,9 @@ internal sealed class DeclarationFiles(
     }
 
     /// <summary>Intrarea mapperului: liniile calculului, cu numărul și data facturii din snapshot.</summary>
-    public static AnafDeclarationInput Input(Declaration declaration, DeclarationVersion version, AnafTaxpayer taxpayer, DeclarationSnapshot snapshot)
+    public static AnafDeclarationInput Input(Declaration declaration, DeclarationVersion version, AnafTaxpayer taxpayer, DeclarationSnapshot snapshot, Tax.DeclarationRules rules)
     {
+        ArgumentNullException.ThrowIfNull(rules);
         var invoices = snapshot.Input.Invoices.ToDictionary(invoice => invoice.DocumentId);
         return new AnafDeclarationInput(
             declaration.Type,
@@ -107,8 +108,22 @@ internal sealed class DeclarationFiles(
                     line.SupplierCountry,
                     line.SupplierVatId);
             })],
-            version.Amount);
+            version.Amount,
+            declaration.Type == DeclarationType.D390 || rules.ObligationCode is not null
+                ? rules.ObligationCode
+                : throw new Tax.TaxRuleConfigurationException($"Lipsește codul de obligație {declaration.Type} pentru {declaration.Period}."),
+            rules.BudgetCode,
+            rules.DueDate ?? throw new Tax.TaxRuleConfigurationException($"Lipsește termenul {declaration.Type} pentru {declaration.Period}."));
     }
+
+    /// <summary>
+    /// Codurile și termenul declarației: cele înghețate în snapshot la generare; un snapshot mai vechi
+    /// decât regulile versionate le ia din regulile perioadei.
+    /// </summary>
+    public async Task<Tax.DeclarationRules> RulesAsync(Declaration declaration, DeclarationSnapshot snapshot, CancellationToken cancellationToken) =>
+        snapshot.Input.Settings.Declarations?.GetValueOrDefault(declaration.Type) is { DueDate: not null } frozen
+            ? frozen
+            : Tax.TaxEngineSettings.ForPeriod(await Tax.TaxRuleSet.LoadAsync(db, cancellationToken), declaration.Period).Declarations![declaration.Type];
 
     /// <summary>Schema valabilă la sfârșitul perioadei declarației (nu la data curentă).</summary>
     public static AnafDeclarationSchema? PickSchema(IEnumerable<AnafDeclarationSchema> schemas, DeclarationType type, string period)
@@ -143,7 +158,7 @@ internal sealed class DeclarationFiles(
             return null;
         }
 
-        byte[] content = xml.Build(schema.Version, Input(declaration, version, taxpayer, snapshot));
+        byte[] content = xml.Build(schema.Version, Input(declaration, version, taxpayer, snapshot, await RulesAsync(declaration, snapshot, cancellationToken)));
         Document document = await StoreAsync(
             declaration.PfaRegistrationId,
             content,

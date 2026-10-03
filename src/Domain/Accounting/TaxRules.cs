@@ -147,3 +147,66 @@ public sealed class RetentionPolicy : Entity, IAccountingRecord, IValidityPeriod
     public DateOnly ValidFrom { get; set; }
     public DateOnly? ValidTo { get; set; }
 }
+
+/// <summary>Tipurile de <see cref="TaxRule"/> (spec declarații §4).</summary>
+public static class TaxRuleTypes
+{
+    /// <summary>Codul de obligație bugetară al unei declarații (<c>634</c> pentru D100, comisioane nerezidenți).</summary>
+    public const string ObligationCode = "ObligationCode";
+
+    /// <summary>Codul bugetar din XML-ul declarației.</summary>
+    public const string BudgetCode = "BudgetCode";
+
+    /// <summary>Termenul de depunere: <c>MONTHLY:25</c> (ziua din luna următoare), <c>ANNUAL:05-25</c>, <c>ANNUAL:02-LAST</c>.</summary>
+    public const string Deadline = "Deadline";
+
+    /// <summary>Statul e membru UE la dată (serviciile de la furnizori de aici intră în D301 și D390).</summary>
+    public const string EuMember = "EuMember";
+
+    /// <summary>Cota de impozit pe veniturile nerezidenților: pe furnizorul juridic (tratat) sau de fallback.</summary>
+    public const string NonResidentRate = "NonResidentRate";
+
+    /// <summary>Regula cursului de schimb: <c>SameDayOrPrevious</c> sau <c>PreviousPublication</c>, sursa în <c>LegalBasis</c>.</summary>
+    public const string ExchangeRate = "ExchangeRate";
+
+    /// <summary>Rotunjirea totalului unei declarații: <c>WholeLei</c> sau <c>None</c>.</summary>
+    public const string Rounding = "Rounding";
+
+    /// <summary>Pragul de materialitate (lei) pentru payout-urile nereconciliate: sub el avertisment, peste <c>Stop</c>.</summary>
+    public const string Materiality = "Materiality";
+
+    /// <summary>Reținerea la sursă pe chiria plătită unei persoane fizice (ramura D205).</summary>
+    public const string RentWithholding = "RentWithholding";
+}
+
+/// <summary>
+/// O regulă fiscală versionată (spec declarații §4): cote, praguri, coduri de obligație, termene.
+/// Se leagă de jurisdicție, entitatea juridică a furnizorului (cod fiscal, niciodată brandul), tipul
+/// de venit și dată. O regulă nu se șterge; se închide prin <see cref="ValidTo"/>.
+/// </summary>
+public sealed class TaxRule : Entity, IAccountingRecord, IValidityPeriod
+{
+    public Guid Id { get; set; }
+    public string RuleType { get; set; } = string.Empty;
+
+    /// <summary><c>RO</c>, sau țara tratatului / a furnizorului.</summary>
+    public string Jurisdiction { get; set; } = "RO";
+    public DateOnly ValidFrom { get; set; }
+    public DateOnly? ValidTo { get; set; }
+    public string LegalBasis { get; set; } = string.Empty;
+    public decimal? Rate { get; set; }
+    public decimal? Threshold { get; set; }
+    public string? Formula { get; set; }
+    public string? DeclarationCode { get; set; }
+    public string? AnafFormVersion { get; set; }
+    public string? ValidatorVersion { get; set; }
+
+    /// <summary>Codul fiscal al furnizorului (<c>EE102090374</c>), pentru reguli pe entitate. Niciodată brandul.</summary>
+    public string? SupplierEntityKey { get; set; }
+
+    /// <summary>Tipul venitului (<c>COMMISSION</c>, <c>RENT</c>).</summary>
+    public string? IncomeType { get; set; }
+
+    /// <summary>Confirmată juridic; o regulă neconfirmată duce la <c>NeedsLegalConfirmation</c>, nu se aplică singură.</summary>
+    public bool Confirmed { get; set; }
+}

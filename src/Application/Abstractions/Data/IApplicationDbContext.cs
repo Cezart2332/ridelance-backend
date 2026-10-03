@@ -145,6 +145,7 @@ public interface IApplicationDbContext
     DbSet<Domain.Accounting.FiscalReceipt> FiscalReceipts { get; }
     DbSet<Domain.Accounting.AccountingPeriodSnapshot> AccountingPeriodSnapshots { get; }
     DbSet<Domain.Accounting.FixedAssetRule> FixedAssetRules { get; }
+    DbSet<Domain.Accounting.TaxRule> TaxRules { get; }
     DbSet<Domain.Accounting.DepreciationLine> DepreciationLines { get; }
     DbSet<Domain.Accounting.InventoryCount> InventoryCounts { get; }
     DbSet<Domain.Accounting.InventoryItem> InventoryItems { get; }

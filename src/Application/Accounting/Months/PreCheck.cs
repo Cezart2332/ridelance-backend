@@ -198,7 +198,7 @@ internal static class PreCheck
         }
 
         MonthData data = await MonthData.LoadAsync(db, period, [pfaId], cancellationToken);
-        PreCheckResult result = Evaluate(scope[0], data, TaxEngineSettings.From(options));
+        PreCheckResult result = Evaluate(scope[0], data, TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), period, options.VatExigibility));
         await SaveAsync(db, pfaId, period, result, cancellationToken);
         return result;
     }

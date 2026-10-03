@@ -82,19 +82,6 @@ public sealed class AccountingOptions
     /// <summary>Regula pentru <c>PERIOD_MATCH</c> și cota de TVA. DE CONFIRMAT.</summary>
     public VatExigibilityRule VatExigibility { get; init; } = VatExigibilityRule.TaxPointDate;
 
-    /// <summary>Regula zilei cursului valutar. DE CONFIRMAT.</summary>
-    public ExchangeRateDateRule ExchangeRateDate { get; init; } = ExchangeRateDateRule.SameDayOrPrevious;
-
-    /// <summary>
-    /// Rotunjirea totalului, pe tip de declarație (<c>D100</c>, <c>D301</c>); lipsă = fără rotunjire.
-    /// D100 pornește în lei întregi, fiindcă XSD-ul ANAF nu acceptă bani pentru sume (B4); metoda
-    /// de rotunjire rămâne DE CONFIRMAT.
-    /// </summary>
-    public IDictionary<string, DeclarationRounding> DeclarationRounding { get; init; } = new Dictionary<string, DeclarationRounding>
-    {
-        ["D100"] = Accounting.DeclarationRounding.WholeLei,
-    };
-
     /// <summary>Procedura de corecție D100 pentru rectificative. DE CONFIRMAT.</summary>
     public D100CorrectionProcedure D100CorrectionProcedure { get; init; } = D100CorrectionProcedure.D710;
 
@@ -126,12 +113,6 @@ public sealed class AccountingOptions
     /// <summary>Toleranța de date la potrivirea unui bon cu plata din bancă (± zile; spec flux contabil Q2, R36).</summary>
     public int ExpenseMatchDays { get; init; } = 3;
 
-    /// <summary>Statele UE (cod TVA; Grecia e <c>EL</c>): serviciile de la furnizori de aici intră în D301 și D390.</summary>
-    public IList<string> EuCountries { get; init; } =
-    [
-        "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "EL", "ES", "FI", "FR", "HR", "HU",
-        "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "SE", "SI", "SK",
-    ];
 
     /// <summary>Modelul pentru extracție; gol = modelul implicit OpenRouter.</summary>
     public string? ExtractionModel { get; init; }

@@ -151,6 +151,7 @@ public sealed class ApplicationDbContext(
     public DbSet<Domain.Accounting.FiscalReceipt> FiscalReceipts { get; set; }
     public DbSet<Domain.Accounting.AccountingPeriodSnapshot> AccountingPeriodSnapshots { get; set; }
     public DbSet<Domain.Accounting.FixedAssetRule> FixedAssetRules { get; set; }
+    public DbSet<Domain.Accounting.TaxRule> TaxRules { get; set; }
     public DbSet<Domain.Accounting.DepreciationLine> DepreciationLines { get; set; }
     public DbSet<Domain.Accounting.InventoryCount> InventoryCounts { get; set; }
     public DbSet<Domain.Accounting.InventoryItem> InventoryItems { get; set; }

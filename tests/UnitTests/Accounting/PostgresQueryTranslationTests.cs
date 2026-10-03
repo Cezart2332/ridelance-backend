@@ -126,7 +126,7 @@ public sealed class PostgresQueryTranslationTests
         (await files.TaxpayerAsync(missing, CancellationToken.None)).ShouldBeNull();
         (await actions.CreateRectificationAsync(missing, "Corecție", null, CancellationToken.None)).IsFailure.ShouldBeTrue();
         (await actions.UploadReceiptAsync(missing, new ReceiptFile("r.pdf", "application/pdf", [1]), null, null, CancellationToken.None)).IsFailure.ShouldBeTrue();
-        (await DeclarationContent.CalculateAsync(db, missing, "2026-08", DeclarationType.D301, Application.Accounting.Tax.TaxEngineSettings.From(new AccountingOptions()), CancellationToken.None))
+        (await DeclarationContent.CalculateAsync(db, missing, "2026-08", DeclarationType.D301, Application.Accounting.Tax.TaxEngineSettings.ForPeriod(new Application.Accounting.Tax.TaxRuleSet(Application.Accounting.Tax.TaxRuleSeed.Rules), "2026-08"), CancellationToken.None))
             .IsFailure.ShouldBeTrue();
         (await new Application.Accounting.Audit.ListPfaAuditQueryHandler(db)
             .Handle(new Application.Accounting.Audit.ListPfaAuditQuery(missing, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), "DeclarationVersion"), CancellationToken.None))

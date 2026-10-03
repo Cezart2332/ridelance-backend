@@ -124,7 +124,8 @@ internal sealed class DeclarationValidator(
                 ?? await files.WriteXmlAsync(declaration, version, taxpayer, snapshot, schema, cancellationToken);
             if (content is not null)
             {
-                ridelance.AddRange(xml.VerifyContent(schema.Version, DeclarationFiles.Input(declaration, version, taxpayer, snapshot), content));
+                ridelance.AddRange(xml.VerifyContent(
+                    schema.Version, DeclarationFiles.Input(declaration, version, taxpayer, snapshot, await files.RulesAsync(declaration, snapshot, cancellationToken)), content));
                 xsd.AddRange(schema.XsdPath is null
                     ? [new ValidationMessage(null, $"Schema {declaration.Type} {schema.Version} nu are fișier XSD.")]
                     : xml.ValidateSchema(schema.XsdPath, content));

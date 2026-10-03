@@ -28,11 +28,6 @@ internal sealed class D100MapperV2 : IDeclarationXmlMapper
 {
     public const string Namespace = "mfp:anaf:dgti:d100:declaratie:v2";
 
-    /// <summary>Structura D100, poz. 16: „Impozit pe veniturile din comisioane obținute din România de persoane nerezidente”.</summary>
-    public const string CommissionObligation = "634";
-
-    /// <summary>Codul bugetar al obligației (<c>5503</c>), completat cu X până la 10 caractere.</summary>
-    public const string BudgetCode = "5503XXXXXX";
 
     public DeclarationType Type => DeclarationType.D100;
 
@@ -44,10 +39,11 @@ internal sealed class D100MapperV2 : IDeclarationXmlMapper
         ulong amount = WholeLei(input.Amount);
         var obligation = new ObligatieType
         {
-            CodOblig = IntListaCodObligSType.Item634,
-            CodBugetar = BudgetCode,
-            Scadenta = AnafFormat.Date(AnafFormat.DueDate(input.Period)),
-            NrEvid = decimal.Parse(AnafFormat.EvidenceNumber($"10{CommissionObligation}01{AnafFormat.PeriodAndDue(input.Period)}0000"), System.Globalization.CultureInfo.InvariantCulture),
+            // Codul de obligație vine din regula perioadei (spec declarații F24), nu din cod.
+            CodOblig = ObligationOf(input.ObligationCode ?? throw new InvalidOperationException("D100: lipsește codul de obligație din regula perioadei.")),
+            CodBugetar = input.BudgetCode ?? throw new InvalidOperationException("D100: lipsește codul bugetar din regula perioadei."),
+            Scadenta = AnafFormat.Date(input.DueDate),
+            NrEvid = decimal.Parse(AnafFormat.EvidenceNumber($"10{input.ObligationCode}01{AnafFormat.PeriodAndDue(input.Period, input.DueDate)}0000"), System.Globalization.CultureInfo.InvariantCulture),
             SumaDat = amount,
             SumaDed = 0,
             SumaPlata = amount,
@@ -91,9 +87,9 @@ internal sealed class D100MapperV2 : IDeclarationXmlMapper
             messages.Add(new ValidationMessage("cui", $"CUI-ul din XML ({declaration.Cui}) diferă de al PFA-ului ({input.Taxpayer.Cui})."));
         }
 
-        if (declaration.Obligatie.Count != 1 || declaration.Obligatie[0].CodOblig != IntListaCodObligSType.Item634)
+        if (declaration.Obligatie.Count != 1 || declaration.Obligatie[0].CodOblig != ObligationOf(input.ObligationCode ?? throw new InvalidOperationException("D100: lipsește codul de obligație din regula perioadei.")))
         {
-            messages.Add(new ValidationMessage("cod_oblig", $"D100 trebuie să aibă o singură obligație, codul {CommissionObligation}."));
+            messages.Add(new ValidationMessage("cod_oblig", $"D100 trebuie să aibă o singură obligație, codul {input.ObligationCode}."));
             return messages;
         }
 
@@ -116,20 +112,26 @@ internal sealed class D100MapperV2 : IDeclarationXmlMapper
             messages.Add(new ValidationMessage("totalPlata_A", $"Suma de control ({declaration.TotalPlataA}) nu e suma sumelor din obligații ({Checksum(declaration.Obligatie)})."));
         }
 
-        string due = AnafFormat.Date(AnafFormat.DueDate(input.Period));
+        string due = AnafFormat.Date(input.DueDate);
         if (obligation.Scadenta != due)
         {
             messages.Add(new ValidationMessage("scadenta", $"Scadența din XML ({obligation.Scadenta}) nu e {due}."));
         }
 
         string evidence = obligation.NrEvid.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        if (!AnafFormat.IsValidEvidenceNumber(evidence) || evidence[2..5] != CommissionObligation || evidence[7..17] != AnafFormat.PeriodAndDue(input.Period))
+        if (!AnafFormat.IsValidEvidenceNumber(evidence) || evidence[2..5] != input.ObligationCode || evidence[7..17] != AnafFormat.PeriodAndDue(input.Period, input.DueDate))
         {
             messages.Add(new ValidationMessage("nr_evid", $"Numărul de evidență a plății ({evidence}) nu e corect."));
         }
 
         return messages;
     }
+
+    /// <summary>Codul de obligație în enumerarea XSD-ului (<c>634</c> → <c>Item634</c>).</summary>
+    private static IntListaCodObligSType ObligationOf(string code) =>
+        Enum.TryParse($"Item{code}", out IntListaCodObligSType value)
+            ? value
+            : throw new InvalidOperationException($"Codul de obligație {code} nu există în schema D100.");
 
     /// <summary><c>totalPlata_A</c> = suma tuturor sumelor din obligații (structura D100, 11a).</summary>
     private static ulong Checksum(IEnumerable<ObligatieType> obligations) =>

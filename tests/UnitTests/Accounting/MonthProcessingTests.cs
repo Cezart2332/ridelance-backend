@@ -654,6 +654,7 @@ public sealed class MonthProcessingTests : IDisposable
                 ValidFrom = new DateOnly(2025, 1, 1), ResidenceCertValidFrom = new DateOnly(2026, 1, 1), ResidenceCertValidTo = new DateOnly(2026, 12, 31),
             });
         _db.VatRates.Add(new VatRate { Id = Guid.NewGuid(), Rate = 21, ValidFrom = new DateOnly(2025, 8, 1) });
+        _db.TaxRules.AddRange(Application.Accounting.Tax.TaxRuleSeed.Rules);
         _db.D100Rules.Add(new D100Rule { Id = Guid.NewGuid(), Code = D100RuleCode.D100CommissionNonresident, Enabled = true, ValidFrom = new DateOnly(2025, 1, 1) });
         _db.AnafDeclarationSchemas.AddRange(
             Schema(DeclarationType.D100, "v2-20220224", AnafSchemaCorrections.D100V2),
