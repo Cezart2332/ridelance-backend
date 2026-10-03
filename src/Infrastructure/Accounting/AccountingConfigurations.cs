@@ -709,6 +709,27 @@ internal sealed class FixedAssetRuleConfiguration : IEntityTypeConfiguration<Fix
     }
 }
 
+internal sealed class TaxRuleConfiguration : IEntityTypeConfiguration<TaxRule>
+{
+    public void Configure(EntityTypeBuilder<TaxRule> builder)
+    {
+        builder.ToTable("tax_rules");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.RuleType).HasMaxLength(AccountingMapping.EnumLength).IsRequired();
+        builder.Property(r => r.Jurisdiction).HasMaxLength(2).IsRequired();
+        builder.Property(r => r.LegalBasis).HasMaxLength(500).IsRequired();
+        builder.Property(r => r.Rate).AsRate();
+        builder.Property(r => r.Threshold).AsMoney();
+        builder.Property(r => r.Formula).HasMaxLength(200);
+        builder.Property(r => r.DeclarationCode).HasMaxLength(16);
+        builder.Property(r => r.AnafFormVersion).HasMaxLength(64);
+        builder.Property(r => r.ValidatorVersion).HasMaxLength(64);
+        builder.Property(r => r.SupplierEntityKey).HasMaxLength(32);
+        builder.Property(r => r.IncomeType).HasMaxLength(32);
+        builder.HasIndex(r => new { r.RuleType, r.Jurisdiction, r.ValidFrom });
+    }
+}
+
 internal sealed class DepreciationLineConfiguration : IEntityTypeConfiguration<DepreciationLine>
 {
     public void Configure(EntityTypeBuilder<DepreciationLine> builder)

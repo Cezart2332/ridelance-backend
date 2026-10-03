@@ -31,18 +31,21 @@ internal static class AnafTestSupport
         [
             Line("EE-BOLT-2026-08-1000", 1000m, 20m, "Bolt Operations OÜ", "EE", "EE102090374"),
             Line("UBR-RO-2026-08-1002", 600m, 0m, "Uber B.V.", "NL", UberVatId),
-        ], 20m),
+        ], 20m, "634", "5503XXXXXX", Due),
         DeclarationType.D301 => new(type, Period, false, Ion,
         [
             Line("EE-BOLT-2026-08-1000", 1000m, 210m, "Bolt Operations OÜ", "EE", "EE102090374"),
             Line("UBR-RO-2026-08-1002", 600m, 126m, "Uber B.V.", "NL", UberVatId),
-        ], 336m),
+        ], 336m, "301", null, Due),
         _ => new(type, Period, false, Ion,
         [
             Line(null, 1000m, 0m, "Bolt Operations OÜ", "EE", "EE102090374"),
             Line(null, 600m, 0m, "Uber B.V.", "NL", UberVatId),
-        ], 0m),
+        ], 0m, "390", null, Due),
     };
+
+    /// <summary>Termenul lunii de test, din regula <c>MONTHLY:25</c>.</summary>
+    public static readonly DateOnly Due = new(2026, 9, 25);
 
     private static AnafDeclarationLine Line(string? number, decimal @base, decimal value, string supplier, string country, string vatId) =>
         new(number, number is null ? null : new DateOnly(2026, 8, 31), @base, "RON", null, @base, value, supplier, country, vatId);

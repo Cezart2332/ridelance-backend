@@ -282,7 +282,7 @@ public sealed class MonthlyTaxEngineTests
         Rules(),
         [],
         [new Art317Period(true, new DateOnly(2025, 9, 1))],
-        TaxEngineSettings.From(new AccountingOptions()));
+        TaxEngineSettings.ForPeriod(new TaxRuleSet(TaxRuleSeed.Rules), "2026-08"));
 
     // ─── Formatul cazurilor golden ─────────────────────────────────────────────────────────────
 
@@ -306,7 +306,7 @@ public sealed class MonthlyTaxEngineTests
             Rules(),
             ExchangeRates,
             [.. Art317.Select(a => new Art317Period(a.Enabled, a.ValidFrom))],
-            TaxEngineSettings.From(new AccountingOptions()));
+            TaxEngineSettings.ForPeriod(new TaxRuleSet(TaxRuleSeed.Rules), "2026-08"));
     }
 
     private sealed record GoldenVat(decimal Rate, DateOnly ValidFrom, DateOnly? ValidTo);

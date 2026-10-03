@@ -38,13 +38,19 @@ public sealed record AnafDeclarationLine(
 
 /// <summary>Tot ce intră în XML-ul unei versiuni de declarație.</summary>
 /// <param name="Amount">Totalul versiunii (de plată; D390: 0).</param>
+/// <param name="ObligationCode">Codul de obligație din regula perioadei (D100: <c>634</c>); D390 e informativă, fără cod.</param>
+/// <param name="BudgetCode">Codul bugetar din regula perioadei.</param>
+/// <param name="DueDate">Termenul din regula perioadei.</param>
 public sealed record AnafDeclarationInput(
     DeclarationType Type,
     string Period,
     bool Rectificative,
     AnafTaxpayer Taxpayer,
     IReadOnlyList<AnafDeclarationLine> Lines,
-    decimal Amount);
+    decimal Amount,
+    string? ObligationCode,
+    string? BudgetCode,
+    DateOnly DueDate);
 
 /// <summary>
 /// XML-ul declarațiilor ANAF (spec contabilitate B4): un mapper per declarație și per versiune de

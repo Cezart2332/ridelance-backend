@@ -40,7 +40,7 @@ internal sealed class D301MapperV1 : IDeclarationXmlMapper
             Banca = AnafFormat.Text(input.Taxpayer.BankName),
             Cont = AnafFormat.Text(input.Taxpayer.Iban),
             PersInreg = 2,
-            NrEvid = decimal.Parse(AnafFormat.EvidenceNumber($"1030101{AnafFormat.PeriodAndDue(input.Period)}0000"), CultureInfo.InvariantCulture),
+            NrEvid = decimal.Parse(AnafFormat.EvidenceNumber($"10{input.ObligationCode}01{AnafFormat.PeriodAndDue(input.Period, input.DueDate)}0000"), CultureInfo.InvariantCulture),
             Baza4 = bases,
             Tva4 = vat,
             Baza5 = bases,
@@ -133,7 +133,7 @@ internal sealed class D301MapperV1 : IDeclarationXmlMapper
         }
 
         string evidence = declaration.NrEvid.ToString(CultureInfo.InvariantCulture);
-        if (!AnafFormat.IsValidEvidenceNumber(evidence) || !evidence.StartsWith("1030101", StringComparison.Ordinal) || evidence[7..17] != AnafFormat.PeriodAndDue(input.Period))
+        if (!AnafFormat.IsValidEvidenceNumber(evidence) || !evidence.StartsWith($"10{input.ObligationCode}01", StringComparison.Ordinal) || evidence[7..17] != AnafFormat.PeriodAndDue(input.Period, input.DueDate))
         {
             messages.Add(new ValidationMessage("nr_evid", $"Numărul de evidență a plății ({evidence}) nu e corect."));
         }

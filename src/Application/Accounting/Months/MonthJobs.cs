@@ -80,7 +80,7 @@ internal sealed class RunMonthJobCommandHandler(
         MonthJobParameters parameters = AccountingJson.Deserialize(job.ParametersJson, new MonthJobParameters(string.Empty));
         string period = parameters.Period;
         MonthJobResults results = AccountingJson.Deserialize(job.ResultJson, new MonthJobResults([], []));
-        var settings = TaxEngineSettings.From(options.Value);
+        var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), period, options.Value.VatExigibility);
 
         List<ScopePfa> pfas = await AccountingScope.InPeriodAsync(db, period, cancellationToken, parameters.PfaId);
         if (job.Type == BackgroundJobType.GenerateDeclarations)

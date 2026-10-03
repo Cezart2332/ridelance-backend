@@ -1,7 +1,6 @@
 using Application.Abstractions.Data;
 using Domain.Accounting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace Application.Accounting.Tax;
 
@@ -13,7 +12,7 @@ public interface IExchangeRateProvider
 }
 
 /// <summary>Cursurile importate din BNR, din tabelul <c>exchange_rates</c>.</summary>
-internal sealed class ExchangeRateProvider(IApplicationDbContext db, IOptions<AccountingOptions> options) : IExchangeRateProvider
+internal sealed class ExchangeRateProvider(IApplicationDbContext db) : IExchangeRateProvider
 {
     public async Task<ExchangeRate?> GetAsync(string currency, DateOnly date, CancellationToken cancellationToken)
     {
@@ -24,6 +23,9 @@ internal sealed class ExchangeRateProvider(IApplicationDbContext db, IOptions<Ac
             .AsNoTracking()
             .Where(rate => rate.Currency == code && rate.Date >= from && rate.Date <= date)
             .ToListAsync(cancellationToken);
-        return MonthlyTaxEngine.PickRate(candidates, currency, date, options.Value.ExchangeRateDate);
+        // Regula zilei cursului e versionată (spec declarații Q1): cea valabilă la data operațiunii.
+        TaxRule? rule = (await TaxRuleSet.LoadAsync(db, cancellationToken)).Find(TaxRuleTypes.ExchangeRate, "RO", date);
+        ExchangeRateDateRule day = Enum.TryParse(rule?.Formula, out ExchangeRateDateRule parsed) ? parsed : ExchangeRateDateRule.SameDayOrPrevious;
+        return MonthlyTaxEngine.PickRate(candidates, currency, date, day);
     }
 }

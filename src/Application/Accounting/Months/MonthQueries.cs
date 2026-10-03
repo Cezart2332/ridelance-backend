@@ -34,7 +34,7 @@ internal sealed class GetPeriodOverviewQueryHandler(IApplicationDbContext db, IO
             .Where(c => c.Period == query.Period && ids.Contains(c.PfaRegistrationId))
             .ToDictionaryAsync(c => c.PfaRegistrationId, cancellationToken);
         List<DeclarationSummaries.CurrentVersion> versions = await DeclarationSummaries.CurrentVersionsAsync(db, query.Period, ids, cancellationToken);
-        var settings = TaxEngineSettings.From(options.Value);
+        var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), query.Period, options.Value.VatExigibility);
 
         List<OverviewRow> rows = [.. pfas.Select(pfa =>
         {
@@ -105,7 +105,7 @@ internal sealed class ListDeclarationsQueryHandler(IApplicationDbContext db, IOp
         MonthData? data = check?.Status == PfaMonthStatus.Ready && versions.Count == 0
             ? await MonthData.LoadAsync(db, query.Period, [pfa.Id], cancellationToken)
             : null;
-        var settings = TaxEngineSettings.From(options.Value);
+        var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), query.Period, options.Value.VatExigibility);
 
         return Result.Success(DeclarationSummaries.For(pfa, query.Period, check, versions, () => MonthlyTaxEngine.Calculate(data!.TaxInput(pfa.Id, settings))));
     }

@@ -33,20 +33,48 @@ public sealed record TaxReport(
     decimal? Commission = null,
     decimal? WithheldTax = null);
 
-/// <summary>Regulile DE CONFIRMAT, din configurare.</summary>
+/// <summary>Codurile și termenul unei declarații, din regulile perioadei (spec declarații F24).</summary>
+public sealed record DeclarationRules(string? ObligationCode, string? BudgetCode, DateOnly? DueDate);
+
+/// <summary>
+/// Regulile unei perioade, rezolvate din <see cref="TaxRuleSet"/> (spec declarații §4) și înghețate
+/// în snapshot-ul declarației: statele UE, cursul, rotunjirea, codurile și termenele.
+/// </summary>
+/// <param name="RulesetVersion">Ce reguli erau active, ca versiune a setului.</param>
 public sealed record TaxEngineSettings(
     IReadOnlyCollection<string> EuCountries,
     VatExigibilityRule VatExigibility,
     ExchangeRateDateRule ExchangeRateDate,
-    IReadOnlyDictionary<DeclarationType, DeclarationRounding> Rounding)
+    IReadOnlyDictionary<DeclarationType, DeclarationRounding> Rounding,
+    IReadOnlyDictionary<DeclarationType, DeclarationRules>? Declarations = null,
+    string? RulesetVersion = null)
 {
-    public static TaxEngineSettings From(AccountingOptions options) => new(
-        [.. options.EuCountries],
-        options.VatExigibility,
-        options.ExchangeRateDate,
-        options.DeclarationRounding
-            .Where(pair => Enum.TryParse<DeclarationType>(pair.Key, ignoreCase: true, out _))
-            .ToDictionary(pair => Enum.Parse<DeclarationType>(pair.Key, ignoreCase: true), pair => pair.Value));
+    /// <summary>Regulile valabile la sfârșitul perioadei <c>yyyy-MM</c>.</summary>
+    public static TaxEngineSettings ForPeriod(TaxRuleSet rules, string period, VatExigibilityRule exigibility = VatExigibilityRule.TaxPointDate)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        var start = DateOnly.ParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        DateOnly end = start.AddMonths(1).AddDays(-1);
+        static string Code(DeclarationType type) => type.ToString();
+
+        return new TaxEngineSettings(
+            [.. rules.Rules.Where(rule => rule.RuleType == TaxRuleTypes.EuMember && rules.IsEuMember(rule.Jurisdiction, end)).Select(rule => rule.Jurisdiction).Distinct()],
+            exigibility,
+            Enum.TryParse(rules.Find(TaxRuleTypes.ExchangeRate, "RO", end)?.Formula, out ExchangeRateDateRule exchange) ? exchange : ExchangeRateDateRule.SameDayOrPrevious,
+            Enum.GetValues<DeclarationType>()
+                .Select(type => (type, rule: rules.Find(TaxRuleTypes.Rounding, "RO", end, new TaxRuleContext(Code(type)))))
+                .Where(pair => pair.rule is not null && Enum.TryParse(pair.rule.Formula, out DeclarationRounding _))
+                .ToDictionary(pair => pair.type, pair => Enum.Parse<DeclarationRounding>(pair.rule!.Formula!)),
+            Enum.GetValues<DeclarationType>().ToDictionary(type => type, type => new DeclarationRules(
+                (rules.Find(TaxRuleTypes.ObligationCode, "RO", end, new TaxRuleContext(Code(type), IncomeType: "COMMISSION")) ??
+                 rules.Find(TaxRuleTypes.ObligationCode, "RO", end, new TaxRuleContext(Code(type))))?.Formula,
+                (rules.Find(TaxRuleTypes.BudgetCode, "RO", end, new TaxRuleContext(Code(type), IncomeType: "COMMISSION")) ??
+                 rules.Find(TaxRuleTypes.BudgetCode, "RO", end, new TaxRuleContext(Code(type))))?.Formula,
+                rules.Find(TaxRuleTypes.Deadline, "RO", end, new TaxRuleContext(Code(type))) is { Formula: { } formula }
+                    ? DeclarationDeadline.Of(formula, period)
+                    : null)),
+            rules.VersionAt(end));
+    }
 }
 
 /// <summary>
@@ -318,7 +346,7 @@ public static class MonthlyTaxEngine
 
         foreach (TaxReport report in input.Reports.Where(report => report.Platform is not null))
         {
-            string name = report.Platform == Platform.Bolt ? "Bolt" : "Uber";
+            string name = PlatformLabels.Name(report.Platform);
             bool Of(TaxLine line) => platformOf.GetValueOrDefault(line.SourceDocumentId) == report.Platform;
 
             if (report.Commission is { } commission && IsRon(report.Currency) && d301.Any(Of))
