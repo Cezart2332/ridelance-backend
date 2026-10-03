@@ -153,6 +153,7 @@ public sealed class ApplicationDbContext(
     public DbSet<Domain.Accounting.FixedAssetRule> FixedAssetRules { get; set; }
     public DbSet<Domain.Accounting.TaxRule> TaxRules { get; set; }
     public DbSet<Domain.Accounting.NonResidentPayment> NonResidentPayments { get; set; }
+    public DbSet<Domain.Accounting.DeclarationRectificationTask> DeclarationRectificationTasks { get; set; }
     public DbSet<Domain.Accounting.NonResidentTaxDecision> NonResidentTaxDecisions { get; set; }
     public DbSet<Domain.Accounting.DepreciationLine> DepreciationLines { get; set; }
     public DbSet<Domain.Accounting.InventoryCount> InventoryCounts { get; set; }

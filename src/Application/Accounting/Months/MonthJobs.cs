@@ -178,6 +178,12 @@ internal sealed class RunMonthJobCommandHandler(
         PreCheckResult result = PreCheck.Evaluate(pfa, data, settings);
         await PreCheck.SaveAsync(db, pfa.Id, period, result, cancellationToken);
 
+        // Rectificări: o lună cu declarație acceptată, cu date schimbate între timp, primește task cu diff-ul.
+        if (result.IsReady)
+        {
+            await Declarations.RectificationTasks.CheckAsync(db, pfa, data, settings, cancellationToken);
+        }
+
         // F04: fără art. 317 activ, declarațiile UE se opresc și PFA-ul intră în onboarding fiscal: task D700.
         if (vatRegistration is not null && result.Reasons.Any(reason => reason.StartsWith(MonthlyTaxEngine.Art317Missing, StringComparison.Ordinal)))
         {

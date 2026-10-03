@@ -49,6 +49,16 @@ internal sealed class DeclarationActions(
             case DeclarationAction.MarkRejected when text is null:
                 return Result.Failure(DeclarationErrors.RejectionReasonRequired);
 
+            case DeclarationAction.RecordIndex when text is null:
+                return Result.Failure(DeclarationErrors.IndexRequired);
+
+            case DeclarationAction.RecordIndex:
+                version.AnafIndex = text;
+                DeclarationStateMachine.Move(version, DeclarationStatus.IndexReceived, userId, $"Index ANAF {text}");
+                Audit(version, "INDEX", new { status = DeclarationStatus.Submitted }, new { status = DeclarationStatus.IndexReceived, anafIndex = text }, null, userId);
+                await db.SaveChangesAsync(cancellationToken);
+                return Result.Success();
+
             default:
                 DeclarationStatus from = version.Status;
                 DeclarationStatus to = action switch
@@ -74,7 +84,7 @@ internal sealed class DeclarationActions(
         }
 
         DeclarationVersion version = found.Value;
-        if (version.Status != DeclarationStatus.Submitted)
+        if (version.Status is not (DeclarationStatus.Submitted or DeclarationStatus.IndexReceived))
         {
             return Result.Failure(DeclarationErrors.ReceiptOnlyWhenSubmitted);
         }
@@ -94,8 +104,9 @@ internal sealed class DeclarationActions(
             version.Declaration.PfaRegistrationId, file.Content, file.FileName, file.ContentType, cancellationToken, DocumentOrigin.AccountingUpload);
         version.ReceiptDocumentId = document.Id;
         version.ReceiptNumber = number;
+        DeclarationStatus before = version.Status;
         DeclarationStateMachine.Move(version, DeclarationStatus.Accepted, userId, number is null ? null : $"Recipisa nr. {number}");
-        Audit(version, "RECEIPT", new { status = DeclarationStatus.Submitted }, new { status = DeclarationStatus.Accepted, receiptNumber = number, file = file.FileName }, null, userId);
+        Audit(version, "RECEIPT", new { status = before }, new { status = DeclarationStatus.Accepted, receiptNumber = number, file = file.FileName }, null, userId);
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
@@ -168,6 +179,7 @@ internal sealed class DeclarationActions(
             new { type = declaration.Type, versionNo = version.VersionNo, amount = version.Amount },
             text,
             userId);
+        await RectificationTasks.ResolveAsync(db, declaration.Id, version.Id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return version.Id;
     }

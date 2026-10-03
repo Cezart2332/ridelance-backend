@@ -416,10 +416,29 @@ internal sealed class SpvService(IApplicationDbContext db, DeclarationFiles file
             return;
         }
 
-        if (version.Status != DeclarationStatus.Submitted || file is not { Content.Length: > 0 })
+        if (version.Status is not (DeclarationStatus.Submitted or DeclarationStatus.IndexReceived) || file is not { Content.Length: > 0 })
         {
             message.Status = SpvMessageStatus.NeedsAttention;
             message.Note = $"Recipisă {info.DeclarationType} {info.Period}: declarația nu e marcată depusă.";
+            return;
+        }
+
+        // Recipisa se asociază după CUI + formular + perioadă + index: un index diferit nu e a acestei depuneri.
+        if (version.AnafIndex is { } index && info.RegistrationNumber is { } registration && !string.Equals(index, registration, StringComparison.OrdinalIgnoreCase))
+        {
+            message.Status = SpvMessageStatus.NeedsAttention;
+            message.Note = $"Recipisă {info.DeclarationType} {info.Period} cu indexul {registration}, iar depunerea are indexul {index}.";
+            return;
+        }
+
+        // Recipisa cu erori: declarația e ReceiptError și apare la „Necesită atenție”.
+        if (SpvRecipisa.IsError(message.Details))
+        {
+            Result rejected = await declarations.TransitionAsync(version.Id, DeclarationAction.MarkRejected, $"Recipisă cu erori din SPV: {message.Details}", null, cancellationToken);
+            message.Status = SpvMessageStatus.NeedsAttention;
+            message.Note = rejected.IsSuccess
+                ? $"Recipisă {info.DeclarationType} {info.Period} cu erori: declarația e de refăcut."
+                : $"Recipisă {info.DeclarationType} {info.Period} cu erori: {rejected.Error.Description}";
             return;
         }
 

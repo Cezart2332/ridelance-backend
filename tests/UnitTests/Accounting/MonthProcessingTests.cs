@@ -1,3 +1,4 @@
+using Application.Abstractions.Anaf;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Messaging;
 using Application.Accounting;
@@ -409,6 +410,71 @@ public sealed class MonthProcessingTests : IDisposable
             .ShouldBe(["GENERATE", "VALIDATE", "MARK_SIGNED", "MARK_SUBMITTED", "RECEIPT"], ignoreOrder: true);
     }
 
+    /// <summary>Scenariul 17: depusă, cu indexul ANAF; recipisa cu erori o pune la „Necesită atenție”.</summary>
+    [Fact]
+    public async Task S17_AReceiptErrorAfterTheAnafIndexNeedsAttention()
+    {
+        await GenerateIon();
+        Guid d301 = await IonVersion(DeclarationType.D301);
+        await Transition(d301, DeclarationAction.Validate);
+        await Transition(d301, DeclarationAction.MarkSigned);
+        await Transition(d301, DeclarationAction.MarkSubmitted);
+
+        (await Transition(d301, DeclarationAction.RecordIndex)).Error.Code.ShouldBe("Accounting.IndexRequired");
+        (await Transition(d301, DeclarationAction.RecordIndex, "4512345")).Value.Status.ShouldBe(DeclarationStatus.IndexReceived);
+        (await _db.DeclarationVersions.SingleAsync(v => v.Id == d301)).AnafIndex.ShouldBe("4512345");
+        (await Transition(d301, DeclarationAction.MarkRejected, "Recipisă cu erori: suma de control")).Value.Status.ShouldBe(DeclarationStatus.Rejected);
+
+        IReadOnlyList<DeclarationAttentionDto> attention = (await new GetDeclarationsAttentionQueryHandler(_db).Handle(new GetDeclarationsAttentionQuery(), CancellationToken.None)).Value;
+        attention.ShouldContain(row => row.Type == DeclarationType.D301 && row.PfaId == _ion && row.Reason == "Recipisă cu erori");
+        Application.Accounting.Spv.SpvRecipisa.IsError("Recipisa pentru declaratia tip D301 a fost respinsa: erori de validare").ShouldBeTrue();
+    }
+
+    /// <summary>Criteriul de acceptanță: XML-ul refăcut din snapshot-ul unei versiuni are același hash.</summary>
+    [Fact]
+    public async Task XmlHash_RecalculatingAVersionGivesTheSameXmlHash()
+    {
+        await GenerateIon();
+        DeclarationVersion version = await _db.DeclarationVersions.Include(v => v.Declaration).Include(v => v.Schema)
+            .SingleAsync(v => v.Declaration.PfaRegistrationId == _ion && v.Declaration.Type == DeclarationType.D301);
+        version.XmlHash.ShouldNotBeNullOrEmpty();
+        version.RulesetVersion.ShouldNotBeNullOrEmpty();
+
+        DeclarationFiles files = Files();
+        DeclarationSnapshot snapshot = DeclarationSnapshot.Read(version.SnapshotJson)!;
+        AnafTaxpayer taxpayer = (await files.TaxpayerAsync(_ion, CancellationToken.None, Period))!;
+        byte[] again = new AnafDeclarationXmlService().Build(
+            version.Schema!.Version, DeclarationFiles.Input(version.Declaration, version, taxpayer, snapshot, await files.RulesAsync(version.Declaration, snapshot, CancellationToken.None)));
+
+        DeclarationFiles.Hash(again).ShouldBe(version.XmlHash);
+    }
+
+    /// <summary>Spec declarații §6: date schimbate după acceptare → task de rectificare cu diff, rezolvat de rectificativă.</summary>
+    [Fact]
+    public async Task Rectification_ChangedDataAfterAcceptanceCreatesATaskUntilTheRectificative()
+    {
+        await GenerateIon();
+        Guid d301 = await IonVersion(DeclarationType.D301);
+        await Transition(d301, DeclarationAction.Validate);
+        await Transition(d301, DeclarationAction.MarkSigned);
+        await Transition(d301, DeclarationAction.MarkSubmitted);
+        await Receipt(d301, "INTERNT-1");
+
+        Invoice(_ion, Platform.Bolt, 500m);
+        await _db.SaveChangesAsync();
+        await RunJob(BackgroundJobType.ProcessPeriod, _ion);
+
+        DeclarationRectificationTask task = await _db.DeclarationRectificationTasks.SingleAsync();
+        task.DiffJson.ShouldContain("500,00");
+        Guid declarationId = (await _db.DeclarationVersions.SingleAsync(v => v.Id == d301)).DeclarationId;
+        (await new GetDeclarationsAttentionQueryHandler(_db).Handle(new GetDeclarationsAttentionQuery(), CancellationToken.None))
+            .Value.ShouldContain(row => row.Reason.StartsWith("De rectificat", StringComparison.Ordinal));
+
+        (await Rectify(declarationId, "Factură Bolt sosită după depunere")).IsSuccess.ShouldBeTrue();
+        (await _db.DeclarationRectificationTasks.SingleAsync()).ResolvedByVersionId.ShouldNotBeNull();
+        (await _db.DeclarationVersions.SingleAsync(v => v.Id == d301)).Status.ShouldBe(DeclarationStatus.Accepted);
+    }
+
     [Fact]
     public async Task Invalid_transitions_are_refused()
     {
@@ -496,7 +562,7 @@ public sealed class MonthProcessingTests : IDisposable
     }
 
     [Fact]
-    public async Task D100_rectification_waits_for_the_d710_procedure()
+    public async Task S16_D100_rectification_waits_for_the_d710_procedure()
     {
         await GenerateIon();
         Guid d100 = await IonVersion(DeclarationType.D100);

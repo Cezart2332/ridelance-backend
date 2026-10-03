@@ -412,6 +412,10 @@ internal sealed class DeclarationVersionConfiguration : IEntityTypeConfiguration
         builder.Property(v => v.ValidationResultJson).AsJson();
         builder.Property(v => v.StatusHistoryJson).AsJson();
         builder.Property(v => v.ReceiptNumber).HasMaxLength(64);
+        builder.Property(v => v.AnafIndex).HasMaxLength(64);
+        builder.Property(v => v.XmlHash).HasMaxLength(64);
+        builder.Property(v => v.RulesetVersion).HasMaxLength(32);
+        builder.Property(v => v.ValidatorVersion).HasMaxLength(64);
         builder.Property(v => v.RectificationReason).HasMaxLength(1000);
 
         builder.HasIndex(v => new { v.DeclarationId, v.VersionNo }).IsUnique();
@@ -727,6 +731,20 @@ internal sealed class TaxRuleConfiguration : IEntityTypeConfiguration<TaxRule>
         builder.Property(r => r.SupplierEntityKey).HasMaxLength(32);
         builder.Property(r => r.IncomeType).HasMaxLength(32);
         builder.HasIndex(r => new { r.RuleType, r.Jurisdiction, r.ValidFrom });
+    }
+}
+
+internal sealed class DeclarationRectificationTaskConfiguration : IEntityTypeConfiguration<DeclarationRectificationTask>
+{
+    public void Configure(EntityTypeBuilder<DeclarationRectificationTask> builder)
+    {
+        builder.ToTable("declaration_rectification_tasks");
+        builder.HasKey(t => t.Id);
+        builder.Property(t => t.DiffJson).AsJson();
+        builder.HasIndex(t => t.DeclarationId);
+        builder.HasOne<Declaration>().WithMany().HasForeignKey(t => t.DeclarationId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<DeclarationVersion>().WithMany().HasForeignKey(t => t.AcceptedVersionId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<DeclarationVersion>().WithMany().HasForeignKey(t => t.ResolvedByVersionId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 

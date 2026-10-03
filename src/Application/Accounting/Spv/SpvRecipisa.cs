@@ -16,6 +16,9 @@ internal static partial class SpvRecipisa
     public static bool IsRecipisa(string type) =>
         type.Contains("RECIPIS", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Recipisa raportează erori (declarație respinsă la prelucrare).</summary>
+    public static bool IsError(string? details) => details is not null && ErrorPattern().IsMatch(details);
+
     public static SpvRecipisaInfo? Read(string? details)
     {
         if (string.IsNullOrWhiteSpace(details))
@@ -42,6 +45,9 @@ internal static partial class SpvRecipisa
         Match number = NumberPattern().Match(details);
         return new SpvRecipisaInfo(type.Groups["type"].Value.ToUpperInvariant(), period, number.Success ? number.Groups["number"].Value : null);
     }
+
+    [GeneratedRegex(@"\b(erori|eroare|respins[aă]?)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex ErrorPattern();
 
     [GeneratedRegex(@"\btip\s*:?\s*(?<type>D\d{3})\b", RegexOptions.IgnoreCase)]
     private static partial Regex TypePattern();

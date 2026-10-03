@@ -37,4 +37,6 @@ internal static class DeclarationErrors
     public static Error InvalidTransition(DeclarationStatus status, DeclarationAction action) => Error.Conflict(
         "Accounting.InvalidTransition",
         $"Acțiunea {AccountingJson.Serialize(action).Trim('"')} nu e permisă din statusul {AccountingJson.Serialize(status).Trim('"')}.");
+
+    public static readonly Error IndexRequired = Error.Problem("Accounting.IndexRequired", "Indexul de încărcare ANAF e obligatoriu.");
 }

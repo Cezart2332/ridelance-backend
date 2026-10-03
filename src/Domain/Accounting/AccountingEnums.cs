@@ -51,8 +51,14 @@ public enum DeclarationStatus
     Signed = 8,
 #pragma warning restore CA1720
     Submitted = 9,
+    /// <summary>ANAF a dat recipisa validă (spec declarații: <c>ReceiptValid</c>).</summary>
     Accepted = 10,
+
+    /// <summary>Recipisa ANAF e cu erori (<c>ReceiptError</c>): apare la „Necesită atenție”.</summary>
     Rejected = 11,
+
+    /// <summary>Depusă, cu indexul de încărcare ANAF; recipisa se așteaptă din SPV.</summary>
+    IndexReceived = 12,
 }
 
 [JsonConverter(typeof(UpperSnakeCaseEnumConverter<DeclarationType>))]
@@ -305,4 +311,7 @@ public enum DeclarationAction
     MarkSubmitted = 2,
     MarkRejected = 3,
     Regenerate = 4,
+
+    /// <summary>Indexul de încărcare ANAF, după depunere (nota = indexul).</summary>
+    RecordIndex = 5,
 }

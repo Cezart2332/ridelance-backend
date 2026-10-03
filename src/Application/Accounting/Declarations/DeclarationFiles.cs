@@ -125,6 +125,9 @@ internal sealed class DeclarationFiles(
             ? frozen
             : Tax.TaxEngineSettings.ForPeriod(await Tax.TaxRuleSet.LoadAsync(db, cancellationToken), declaration.Period).Declarations![declaration.Type];
 
+    /// <summary>SHA-256 al XML-ului, în hex: aceleași date și reguli dau același hash.</summary>
+    public static string Hash(byte[] content) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content));
+
     /// <summary>Schema valabilă la sfârșitul perioadei declarației (nu la data curentă).</summary>
     public static AnafDeclarationSchema? PickSchema(IEnumerable<AnafDeclarationSchema> schemas, DeclarationType type, string period)
     {
@@ -159,6 +162,8 @@ internal sealed class DeclarationFiles(
         }
 
         byte[] content = xml.Build(schema.Version, Input(declaration, version, taxpayer, snapshot, await RulesAsync(declaration, snapshot, cancellationToken)));
+        version.XmlHash = Hash(content);
+        version.RulesetVersion = snapshot.Input.Settings.RulesetVersion;
         Document document = await StoreAsync(
             declaration.PfaRegistrationId,
             content,
