@@ -69,12 +69,14 @@ internal sealed class MonthData
     private readonly ILookup<Guid, MonthDocument> _documents;
     private readonly ILookup<Guid, PfaAccountingSetting> _settings;
     private readonly ILookup<Guid, Platform> _onboardingPlatforms;
+    private readonly ILookup<Guid, NonResidentLine> _nonResident;
 
     private MonthData(
         string period,
         ILookup<Guid, MonthDocument> documents,
         ILookup<Guid, PfaAccountingSetting> settings,
         ILookup<Guid, Platform> onboardingPlatforms,
+        ILookup<Guid, NonResidentLine> nonResident,
         List<SupplierTaxProfile> suppliers,
         List<VatRate> vatRates,
         List<D100Rule> d100Rules,
@@ -85,6 +87,7 @@ internal sealed class MonthData
         _documents = documents;
         _settings = settings;
         _onboardingPlatforms = onboardingPlatforms;
+        _nonResident = nonResident;
         Suppliers = suppliers;
         VatRates = vatRates;
         D100Rules = d100Rules;
@@ -144,6 +147,7 @@ internal sealed class MonthData
             documents.Select(d => new MonthDocument(d.Document, d.FileName, d.Extraction)).ToLookup(d => d.Document.PfaRegistrationId),
             settings.ToLookup(s => s.PfaRegistrationId),
             accounts.ToLookup(a => a.PfaRegistrationId, a => a.Provider == PfaPlatformProvider.Bolt ? Platform.Bolt : Platform.Uber),
+            await NonResident.NonResidentSync.LinesAsync(db, ids, start, end, cancellationToken),
             await db.SupplierTaxProfiles.AsNoTracking().ToListAsync(cancellationToken),
             await db.VatRates.AsNoTracking().ToListAsync(cancellationToken),
             await db.D100Rules.AsNoTracking().ToListAsync(cancellationToken),
@@ -219,7 +223,8 @@ internal sealed class MonthData
             D100Rules,
             ExchangeRates,
             Art317Of(pfaId),
-            settings);
+            settings,
+            [.. _nonResident[pfaId]]);
     }
 
     /// <summary>„Factura Bolt EE-BOLT-2026-08-1000”, „Raportul Uber”.</summary>

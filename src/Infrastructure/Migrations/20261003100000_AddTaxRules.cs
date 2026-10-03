@@ -96,16 +96,6 @@ public partial class AddTaxRules : Migration
             { new Guid("b1c2d3e4-f5a6-4b7c-8d9e-000000070027"), "EuMember", "SI", new DateOnly(2016, 1, 1), null, "Tratatul de aderare / statele membre UE", null, null, null, null, null, null, null, null, true },
             { new Guid("b1c2d3e4-f5a6-4b7c-8d9e-000000070028"), "EuMember", "SK", new DateOnly(2016, 1, 1), null, "Tratatul de aderare / statele membre UE", null, null, null, null, null, null, null, null, true },
             });
-
-        // Cotele D100 pe furnizor: regulile pe entitatea juridică (cod fiscal), din registrul de furnizori.
-        migrationBuilder.Sql("""
-            INSERT INTO public.tax_rules (id, rule_type, jurisdiction, valid_from, valid_to, legal_basis, rate, supplier_entity_key, income_type, confirmed)
-            SELECT gen_random_uuid(), 'NonResidentRate', upper(left(s.country, 2)), s.valid_from, s.valid_to,
-                   COALESCE(NULLIF(s.treaty, ''), 'Convenția de evitare a dublei impuneri (de completat)'),
-                   s.d100_rate, upper(s.vat_id), upper(s.income_type), s.d100_rate_confirmed
-            FROM public.supplier_tax_profiles s
-            WHERE s.d100_rate IS NOT NULL AND s.deleted_at_utc IS NULL AND s.vat_id <> '';
-            """);
     }
 
     protected override void Down(MigrationBuilder migrationBuilder) => migrationBuilder.DropTable(name: Table, schema: "public");

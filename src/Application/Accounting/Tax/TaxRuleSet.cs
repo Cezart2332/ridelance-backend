@@ -149,6 +149,9 @@ public sealed partial class TaxRuleSet(IReadOnlyList<TaxRule> rules)
         }
     }
 
+    /// <summary>Un cod fiscal de entitate juridică (cheia unei reguli pe furnizor), nu un nume de brand.</summary>
+    public static bool IsEntityKey(string? key) => key is not null && TaxIdPattern().IsMatch(key);
+
     private static bool Same(string? left, string? right) =>
         string.Equals(left ?? string.Empty, right ?? string.Empty, StringComparison.OrdinalIgnoreCase);
 

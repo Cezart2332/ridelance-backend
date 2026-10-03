@@ -28,11 +28,12 @@ internal static class DeclarationGeneration
         Guid? userId,
         CancellationToken cancellationToken)
     {
-        // Idempotență: a doua rulare nu creează versiuni duplicate.
-        if (await db.Declarations.AnyAsync(d => d.PfaRegistrationId == pfa.Id && d.Period == data.Period, cancellationToken))
-        {
-            return (true, "Declarațiile existau deja; nimic de generat.");
-        }
+        // Idempotență pe tip: o declarație existentă nu se recreează; una amânată (D100 până la
+        // confirmarea regulii, F23) se generează la rularea următoare.
+        HashSet<DeclarationType> existing = [.. await db.Declarations
+            .Where(d => d.PfaRegistrationId == pfa.Id && d.Period == data.Period)
+            .Select(d => d.Type)
+            .ToListAsync(cancellationToken)];
 
         PreCheckResult check = PreCheck.Evaluate(pfa, data, settings);
         await PreCheck.SaveAsync(db, pfa.Id, data.Period, check, cancellationToken);
@@ -51,8 +52,15 @@ internal static class DeclarationGeneration
         List<AnafDeclarationSchema> schemas = await db.AnafDeclarationSchemas.AsNoTracking().ToListAsync(cancellationToken);
         AnafTaxpayer? taxpayer = await files.TaxpayerAsync(pfa.Id, cancellationToken, data.Period);
         var generated = new List<string>();
-        foreach (DeclarationCalculation calculation in result.Declarations.Values.Where(c => c.Applicable))
+        var waiting = new List<string>();
+        foreach (DeclarationCalculation calculation in result.Declarations.Values.Where(c => c.Applicable && !existing.Contains(c.Type)))
         {
+            if (calculation.IsBlocked)
+            {
+                waiting.Add($"{calculation.Type} așteaptă: {calculation.Blockers![0]}");
+                continue;
+            }
+
             var declaration = new Declaration { Id = Guid.NewGuid(), PfaRegistrationId = pfa.Id, Period = data.Period, Type = calculation.Type };
             var version = new DeclarationVersion
             {
@@ -76,7 +84,17 @@ internal static class DeclarationGeneration
             generated.Add($"{calculation.Type} {AccountingJson.Amount(calculation.Total)} lei");
         }
 
-        return (true, generated.Count > 0 ? $"Generate: {string.Join(", ", generated)}." : "Nicio declarație aplicabilă.");
+        string summary = "Nicio declarație aplicabilă.";
+        if (generated.Count > 0)
+        {
+            summary = $"Generate: {string.Join(", ", generated)}.";
+        }
+        else if (existing.Count > 0)
+        {
+            summary = "Declarațiile existau deja.";
+        }
+
+        return (true, waiting.Count > 0 ? $"{summary} {string.Join(" ", waiting)}" : summary);
     }
 }
 
@@ -116,7 +134,7 @@ internal static class DeclarationSummaries
                 return new DeclarationSummary(version.DeclarationId, pfa.Id, period, type, version.Status, version.Amount, version.VersionId, version.VersionNo, version.Kind, []);
             }
 
-            if (check is null || own.Count > 0)
+            if (check is null || own.Count > 0 && check.Status != PfaMonthStatus.Ready)
             {
                 // Neprocesat, sau luna generată fără declarația acestui tip (neaplicabilă).
                 DeclarationStatus? status = own.Count > 0 ? DeclarationStatus.NotApplicable : null;
@@ -133,6 +151,11 @@ internal static class DeclarationSummaries
                     // Gata, încă negenerată: suma e previzualizarea pe regulile de azi.
                     calculated ??= preview();
                     DeclarationCalculation calculation = calculated.Declarations[type];
+                    if (calculation is { Applicable: true, IsBlocked: true })
+                    {
+                        return new DeclarationSummary(null, pfa.Id, period, type, DeclarationStatus.BlockedNeedsReview, null, null, null, null, calculation.Blockers!);
+                    }
+
                     return calculation.Applicable
                         ? new DeclarationSummary(null, pfa.Id, period, type, DeclarationStatus.Draft, calculation.Total, null, null, null, [])
                         : new DeclarationSummary(null, pfa.Id, period, type, DeclarationStatus.NotApplicable, null, null, null, null, []);

@@ -172,6 +172,8 @@ internal sealed class RunMonthJobCommandHandler(
             await extraction.Handle(new RunPlatformDocumentExtractionCommand(id), cancellationToken);
         }
 
+        // F20: plățile către nerezidenți ale PFA-ului și deciziile lor, înainte de calculul lunii.
+        await NonResident.NonResidentSync.SyncAsync(db, pfa.Id, cancellationToken);
         MonthData data = await MonthData.LoadAsync(db, period, [pfa.Id], cancellationToken);
         PreCheckResult result = PreCheck.Evaluate(pfa, data, settings);
         await PreCheck.SaveAsync(db, pfa.Id, period, result, cancellationToken);

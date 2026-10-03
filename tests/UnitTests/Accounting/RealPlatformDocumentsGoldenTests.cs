@@ -74,11 +74,19 @@ public sealed class RealPlatformDocumentsGoldenTests
     private static IEnumerable<(RealDocument Document, Guid Id)> Invoices() =>
         Documents.Where(d => d.Type == PlatformDocumentType.CommissionInvoice).Select(d => (d, Guid.NewGuid()));
 
-    private static PfaTaxInput Input(IEnumerable<(RealDocument Document, Guid Id)> invoices) => new(
-        Period,
-        [.. invoices.Select(item => new TaxInvoice(
+    private static PfaTaxInput Input(IEnumerable<(RealDocument Document, Guid Id)> invoices)
+    {
+        List<TaxInvoice> list = [.. invoices.Select(item => new TaxInvoice(
             item.Id, item.Document.Fields.InvoiceNumber!, item.Document.Fields.SupplierVatId, item.Document.Fields.InvoiceNumber, item.Document.Fields.InvoiceDate,
-            item.Document.Fields.PeriodTo, item.Document.Fields.Currency, item.Document.Fields.CommissionAmount, item.Document.Fields.TaxPointDate, item.Document.Platform))],
+            item.Document.Fields.PeriodTo, item.Document.Fields.Currency, item.Document.Fields.CommissionAmount, item.Document.Fields.TaxPointDate, item.Document.Platform))];
+
+        // F20: comisionul fiecărei facturi, reținut la decontare, e plata către nerezident.
+        return BaseInput(list) with { NonResident = MonthlyTaxEngineTests.Payments(list, Suppliers) };
+    }
+
+    private static PfaTaxInput BaseInput(List<TaxInvoice> invoices) => new(
+        Period,
+        invoices,
         [.. Documents.Where(d => d.Type == PlatformDocumentType.PlatformReport).Select(d => new TaxReport(
             Guid.NewGuid(), d.Fields.Currency, d.Fields.Amount, d.Fields.PeriodTo, d.Platform, d.Fields.CommissionAmount, d.Fields.WithheldTax))],
         Suppliers,

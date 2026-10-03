@@ -80,6 +80,7 @@ public sealed record TaxEngineSettings(
 /// regulile cu toate versiunile lor (valabilitatea se aplică la data fiecărei facturi), cursurile
 /// și setarea art. 317 cu istoricul ei.
 /// </summary>
+/// <param name="NonResident">Plățile către nerezidenți din lună (data plății, F20), cu decizia lor.</param>
 public sealed record PfaTaxInput(
     string Period,
     IReadOnlyList<TaxInvoice> Invoices,
@@ -89,7 +90,29 @@ public sealed record PfaTaxInput(
     IReadOnlyList<D100Rule> D100Rules,
     IReadOnlyList<ExchangeRate> ExchangeRates,
     IReadOnlyList<Art317Period> Art317,
-    TaxEngineSettings Settings);
+    TaxEngineSettings Settings,
+    IReadOnlyList<NonResidentLine>? NonResident = null);
+
+/// <summary>O plată către nerezident din luna D100, cu decizia de impozit (spec declarații F20–F25).</summary>
+/// <param name="SourceDocumentId">Factura de comision a plății (sursa rândului D100).</param>
+public sealed record NonResidentLine(
+    Guid PaymentId,
+    Guid? SourceDocumentId,
+    string Label,
+    DateOnly PaymentDate,
+    string SupplierName,
+    string SupplierCountry,
+    string SupplierTaxId,
+    decimal GrossIncomeRon,
+    decimal Rate,
+    decimal TaxDue,
+    string ObligationCode,
+    NonResidentDecisionStatus Status,
+    string Explanation,
+    Platform? Platform = null,
+    string? Treaty = null,
+    DateOnly? ResidenceCertValidFrom = null,
+    DateOnly? ResidenceCertValidTo = null);
 
 /// <summary>Un interval în care codul special de TVA art. 317 e (sau nu e) activ.</summary>
 public sealed record Art317Period(bool Enabled, DateOnly ValidFrom);
@@ -118,6 +141,7 @@ public sealed record TaxLine(
 
 /// <param name="Warnings">Nu blochează: diferențe de semnalat contabilului (corelare, reținere la sursă).</param>
 /// <param name="Withholding">D100: reținerea raportată de platformă lângă impozitul calculat.</param>
+/// <param name="Blockers">Opresc doar această declarație (D100 până la confirmarea regulii, F23), nu luna.</param>
 public sealed record DeclarationCalculation(
     DeclarationType Type,
     bool Applicable,
@@ -126,7 +150,11 @@ public sealed record DeclarationCalculation(
     string Explanation,
     decimal? ExcludedRideIncome,
     IReadOnlyList<string>? Warnings = null,
-    IReadOnlyList<WithholdingComparison>? Withholding = null);
+    IReadOnlyList<WithholdingComparison>? Withholding = null,
+    IReadOnlyList<string>? Blockers = null)
+{
+    public bool IsBlocked => Blockers is { Count: > 0 };
+}
 
 public sealed record TaxResult(IReadOnlyList<string> BlockingReasons, IReadOnlyDictionary<DeclarationType, DeclarationCalculation> Declarations)
 {
@@ -161,13 +189,15 @@ public static class MonthlyTaxEngine
     public static TaxResult Calculate(PfaTaxInput input)
     {
         var blocking = new List<string>();
-        var d100 = new List<TaxLine>();
         var d301 = new List<TaxLine>();
 
         foreach (TaxInvoice invoice in input.Invoices)
         {
-            CalculateInvoice(input, invoice, blocking, d100, d301);
+            CalculateInvoice(input, invoice, blocking, d301);
         }
+
+        // F20: D100 din plățile lunii (data plății/decontării), cu decizia de impozit a fiecăreia.
+        (List<TaxLine> d100, List<string> d100Blockers) = NonResidentLines(input);
 
         if (input.D100Rules.Any(rule => rule.Code == D100RuleCode.D100RentIndividual && rule.Enabled && !rule.PendingConfirmation))
         {
@@ -222,8 +252,8 @@ public static class MonthlyTaxEngine
             new Dictionary<DeclarationType, DeclarationCalculation>
             {
                 [DeclarationType.D100] = new(
-                    DeclarationType.D100, d100.Count > 0, d100, d100Total,
-                    $"Impozit pe veniturile nerezidenților din comisioane: {AccountingJson.Amount(d100Total)} lei.", null, d100Warnings, withholding),
+                    DeclarationType.D100, d100.Count > 0 || d100Blockers.Count > 0, d100, d100Total,
+                    $"Impozit pe veniturile nerezidenților din comisioane: {AccountingJson.Amount(d100Total)} lei.", null, d100Warnings, withholding, d100Blockers),
                 [DeclarationType.D301] = new(
                     DeclarationType.D301, d301.Count > 0, d301, d301Total,
                     $"TVA pentru serviciile intracomunitare achiziționate: {AccountingJson.Amount(d301Total)} lei. Veniturile din curse nu intră în bază.",
@@ -233,7 +263,35 @@ public static class MonthlyTaxEngine
             });
     }
 
-    private static void CalculateInvoice(PfaTaxInput input, TaxInvoice invoice, List<string> blocking, List<TaxLine> d100, List<TaxLine> d301)
+    private static (List<TaxLine> Lines, List<string> Blockers) NonResidentLines(PfaTaxInput input)
+    {
+        var lines = new List<TaxLine>();
+        var blockers = new List<string>();
+        foreach (NonResidentLine payment in input.NonResident ?? [])
+        {
+            if (payment.Status == NonResidentDecisionStatus.NeedsLegalConfirmation)
+            {
+                blockers.Add($"{payment.Label}: necesită confirmarea regulii. {payment.Explanation}");
+                continue;
+            }
+
+            if (payment.SourceDocumentId is not { } source)
+            {
+                blockers.Add($"{payment.Label}: plata nu are factura de comision a furnizorului.");
+                continue;
+            }
+
+            lines.Add(new TaxLine(
+                source, payment.Label, D100CommissionRule, payment.GrossIncomeRon, payment.GrossIncomeRon, payment.Rate, payment.TaxDue, "RON", null,
+                $"{Calculation(payment.GrossIncomeRon, payment.Rate, payment.TaxDue)} (plata din {AccountingJson.Date(payment.PaymentDate)})",
+                payment.SupplierName, payment.SupplierCountry, payment.SupplierTaxId, null,
+                payment.Treaty, payment.ResidenceCertValidFrom, payment.ResidenceCertValidTo, [source]));
+        }
+
+        return (lines, blockers);
+    }
+
+    private static void CalculateInvoice(PfaTaxInput input, TaxInvoice invoice, List<string> blocking, List<TaxLine> d301)
     {
         if (invoice.InvoiceDate is not { } date || invoice.CommissionAmount is not { } commission)
         {
@@ -249,19 +307,9 @@ public static class MonthlyTaxEngine
             return;
         }
 
-        if (ToRon(input, commission, invoice.Currency, date, blocking, invoice.Label) is not { } converted)
-        {
-            return;
-        }
-
-        string conversion = converted.Rate is { } rate
-            ? $" ({AccountingJson.Amount(commission)} {invoice.Currency} × {rate.ToString("0.####", CultureInfo.InvariantCulture)})"
-            : string.Empty;
         var common = new TaxLine(
-            invoice.DocumentId, invoice.Label, string.Empty, commission, converted.Amount, null, 0, invoice.Currency ?? "RON", converted.Rate,
+            invoice.DocumentId, invoice.Label, string.Empty, commission, commission, null, 0, invoice.Currency ?? "RON", null,
             string.Empty, supplier.SupplierName, supplier.Country, supplier.VatId, null, null, null, null, [invoice.DocumentId]);
-
-        CalculateD100(input, supplier, date, common, conversion, blocking, d100);
 
         // F11: declarabil după furnizorul juridic și țara lui (registrul de furnizori), niciodată după brand.
         if (!input.Settings.EuCountries.Contains(supplier.Country, StringComparer.OrdinalIgnoreCase))
@@ -315,47 +363,6 @@ public static class MonthlyTaxEngine
     /// <summary>Începutul mesajului de blocare pentru art. 317 inactiv (F04): după el se creează task-ul D700.</summary>
     public const string Art317Missing = "Codul special de TVA art. 317 nu e activ";
 
-    private static void CalculateD100(
-        PfaTaxInput input,
-        SupplierTaxProfile supplier,
-        DateOnly date,
-        TaxLine common,
-        string conversion,
-        List<string> blocking,
-        List<TaxLine> d100)
-    {
-        D100Rule? rule = input.D100Rules.FirstOrDefault(r => r.Code == D100RuleCode.D100CommissionNonresident && IsValidAt(r, date));
-        if (rule is not { Enabled: true })
-        {
-            return;
-        }
-
-        bool certificateValid = supplier.ResidenceCertValidFrom is { } from && supplier.ResidenceCertValidTo is { } to && from <= date && date <= to;
-        if (!certificateValid)
-        {
-            blocking.Add($"Certificatul de rezidență pentru {supplier.SupplierName} nu e valabil la {AccountingJson.Date(date)}.");
-            return;
-        }
-
-        if (!supplier.D100RateConfirmed || supplier.D100Rate is not { } rate)
-        {
-            blocking.Add($"Cota D100 pentru {supplier.SupplierName} nu e confirmată.");
-            return;
-        }
-
-        decimal value = Line(common.Base * rate / 100);
-        d100.Add(common with
-        {
-            RuleCode = D100CommissionRule,
-            Rate = rate,
-            Value = value,
-            Explanation = Calculation(common.Base, rate, value) + conversion,
-            Treaty = supplier.Treaty,
-            ResidenceCertValidFrom = supplier.ResidenceCertValidFrom,
-            ResidenceCertValidTo = supplier.ResidenceCertValidTo,
-        });
-    }
-
     /// <summary>
     /// Avertismentele din rapoartele platformelor, pe platformă (spec: documente reale Uber/Bolt):
     /// <list type="bullet">
@@ -372,6 +379,13 @@ public static class MonthlyTaxEngine
         var d100Warnings = new List<string>();
         var withholding = new List<WithholdingComparison>();
         var platformOf = input.Invoices.ToDictionary(invoice => invoice.DocumentId, invoice => invoice.Platform);
+        foreach (NonResidentLine payment in input.NonResident ?? [])
+        {
+            if (payment.SourceDocumentId is { } source)
+            {
+                platformOf.TryAdd(source, payment.Platform);
+            }
+        }
 
         foreach (TaxReport report in input.Reports.Where(report => report.Platform is not null))
         {
