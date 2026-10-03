@@ -43,14 +43,13 @@ public sealed record DeclarationRules(string? ObligationCode, string? BudgetCode
 /// <param name="RulesetVersion">Ce reguli erau active, ca versiune a setului.</param>
 public sealed record TaxEngineSettings(
     IReadOnlyCollection<string> EuCountries,
-    VatExigibilityRule VatExigibility,
     ExchangeRateDateRule ExchangeRateDate,
     IReadOnlyDictionary<DeclarationType, DeclarationRounding> Rounding,
     IReadOnlyDictionary<DeclarationType, DeclarationRules>? Declarations = null,
     string? RulesetVersion = null)
 {
     /// <summary>Regulile valabile la sfârșitul perioadei <c>yyyy-MM</c>.</summary>
-    public static TaxEngineSettings ForPeriod(TaxRuleSet rules, string period, VatExigibilityRule exigibility = VatExigibilityRule.TaxPointDate)
+    public static TaxEngineSettings ForPeriod(TaxRuleSet rules, string period)
     {
         ArgumentNullException.ThrowIfNull(rules);
         var start = DateOnly.ParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -59,7 +58,6 @@ public sealed record TaxEngineSettings(
 
         return new TaxEngineSettings(
             [.. rules.Rules.Where(rule => rule.RuleType == TaxRuleTypes.EuMember && rules.IsEuMember(rule.Jurisdiction, end)).Select(rule => rule.Jurisdiction).Distinct()],
-            exigibility,
             Enum.TryParse(rules.Find(TaxRuleTypes.ExchangeRate, "RO", end)?.Formula, out ExchangeRateDateRule exchange) ? exchange : ExchangeRateDateRule.SameDayOrPrevious,
             Enum.GetValues<DeclarationType>()
                 .Select(type => (type, rule: rules.Find(TaxRuleTypes.Rounding, "RO", end, new TaxRuleContext(Code(type)))))
@@ -207,6 +205,14 @@ public static class MonthlyTaxEngine
             }
         }
 
+        // F17: D390 și D301 vin din aceleași facturi; bazele lunii trebuie să fie egale.
+        decimal d301Base = d301.Sum(line => line.Base);
+        decimal d390Base = d390.Sum(line => line.Base);
+        if (d301Base != d390Base)
+        {
+            blocking.Add($"Baza D390 ({AccountingJson.Amount(d390Base)} lei) diferă de baza D301 ({AccountingJson.Amount(d301Base)} lei).");
+        }
+
         decimal d100Total = Total(input, DeclarationType.D100, d100);
         decimal d301Total = Total(input, DeclarationType.D301, d301);
         (List<string> d301Warnings, List<string> d100Warnings, List<WithholdingComparison> withholding) = ReportWarnings(input, d100, d301);
@@ -257,34 +263,57 @@ public static class MonthlyTaxEngine
 
         CalculateD100(input, supplier, date, common, conversion, blocking, d100);
 
+        // F11: declarabil după furnizorul juridic și țara lui (registrul de furnizori), niciodată după brand.
         if (!input.Settings.EuCountries.Contains(supplier.Country, StringComparer.OrdinalIgnoreCase))
         {
             return;
         }
 
-        if (!Art317Active(input, date))
+        // F12: luna și cota vin din data impozitării, explicită pe factură. Fără ea nu se ghicește
+        // (nici din perioada facturată, nici din numele raportului): Stop.
+        if (invoice.TaxPointDate is not { } taxPoint)
         {
-            blocking.Add($"Codul special de TVA art. 317 nu e activ la {AccountingJson.Date(date)}.");
+            blocking.Add($"{invoice.Label}: lipsește data impozitării; fără ea nu se generează D301 și D390.");
             return;
         }
 
-        DateOnly exigibility = FiscalDate.Of(input.Settings.VatExigibility, date, invoice.ServicePeriodEnd, invoice.TaxPointDate) ?? date;
-        VatRate? vatRate = input.VatRates.FirstOrDefault(rate => IsValidAt(rate, exigibility));
+        // F04: art. 317 activ la data impozitării, altfel Stop și onboarding fiscal (task D700).
+        if (!Art317Active(input, taxPoint))
+        {
+            blocking.Add($"{Art317Missing} la {AccountingJson.Date(taxPoint)}.");
+            return;
+        }
+
+        VatRate? vatRate = input.VatRates.FirstOrDefault(rate => IsValidAt(rate, taxPoint));
         if (vatRate is null)
         {
-            blocking.Add($"Nu există cotă de TVA valabilă la {AccountingJson.Date(exigibility)}.");
+            blocking.Add($"Nu există cotă de TVA valabilă la {AccountingJson.Date(taxPoint)}.");
             return;
         }
 
-        decimal vat = Line(converted.Amount * vatRate.Rate / 100);
+        // F13: baza în lei la cursul regulii perioadei, la data impozitării; cursul rămâne pe linie.
+        if (ToRon(input, commission, invoice.Currency, taxPoint, blocking, invoice.Label) is not { } atTaxPoint)
+        {
+            return;
+        }
+
+        string taxPointConversion = atTaxPoint.Rate is { } taxPointRate
+            ? $" ({AccountingJson.Amount(commission)} {invoice.Currency} × {taxPointRate.ToString("0.####", CultureInfo.InvariantCulture)})"
+            : string.Empty;
+        decimal vat = Line(atTaxPoint.Amount * vatRate.Rate / 100);
         d301.Add(common with
         {
             RuleCode = D301Rule,
+            Base = atTaxPoint.Amount,
+            ExchangeRate = atTaxPoint.Rate,
             Rate = vatRate.Rate,
             Value = vat,
-            Explanation = Calculation(converted.Amount, vatRate.Rate, vat) + conversion,
+            Explanation = Calculation(atTaxPoint.Amount, vatRate.Rate, vat) + taxPointConversion,
         });
     }
+
+    /// <summary>Începutul mesajului de blocare pentru art. 317 inactiv (F04): după el se creează task-ul D700.</summary>
+    public const string Art317Missing = "Codul special de TVA art. 317 nu e activ";
 
     private static void CalculateD100(
         PfaTaxInput input,

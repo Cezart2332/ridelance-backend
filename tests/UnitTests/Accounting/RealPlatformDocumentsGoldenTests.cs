@@ -40,9 +40,10 @@ public sealed class RealPlatformDocumentsGoldenTests
     /// <summary>Documentele reale; numele fișierelor sunt cele primite.</summary>
     private static readonly RealDocument[] Documents =
     [
+        // Factura Bolt nu tipărește data impozitării: contabilul o completează la confirmare (spec declarații F12).
         new("Factura Bolt - RO1126-153658-AV FLEET EXPERT SRL (3).pdf", Platform.Bolt, PlatformDocumentType.CommissionInvoice,
             new ExtractedFields("Bolt Operations OÜ", "EE", BoltVatId, "RO1126-153658", new DateOnly(2026, 8, 31), new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31),
-                "RON", 2273.23m, 2273.23m, [])),
+                "RON", 2273.23m, 2273.23m, [], TaxPointDate: new DateOnly(2026, 8, 31))),
         new("9246aaf0-04f9-5cd3-9f71-7b438379a561_065c6979-55ae-5318-9e8b-aab5f4fa6f51.pdf", Platform.Uber, PlatformDocumentType.CommissionInvoice,
             UberWeek("UBERDEF-GGCDIBAJ-01-2026-0000033", new DateOnly(2026, 8, 5), new DateOnly(2026, 7, 27), new DateOnly(2026, 8, 2), 3611.83m)),
         new("95ff5bec-f95a-5489-afa7-2bf6c20b9422_ac7e1896-b0a0-58fa-bcbd-69e84b34a655.pdf", Platform.Uber, PlatformDocumentType.CommissionInvoice,
@@ -135,17 +136,17 @@ public sealed class RealPlatformDocumentsGoldenTests
     {
         List<MonthDocument> uber = [.. Invoices().Where(i => i.Document.Platform == Platform.Uber).Select(i => MonthDocumentOf(i.Document))];
 
-        PreCheck.InvoiceCoverageGaps(Period, Platform.Uber, uber, VatExigibilityRule.TaxPointDate).ShouldBeEmpty();
+        PreCheck.InvoiceCoverageGaps(Period, Platform.Uber, uber).ShouldBeEmpty();
 
-        PreCheck.InvoiceCoverageGaps(Period, Platform.Uber, [.. uber.Where(d => d.Extraction!.InvoiceNumber != "UBERDEF-GGCDIBAJ-01-2026-0000035")], VatExigibilityRule.TaxPointDate)
+        PreCheck.InvoiceCoverageGaps(Period, Platform.Uber, [.. uber.Where(d => d.Extraction!.InvoiceNumber != "UBERDEF-GGCDIBAJ-01-2026-0000035")])
             .ShouldBe(["Lipsește factura de comision Uber pentru 10.08.2026–16.08.2026."]);
-        PreCheck.InvoiceCoverageGaps(Period, Platform.Uber, [.. uber.Where(d => d.Extraction!.InvoiceNumber != "UBERDEF-GGCDIBAJ-01-2026-0000037")], VatExigibilityRule.TaxPointDate)
+        PreCheck.InvoiceCoverageGaps(Period, Platform.Uber, [.. uber.Where(d => d.Extraction!.InvoiceNumber != "UBERDEF-GGCDIBAJ-01-2026-0000037")])
             .ShouldBe(["Lipsește factura de comision Uber pentru perioada de după 23.08.2026."]);
-        PreCheck.InvoiceCoverageGaps(Period, Platform.Uber, [.. uber.Where(d => d.Extraction!.InvoiceNumber != "UBERDEF-GGCDIBAJ-01-2026-0000033")], VatExigibilityRule.TaxPointDate)
+        PreCheck.InvoiceCoverageGaps(Period, Platform.Uber, [.. uber.Where(d => d.Extraction!.InvoiceNumber != "UBERDEF-GGCDIBAJ-01-2026-0000033")])
             .ShouldBe(["Lipsește factura de comision Uber pentru perioada de dinainte de 03.08.2026."]);
 
         MonthDocument bolt = MonthDocumentOf(Documents[0]);
-        PreCheck.InvoiceCoverageGaps(Period, Platform.Bolt, [bolt], VatExigibilityRule.TaxPointDate).ShouldBeEmpty();
+        PreCheck.InvoiceCoverageGaps(Period, Platform.Bolt, [bolt]).ShouldBeEmpty();
     }
 
     [Fact]

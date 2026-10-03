@@ -36,6 +36,9 @@ public static class VatRegistrationErrors
 
     public static readonly Error ReasonRequired = Error.Problem("VatRegistration.ReasonRequired", "Motivul respingerii e obligatoriu.");
 
+    public static readonly Error CertificateRequired = Error.Problem(
+        "VatRegistration.CertificateRequired", "Codul se activează doar cu dovada ANAF din vectorul fiscal (certificatul de înregistrare în scopuri de TVA).");
+
     public static readonly Error NoValidator = Error.Problem(
         "VatRegistration.NoValidator",
         "Nu e configurată versiunea kitului ANAF (schemele declarațiilor).");
@@ -287,9 +290,16 @@ internal sealed class VatRegistrationService(
             return Result.Failure<VatRegistrationRequest>(VatRegistrationErrors.NotFound);
         }
 
-        if (request.Status is not (VatRegistrationStatus.Approved or VatRegistrationStatus.Submitted))
+        // F03: codul devine activ după depunere și după confirmarea ANAF din vectorul fiscal
+        // (certificatul de înregistrare), nu la aprobare și nu doar la depunere.
+        if (request.Status != VatRegistrationStatus.Submitted)
         {
             return Result.Failure<VatRegistrationRequest>(VatRegistrationErrors.WrongStatus(request.Status));
+        }
+
+        if (certificate is not { Content.Length: > 0 })
+        {
+            return Result.Failure<VatRegistrationRequest>(VatRegistrationErrors.CertificateRequired);
         }
 
         if (PfaSettings.Art317VatCode(vatCode) is not { } code)

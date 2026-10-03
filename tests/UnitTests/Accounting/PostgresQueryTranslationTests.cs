@@ -89,7 +89,7 @@ public sealed class PostgresQueryTranslationTests
         data.Suppliers.ShouldNotBeEmpty();
         (await DeclarationSummaries.CurrentVersionsAsync(db, "2026-08", [Guid.NewGuid()], CancellationToken.None)).ShouldBeEmpty();
 
-        Result<PeriodOverview> overview = await new GetPeriodOverviewQueryHandler(db, Options.Create(new AccountingOptions()))
+        Result<PeriodOverview> overview = await new GetPeriodOverviewQueryHandler(db)
             .Handle(new GetPeriodOverviewQuery("2026-08"), CancellationToken.None);
         overview.IsSuccess.ShouldBeTrue();
         (await PreCheck.RunAsync(db, Guid.NewGuid(), "2026-08", new AccountingOptions(), CancellationToken.None)).ShouldBeNull();
@@ -153,7 +153,7 @@ public sealed class PostgresQueryTranslationTests
         };
         db.BackgroundJobs.Add(job);
         await db.SaveChangesAsync();
-        Result run = await new RunMonthJobCommandHandler(db, new NoExtraction(), files, validator, Options.Create(new AccountingOptions()))
+        Result run = await new RunMonthJobCommandHandler(db, new NoExtraction(), files, validator)
             .Handle(new RunMonthJobCommand(job.Id), CancellationToken.None);
         run.IsSuccess.ShouldBeTrue();
         (await db.BackgroundJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id)).Status.ShouldBe(BackgroundJobStatus.Completed);

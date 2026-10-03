@@ -35,7 +35,8 @@ public sealed class DocumentCheckerTests
         "RON",
         total ?? commission + vat,
         commission,
-        [new OtherAmount("TVA", vat)]);
+        [new OtherAmount("TVA", vat)],
+        TaxPointDate: new DateOnly(2026, 8, 31));
 
     private static CheckContext Context(
         IReadOnlyList<SupplierTaxProfile>? suppliers = null,
@@ -138,7 +139,7 @@ public sealed class DocumentCheckerTests
     [Fact]
     public void Period_match_fails_for_an_invoice_from_another_month() =>
         Check(
-            RunInvoice(Invoice() with { InvoiceDate = new DateOnly(2026, 9, 1), PeriodFrom = new DateOnly(2026, 9, 1), PeriodTo = new DateOnly(2026, 9, 30) }),
+            RunInvoice(Invoice() with { InvoiceDate = new DateOnly(2026, 9, 1), PeriodFrom = new DateOnly(2026, 9, 1), PeriodTo = new DateOnly(2026, 9, 30), TaxPointDate = new DateOnly(2026, 9, 30) }),
             DocumentCheckCode.PeriodMatch).Passed.ShouldBeFalse();
 
     [Fact]
@@ -156,18 +157,15 @@ public sealed class DocumentCheckerTests
         DocumentCheck byTaxPoint = Check(RunInvoice(weekly), DocumentCheckCode.PeriodMatch);
         byTaxPoint.Passed.ShouldBeTrue();
         byTaxPoint.Message.ShouldBe("Data impozitării 30.08.2026 e în perioada procesată.");
-
-        var invoiceDate = new AccountingOptions { VatExigibility = VatExigibilityRule.InvoiceDate };
-        Check(RunInvoice(weekly, Context(options: invoiceDate)), DocumentCheckCode.PeriodMatch).Passed.ShouldBeFalse();
     }
 
+    /// <summary>Spec declarații F12: fără data impozitării, factura e de verificat; luna nu se deduce din perioadă.</summary>
     [Fact]
-    public void Period_match_follows_the_configured_exigibility_rule()
+    public void F12_AnInvoiceWithoutTaxPointDateNeedsReview()
     {
-        ExtractedFields fields = Invoice() with { InvoiceDate = new DateOnly(2026, 9, 1) };
-        var servicePeriodEnd = new AccountingOptions { VatExigibility = VatExigibilityRule.ServicePeriodEnd };
+        DocumentCheck check = Check(RunInvoice(Invoice() with { TaxPointDate = null }), DocumentCheckCode.PeriodMatch);
 
-        Check(RunInvoice(fields, Context(options: servicePeriodEnd)), DocumentCheckCode.PeriodMatch).Passed.ShouldBeTrue();
+        (check.Passed, check.Message).ShouldBe((false, "Lipsește data impozitării; completeaz-o din factură."));
     }
 
     [Fact]

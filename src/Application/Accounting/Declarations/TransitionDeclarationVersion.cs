@@ -131,7 +131,7 @@ internal sealed class DeclarationActions(
 
         Result<DeclarationDraft> draft = await DeclarationContent.CalculateAsync(
             db, declaration.PfaRegistrationId, declaration.Period, declaration.Type,
-            TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), declaration.Period, options.Value.VatExigibility), cancellationToken);
+            TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), declaration.Period), cancellationToken);
         if (draft.IsFailure)
         {
             return Result.Failure<Guid>(draft.Error);
@@ -178,7 +178,7 @@ internal sealed class DeclarationActions(
         Declaration declaration = version.Declaration;
         Result<DeclarationDraft> draft = await DeclarationContent.CalculateAsync(
             db, declaration.PfaRegistrationId, declaration.Period, declaration.Type,
-            TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), declaration.Period, options.Value.VatExigibility), cancellationToken);
+            TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), declaration.Period), cancellationToken);
         if (draft.IsFailure)
         {
             return draft;

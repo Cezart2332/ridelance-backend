@@ -66,7 +66,7 @@ internal sealed class RunMonthJobCommandHandler(
     ICommandHandler<RunPlatformDocumentExtractionCommand> extraction,
     DeclarationFiles files,
     DeclarationValidator validator,
-    IOptions<AccountingOptions> options)
+    VatRegistration.VatRegistrationService? vatRegistration = null)
     : ICommandHandler<RunMonthJobCommand>
 {
     public async Task<Result> Handle(RunMonthJobCommand command, CancellationToken cancellationToken)
@@ -80,7 +80,7 @@ internal sealed class RunMonthJobCommandHandler(
         MonthJobParameters parameters = AccountingJson.Deserialize(job.ParametersJson, new MonthJobParameters(string.Empty));
         string period = parameters.Period;
         MonthJobResults results = AccountingJson.Deserialize(job.ResultJson, new MonthJobResults([], []));
-        var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), period, options.Value.VatExigibility);
+        var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), period);
 
         List<ScopePfa> pfas = await AccountingScope.InPeriodAsync(db, period, cancellationToken, parameters.PfaId);
         if (job.Type == BackgroundJobType.GenerateDeclarations)
@@ -175,6 +175,12 @@ internal sealed class RunMonthJobCommandHandler(
         MonthData data = await MonthData.LoadAsync(db, period, [pfa.Id], cancellationToken);
         PreCheckResult result = PreCheck.Evaluate(pfa, data, settings);
         await PreCheck.SaveAsync(db, pfa.Id, period, result, cancellationToken);
+
+        // F04: fără art. 317 activ, declarațiile UE se opresc și PFA-ul intră în onboarding fiscal: task D700.
+        if (vatRegistration is not null && result.Reasons.Any(reason => reason.StartsWith(MonthlyTaxEngine.Art317Missing, StringComparison.Ordinal)))
+        {
+            await vatRegistration.EnsureRequestedAsync(pfa.Id, null, cancellationToken);
+        }
 
         string status = result.Status switch
         {

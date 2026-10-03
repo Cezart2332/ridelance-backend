@@ -42,7 +42,7 @@ public static class DocumentChecker
             checks.Add(NotAlreadyDeclared(context));
         }
 
-        checks.Add(PeriodMatch(subject, fields, context.Options, invoice));
+        checks.Add(PeriodMatch(subject, fields, invoice));
         checks.Add(CurrencyAllowed(fields, context.Options));
         checks.Add(SettlementCorrelation(subject, fields, context, invoice));
         return checks;
@@ -176,15 +176,19 @@ public static class DocumentChecker
             : new DocumentCheck(DocumentCheckCode.NotAlreadyDeclared, true, "Documentul nu a mai fost declarat.", null);
 
     /// <summary>
-    /// Luna fiscală a documentului. La facturi, după regula de exigibilitate (DE CONFIRMAT, implicit
-    /// „Data impozitării”); la rapoarte, sfârșitul perioadei raportate.
+    /// Luna fiscală a documentului. La facturi, data impozitării, explicită (spec declarații F12): fără
+    /// ea, documentul e de verificat și contabilul o completează; nu se deduce din perioada facturată.
+    /// La rapoarte, sfârșitul perioadei raportate.
     /// </summary>
-    private static DocumentCheck PeriodMatch(CheckSubject subject, ExtractedFields fields, AccountingOptions options, bool invoice)
+    private static DocumentCheck PeriodMatch(CheckSubject subject, ExtractedFields fields, bool invoice)
     {
-        DateOnly? reference = invoice
-            ? FiscalDate.Of(options.VatExigibility, fields.InvoiceDate, fields.PeriodTo, fields.TaxPointDate)
-            : fields.PeriodTo ?? fields.InvoiceDate;
-        string label = invoice ? FiscalDate.Label(options.VatExigibility, fields.TaxPointDate, fields.PeriodTo) : "Data";
+        if (invoice && fields.TaxPointDate is null)
+        {
+            return new DocumentCheck(DocumentCheckCode.PeriodMatch, false, "Lipsește data impozitării; completeaz-o din factură.", null);
+        }
+
+        DateOnly? reference = invoice ? fields.TaxPointDate : fields.PeriodTo ?? fields.InvoiceDate;
+        string label = invoice ? "Data impozitării" : "Data";
         bool ok = reference is { } date && date.ToString("yyyy-MM", CultureInfo.InvariantCulture) == subject.Period;
         return ok
             ? new DocumentCheck(DocumentCheckCode.PeriodMatch, true, $"{label} {AccountingJson.Date(reference)} e în perioada procesată.", null)

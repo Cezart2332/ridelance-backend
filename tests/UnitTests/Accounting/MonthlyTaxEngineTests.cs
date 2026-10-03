@@ -138,32 +138,64 @@ public sealed class MonthlyTaxEngineTests
             .ShouldBe(["Cota D100 pentru Uber B.V. nu e confirmată."]);
     }
 
+    /// <summary>F14: cota de TVA e cea valabilă la data impozitării, nu la data facturii.</summary>
     [Fact]
-    public void Vat_rate_changed_mid_month_uses_the_exigibility_date()
+    public void F14_VatRateChangedMidMonthUsesTheTaxPointDate()
     {
         VatRate[] rates =
         [
             new() { Rate = 19, ValidFrom = new DateOnly(2017, 1, 1), ValidTo = new DateOnly(2026, 8, 15) },
             new() { Rate = 21, ValidFrom = new DateOnly(2026, 8, 16) },
         ];
-        TaxInvoice invoice = Bolt(1000m) with { ServicePeriodEnd = new DateOnly(2026, 8, 10) };
+        TaxInvoice invoice = Bolt(1000m) with { TaxPointDate = new DateOnly(2026, 8, 9) };
 
-        PfaTaxInput input = Input(invoices: [invoice]) with { VatRates = rates };
-        PfaTaxInput byInvoiceDate = input with { Settings = input.Settings with { VatExigibility = VatExigibilityRule.InvoiceDate } };
-        PfaTaxInput byServicePeriod = input with { Settings = input.Settings with { VatExigibility = VatExigibilityRule.ServicePeriodEnd } };
-        PfaTaxInput byTaxPoint = input with
-        {
-            Invoices = [invoice with { TaxPointDate = new DateOnly(2026, 8, 9) }],
-            Settings = input.Settings with { VatExigibility = VatExigibilityRule.TaxPointDate },
-        };
+        MonthlyTaxEngine.Calculate(Input(invoices: [invoice]) with { VatRates = rates }).Declarations[DeclarationType.D301].Total.ShouldBe(190m);
+    }
 
-        MonthlyTaxEngine.Calculate(byInvoiceDate).Declarations[DeclarationType.D301].Total.ShouldBe(210m);
-        MonthlyTaxEngine.Calculate(byServicePeriod).Declarations[DeclarationType.D301].Total.ShouldBe(190m);
-        MonthlyTaxEngine.Calculate(byTaxPoint).Declarations[DeclarationType.D301].Total.ShouldBe(190m);
+    /// <summary>F12 și scenariul 3: o factură UE fără dată de impozitare oprește D301 și D390; luna nu se ghicește.</summary>
+    [Fact]
+    public void F12_S3_AnEuInvoiceWithoutTaxPointDateStops()
+    {
+        TaxResult result = MonthlyTaxEngine.Calculate(Input(invoices: [Bolt(1000m) with { TaxPointDate = null }]));
+
+        result.IsBlocked.ShouldBeTrue();
+        result.BlockingReasons.ShouldContain(reason => reason.Contains("lipsește data impozitării", StringComparison.Ordinal));
+    }
+
+    /// <summary>Scenariul 1 și F15–F17: o factură UE de 1.000 lei, cota 21% → D301 1.000 / 210, D390 un rând S, bazele egale.</summary>
+    [Fact]
+    public void S1_F15_F16_F17_OneEuInvoiceGivesMatchingD301AndD390()
+    {
+        TaxResult result = MonthlyTaxEngine.Calculate(Input(invoices: [Bolt(1000m) with { TaxPointDate = new DateOnly(2026, 9, 15) }]) with { Period = "2026-09" });
+
+        result.IsBlocked.ShouldBeFalse();
+        DeclarationCalculation d301 = result.Declarations[DeclarationType.D301];
+        (d301.Lines.Sum(line => line.Base), d301.Total).ShouldBe((1000m, 210m));
+        TaxLine row = result.Declarations[DeclarationType.D390].Lines.ShouldHaveSingleItem();
+        (row.OperationType, row.Base).ShouldBe(("S", 1000m));
+    }
+
+    /// <summary>Scenariul 4 și F16: două entități UE în aceeași lună → un total D301, două rânduri D390, Σ D390 = D301.</summary>
+    [Fact]
+    public void S4_F16_TwoEuEntitiesGiveOneD301TotalAndTwoD390Rows()
+    {
+        TaxResult result = MonthlyTaxEngine.Calculate(Input());
+
+        result.Declarations[DeclarationType.D390].Lines.Count.ShouldBe(2);
+        result.Declarations[DeclarationType.D390].Lines.Sum(line => line.Base).ShouldBe(result.Declarations[DeclarationType.D301].Lines.Sum(line => line.Base));
+    }
+
+    /// <summary>Scenariul 2 și F04: aceeași factură pe un PFA fără art. 317 activ → Stop.</summary>
+    [Fact]
+    public void S2_F04_WithoutArt317TheEuInvoiceStops()
+    {
+        TaxResult result = MonthlyTaxEngine.Calculate(Input() with { Art317 = [] });
+
+        result.BlockingReasons.ShouldContain(reason => reason.StartsWith(MonthlyTaxEngine.Art317Missing, StringComparison.Ordinal));
     }
 
     [Fact]
-    public void Month_without_eu_invoices_is_not_applicable_for_d301_and_d390()
+    public void F18_S5_MonthWithoutEuInvoicesHasNoD301OrD390()
     {
         SupplierTaxProfile nonEu = UberProfile();
         nonEu.Country = "US";
@@ -268,10 +300,10 @@ public sealed class MonthlyTaxEngineTests
     ];
 
     private static TaxInvoice Bolt(decimal commission) =>
-        new(Guid.NewGuid(), "Factura Bolt", "EE102090374", "B-1", new DateOnly(2026, 8, 31), new DateOnly(2026, 8, 31), "RON", commission);
+        new(Guid.NewGuid(), "Factura Bolt", "EE102090374", "B-1", new DateOnly(2026, 8, 31), new DateOnly(2026, 8, 31), "RON", commission, new DateOnly(2026, 8, 31));
 
     private static TaxInvoice Uber(decimal commission) =>
-        new(Guid.NewGuid(), "Factura Uber", "NL852071589B01", "U-1", new DateOnly(2026, 8, 31), new DateOnly(2026, 8, 31), "RON", commission);
+        new(Guid.NewGuid(), "Factura Uber", "NL852071589B01", "U-1", new DateOnly(2026, 8, 31), new DateOnly(2026, 8, 31), "RON", commission, new DateOnly(2026, 8, 31));
 
     private static PfaTaxInput Input(IReadOnlyList<SupplierTaxProfile>? suppliers = null, IReadOnlyList<TaxInvoice>? invoices = null) => new(
         "2026-08",
@@ -299,7 +331,7 @@ public sealed class MonthlyTaxEngineTests
     {
         public PfaTaxInput ToInput() => new(
             Period,
-            [.. Invoices.Select(i => new TaxInvoice(Guid.NewGuid(), i.Label, i.SupplierVatId, null, i.InvoiceDate, i.ServicePeriodEnd, i.Currency, i.CommissionAmount))],
+            [.. Invoices.Select(i => new TaxInvoice(Guid.NewGuid(), i.Label, i.SupplierVatId, null, i.InvoiceDate, i.ServicePeriodEnd, i.Currency, i.CommissionAmount, i.TaxPointDate))],
             [.. Reports.Select(r => new TaxReport(Guid.NewGuid(), r.Currency, r.Income, r.PeriodTo))],
             Suppliers,
             [.. VatRates.Select(v => new VatRate { Rate = v.Rate, ValidFrom = v.ValidFrom, ValidTo = v.ValidTo })],
@@ -313,7 +345,7 @@ public sealed class MonthlyTaxEngineTests
 
     private sealed record GoldenArt317(bool Enabled, DateOnly ValidFrom);
 
-    private sealed record GoldenInvoice(string Label, string SupplierVatId, DateOnly InvoiceDate, DateOnly? ServicePeriodEnd, string Currency, decimal CommissionAmount);
+    private sealed record GoldenInvoice(string Label, string SupplierVatId, DateOnly InvoiceDate, DateOnly? ServicePeriodEnd, string Currency, decimal CommissionAmount, DateOnly? TaxPointDate = null);
 
     private sealed record GoldenReport(string Currency, decimal Income, DateOnly? PeriodTo);
 

@@ -1,22 +1,5 @@
 namespace Application.Accounting;
 
-/// <summary>Data la care e exigibil TVA-ul pe o factură de comision. DE CONFIRMAT (spec §6 pct. 3).</summary>
-public enum VatExigibilityRule
-{
-    /// <summary>Data facturii.</summary>
-    InvoiceDate = 0,
-
-    /// <summary>Sfârșitul perioadei de serviciu facturate.</summary>
-    ServicePeriodEnd = 1,
-
-    /// <summary>
-    /// „Data impozitării” (tax point) de pe factură; fără ea, sfârșitul perioadei, apoi data facturii.
-    /// Uber emite facturi săptămânale cu data facturii în luna următoare (factura pentru 24–30.08
-    /// are data 03.09), dar data impozitării e ultima zi a săptămânii.
-    /// </summary>
-    TaxPointDate = 2,
-}
-
 /// <summary>Ce curs se folosește pentru o factură în valută. DE CONFIRMAT (spec §6 pct. 4).</summary>
 public enum ExchangeRateDateRule
 {
@@ -79,8 +62,6 @@ public sealed class AccountingOptions
 
     public decimal SettlementMaxPercent { get; init; } = 30;
 
-    /// <summary>Regula pentru <c>PERIOD_MATCH</c> și cota de TVA. DE CONFIRMAT.</summary>
-    public VatExigibilityRule VatExigibility { get; init; } = VatExigibilityRule.TaxPointDate;
 
     /// <summary>Procedura de corecție D100 pentru rectificative. DE CONFIRMAT.</summary>
     public D100CorrectionProcedure D100CorrectionProcedure { get; init; } = D100CorrectionProcedure.D710;
