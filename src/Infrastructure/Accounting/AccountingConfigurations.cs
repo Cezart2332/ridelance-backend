@@ -730,6 +730,46 @@ internal sealed class TaxRuleConfiguration : IEntityTypeConfiguration<TaxRule>
     }
 }
 
+internal sealed class NonResidentPaymentConfiguration : IEntityTypeConfiguration<NonResidentPayment>
+{
+    public void Configure(EntityTypeBuilder<NonResidentPayment> builder)
+    {
+        builder.ToTable("non_resident_payments");
+        builder.HasKey(p => p.Id);
+        builder.Property(p => p.SupplierLegalName).HasMaxLength(256).IsRequired();
+        builder.Property(p => p.SupplierCountry).HasMaxLength(2).IsRequired();
+        builder.Property(p => p.SupplierTaxId).HasMaxLength(32).IsRequired();
+        builder.Property(p => p.GrossIncomeRon).AsMoney();
+        builder.Property(p => p.IncomeType).HasMaxLength(32).IsRequired();
+        builder.HasIndex(p => new { p.PfaRegistrationId, p.PaymentDate });
+        // O înregistrare de comision e o singură plată.
+        builder.HasIndex(p => p.LedgerEntryId).IsUnique().HasFilter("ledger_entry_id IS NOT NULL");
+        builder.RestrictToPfa(p => p.PfaRegistrationId);
+        builder.HasOne<BankTransaction>().WithMany().HasForeignKey(p => p.BankTransactionId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<LedgerEntry>().WithMany().HasForeignKey(p => p.LedgerEntryId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PlatformDocument>().WithMany().HasForeignKey(p => p.CommissionInvoiceId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class NonResidentTaxDecisionConfiguration : IEntityTypeConfiguration<NonResidentTaxDecision>
+{
+    public void Configure(EntityTypeBuilder<NonResidentTaxDecision> builder)
+    {
+        builder.ToTable("non_resident_tax_decisions");
+        builder.HasKey(d => d.Id);
+        builder.Property(d => d.TaxRate).AsRate();
+        builder.Property(d => d.TaxDue).AsMoney();
+        builder.Property(d => d.ObligationCode).HasMaxLength(16).IsRequired();
+        builder.Property(d => d.Status).AsText();
+        builder.Property(d => d.Explanation).HasMaxLength(1000).IsRequired();
+        builder.Property(d => d.ConfirmationReason).HasMaxLength(1000);
+        // O decizie pe plată.
+        builder.HasIndex(d => d.PaymentId).IsUnique();
+        builder.HasOne<NonResidentPayment>().WithMany().HasForeignKey(d => d.PaymentId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToUser(d => d.ConfirmedByUserId);
+    }
+}
+
 internal sealed class DepreciationLineConfiguration : IEntityTypeConfiguration<DepreciationLine>
 {
     public void Configure(EntityTypeBuilder<DepreciationLine> builder)

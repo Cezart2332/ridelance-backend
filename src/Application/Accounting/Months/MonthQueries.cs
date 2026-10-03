@@ -102,7 +102,7 @@ internal sealed class ListDeclarationsQueryHandler(IApplicationDbContext db)
         PfaMonthCheck? check = await db.PfaMonthChecks.AsNoTracking()
             .SingleOrDefaultAsync(c => c.PfaRegistrationId == pfa.Id && c.Period == query.Period, cancellationToken);
         List<DeclarationSummaries.CurrentVersion> versions = await DeclarationSummaries.CurrentVersionsAsync(db, query.Period, [pfa.Id], cancellationToken);
-        MonthData? data = check?.Status == PfaMonthStatus.Ready && versions.Count == 0
+        MonthData? data = check?.Status == PfaMonthStatus.Ready
             ? await MonthData.LoadAsync(db, query.Period, [pfa.Id], cancellationToken)
             : null;
         var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), query.Period);

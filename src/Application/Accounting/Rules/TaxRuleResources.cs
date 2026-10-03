@@ -75,7 +75,12 @@ internal sealed class SaveTaxRuleCommandHandler(IApplicationDbContext db) : ICom
                 TaxRuleKind.Suppliers => await SaveAsync(
                     command, db.SupplierTaxProfiles, Read<SupplierTaxProfileDto>(command.Input), r => r.Id, id => new SupplierTaxProfile { Id = id }, TaxRuleDtos.Apply,
                     r => r.VatId, i => i.VatId.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant(), TaxRuleDtos.Supplier,
-                    i => i.SupplierName is { Length: > 0 } && i.Country is { Length: 2 } && i.VatId is { Length: > 2 }, cancellationToken),
+                    // F25: regula pe furnizor se leagă de codul fiscal al entității (nu de brand), cu țara și baza
+                    // legală (convenția) când are cotă D100.
+                    i => i.SupplierName is { Length: > 0 } && i.Country is { Length: 2 } &&
+                         Tax.TaxRuleSet.IsEntityKey(i.VatId.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant()) &&
+                         (i.D100Rate is null || !string.IsNullOrWhiteSpace(i.Treaty)),
+                    cancellationToken),
                 TaxRuleKind.VatRates => await SaveAsync(
                     command, db.VatRates, Read<VatRateDto>(command.Input), r => r.Id, id => new VatRate { Id = id }, TaxRuleDtos.Apply,
                     _ => "cota de TVA", _ => "cota de TVA", TaxRuleDtos.Vat, i => i.Rate is >= 0 and <= 100, cancellationToken),

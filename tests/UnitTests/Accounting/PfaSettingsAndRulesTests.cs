@@ -192,6 +192,20 @@ public sealed class PfaSettingsAndRulesTests : IDisposable
             .Error.Code.ShouldBe("Accounting.PfaNotFound");
     }
 
+    /// <summary>Spec declarații F25 și scenariul 8: o regulă pe furnizor cere codul fiscal al entității și baza legală.</summary>
+    [Fact]
+    public async Task F25_S8_ASupplierRuleNeedsTheEntityTaxIdAndALegalBasis()
+    {
+        var save = new SaveTaxRuleCommandHandler(_db);
+
+        (await save.Handle(new SaveTaxRuleCommand(TaxRuleKind.Suppliers, null, Json("""
+            {"supplierName":"Bolt","country":"EE","vatId":"BOLT","incomeType":"COMMISSION","treaty":"Convenția RO–EE","d100Rate":2,"d100RateConfirmed":true,"validFrom":"2026-01-01"}
+            """)), CancellationToken.None)).Error.Code.ShouldBe("Accounting.InvalidRule");
+        (await save.Handle(new SaveTaxRuleCommand(TaxRuleKind.Suppliers, null, Json("""
+            {"supplierName":"Bolt Operations OÜ","country":"EE","vatId":"EE102090374","incomeType":"COMMISSION","d100Rate":2,"d100RateConfirmed":true,"validFrom":"2026-01-01"}
+            """)), CancellationToken.None)).Error.Code.ShouldBe("Accounting.InvalidRule");
+    }
+
     [Fact]
     public async Task Tax_rules_do_not_overlap_for_the_same_key()
     {
@@ -204,15 +218,15 @@ public sealed class PfaSettingsAndRulesTests : IDisposable
         (bolt.VatId, bolt.Country).ShouldBe(("EE102090374", "EE"));
 
         Result<object> overlap = await save.Handle(new SaveTaxRuleCommand(TaxRuleKind.Suppliers, null, Json("""
-            {"supplierName":"Bolt","country":"EE","vatId":"EE102090374","incomeType":"COMMISSION","d100Rate":1,"d100RateConfirmed":true,"validFrom":"2026-01-01","validTo":null}
+            {"supplierName":"Bolt","country":"EE","vatId":"EE102090374","incomeType":"COMMISSION","treaty":"Convenția RO–EE","d100Rate":1,"d100RateConfirmed":true,"validFrom":"2026-01-01","validTo":null}
             """)), CancellationToken.None);
         overlap.Error.Description.ShouldBe("Pentru EE102090374 există deja o regulă valabilă din 01.01.2025. Închide-o întâi prin „Valabil până la”.");
 
         (await save.Handle(new SaveTaxRuleCommand(TaxRuleKind.Suppliers, bolt.Id, Json("""
-            {"supplierName":"Bolt Operations OÜ","country":"EE","vatId":"EE102090374","incomeType":"COMMISSION","d100Rate":2,"d100RateConfirmed":true,"validFrom":"2025-01-01","validTo":"2025-12-31"}
+            {"supplierName":"Bolt Operations OÜ","country":"EE","vatId":"EE102090374","incomeType":"COMMISSION","treaty":"Convenția RO–EE","d100Rate":2,"d100RateConfirmed":true,"validFrom":"2025-01-01","validTo":"2025-12-31"}
             """)), CancellationToken.None)).IsSuccess.ShouldBeTrue();
         (await save.Handle(new SaveTaxRuleCommand(TaxRuleKind.Suppliers, null, Json("""
-            {"supplierName":"Bolt","country":"EE","vatId":"EE102090374","incomeType":"COMMISSION","d100Rate":1,"d100RateConfirmed":true,"validFrom":"2026-01-01","validTo":null}
+            {"supplierName":"Bolt","country":"EE","vatId":"EE102090374","incomeType":"COMMISSION","treaty":"Convenția RO–EE","d100Rate":1,"d100RateConfirmed":true,"validFrom":"2026-01-01","validTo":null}
             """)), CancellationToken.None)).IsSuccess.ShouldBeTrue();
 
         (await save.Handle(new SaveTaxRuleCommand(TaxRuleKind.VatRates, null, Json("""{"rate":21,"validFrom":"2026-01-01","validTo":"2025-01-01"}""")), CancellationToken.None))

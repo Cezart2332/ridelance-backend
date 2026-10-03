@@ -677,7 +677,7 @@ public sealed class MonthProcessingTests : IDisposable
     private void Invoice(Guid pfaId, Platform platform, decimal commission, PlatformDocumentStatus status = PlatformDocumentStatus.Confirmed, params DocumentCheck[] failed)
     {
         bool bolt = platform == Platform.Bolt;
-        Add(pfaId, platform, PlatformDocumentType.CommissionInvoice, status, new DocumentExtraction
+        Guid invoice = Add(pfaId, platform, PlatformDocumentType.CommissionInvoice, status, new DocumentExtraction
         {
             SupplierName = bolt ? "Bolt Operations OÜ" : "Uber B.V.",
             SupplierCountry = bolt ? "EE" : "NL",
@@ -691,6 +691,19 @@ public sealed class MonthProcessingTests : IDisposable
             Amount = commission,
             CommissionAmount = commission,
             ChecksResultJson = AccountingJson.Serialize(failed),
+        });
+
+        // F20: comisionul e reținut la decontarea din aceeași lună; plata e sursa D100.
+        _db.NonResidentPayments.Add(new NonResidentPayment
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = pfaId,
+            CommissionInvoiceId = invoice,
+            SupplierLegalName = bolt ? "Bolt Operations OÜ" : "Uber B.V.",
+            SupplierCountry = bolt ? "EE" : "NL",
+            SupplierTaxId = bolt ? "EE102090374" : "NL852071589B01",
+            PaymentDate = new DateOnly(2026, 8, 31),
+            GrossIncomeRon = commission,
         });
     }
 
@@ -706,7 +719,7 @@ public sealed class MonthProcessingTests : IDisposable
             CommissionAmount = commission,
         });
 
-    private void Add(Guid pfaId, Platform platform, PlatformDocumentType type, PlatformDocumentStatus status, DocumentExtraction extraction)
+    private Guid Add(Guid pfaId, Platform platform, PlatformDocumentType type, PlatformDocumentStatus status, DocumentExtraction extraction)
     {
         var file = new Document { Id = Guid.NewGuid(), OriginalFileName = $"{platform}-{type}.pdf", ContentType = "application/pdf", Origin = DocumentOrigin.AccountingUpload };
         var document = new PlatformDocument
@@ -729,6 +742,7 @@ public sealed class MonthProcessingTests : IDisposable
         _db.Documents.Add(file);
         _db.PlatformDocuments.Add(document);
         _db.DocumentExtractions.Add(extraction);
+        return document.Id;
     }
 
     private FixedUser User() => new(_accountant);

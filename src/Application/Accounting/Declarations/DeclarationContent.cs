@@ -41,6 +41,7 @@ internal static class DeclarationContent
         }
 
         var pfa = new ScopePfa(registration.Id, PfaNames.Of(registration.LegalName, registration.HolderName, registration.FullName, registration.FirstName, registration.LastName), registration.Cui ?? string.Empty);
+        await NonResident.NonResidentSync.SyncAsync(db, pfaId, cancellationToken);
         MonthData data = await MonthData.LoadAsync(db, period, [pfaId], cancellationToken);
         PreCheckResult check = PreCheck.Evaluate(pfa, data, settings);
         await PreCheck.SaveAsync(db, pfaId, period, check, cancellationToken);
@@ -57,6 +58,11 @@ internal static class DeclarationContent
         }
 
         DeclarationCalculation calculation = result.Declarations[type];
+        if (calculation.IsBlocked)
+        {
+            return Result.Failure<DeclarationDraft>(DeclarationErrors.MonthNotReady(calculation.Blockers![0]));
+        }
+
         return calculation.Applicable
             ? new DeclarationDraft(input, calculation)
             : Result.Failure<DeclarationDraft>(DeclarationErrors.NoBase(type, period));

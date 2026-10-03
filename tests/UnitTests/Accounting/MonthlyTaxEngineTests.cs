@@ -33,7 +33,9 @@ public sealed class MonthlyTaxEngineTests
     {
         GoldenCase golden = JsonSerializer.Deserialize<GoldenCase>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Accounting", "Golden", file)), Json)!;
 
-        TaxResult result = MonthlyTaxEngine.Calculate(golden.ToInput());
+        // F20: comisionul fiecărei facturi e plătit (reținut la decontare) la data facturii.
+        PfaTaxInput input = golden.ToInput();
+        TaxResult result = MonthlyTaxEngine.Calculate(input with { NonResident = Payments(input.Invoices, input.Suppliers) });
 
         result.BlockingReasons.ShouldBe(golden.Expected.BlockingReasons, file);
         foreach ((string type, ExpectedDeclaration expected) in golden.Expected.Declarations())
@@ -70,7 +72,7 @@ public sealed class MonthlyTaxEngineTests
     {
         TaxResult result = MonthlyTaxEngine.Calculate(Input());
 
-        result.Declarations[DeclarationType.D100].Lines[0].Explanation.ShouldBe("1.000,00 × 2% = 20,00");
+        result.Declarations[DeclarationType.D100].Lines[0].Explanation.ShouldBe("1.000,00 × 2% = 20,00 (plata din 31.08.2026)");
         result.Declarations[DeclarationType.D301].Lines.Select(line => line.Explanation).ShouldBe(["1.000,00 × 21% = 210,00", "600,00 × 21% = 126,00"]);
         result.Declarations[DeclarationType.D390].Lines[0].Explanation.ShouldBe("S / EE / Bolt Operations OÜ / 1.000,00");
     }
@@ -116,26 +118,66 @@ public sealed class MonthlyTaxEngineTests
         MonthlyTaxEngine.Calculate(Input(invoices: [Uber(150m) with { Currency = "EUR" }])).BlockingReasons
             .ShouldContain(reason => reason.Contains("lipsește cursul EUR", StringComparison.Ordinal));
 
+    /// <summary>Scenariul 7, F22–F23: certificat expirat la data plății → fallback, decizie de confirmat, doar D100 blocată.</summary>
     [Fact]
-    public void Expired_residence_certificate_blocks_d100()
+    public void S7_F22_F23_ExpiredResidenceCertificateBlocksOnlyD100()
     {
         SupplierTaxProfile expired = BoltProfile();
         expired.ResidenceCertValidTo = new DateOnly(2026, 7, 31);
 
         TaxResult result = MonthlyTaxEngine.Calculate(Input(suppliers: [expired, UberProfile()]));
 
-        result.IsBlocked.ShouldBeTrue();
-        result.BlockingReasons.ShouldContain("Certificatul de rezidență pentru Bolt Operations OÜ nu e valabil la 31.08.2026.");
+        result.IsBlocked.ShouldBeFalse();
+        result.Declarations[DeclarationType.D301].IsBlocked.ShouldBeFalse();
+        result.Declarations[DeclarationType.D100].Blockers!.ShouldContain(reason =>
+            reason.Contains("Certificatul de rezidență pentru Bolt Operations OÜ nu e valabil la 31.08.2026; cota de fallback 16%.", StringComparison.Ordinal));
     }
 
+    /// <summary>F23: o regulă de tratat neconfirmată cere confirmarea Adminului; D100 așteaptă.</summary>
     [Fact]
-    public void Unconfirmed_d100_rate_blocks()
+    public void F23_UnconfirmedTreatyRuleNeedsLegalConfirmation()
     {
         SupplierTaxProfile uber = UberProfile();
         uber.D100RateConfirmed = false;
 
-        MonthlyTaxEngine.Calculate(Input(suppliers: [BoltProfile(), uber])).BlockingReasons
-            .ShouldBe(["Cota D100 pentru Uber B.V. nu e confirmată."]);
+        TaxResult result = MonthlyTaxEngine.Calculate(Input(suppliers: [BoltProfile(), uber]));
+
+        result.IsBlocked.ShouldBeFalse();
+        result.Declarations[DeclarationType.D100].Blockers!.ShouldContain(reason => reason.Contains("Regula de tratat pentru Uber B.V. (0%) nu e confirmată.", StringComparison.Ordinal));
+    }
+
+    /// <summary>Scenariul 6, F20: factura din septembrie plătită în octombrie → D100 în octombrie, nu în septembrie.</summary>
+    [Fact]
+    public void S6_F20_TheD100MonthIsThePaymentMonth()
+    {
+        TaxInvoice september = Bolt(1000m) with { InvoiceDate = new DateOnly(2026, 9, 30), TaxPointDate = new DateOnly(2026, 9, 30) };
+        List<NonResidentLine> paidInOctober = Payments([september], [BoltProfile()], new DateOnly(2026, 10, 5));
+        PfaTaxInput sept = Input(invoices: [september]) with { Period = "2026-09", NonResident = [] };
+        PfaTaxInput oct = Input(invoices: []) with { Period = "2026-10", NonResident = paidInOctober };
+
+        MonthlyTaxEngine.Calculate(sept).Declarations[DeclarationType.D100].Applicable.ShouldBeFalse();
+        MonthlyTaxEngine.Calculate(oct).Declarations[DeclarationType.D100].Total.ShouldBe(20m);
+    }
+
+    /// <summary>F21, F22, F24: regula după codul fiscal al entității; fără regulă de tratat, fallback-ul; codul 634 din configurare.</summary>
+    [Fact]
+    public void F21_F22_F24_TheRuleFollowsTheLegalEntityAndFallsBack()
+    {
+        var payment = new NonResidentPayment
+        {
+            Id = Guid.NewGuid(), SupplierLegalName = "Bolt Operations OÜ", SupplierCountry = "EE", SupplierTaxId = "EE102090374",
+            PaymentDate = new DateOnly(2026, 8, 31), GrossIncomeRon = 1000m, IncomeType = "COMMISSION",
+        };
+
+        NonResidentDecisionResult treaty = NonResidentTaxEngine.Decide(payment, [BoltProfile()], new TaxRuleSet(TaxRuleSeed.Rules));
+        (treaty.Rate, treaty.TaxDue, treaty.ObligationCode, treaty.Status).ShouldBe((2m, 20m, "634", NonResidentDecisionStatus.Auto));
+
+        SupplierTaxProfile withoutRule = BoltProfile();
+        withoutRule.D100Rate = null;
+        List<TaxRule> confirmedFallback = [.. TaxRuleSeed.Rules];
+        confirmedFallback.Single(rule => rule.RuleType == TaxRuleTypes.NonResidentRate).Confirmed = true;
+        NonResidentDecisionResult fallback = NonResidentTaxEngine.Decide(payment, [withoutRule], new TaxRuleSet(confirmedFallback));
+        (fallback.Rate, fallback.TaxDue, fallback.Status).ShouldBe((16m, 160m, NonResidentDecisionStatus.Auto));
     }
 
     /// <summary>F14: cota de TVA e cea valabilă la data impozitării, nu la data facturii.</summary>
@@ -305,16 +347,44 @@ public sealed class MonthlyTaxEngineTests
     private static TaxInvoice Uber(decimal commission) =>
         new(Guid.NewGuid(), "Factura Uber", "NL852071589B01", "U-1", new DateOnly(2026, 8, 31), new DateOnly(2026, 8, 31), "RON", commission, new DateOnly(2026, 8, 31));
 
-    private static PfaTaxInput Input(IReadOnlyList<SupplierTaxProfile>? suppliers = null, IReadOnlyList<TaxInvoice>? invoices = null) => new(
-        "2026-08",
-        invoices ?? [Bolt(1000m), Uber(600m)],
-        [new TaxReport(Guid.NewGuid(), "RON", 8000m, new DateOnly(2026, 8, 31)), new TaxReport(Guid.NewGuid(), "RON", 5000m, new DateOnly(2026, 8, 31))],
-        suppliers ?? [BoltProfile(), UberProfile()],
-        [new VatRate { Rate = 19, ValidFrom = new DateOnly(2017, 1, 1), ValidTo = new DateOnly(2025, 7, 31) }, new VatRate { Rate = 21, ValidFrom = new DateOnly(2025, 8, 1) }],
-        Rules(),
-        [],
-        [new Art317Period(true, new DateOnly(2025, 9, 1))],
-        TaxEngineSettings.ForPeriod(new TaxRuleSet(TaxRuleSeed.Rules), "2026-08"));
+    private static PfaTaxInput Input(IReadOnlyList<SupplierTaxProfile>? suppliers = null, IReadOnlyList<TaxInvoice>? invoices = null)
+    {
+        IReadOnlyList<TaxInvoice> list = invoices ?? [Bolt(1000m), Uber(600m)];
+        IReadOnlyList<SupplierTaxProfile> profiles = suppliers ?? [BoltProfile(), UberProfile()];
+        return new(
+            "2026-08",
+            list,
+            [new TaxReport(Guid.NewGuid(), "RON", 8000m, new DateOnly(2026, 8, 31)), new TaxReport(Guid.NewGuid(), "RON", 5000m, new DateOnly(2026, 8, 31))],
+            profiles,
+            [new VatRate { Rate = 19, ValidFrom = new DateOnly(2017, 1, 1), ValidTo = new DateOnly(2025, 7, 31) }, new VatRate { Rate = 21, ValidFrom = new DateOnly(2025, 8, 1) }],
+            Rules(),
+            [],
+            [new Art317Period(true, new DateOnly(2025, 9, 1))],
+            TaxEngineSettings.ForPeriod(new TaxRuleSet(TaxRuleSeed.Rules), "2026-08"),
+            Payments(list, profiles));
+    }
+
+    /// <summary>
+    /// Plata fiecărei facturi (comisionul reținut la decontare), la data facturii sau la cea dată, cu
+    /// decizia motorului nerezident pe regulile seed și pe registrul de furnizori.
+    /// </summary>
+    internal static List<NonResidentLine> Payments(IEnumerable<TaxInvoice> invoices, IReadOnlyList<SupplierTaxProfile> suppliers, DateOnly? paidOn = null, TaxRuleSet? rules = null) =>
+        [.. invoices
+            .Where(invoice => invoice.CommissionAmount is not null && suppliers.Any(s => string.Equals(s.VatId, invoice.SupplierVatId, StringComparison.OrdinalIgnoreCase)))
+            .Select(invoice =>
+            {
+                SupplierTaxProfile supplier = suppliers.First(s => string.Equals(s.VatId, invoice.SupplierVatId, StringComparison.OrdinalIgnoreCase));
+                var payment = new NonResidentPayment
+                {
+                    Id = Guid.NewGuid(), SupplierLegalName = supplier.SupplierName, SupplierCountry = supplier.Country, SupplierTaxId = supplier.VatId,
+                    PaymentDate = paidOn ?? invoice.InvoiceDate!.Value, GrossIncomeRon = invoice.CommissionAmount!.Value, IncomeType = "COMMISSION",
+                };
+                NonResidentDecisionResult decision = NonResidentTaxEngine.Decide(payment, suppliers, rules ?? new TaxRuleSet(TaxRuleSeed.Rules));
+                return new NonResidentLine(
+                    payment.Id, invoice.DocumentId, invoice.Label, payment.PaymentDate, supplier.SupplierName, supplier.Country, supplier.VatId,
+                    payment.GrossIncomeRon, decision.Rate, decision.TaxDue, decision.ObligationCode, decision.Status, decision.Explanation, invoice.Platform,
+                    supplier.Treaty, supplier.ResidenceCertValidFrom, supplier.ResidenceCertValidTo);
+            })];
 
     // ─── Formatul cazurilor golden ─────────────────────────────────────────────────────────────
 
@@ -338,7 +408,8 @@ public sealed class MonthlyTaxEngineTests
             Rules(),
             ExchangeRates,
             [.. Art317.Select(a => new Art317Period(a.Enabled, a.ValidFrom))],
-            TaxEngineSettings.ForPeriod(new TaxRuleSet(TaxRuleSeed.Rules), "2026-08"));
+            TaxEngineSettings.ForPeriod(new TaxRuleSet(TaxRuleSeed.Rules), "2026-08"),
+            null);
     }
 
     private sealed record GoldenVat(decimal Rate, DateOnly ValidFrom, DateOnly? ValidTo);
