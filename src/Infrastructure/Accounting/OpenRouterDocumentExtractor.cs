@@ -100,7 +100,10 @@ internal sealed class OpenRouterDocumentExtractor(
         "(data facturii sau a raportului), period_from și period_to (perioada serviciului), " +
         "tax_point_date („Data impozitării” / tax point de pe factură, dacă apare; Uber o trece pe linia facturii; null altfel), " +
         "currency (cod ISO din 3 litere), " +
-        "amount (la factură: totalul de plată; la raport: venitul brut din curse), commission_amount (comisionul platformei), " +
+        "amount (la factură: valoarea totală facturată a serviciilor, NU soldul «De plătit» după rețineri; " +
+        "la raport: veniturile brute TOTALE, inclusiv alte servicii, bonusuri, bacșișuri și taxe incluse în total, " +
+        "înainte de comision; citește «Venituri totale» / totalul veniturilor, NU doar linia curselor și NU suma netă de plată), " +
+        "commission_amount (comisionul final al platformei după reduceri, nu comisionul înainte de deduceri), " +
         "other_amounts (alte sume, de ex. TVA, cu eticheta lor), " +
         "withheld_tax (impozitul reținut la sursă, ca sumă, dacă documentul îl arată — ex. „Reținere la sursă” în rezumatul " +
         "lunar Bolt; o simplă mențiune a procentului, fără sumă, nu se trece). " +

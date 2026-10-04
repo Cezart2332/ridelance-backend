@@ -57,10 +57,10 @@ public sealed class RealPlatformDocumentsGoldenTests
             UberWeek("UBERDEF-GGCDIBAJ-01-2026-0000037", new DateOnly(2026, 9, 3), new DateOnly(2026, 8, 24), new DateOnly(2026, 8, 30), 2535.66m)),
         new("Raport fiscal - 2026-08-01 - 2026-08-31-AV FLEET EXPERT SRL (1).pdf", Platform.Bolt, PlatformDocumentType.PlatformReport,
             new ExtractedFields("Bolt Operations OÜ", "EE", null, null, null, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31),
-                "RON", 20758.20m, 2273.23m, [], WithheldTax: 44.97m)),
+                "RON", 20758.20m, 2273.23m, [], WithheldTax: 44.97m, CashAmount: 4216m)),
         new("2026 August Monthly Summary (2).pdf", Platform.Uber, PlatformDocumentType.PlatformReport,
             new ExtractedFields("Uber B.V.", "NL", UberVatId, null, null, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31),
-                "RON", 41737.00m, 9973.50m, [])),
+                "RON", 42582.00m, 9973.50m, [])),
     ];
 
     private static readonly SupplierTaxProfile[] Suppliers =
@@ -111,7 +111,7 @@ public sealed class RealPlatformDocumentsGoldenTests
         // 3.303,75; de plată, rotunjit, 3.304 lei.
         d301.Total.ShouldBe(3303.75m);
         Math.Round(d301.Total, 0, MidpointRounding.AwayFromZero).ShouldBe(3304m);
-        d301.ExcludedRideIncome.ShouldBe(62495.20m);
+        d301.ExcludedRideIncome.ShouldBe(63340.20m);
 
         DeclarationCalculation d100 = result.Declarations[DeclarationType.D100];
         d100.Total.ShouldBe(45m);

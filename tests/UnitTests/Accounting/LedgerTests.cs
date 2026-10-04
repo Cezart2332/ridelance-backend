@@ -231,8 +231,7 @@ public sealed partial class LedgerTests : IDisposable
 
         IReadOnlyList<LedgerImportResult> results = await Import();
 
-        results.SelectMany(r => r.Notes).ShouldHaveSingleItem()
-            .ShouldBe("Bolt 08.2026: payout-urile din bancă (900,00 lei) nu dau netul din raport (2.000,00 lei), diferență -1.100,00 lei.");
+        results.SelectMany(r => r.Notes).ShouldContain("Bolt 08.2026: payout-urile din bancă (900,00 lei) nu dau netul din raport (2.000,00 lei), diferență -1.100,00 lei.");
         LedgerEntry payout = await _db.LedgerEntries.SingleAsync();
         (payout.TransactionType, payout.ReconciliationStatus, payout.PlatformDocumentId)
             .ShouldBe((LedgerTransactionType.PlatformSettlement, ReconciliationStatus.NeedsReview, (Guid?)null));

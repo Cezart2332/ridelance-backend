@@ -75,6 +75,12 @@ internal sealed class LedgerEndpoints : IEndpoint
         });
 
         // Importul la cerere, în afara jobului zilnic (de ex. imediat după conectarea băncii).
+        group.MapPost("pfas/{pfaId:guid}/ledger/{id:guid}/d301-payment", async (
+            Guid pfaId, Guid id, D301PaymentRequest request,
+            ICommandHandler<AssociateD301PaymentCommand, LedgerEntryDto> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new AssociateD301PaymentCommand(pfaId, id, request.VersionId,
+                request.ConfirmNonRecoverable, request.Reason), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
         group.MapPost("pfas/{pfaId:guid}/ledger/import", async (
             Guid pfaId,
             ICommandHandler<RunLedgerImportCommand, IReadOnlyList<LedgerImportResult>> handler,
@@ -183,3 +189,5 @@ internal sealed class LedgerEndpoints : IEndpoint
         }
     }
 }
+
+internal sealed record D301PaymentRequest(Guid VersionId, bool ConfirmNonRecoverable, string Reason);

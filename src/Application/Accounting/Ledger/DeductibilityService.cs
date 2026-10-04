@@ -27,6 +27,7 @@ public sealed record LedgerRules(
 /// </summary>
 public static class DeductibilityService
 {
+    public const string NonRecoverableVatCategory = "NON_RECOVERABLE_VAT";
     private static readonly TimeSpan PatternTimeout = TimeSpan.FromMilliseconds(200);
 
     /// <summary>Categoria găsită după contrapartidă (sau detaliile plății), valabilă la <paramref name="date"/>.</summary>
@@ -68,6 +69,7 @@ public static class DeductibilityService
         {
             FixedAssetRule? rule = rules.FixedAssetRuleAt(entry.DocumentDate ?? entry.Date);
             bool candidate = entry.TransactionType == LedgerTransactionType.Expense &&
+                entry.Category != NonRecoverableVatCategory &&
                 entry.StornoOfEntryId is null &&
                 rule is not null &&
                 !rule.Excludes(entry.Category) &&
