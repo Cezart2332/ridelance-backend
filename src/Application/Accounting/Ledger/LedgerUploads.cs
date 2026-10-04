@@ -129,10 +129,14 @@ internal sealed class UploadExpenseDocumentCommandHandler(
             reading.Total is { } total ? ReceiptSplit.PersonalAmount(lines, total) : 0);
     }
 
-    /// <summary>Plata din bancă fără document, cu aceeași sumă, cea mai apropiată de dată; la egalitate, cea a comerciantului.</summary>
+    /// <summary>
+    /// Plata din bancă fără document pe care bonul o poate justifica (QA 9): aceeași sumă, în jurul datei
+    /// și același comerciant. Niciodată o plată de alt tip (comision bancar, transfer, impozit propus).
+    /// E doar o propunere: întrebarea „Cum ai plătit?” rămâne fără răspuns preselectat.
+    /// </summary>
     private async Task<LedgerEntryDto?> ProposeAsync(Guid pfaId, ExpenseReceiptReading reading, CancellationToken cancellationToken)
     {
-        if (reading.Total is not { } total || reading.Date is not { } date)
+        if (reading.Total is not { } total || reading.Date is not { } date || string.IsNullOrWhiteSpace(reading.Merchant))
         {
             return null;
         }
@@ -146,11 +150,12 @@ internal sealed class UploadExpenseDocumentCommandHandler(
             .Where(e => e.Amount >= -total - 0.01m && e.Amount <= -total + 0.01m && e.Date >= from && e.Date <= to)
             .ToListAsync(cancellationToken);
 
-        string? merchant = reading.Merchant?.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         LedgerEntry? best = candidates
-            .Where(e => !closed.Contains(e.AccountingPeriod))
+            .Where(e => !closed.Contains(e.AccountingPeriod) &&
+                        e.Category != BankClassifications.BankFeeCategory &&
+                        e.ProposedClassification == null &&
+                        (CounterpartyRules.SimilarMerchant(reading.Merchant, e.Counterparty) || CounterpartyRules.SimilarMerchant(reading.Merchant, e.Description)))
             .OrderBy(e => Math.Abs(e.Date.DayNumber - date.DayNumber))
-            .ThenByDescending(e => merchant is not null && (e.Counterparty ?? string.Empty).Contains(merchant, StringComparison.OrdinalIgnoreCase))
             .FirstOrDefault();
         return best is null ? null : await LedgerSupport.DtoAsync(db, best.Id, cancellationToken);
     }

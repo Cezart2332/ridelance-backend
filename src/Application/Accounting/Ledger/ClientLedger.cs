@@ -56,7 +56,10 @@ public sealed record ClientTransactionDto(
     ClientTransactionState State,
     Guid? LedgerEntryId);
 
-public sealed record ClientTransactionsDto(int AttentionCount, IReadOnlyList<ClientTransactionDto> Rows, IReadOnlyList<MatchProposalDto> Proposals);
+/// <param name="AttentionCount">Cheltuielile care cer atenție (document lipsă, de verificat) și asocierile de confirmat.</param>
+/// <param name="IncomeAttentionCount">Încasările de identificat, numărate separat (QA 10).</param>
+public sealed record ClientTransactionsDto(
+    int AttentionCount, IReadOnlyList<ClientTransactionDto> Rows, IReadOnlyList<MatchProposalDto> Proposals, int IncomeAttentionCount = 0);
 
 /// <summary><c>GET /pfa/ledger/transactions?from&amp;to</c> — tranzacțiile PFA-ului utilizatorului.</summary>
 public sealed record GetClientTransactionsQuery(DateOnly From, DateOnly To) : IQuery<ClientTransactionsDto>;
@@ -109,7 +112,9 @@ internal static class ClientLedger
             { TransactionType: LedgerTransactionType.PlatformSettlement } => ClientTransactionState.PayoutPending,
             // Transferul cu titularul propus din contrapartidă: pentru PFA e un transfer, contabilul îl confirmă.
             { ProposedClassification: BankClassification.OwnerWithdrawal or BankClassification.OwnerContribution or BankClassification.InternalTransfer } => ClientTransactionState.Transfer,
-            { ReconciliationStatus: ReconciliationStatus.NeedsReview } or { Status: LedgerEntryStatus.NeedsReview, ReconciliationStatus: not ReconciliationStatus.Matched } => ClientTransactionState.NeedsReview,
+            // QA 10: plata fără document e „Document lipsă”, chiar dacă rândul e încă de verificat.
+            { TransactionType: LedgerTransactionType.Expense, ReconciliationStatus: ReconciliationStatus.Unmatched } => ClientTransactionState.DocumentMissing,
+            { ReconciliationStatus: ReconciliationStatus.NeedsReview } => ClientTransactionState.NeedsReview,
             { TransactionType: LedgerTransactionType.OwnerWithdrawal or LedgerTransactionType.OwnerContribution or LedgerTransactionType.InternalTransfer or LedgerTransactionType.Transfer } => ClientTransactionState.Transfer,
             { TransactionType: LedgerTransactionType.Tax } => ClientTransactionState.Tax,
             { EFacturaMessageId: not null } => ClientTransactionState.InvoiceFound,
@@ -146,7 +151,11 @@ internal sealed class GetClientTransactionsQueryHandler(IApplicationDbContext db
         List<ClientTransactionDto> rows = ClientLedger.Rows(entries);
         IReadOnlyList<MatchProposalDto> proposals = (await new ListMatchProposalsQueryHandler(db).Handle(new ListMatchProposalsQuery(pfaId), cancellationToken)).Value;
 
-        return new ClientTransactionsDto(rows.Count(r => ClientLedger.NeedsAttention(r.State)) + proposals.Count, rows, proposals);
+        return new ClientTransactionsDto(
+            rows.Count(r => ClientLedger.NeedsAttention(r.State) && r.Amount < 0) + proposals.Count,
+            rows,
+            proposals,
+            rows.Count(r => ClientLedger.NeedsAttention(r.State) && r.Amount > 0));
     }
 }
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Application.Abstractions.Ai;
 using Application.Accounting.Contracts;
 using Application.Accounting.FiscalRegister;
 using Application.Accounting.Ledger;
@@ -113,6 +114,45 @@ public sealed partial class LedgerTests
             (-600m, BankClassification.OwnerWithdrawal),
             (-100m, BankClassification.OwnerWithdrawal),
         ]);
+    }
+
+    /// <summary>QA 9: un bon cash de 50 lei nu se asociază cu comisionul bancar de 50 lei din aceeași zi; plata potrivită cere același comerciant.</summary>
+    [Fact]
+    public async Task QA9_AReceiptIsNeverMatchedWithAPaymentOfAnotherKind()
+    {
+        SeedQa();
+        Transaction(-50m, "MEGA IMAGE SRL", "Plata card Mega Image", new DateOnly(2026, 9, 16));
+        await Import();
+
+        _receipts.Expense = new ExpenseReceiptReading("Kaufland Romania", null, new DateOnly(2026, 9, 15), 50m, ["Apă"]);
+        (await UploadReceipt()).ProposedMatch.ShouldBeNull();
+
+        _receipts.Expense = new ExpenseReceiptReading("Mega Image", null, new DateOnly(2026, 9, 15), 50m, ["Apă"]);
+        (await UploadReceipt()).ProposedMatch.ShouldNotBeNull().Counterparty.ShouldBe("MEGA IMAGE SRL");
+    }
+
+    /// <summary>
+    /// QA 10: în Tranzacțiile PFA plata fără document e „Document lipsă” (nu „De verificat”), transferurile cu
+    /// titularul sunt „Transfer”, payout-ul reconciliat e un rând, iar încasarea Booking se numără separat.
+    /// </summary>
+    [Fact]
+    public async Task QA10_ClientTransactionsShowRealStatesAndSeparateCounters()
+    {
+        SeedQa();
+        Transaction(-80m, "Magazin Piese", "Plata card", new DateOnly(2026, 9, 20));
+        await Import();
+
+        ClientTransactionsDto view = (await new GetClientTransactionsQueryHandler(_db, new FixedUser(_user))
+            .Handle(new GetClientTransactionsQuery(new DateOnly(2026, 7, 1), new DateOnly(2026, 9, 30)), CancellationToken.None)).Value;
+
+        view.Rows.Single(r => r.Amount == -80m).State.ShouldBe(ClientTransactionState.DocumentMissing);
+        view.Rows.Single(r => r.Amount == -80m).LedgerEntryId.ShouldNotBeNull();
+        view.Rows.Where(r => r.Amount is -200m or -600m or -100m or 630m).ShouldAllBe(r => r.State == ClientTransactionState.Transfer);
+        view.Rows.Where(r => r.State == ClientTransactionState.PayoutReconciled).Select(r => r.Amount).OrderBy(a => a).ShouldBe([3616.55m, 18484.97m]);
+        view.Rows.Single(r => r.Amount == 822.28m).State.ShouldBe(ClientTransactionState.NeedsReview);
+        view.IncomeAttentionCount.ShouldBe(1);
+        view.AttentionCount.ShouldBe(view.Rows.Count(r => r.Amount < 0 && ClientLedger.NeedsAttention(r.State)) + view.Proposals.Count);
+        view.Rows.Where(r => r.Amount > 0).ShouldAllBe(r => r.State != ClientTransactionState.DocumentMissing);
     }
 
     /// <summary>QA 8: „Verifică” nu validează o încasare neidentificată sau o propunere neconfirmată.</summary>
