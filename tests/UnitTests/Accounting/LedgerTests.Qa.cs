@@ -97,6 +97,24 @@ public sealed partial class LedgerTests
         entry.DeductibleAmount.ShouldBe(200m);
     }
 
+    /// <summary>QA 7: cu titularul „Ionescu Andrei-Victor”, transferurile 200/600/100 și „From Victor I” ajung la „Transferuri de confirmat”.</summary>
+    [Fact]
+    public async Task QA7_OwnerTransfersBecomeTransfersToConfirm()
+    {
+        SeedQa();
+        await Import();
+
+        RegisterExceptionsDto exceptions = (await new GetRegisterExceptionsQueryHandler(_db).Handle(new GetRegisterExceptionsQuery(_pfa, 2026), CancellationToken.None)).Value;
+        RegisterExceptionGroupDto transfers = exceptions.Groups.Single(g => g.Kind == RegisterExceptionKind.TransferToConfirm);
+        transfers.Items.Select(i => (i.Amount, i.Proposal!.Classification)).ShouldBe(
+        [
+            (-200m, BankClassification.OwnerWithdrawal),
+            (630m, BankClassification.OwnerContribution),
+            (-600m, BankClassification.OwnerWithdrawal),
+            (-100m, BankClassification.OwnerWithdrawal),
+        ]);
+    }
+
     /// <summary>QA 8: „Verifică” nu validează o încasare neidentificată sau o propunere neconfirmată.</summary>
     [Fact]
     public async Task QA8_VerifyRequiresAClassification()

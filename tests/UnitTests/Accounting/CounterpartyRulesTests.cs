@@ -31,6 +31,16 @@ public sealed class CounterpartyRulesTests
     public void R40_R41_TheOwnerInTheDetails(int amount, string details, CounterpartyKind kind) =>
         Classify(amount, null, details: details).ShouldBe(kind);
 
+    /// <summary>QA 7: titularul „Ionescu Andrei-Victor” (prenume compus) e „To Victor Ionescu” și „From Victor I”.</summary>
+    [Theory]
+    [InlineData(-200, null, "To Victor Ionescu", CounterpartyKind.OwnerWithdrawal)]
+    [InlineData(-600, null, "TO VICTOR IONESCU", CounterpartyKind.OwnerWithdrawal)]
+    [InlineData(630, "Victor Ionescu", "From Victor I", CounterpartyKind.OwnerContribution)]
+    [InlineData(630, null, "From Victor I", CounterpartyKind.OwnerContribution)]
+    [InlineData(630, null, "From Maria Ionescu", CounterpartyKind.None)]
+    public void QA7_ACompoundFirstNameOwnerIsRecognised(int amount, string? name, string details, CounterpartyKind kind) =>
+        CounterpartyRules.Classify(amount, name, null, details, new(["IONESCU ANDREI-VICTOR", "testr test"], new HashSet<string>()), Options).ShouldBe(kind);
+
     [Theory]
     [InlineData("www.ghiseul.ro/mfinante", CounterpartyKind.Tax)]
     [InlineData("Company Free plan fee", CounterpartyKind.BankFee)]

@@ -154,10 +154,12 @@ public static class CounterpartyRules
             return true;
         }
 
-        // Numele prescurtat de bancă: „Victor I” = „Victor Ionescu” (un cuvânt întreg, restul inițiale).
+        // Numele prescurtat de bancă sau fără al doilea prenume: „Victor I” și „Victor Ionescu” sunt titularul
+        // „Ionescu Andrei-Victor” (QA 7): fiecare cuvânt al contrapartidei e un cuvânt al titularului sau
+        // inițiala lui, cel puțin două, cel puțin unul întreg.
         List<string> tokens = Tokens(counterpartyName);
         return tokens.Count >= 2 && tokens.Any(token => token.Length > 1) &&
-               owners.Select(name => Tokens(name)).Any(owner => owner.Count == tokens.Count && SameWithInitials(owner, tokens));
+               owners.Select(name => Tokens(name)).Any(owner => owner.Count >= tokens.Count && SameWithInitials(owner, tokens));
     }
 
     /// <summary>Fiecare cuvânt are pereche: același cuvânt sau inițiala lui.</summary>
