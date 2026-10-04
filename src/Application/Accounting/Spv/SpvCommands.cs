@@ -129,7 +129,7 @@ public sealed record SpvRequestDto(
 
 public sealed record PfaSpvDto(DateTime? LastSyncAtUtc, IReadOnlyList<SpvMessageDto> Messages, IReadOnlyList<SpvRequestDto> Requests);
 
-public sealed record GetPfaSpvQuery(Guid PfaId) : IQuery<PfaSpvDto>;
+public sealed record GetPfaSpvQuery(Guid PfaId, bool LinkedOnly = false) : IQuery<PfaSpvDto>;
 
 internal sealed class GetPfaSpvQueryHandler(IApplicationDbContext db) : IQueryHandler<GetPfaSpvQuery, PfaSpvDto>
 {
@@ -151,7 +151,7 @@ internal sealed class GetPfaSpvQueryHandler(IApplicationDbContext db) : IQueryHa
             .ToListAsync(cancellationToken);
         var requestTypes = requests.ToDictionary(r => r.Id, r => r.Type);
         List<SpvMessage> messages = await db.SpvMessages.AsNoTracking()
-            .Where(m => m.PfaRegistrationId == query.PfaId || cif.Length > 0 && m.Cif == cif)
+            .Where(m => m.PfaRegistrationId == query.PfaId || !query.LinkedOnly && cif.Length > 0 && m.Cif == cif)
             .OrderByDescending(m => m.AnafCreatedAtUtc)
             .ToListAsync(cancellationToken);
 

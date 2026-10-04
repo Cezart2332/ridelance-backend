@@ -4,6 +4,7 @@ using Application.Accounting.Contracts;
 using Application.Accounting.Ledger;
 using Application.Accounting.Pfas;
 using Application.Accounting.Rules;
+using Application.FiscalEstimates;
 using Infrastructure.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
@@ -38,6 +39,9 @@ internal sealed class RuleAndSettingsEndpoints : IEndpoint
 
         group.MapGet("clients", async (string period, IQueryHandler<ListClientWorkspaceQuery, IReadOnlyList<ClientWorkspaceRow>> handler, CancellationToken cancellationToken) =>
             (await handler.Handle(new ListClientWorkspaceQuery(period), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
+        group.MapGet("fiscal-overview", async (int year, IQueryHandler<ListFiscalOverviewQuery, FiscalOverviewDto> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new ListFiscalOverviewQuery(year), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
 
         group.MapGet("pfas/{pfaId:guid}/settings", async (Guid pfaId, IQueryHandler<GetPfaSettingsQuery, PfaAccountingSettingsDto> handler, CancellationToken cancellationToken) =>
             (await handler.Handle(new GetPfaSettingsQuery(pfaId), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
