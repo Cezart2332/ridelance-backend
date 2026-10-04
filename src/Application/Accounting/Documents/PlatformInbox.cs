@@ -296,6 +296,13 @@ internal sealed class RunPlatformInboxMatchingCommandHandler(
             item.CommissionAmount = read.Value.Fields.CommissionAmount is { } commission ? Math.Abs(commission) : null;
             item.PeriodFrom = read.Value.Fields.PeriodFrom;
             item.PeriodTo = read.Value.Fields.PeriodTo;
+
+            // Citirea AI (și OCR-ul paginilor scanate) dă destinatarul: CUI-ul, apoi numele, înaintea comisionului.
+            if (await ByCustomerAsync(item, read.Value, cancellationToken))
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return Result.Success();
+            }
         }
 
         PlatformDocumentType pair = item.DocumentType == PlatformDocumentType.PlatformReport ? PlatformDocumentType.CommissionInvoice : PlatformDocumentType.PlatformReport;
@@ -321,10 +328,10 @@ internal sealed class RunPlatformInboxMatchingCommandHandler(
 
         if (matches.Count == 1)
         {
-            await PlatformInboxSupport.AssignAsync(
-                db, item, matches[0], PlatformInboxMatch.Commission,
+            await AssignOrReviewAsync(
+                item, matches[0], PlatformInboxMatch.Commission,
                 $"Comision {AccountingJson.Amount(item.CommissionAmount!.Value)} lei, ca în {(pair == PlatformDocumentType.CommissionInvoice ? "factura de comision" : "raportul")} clientului",
-                item.UploadedByUserId, cancellationToken);
+                cancellationToken);
         }
         else if (pending && DateTime.UtcNow - item.UploadedAtUtc < PairWait)
         {
@@ -340,6 +347,50 @@ internal sealed class RunPlatformInboxMatchingCommandHandler(
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();
+    }
+
+    /// <summary>Alocarea găsită; dacă luna clientului e închisă sau clientul e inactiv, „De verificat” cu motivul.</summary>
+    private async Task AssignOrReviewAsync(PlatformInboxItem item, Guid pfaId, PlatformInboxMatch match, string reason, CancellationToken cancellationToken)
+    {
+        Result<PlatformDocument> assigned = await PlatformInboxSupport.AssignAsync(db, item, pfaId, match, reason, item.UploadedByUserId, cancellationToken);
+        if (assigned.IsFailure)
+        {
+            item.Status = PlatformInboxStatus.NeedsReview;
+            item.PfaRegistrationId = pfaId;
+            item.Reason = $"De verificat: {assigned.Error.Description}";
+        }
+    }
+
+    /// <summary>Destinatarul citit de AI: alocă după CUI sau nume ori raportează CUI-ul străin; <c>false</c> dacă nu decide nimic.</summary>
+    private async Task<bool> ByCustomerAsync(PlatformInboxItem item, DocumentExtractionResult read, CancellationToken cancellationToken)
+    {
+        if (read.CustomerTaxId is null && read.CustomerName is null)
+        {
+            return false;
+        }
+
+        List<InboxClient> clients = await PlatformInboxSupport.ClientsAsync(db, cancellationToken);
+        if (PlatformInboxMatcher.ByCui(read.CustomerTaxId, clients) is { } byCui)
+        {
+            await AssignOrReviewAsync(item, byCui.PfaId, PlatformInboxMatch.Cui, $"CUI {byCui.Cui} citit din document", cancellationToken);
+            return true;
+        }
+
+        if (PlatformInboxMatcher.ByName(read.CustomerName, clients) is { } byName)
+        {
+            await AssignOrReviewAsync(item, byName.PfaId, PlatformInboxMatch.Name, $"Numele „{read.CustomerName}” din document", cancellationToken);
+            return true;
+        }
+
+        if (PlatformInboxMatcher.ValidCuisIn(read.CustomerTaxId) is [var stranger, ..])
+        {
+            item.Status = PlatformInboxStatus.UnknownCui;
+            item.DetectedCui = stranger;
+            item.Reason = $"CUI {stranger} nu aparține niciunui client PFA.";
+            return true;
+        }
+
+        return false;
     }
 }
 

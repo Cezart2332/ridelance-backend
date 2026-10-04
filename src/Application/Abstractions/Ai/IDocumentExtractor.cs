@@ -24,7 +24,9 @@ public sealed record DocumentExtractionResult(
     IReadOnlyDictionary<string, string> SourceSnippets,
     double? Confidence,
     string ModelId,
-    string PromptVersion);
+    string PromptVersion,
+    string? CustomerName = null,
+    string? CustomerTaxId = null);
 
 /// <summary>
 /// Citirea documentelor de platformă. <b>AI-ul doar citește</b> (spec §0 pct. 5): nicio decizie

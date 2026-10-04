@@ -34,6 +34,9 @@ public enum PlatformInboxMatch
     FileName = 1,
     Commission = 2,
     Manual = 3,
+
+    /// <summary>Numele clientului citit din document.</summary>
+    Name = 4,
 }
 
 /// <summary>

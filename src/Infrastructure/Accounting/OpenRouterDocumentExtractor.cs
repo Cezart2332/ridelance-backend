@@ -111,6 +111,8 @@ internal sealed class OpenRouterDocumentExtractor(
         "Pentru fiecare câmp completat, source_snippets conține textul EXACT din document din care l-ai citit " +
         "(inclusiv separatorii de mii și zecimale, ca în document); null dacă valoarea lipsește. " +
         "Dacă o valoare nu apare sau nu se citește cu certitudine, întoarce null — nu ghici. " +
+        "customer_name și customer_tax_id: numele și CUI-ul/CIF-ul șoferului PFA căruia îi e emis documentul " +
+        "(destinatarul facturii sau titularul raportului), exact cum apar; null dacă nu apar. " +
         "confidence: încrederea ta globală, între 0 și 1.";
 
     internal static object Schema()
@@ -156,8 +158,10 @@ internal sealed class OpenRouterDocumentExtractor(
                 ["fields"] = new { type = "object", properties = fields, required = fields.Keys.ToArray(), additionalProperties = false },
                 ["source_snippets"] = new { type = "object", properties = snippets, required = FieldKeys, additionalProperties = false },
                 ["confidence"] = new { type = "number" },
+                ["customer_name"] = nullableString,
+                ["customer_tax_id"] = nullableString,
             },
-            required = new[] { "document_type", "platform", "fields", "source_snippets", "confidence" },
+            required = new[] { "document_type", "platform", "fields", "source_snippets", "confidence", "customer_name", "customer_tax_id" },
             additionalProperties = false,
         };
     }
@@ -225,7 +229,8 @@ internal sealed class OpenRouterDocumentExtractor(
                 ? Math.Clamp(c.GetDouble(), 0, 1)
                 : null;
 
-            return new DocumentExtractionResult(type, platform, extracted, snippets, confidence, model, promptVersion);
+            return new DocumentExtractionResult(
+                type, platform, extracted, snippets, confidence, model, promptVersion, Text(root, "customer_name"), Text(root, "customer_tax_id"));
         }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException)
         {

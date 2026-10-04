@@ -54,7 +54,9 @@ public sealed class DocumentExtractionInfrastructureTests
               "source_snippets": { "supplier_name": "Bolt Operations OÜ", "commission_amount": "1.000,00", "amount": null,
                 "supplier_country": null, "supplier_vat_id": null, "invoice_number": null, "invoice_date": null,
                 "period_from": null, "period_to": null, "currency": null },
-              "confidence": 0.93
+              "confidence": 0.93,
+              "customer_name": "Popescu Ion PFA",
+              "customer_tax_id": "RO41234564"
             }
             """;
 
@@ -71,6 +73,8 @@ public sealed class DocumentExtractionInfrastructureTests
         // Cheile fragmentelor sunt cele din contract (camelCase), ca în ecranul de verificare.
         value.SourceSnippets.ShouldBe(new Dictionary<string, string> { ["supplierName"] = "Bolt Operations OÜ", ["commissionAmount"] = "1.000,00" });
         value.Confidence.ShouldBe(0.93);
+        value.CustomerName.ShouldBe("Popescu Ion PFA");
+        value.CustomerTaxId.ShouldBe("RO41234564");
     }
 
     [Fact]

@@ -135,6 +135,59 @@ public sealed class PlatformInboxTests : IDisposable
     }
 
     [Fact]
+    public async Task Scanned_document_is_assigned_by_the_cui_the_ai_read()
+    {
+        // Fără text layer: nici CUI în text, nici în numele fișierului; AI-ul citește paginile ca imagine.
+        Guid id = (await Upload(("scan001.pdf", string.Empty))).Single().ItemId!.Value;
+        _extractor.Next = Reading(PlatformDocumentType.CommissionInvoice, 300m) with { CustomerTaxId = $"RO {MariaCui}" };
+        await Match(id);
+
+        PlatformInboxItem item = await _db.PlatformInboxItems.SingleAsync();
+        item.Status.ShouldBe(PlatformInboxStatus.Assigned);
+        item.MatchedBy.ShouldBe(PlatformInboxMatch.Cui);
+        item.PfaRegistrationId.ShouldBe(_maria);
+    }
+
+    [Fact]
+    public async Task Bolt_report_is_assigned_by_the_driver_name_the_ai_read()
+    {
+        Guid id = (await Upload(("rezumat.pdf", "Rezumat lunar"))).Single().ItemId!.Value;
+        _extractor.Next = Reading(PlatformDocumentType.PlatformReport, 300m) with { CustomerName = "ION POPESCU" };
+        await Match(id);
+
+        PlatformInboxItem item = await _db.PlatformInboxItems.SingleAsync();
+        item.Status.ShouldBe(PlatformInboxStatus.Assigned);
+        item.MatchedBy.ShouldBe(PlatformInboxMatch.Name);
+        item.PfaRegistrationId.ShouldBe(_ion);
+    }
+
+    [Fact]
+    public async Task Cui_read_by_the_ai_that_is_not_a_client_is_reported()
+    {
+        Guid id = (await Upload(("scan002.pdf", string.Empty))).Single().ItemId!.Value;
+        _extractor.Next = Reading(PlatformDocumentType.CommissionInvoice, 300m) with { CustomerName = "Altcineva PFA", CustomerTaxId = StrangerCui };
+        await Match(id);
+
+        PlatformInboxItemDto item = (await Inbox()).Single();
+        item.Status.ShouldBe(PlatformInboxStatus.UnknownCui);
+        item.DetectedCui.ShouldBe(StrangerCui);
+    }
+
+    [Fact]
+    public async Task A_match_in_a_closed_month_needs_review_instead_of_waiting_forever()
+    {
+        _db.PfaAccountingPeriods.Add(new PfaAccountingPeriod { Id = Guid.NewGuid(), PfaRegistrationId = _maria, Period = Period, Status = AccountingPeriodStatus.Closed });
+        await _db.SaveChangesAsync();
+        Guid id = (await Upload(("scan003.pdf", string.Empty))).Single().ItemId!.Value;
+        _extractor.Next = Reading(PlatformDocumentType.CommissionInvoice, 300m) with { CustomerTaxId = MariaCui };
+        await Match(id);
+
+        PlatformInboxItemDto item = (await Inbox()).Single();
+        item.Status.ShouldBe(PlatformInboxStatus.NeedsReview);
+        item.PfaId.ShouldBe(_maria);
+    }
+
+    [Fact]
     public async Task Same_commission_at_two_clients_needs_review()
     {
         await ClientInvoice(_ion, 750m);

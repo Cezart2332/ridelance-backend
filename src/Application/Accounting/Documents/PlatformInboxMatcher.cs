@@ -80,7 +80,18 @@ public static partial class PlatformInboxMatcher
             return byCui;
         }
 
-        HashSet<string> words = [.. Words(name)];
+        return ByName(name, clients);
+    }
+
+    /// <summary>Clientul ale cărui cuvinte din nume (cel puțin două) apar toate în text; doar dacă e unic.</summary>
+    public static InboxClient? ByName(string? text, IReadOnlyList<InboxClient> clients)
+    {
+        HashSet<string> words = [.. Words(text)];
+        if (words.Count == 0)
+        {
+            return null;
+        }
+
         List<InboxClient> matches = [.. clients.Where(client => client.Names.Any(full =>
         {
             List<string> parts = [.. Words(full).Where(word => word.Length > 2 && !Common.Contains(word))];
