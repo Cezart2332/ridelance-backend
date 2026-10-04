@@ -38,6 +38,22 @@ internal sealed class DeclarationActions(
         }
 
         string? text = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+
+        // QA 5: tranzițiile manuale de status (semnat, depus, respins, index) doar de Admin, cu motiv.
+        // Sistemul (SPV, fără utilizator) poate marca o recipisă cu erori.
+        if (action is DeclarationAction.MarkSigned or DeclarationAction.MarkSubmitted or DeclarationAction.MarkRejected or DeclarationAction.RecordIndex)
+        {
+            if (userId is { } user && !await db.Users.AnyAsync(u => u.Id == user && u.Role == Domain.Users.UserRole.Admin, cancellationToken))
+            {
+                return Result.Failure(DeclarationErrors.ManualTransitionAdminOnly);
+            }
+
+            if (text is null && action is DeclarationAction.MarkSigned or DeclarationAction.MarkSubmitted)
+            {
+                return Result.Failure(DeclarationErrors.TransitionReasonRequired);
+            }
+        }
+
         switch (action)
         {
             // Anualele (D207, D205, D212) se depun manual: validarea recalculează și compară cu snapshot-ul.

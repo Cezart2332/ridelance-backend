@@ -38,6 +38,7 @@ public sealed class MonthProcessingTests : IDisposable
     private readonly MemoryFiles _files = new();
     private readonly FakeAnafValidator _anaf = new();
     private readonly Guid _accountant = Guid.NewGuid();
+    private readonly Guid _admin = Guid.NewGuid();
     private readonly Guid _ion;
     private readonly Guid _ana;
     private readonly Guid _bogdan;
@@ -46,6 +47,7 @@ public sealed class MonthProcessingTests : IDisposable
     public MonthProcessingTests()
     {
         _db.Users.Add(new User { Id = _accountant, Email = "contabil@ridelance.ro", FirstName = "Contabil", LastName = "RIDElance", Role = UserRole.Contabil });
+        _db.Users.Add(new User { Id = _admin, Email = "admin@ridelance.ro", FirstName = "Admin", LastName = "RIDElance", Role = UserRole.Admin });
         _ion = Pfa("Ion Popescu");
         _ana = Pfa("Ana Georgescu");
         _bogdan = Pfa("Bogdan Matei");
@@ -400,7 +402,7 @@ public sealed class MonthProcessingTests : IDisposable
             (DeclarationStatus.Generated, null),
             (DeclarationStatus.Validated, "Validare RIDElance, XSD și ANAF trecută."),
             (DeclarationStatus.ReadyToSign, "PDF generat de DUKIntegrator."),
-            (DeclarationStatus.Signed, null),
+            (DeclarationStatus.Signed, "Marcat manual"),
             (DeclarationStatus.Submitted, "Depus prin SPV"),
             (DeclarationStatus.Accepted, "Recipisa nr. INTERNT-123"),
         ]);
@@ -603,8 +605,40 @@ public sealed class MonthProcessingTests : IDisposable
 
     private async Task<Guid> IonVersion(DeclarationType type) => (await IonVersions()).Single(v => v.Declaration.Type == type).Id;
 
-    private Task<Result<DeclarationVersionDto>> Transition(Guid versionId, DeclarationAction action, string? note = null) =>
-        new TransitionDeclarationVersionCommandHandler(_db, User(), Actions()).Handle(new TransitionDeclarationVersionCommand(versionId, action, note), CancellationToken.None);
+    /// <summary>Tranzițiile manuale le face Adminul, cu motiv (QA 5); restul, contabilul.</summary>
+    private Task<Result<DeclarationVersionDto>> Transition(Guid versionId, DeclarationAction action, string? note = null)
+    {
+        bool manual = action is DeclarationAction.MarkSigned or DeclarationAction.MarkSubmitted or DeclarationAction.MarkRejected or DeclarationAction.RecordIndex;
+        string? text = note ?? (action is DeclarationAction.MarkSigned or DeclarationAction.MarkSubmitted ? "Marcat manual" : null);
+        return new TransitionDeclarationVersionCommandHandler(_db, manual ? new FixedUser(_admin) : User(), Actions())
+            .Handle(new TransitionDeclarationVersionCommand(versionId, action, text), CancellationToken.None);
+    }
+
+    /// <summary>QA 5: contabilul nu schimbă manual statusul; Adminul doar cu motiv; „Recipisă validă” doar cu recipisa.</summary>
+    [Fact]
+    public async Task QA5_ManualStatusChangesAreAdminOnlyWithAReason()
+    {
+        await GenerateIon();
+        Guid d301 = await IonVersion(DeclarationType.D301);
+        await Transition(d301, DeclarationAction.Validate);
+        var accountant = new TransitionDeclarationVersionCommandHandler(_db, User(), Actions());
+        (await accountant.Handle(new TransitionDeclarationVersionCommand(d301, DeclarationAction.MarkSigned, "Semnat"), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.ManualTransitionAdminOnly");
+        var admin = new TransitionDeclarationVersionCommandHandler(_db, new FixedUser(_admin), Actions());
+        (await admin.Handle(new TransitionDeclarationVersionCommand(d301, DeclarationAction.MarkSigned, " "), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.TransitionReasonRequired");
+        (await admin.Handle(new TransitionDeclarationVersionCommand(d301, DeclarationAction.MarkSigned, "Semnat cu certificatul împuternicitului"), CancellationToken.None))
+            .Value.Status.ShouldBe(DeclarationStatus.Signed);
+        (await admin.Handle(new TransitionDeclarationVersionCommand(d301, DeclarationAction.MarkSubmitted, "Depus din aplicația ANAF"), CancellationToken.None))
+            .Value.Status.ShouldBe(DeclarationStatus.Submitted);
+
+        // Fără recipisă rămâne „Depus”; „Recipisă validă” vine doar din recipisă.
+        DeclarationVersion version = await _db.DeclarationVersions.AsNoTracking().SingleAsync(v => v.Id == d301);
+        (version.Status, version.ReceiptDocumentId).ShouldBe((DeclarationStatus.Submitted, (Guid?)null));
+        (await Receipt(d301, "123")).Value.Status.ShouldBe(DeclarationStatus.Accepted);
+        (await _db.DeclarationVersions.AsNoTracking().SingleAsync(v => v.Id == d301)).ReceiptDocumentId.ShouldNotBeNull();
+        (await _db.AuditLogs.CountAsync(a => a.EntityId == d301.ToString() && (a.Action == "MARK_SIGNED" || a.Action == "MARK_SUBMITTED") && a.Reason != null)).ShouldBe(2);
+    }
 
     private Task<Result<DeclarationVersionDto>> Receipt(Guid versionId, string? number) =>
         new UploadDeclarationReceiptCommandHandler(_db, User(), Actions())

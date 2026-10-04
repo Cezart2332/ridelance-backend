@@ -41,4 +41,10 @@ internal static class DeclarationErrors
     public static readonly Error IndexRequired = Error.Problem("Accounting.IndexRequired", "Indexul de încărcare ANAF e obligatoriu.");
 
     public static readonly Error AnnualUnavailable = Error.Problem("Accounting.AnnualUnavailable", "Calculul declarațiilor anuale nu e disponibil.");
+
+    public static readonly Error ManualTransitionAdminOnly = Error.Conflict(
+        "Accounting.ManualTransitionAdminOnly", "Doar un administrator schimbă manual statusul unei declarații.");
+
+    public static readonly Error TransitionReasonRequired = Error.Problem(
+        "Accounting.TransitionReasonRequired", "Motivul schimbării manuale a statusului e obligatoriu.");
 }
