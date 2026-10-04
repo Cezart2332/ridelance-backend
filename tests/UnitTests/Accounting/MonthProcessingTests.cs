@@ -94,8 +94,9 @@ public sealed class MonthProcessingTests : IDisposable
     [Fact]
     public async Task Month_goes_from_not_processed_to_generated_declarations()
     {
+        // QA 15: documentul lipsă (factura Uber la George) se numără și înainte de procesare.
         PeriodOverview before = await Overview();
-        before.Stats.ShouldBe(new PeriodStats(4, 0, 0, 0, 4));
+        before.Stats.ShouldBe(new PeriodStats(4, 0, 0, 1, 4));
         before.Rows.Select(r => r.PfaName).ShouldNotContain("Nou Înscris");
 
         JobDto processed = await RunJob(BackgroundJobType.ProcessPeriod);
@@ -612,6 +613,23 @@ public sealed class MonthProcessingTests : IDisposable
         string? text = note ?? (action is DeclarationAction.MarkSigned or DeclarationAction.MarkSubmitted ? "Marcat manual" : null);
         return new TransitionDeclarationVersionCommandHandler(_db, manual ? new FixedUser(_admin) : User(), Actions())
             .Handle(new TransitionDeclarationVersionCommand(versionId, action, text), CancellationToken.None);
+    }
+
+    /// <summary>QA 15: un PFA fără CIF nu e rând în lot și nu intră în procesare; apare ca alertă de profil.</summary>
+    [Fact]
+    public async Task QA15_APfaWithoutCifIsAProfileAlertNotABatchRow()
+    {
+        Domain.PfaRegistrations.PfaRegistration ion = await _db.PfaRegistrations.SingleAsync(p => p.Id == _ion);
+        ion.Cui = null;
+        await _db.SaveChangesAsync();
+
+        PeriodOverview overview = await Overview();
+        overview.Rows.ShouldNotContain(r => r.PfaId == _ion);
+        overview.Rows.ShouldAllBe(r => !string.IsNullOrEmpty(r.PfaName));
+        overview.ProfileAlerts!.ShouldHaveSingleItem().ShouldBe(new ProfileAlertDto(_ion, overview.ProfileAlerts![0].PfaName, "CIF-ul PFA-ului lipsește."));
+
+        JobDto processed = await RunJob(BackgroundJobType.ProcessPeriod);
+        processed.Results.ShouldNotContain(r => r.PfaId == _ion);
     }
 
     /// <summary>QA 11: PFA-ul vede taxele lunii din declarațiile generate: sumă, termen (25 a lunii următoare), stare.</summary>

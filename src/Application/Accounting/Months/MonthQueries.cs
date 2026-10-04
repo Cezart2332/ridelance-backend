@@ -27,7 +27,10 @@ internal sealed class GetPeriodOverviewQueryHandler(IApplicationDbContext db)
             return Result.Failure<PeriodOverview>(AccountingErrors.InvalidPeriod);
         }
 
-        List<ScopePfa> pfas = await AccountingScope.InPeriodAsync(db, query.Period, cancellationToken);
+        // QA 15: fără CIF, PFA-ul nu e un rând de lot, ci o alertă de profil.
+        List<ScopePfa> scope = await AccountingScope.InPeriodAsync(db, query.Period, cancellationToken);
+        List<ScopePfa> pfas = [.. scope.Where(p => p.HasCui)];
+        List<ProfileAlertDto> alerts = [.. scope.Where(p => !p.HasCui).Select(p => new ProfileAlertDto(p.Id, p.Name, "CIF-ul PFA-ului lipsește."))];
         List<Guid> ids = [.. pfas.Select(p => p.Id)];
         MonthData data = await MonthData.LoadAsync(db, query.Period, ids, cancellationToken);
         Dictionary<Guid, PfaMonthCheck> checks = await db.PfaMonthChecks.AsNoTracking()
@@ -36,17 +39,20 @@ internal sealed class GetPeriodOverviewQueryHandler(IApplicationDbContext db)
         List<DeclarationSummaries.CurrentVersion> versions = await DeclarationSummaries.CurrentVersionsAsync(db, query.Period, ids, cancellationToken);
         var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), query.Period);
 
+        // QA 15: starea lunii e cea de acum (documentele se pot fi schimbat de la ultima procesare).
+        var live = pfas.ToDictionary(pfa => pfa.Id, pfa => PreCheck.Evaluate(pfa, data, settings));
         List<OverviewRow> rows = [.. pfas.Select(pfa =>
         {
             PfaMonthCheck? check = checks.GetValueOrDefault(pfa.Id);
+            PreCheckResult now = live[pfa.Id];
             IReadOnlyList<DeclarationSummary> summaries = DeclarationSummaries.For(
                 pfa, query.Period, check, versions, () => MonthlyTaxEngine.Calculate(data.TaxInput(pfa.Id, settings)));
             return new OverviewRow(
                 pfa.Id,
                 pfa.Name,
                 pfa.Cui,
-                check?.Status ?? PfaMonthStatus.NotProcessed,
-                check is null ? [] : AccountingJson.Deserialize<List<string>>(check.ReasonsJson, []),
+                check is null ? PfaMonthStatus.NotProcessed : now.Status,
+                check is null ? [] : [.. now.Reasons],
                 Figures(data, pfa.Id, Platform.Bolt),
                 Figures(data, pfa.Id, Platform.Uber),
                 summaries.ToDictionary(
@@ -57,8 +63,15 @@ internal sealed class GetPeriodOverviewQueryHandler(IApplicationDbContext db)
         int Count(PfaMonthStatus status) => rows.Count(row => row.Status == status);
         return new PeriodOverview(
             query.Period,
-            new PeriodStats(rows.Count, Count(PfaMonthStatus.Ready), Count(PfaMonthStatus.NeedsReview), Count(PfaMonthStatus.MissingDocuments), Count(PfaMonthStatus.NotProcessed)),
-            rows);
+            new PeriodStats(
+                rows.Count,
+                Count(PfaMonthStatus.Ready),
+                Count(PfaMonthStatus.NeedsReview),
+                // Documentele lipsă se numără și la lunile neprocesate încă.
+                live.Values.Count(result => result.Status == PfaMonthStatus.MissingDocuments),
+                Count(PfaMonthStatus.NotProcessed)),
+            rows,
+            alerts);
     }
 
     /// <summary>Venitul din raport și comisionul din factură (sau din raport), dacă PFA-ul lucrează cu platforma.</summary>

@@ -212,7 +212,10 @@ public sealed record OverviewRow(
     PlatformMonthFigures? Uber,
     IReadOnlyDictionary<DeclarationType, DeclarationCell> Declarations);
 
-public sealed record PeriodOverview(string Period, PeriodStats Stats, IReadOnlyList<OverviewRow> Rows);
+/// <param name="ProfileAlerts">PFA-uri care nu pot intra în lot (de exemplu fără CIF), de completat în profil (QA 15).</param>
+public sealed record PeriodOverview(string Period, PeriodStats Stats, IReadOnlyList<OverviewRow> Rows, IReadOnlyList<ProfileAlertDto>? ProfileAlerts = null);
+
+public sealed record ProfileAlertDto(Guid PfaId, string PfaName, string Reason);
 
 public sealed record JobResultItem(Guid? PfaId, string? PfaName, string Message);
 

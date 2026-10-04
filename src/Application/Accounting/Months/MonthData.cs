@@ -10,7 +10,11 @@ using Microsoft.EntityFrameworkCore;
 namespace Application.Accounting.Months;
 
 /// <summary>Un PFA din luna fiscală.</summary>
-public sealed record ScopePfa(Guid Id, string Name, string Cui);
+public sealed record ScopePfa(Guid Id, string Name, string Cui)
+{
+    /// <summary>Are CIF: doar atunci intră în lotul lunar de declarații (QA 15).</summary>
+    public bool HasCui => !string.IsNullOrWhiteSpace(Cui);
+}
 
 /// <summary>Un document al lunii, cu extracția curentă.</summary>
 internal sealed record MonthDocument(PlatformDocument Document, string FileName, DocumentExtraction? Extraction);

@@ -82,7 +82,8 @@ internal sealed class RunMonthJobCommandHandler(
         MonthJobResults results = AccountingJson.Deserialize(job.ResultJson, new MonthJobResults([], []));
         var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), period);
 
-        List<ScopePfa> pfas = await AccountingScope.InPeriodAsync(db, period, cancellationToken, parameters.PfaId);
+        // QA 15: un PFA fără CIF nu intră în lot; apare ca alertă de profil în lista lunii.
+        List<ScopePfa> pfas = [.. (await AccountingScope.InPeriodAsync(db, period, cancellationToken, parameters.PfaId)).Where(p => p.HasCui)];
         if (job.Type == BackgroundJobType.GenerateDeclarations)
         {
             List<Guid> ready = await db.PfaMonthChecks
