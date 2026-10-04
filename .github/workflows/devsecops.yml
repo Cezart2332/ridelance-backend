@@ -258,6 +258,39 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" "$GITLEAKS" \
             git /repo --redact --report-format sarif --report-path /repo/gitleaks.sarif --exit-code 1
 
+      - name: Normalize Gitleaks SARIF regions
+        if: always() && hashFiles('gitleaks.sarif') != ''
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('gitleaks.sarif')
+          report = json.loads(path.read_text(encoding='utf-8'))
+          corrected = 0
+
+          def normalize(value):
+              global corrected
+              if isinstance(value, dict):
+                  for key, region in value.items():
+                      if key in ('region', 'contextRegion') and isinstance(region, dict):
+                          if any(column in region and region[column] < 1
+                                 for column in ('startColumn', 'endColumn')):
+                              # Columns are optional in SARIF. Keep the original line
+                              # location rather than inventing a column for the finding.
+                              region.pop('startColumn', None)
+                              region.pop('endColumn', None)
+                              corrected += 1
+                      normalize(region)
+              elif isinstance(value, list):
+                  for item in value:
+                      normalize(item)
+
+          normalize(report)
+          path.write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
+          print(f'Normalized {corrected} SARIF regions; all findings preserved.')
+          PY
+
       - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         if: always() && hashFiles('gitleaks.sarif') != ''
         with:
