@@ -33,6 +33,12 @@ internal sealed class ImpersonateUserCommandHandler(
             return Result.Failure<LoginResponse>(UserErrors.NotFound(command.TargetUserId));
         }
 
+        // Intrarea în contul altcuiva ar ocoli 2FA-ul echipei: se poate doar în conturile clienților.
+        if (targetUser.IsStaff)
+        {
+            return Result.Failure<LoginResponse>(UserErrors.Unauthorized());
+        }
+
         // Generate only a short-lived access token for the target user.
         // The refresh token (cookie) stays the admin's, so the admin session
         // survives and the target user's own devices are not logged out.

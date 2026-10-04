@@ -22,40 +22,7 @@ internal sealed class Login : IEndpoint
 
             Result<LoginResponse> result = await handler.Handle(command, cancellationToken);
 
-            if (result.IsFailure)
-            {
-                return CustomResults.Problem(result);
-            }
-
-            // Set refresh token as HTTP-only cookie
-            httpContext.Response.Cookies.Append("refreshToken", result.Value.RefreshToken, new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = httpContext.Request.IsHttps,
-                SameSite = SameSiteMode.Lax,
-                Expires = DateTimeOffset.UtcNow.AddDays(7),
-                Path = "/"
-            });
-
-            // Aplicația mobilă nu primește cookie-ul (vezi NativeClient): tokenul de refresh îi vine în corp.
-            if (NativeClient.IsNative(httpContext.Request))
-            {
-                return Results.Ok(new
-                {
-                    accessToken = result.Value.AccessToken,
-                    role = result.Value.Role,
-                    userId = result.Value.UserId,
-                    refreshToken = result.Value.RefreshToken
-                });
-            }
-
-            // Return only the access token, role, and userId in the response body (for Redux)
-            return Results.Ok(new
-            {
-                accessToken = result.Value.AccessToken,
-                role = result.Value.Role,
-                userId = result.Value.UserId
-            });
+            return result.IsFailure ? CustomResults.Problem(result) : SessionResult.Write(httpContext, result.Value);
         })
         .WithTags(Tags.Users);
     }

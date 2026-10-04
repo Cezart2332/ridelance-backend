@@ -10,7 +10,8 @@ namespace Application.Users.Login;
 internal sealed class LoginUserCommandHandler(
     IApplicationDbContext context,
     IPasswordHasher passwordHasher,
-    ITokenProvider tokenProvider) : ICommandHandler<LoginUserCommand, LoginResponse>
+    ITokenProvider tokenProvider,
+    IDateTimeProvider clock) : ICommandHandler<LoginUserCommand, LoginResponse>
 {
     public async Task<Result<LoginResponse>> Handle(LoginUserCommand command, CancellationToken cancellationToken)
     {
@@ -33,6 +34,14 @@ internal sealed class LoginUserCommandHandler(
         if (user.IsDeleted)
         {
             return Result.Failure<LoginResponse>(UserErrors.AccountClosed);
+        }
+
+        // Echipa (Admin, Contabil): parola deschide doar pasul 2FA — verificare sau, prima dată, configurare.
+        if (user.IsStaff)
+        {
+            LoginResponse challenge = Application.Users.TwoFactor.TwoFactorSupport.StartChallenge(user, clock.UtcNow);
+            await context.SaveChangesAsync(cancellationToken);
+            return challenge;
         }
 
         string accessToken = tokenProvider.Create(user);

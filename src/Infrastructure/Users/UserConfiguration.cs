@@ -58,5 +58,39 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         // Proprietăți calculate din datele de confirmare; nu au coloană.
         builder.Ignore(u => u.IsEmailVerified);
         builder.Ignore(u => u.IsPhoneVerified);
+        builder.Ignore(u => u.IsTwoFactorEnabled);
+        builder.Ignore(u => u.IsStaff);
+        builder.Property(u => u.TwoFactorSecret).HasMaxLength(256);
+        builder.Property(u => u.TwoFactorPendingSecret).HasMaxLength(256);
+        builder.Property(u => u.TwoFactorChallengeHash).HasMaxLength(64);
+    }
+}
+
+internal sealed class StaffInvitationConfiguration : IEntityTypeConfiguration<StaffInvitation>
+{
+    public void Configure(EntityTypeBuilder<StaffInvitation> builder)
+    {
+        builder.ToTable("staff_invitations");
+        builder.HasKey(i => i.Id);
+        builder.Property(i => i.Email).HasMaxLength(256).IsRequired();
+        builder.Property(i => i.FullName).HasMaxLength(256).IsRequired();
+        builder.Property(i => i.Role).HasConversion<string>().HasMaxLength(32);
+        builder.Property(i => i.TokenHash).HasMaxLength(64).IsRequired();
+        builder.HasIndex(i => i.TokenHash).IsUnique();
+        builder.HasIndex(i => i.Email);
+        builder.HasOne<User>().WithMany().HasForeignKey(i => i.InvitedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<User>().WithMany().HasForeignKey(i => i.AcceptedUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class TwoFactorRecoveryCodeConfiguration : IEntityTypeConfiguration<TwoFactorRecoveryCode>
+{
+    public void Configure(EntityTypeBuilder<TwoFactorRecoveryCode> builder)
+    {
+        builder.ToTable("two_factor_recovery_codes");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.CodeHash).HasMaxLength(64).IsRequired();
+        builder.HasIndex(c => c.UserId);
+        builder.HasOne<User>().WithMany().HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }

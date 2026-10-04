@@ -81,4 +81,38 @@ public sealed class User : Entity
     public bool IsPhoneVerified => PhoneVerifiedAtUtc.HasValue;
 
     public List<PushSubscription> PushSubscriptions { get; set; } = [];
+
+    /// <summary>
+    /// Primul admin al platformei (creat din <c>Bootstrap:AdminEmail</c>). Doar el poate invita alți
+    /// admini și le poate reseta 2FA-ul.
+    /// </summary>
+    public bool IsOwner { get; set; }
+
+    /// <summary>Secretul TOTP confirmat, criptat (<c>ISecretProtector</c>). <c>null</c> = fără 2FA.</summary>
+    public string? TwoFactorSecret { get; set; }
+
+    /// <summary>Secretul generat la configurare, încă neconfirmat cu un cod.</summary>
+    public string? TwoFactorPendingSecret { get; set; }
+
+    public DateTime? TwoFactorEnabledAtUtc { get; set; }
+
+    /// <summary>Ultimul pas de 30 s acceptat: un cod deja folosit nu mai trece a doua oară.</summary>
+    public long? TwoFactorLastStep { get; set; }
+
+    public int TwoFactorFailedAttempts { get; set; }
+
+    public DateTime? TwoFactorLockedUntilUtc { get; set; }
+
+    /// <summary>
+    /// Hash-ul tokenului de după parolă (verificare sau configurare 2FA): scurt, de unică folosință,
+    /// fără drept de acces la API.
+    /// </summary>
+    public string? TwoFactorChallengeHash { get; set; }
+
+    public DateTime? TwoFactorChallengeExpiresAtUtc { get; set; }
+
+    public bool IsTwoFactorEnabled => TwoFactorSecret is not null;
+
+    /// <summary>Echipa RIDElance: pentru ei 2FA e obligatoriu.</summary>
+    public bool IsStaff => Role is UserRole.Admin or UserRole.Contabil;
 }

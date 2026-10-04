@@ -90,6 +90,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.ApplyMigrations();
+await app.BootstrapStaffAsync();
 
 app.MapHealthChecks("health", new HealthCheckOptions
 {

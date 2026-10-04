@@ -33,6 +33,8 @@ public sealed class ApplicationDbContext(
     : DbContext(options), IApplicationDbContext
 {
     public DbSet<User> Users { get; set; }
+    public DbSet<StaffInvitation> StaffInvitations { get; set; }
+    public DbSet<TwoFactorRecoveryCode> TwoFactorRecoveryCodes { get; set; }
     public DbSet<CompanyProfile> CompanyProfiles { get; set; }
     public DbSet<MaintenanceEntry> MaintenanceEntries { get; set; }
     public DbSet<Rental> Rentals { get; set; }

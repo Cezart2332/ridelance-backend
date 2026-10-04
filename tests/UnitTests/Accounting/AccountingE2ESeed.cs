@@ -48,6 +48,9 @@ public sealed class AccountingE2ESeed
 
     public const string AdminPassword = "E2e-Admin-2026!";
 
+    /// <summary>Secretul TOTP al ambelor conturi de echipă: testele își calculează singure codul 2FA.</summary>
+    public const string TwoFactorSecret = "KRSXG5CTMVRXEZLUKRSXG5CTMVRXEZLU";
+
     private const string Period = "2026-08";
 
     private static readonly string? Database = Environment.GetEnvironmentVariable("RIDELANCE_SEED_DATABASE");
@@ -87,6 +90,8 @@ public sealed class AccountingE2ESeed
             Role = UserRole.Contabil,
             PasswordHash = new PasswordHasher().Hash(AccountantPassword),
             EmailVerifiedAtUtc = DateTime.UtcNow,
+            TwoFactorSecret = secrets.Protect(TwoFactorSecret),
+            TwoFactorEnabledAtUtc = DateTime.UtcNow,
         });
         db.Users.Add(new User
         {
@@ -97,6 +102,9 @@ public sealed class AccountingE2ESeed
             Role = UserRole.Admin,
             PasswordHash = new PasswordHasher().Hash(AdminPassword),
             EmailVerifiedAtUtc = DateTime.UtcNow,
+            IsOwner = true,
+            TwoFactorSecret = secrets.Protect(TwoFactorSecret),
+            TwoFactorEnabledAtUtc = DateTime.UtcNow,
         });
 
         // Ca în fixtures: certificatele de rezidență valabile pe 2026, iar cota Uber confirmată cu 0%,
