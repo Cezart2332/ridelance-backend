@@ -111,12 +111,16 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
                         !db.LedgerMatchProposals.Any(p => p.PfaRegistrationId == context.PfaId && p.BankTransactionId == t.Id && p.Accepted != false))
             .OrderBy(t => t.BookingDate ?? t.ValueDate)
             .ToListAsync(cancellationToken);
+        PfaIdentity identity = await IdentityAsync(context, cancellationToken);
+        List<CounterpartyClassificationRule> learned = await db.CounterpartyClassificationRules.AsNoTracking()
+            .Where(r => r.PfaRegistrationId == context.PfaId)
+            .ToListAsync(cancellationToken);
+        int updated = await ProposeForOpenAsync(context, identity, learned, cancellationToken);
         if (fresh.Count == 0)
         {
-            return new LedgerImportResult(LedgerSource.Bank, 0, 0, []);
+            return new LedgerImportResult(LedgerSource.Bank, 0, updated, []);
         }
 
-        PfaIdentity identity = await IdentityAsync(context, cancellationToken);
         List<Guid> rejected = await db.LedgerMatchProposals
             .Where(p => p.PfaRegistrationId == context.PfaId && p.Accepted == false)
             .Select(p => p.BankTransactionId)
@@ -134,10 +138,6 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
             });
         }
 
-        List<CounterpartyClassificationRule> learned = await db.CounterpartyClassificationRules.AsNoTracking()
-            .Where(r => r.PfaRegistrationId == context.PfaId)
-            .ToListAsync(cancellationToken);
-
         int created = 0;
         foreach (BankTransaction transaction in fresh.Where(t => !proposals.ContainsKey(t)))
         {
@@ -150,7 +150,60 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
         IReadOnlyList<string> notes = proposals.Count == 0
             ? []
             : [$"{proposals.Count} plăți din bancă par să fie ale unor bonuri deja înregistrate; confirmă asocierea."];
-        return new LedgerImportResult(LedgerSource.Bank, created, 0, notes);
+        return new LedgerImportResult(LedgerSource.Bank, created, updated, notes);
+    }
+
+    /// <summary>
+    /// Excepțiile deja importate din lunile deschise, încă fără propunere: primesc regula învățată sau
+    /// propunerea din contrapartidă (aceleași reguli ca la import). Lunile închise nu se ating.
+    /// </summary>
+    private async Task<int> ProposeForOpenAsync(
+        LedgerImportContext context, PfaIdentity identity, IReadOnlyList<CounterpartyClassificationRule> learned, CancellationToken cancellationToken)
+    {
+        List<string> closed = [.. context.ClosedPeriods];
+        List<LedgerEntry> open = await db.LedgerEntries
+            .Where(e => e.PfaRegistrationId == context.PfaId && e.Source == LedgerSource.Bank && e.BankTransactionId != null &&
+                        e.StornoOfEntryId == null && !e.ClosedPeriodFlag && e.Status != LedgerEntryStatus.Locked && !closed.Contains(e.AccountingPeriod) &&
+                        e.ProposedClassification == null && e.SourceDocumentId == null && e.EFacturaMessageId == null &&
+                        (e.ReconciliationStatus == ReconciliationStatus.NeedsReview ||
+                         e.ReconciliationStatus == ReconciliationStatus.Unmatched && e.Category == null))
+            .ToListAsync(cancellationToken);
+        if (open.Count == 0)
+        {
+            return 0;
+        }
+
+        List<Guid> ids = [.. open.Select(e => e.BankTransactionId!.Value)];
+        Dictionary<Guid, BankTransaction> transactions = await db.BankTransactions.AsNoTracking()
+            .Where(t => ids.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, cancellationToken);
+
+        int updated = 0;
+        foreach (LedgerEntry entry in open)
+        {
+            if (!transactions.TryGetValue(entry.BankTransactionId!.Value, out BankTransaction? transaction))
+            {
+                continue;
+            }
+
+            string? details = string.IsNullOrWhiteSpace(transaction.RemittanceInfo) ? null : transaction.RemittanceInfo.Trim();
+            if (BankClassifications.Match(learned, transaction.Amount, transaction.CounterpartyName, transaction.CounterpartyIban, details) is { } rule)
+            {
+                BankClassifications.Apply(entry, rule.Classification, context.Rules, verified: false);
+                updated++;
+                continue;
+            }
+
+            CounterpartyKind kind = CounterpartyRules.Classify(
+                transaction.Amount, transaction.CounterpartyName, transaction.CounterpartyIban, details, identity, context.Options);
+            if (kind != CounterpartyKind.PlatformSettlement && BankClassifications.FromKind(kind) is { } proposal)
+            {
+                BankClassifications.Propose(entry, proposal);
+                updated++;
+            }
+        }
+
+        return updated;
     }
 
     /// <summary>

@@ -336,6 +336,31 @@ public sealed class LedgerTests : IDisposable
         rjip.Rows.ShouldHaveSingleItem().Operation.ShouldBe("Comision administrare cont bancar");
     }
 
+    /// <summary>Rândurile importate înainte (fără propunere) primesc propunerea la următorul import, doar în lunile deschise.</summary>
+    [Fact]
+    public async Task ExistingExceptions_GetProposalsOnTheNextImportInOpenMonths()
+    {
+        Transaction(630m, "Ion Popescu", "From Ion P", new DateOnly(2026, 9, 25));
+        Transaction(-50m, null, "Company Free plan fee", new DateOnly(2026, 8, 15));
+        await Import();
+
+        // Ca înainte de schimbare: încasare neidentificată și plată fără document, fără propunere.
+        foreach (LedgerEntry entry in await _db.LedgerEntries.ToListAsync())
+        {
+            entry.ProposedClassification = null;
+            (entry.TransactionType, entry.ReconciliationStatus) =
+                entry.Amount > 0 ? (LedgerTransactionType.Other, ReconciliationStatus.NeedsReview) : (LedgerTransactionType.Expense, ReconciliationStatus.Unmatched);
+        }
+
+        _db.PfaAccountingPeriods.Add(new PfaAccountingPeriod { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Period = "2026-08", Status = AccountingPeriodStatus.Closed });
+        await _db.SaveChangesAsync();
+
+        await Import();
+
+        (await _db.LedgerEntries.SingleAsync(e => e.Amount == 630m)).ProposedClassification.ShouldBe(BankClassification.OwnerContribution);
+        (await _db.LedgerEntries.SingleAsync(e => e.Amount == -50m)).ProposedClassification.ShouldBeNull();
+    }
+
     /// <summary>Clasificarea respectă sensul tranzacției; aportul confirmat nu e venit, încasarea din activitate da.</summary>
     [Fact]
     public async Task Classify_ChecksTheDirectionAndDecidesTheRef()
