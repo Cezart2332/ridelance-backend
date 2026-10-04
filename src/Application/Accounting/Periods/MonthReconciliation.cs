@@ -106,7 +106,7 @@ internal static class MonthReconciliation
             await CashRegisterAsync(db, pfaId, start, end, entries, cancellationToken),
             await PlatformDocumentsAsync(db, pfaId, period, Platform.Bolt, entries, cancellationToken),
             await PlatformDocumentsAsync(db, pfaId, period, Platform.Uber, entries, cancellationToken),
-            UnreconciledPayouts(entries),
+            await UnreconciledPayoutsAsync(db, pfaId, period, entries, cancellationToken),
             await OpenTransactionsAsync(db, pfaId, start, end, entries, cancellationToken),
             await PlatformCashAsync(db, pfaId, period, start, end, cancellationToken),
             await BankBalanceAsync(db, pfaId, pfa.UserId, start, end, entries, options, cancellationToken),
@@ -312,13 +312,41 @@ internal static class MonthReconciliation
             : new ReconciliationControlDto(control, false, true, $"Lipsește {string.Join(" și ", missing)} (încărcat și confirmat).");
     }
 
-    /// <summary>R20/R22: niciun payout fără descompunere în venit brut și comision.</summary>
-    private static ReconciliationControlDto UnreconciledPayouts(List<LedgerEntry> entries)
+    /// <summary>
+    /// R20/R22: niciun payout fără descompunere în venit brut și comision, și niciun raport confirmat al
+    /// lunii fără decontarea lui (QA 2): fără payout în bancă venitul nu e în ledger, deci luna nu e
+    /// reconciliată. „Toate reconciliate” doar când există payout-uri și toate sunt descompuse.
+    /// </summary>
+    private static async Task<ReconciliationControlDto> UnreconciledPayoutsAsync(
+        IApplicationDbContext db, Guid pfaId, string period, List<LedgerEntry> entries, CancellationToken cancellationToken)
     {
         List<LedgerEntry> open = [.. entries.Where(e => e.TransactionType == LedgerTransactionType.PlatformSettlement)];
-        return open.Count == 0
+        var reports = await db.PlatformDocuments.AsNoTracking()
+            .Where(d => d.PfaRegistrationId == pfaId && d.Period == period && d.DeletedAtUtc == null &&
+                        d.DocumentType == PlatformDocumentType.PlatformReport &&
+                        (d.Status == PlatformDocumentStatus.Confirmed || d.Status == PlatformDocumentStatus.Locked))
+            .Select(d => new { d.Platform, Settled = db.LedgerEntries.Any(e => e.PlatformDocumentId == d.Id && e.SettlementGroupId != null) })
+            .ToListAsync(cancellationToken);
+
+        List<string> parts = [];
+        if (open.Count > 0)
+        {
+            parts.Add($"{open.Count} payout-uri nereconciliate ({Lei(open.Sum(e => e.Amount))})");
+        }
+
+        parts.AddRange(reports
+            .Where(r => !r.Settled)
+            .Select(r => $"raportul {(r.Platform == Platform.Bolt ? "Bolt" : "Uber")} e confirmat, dar fără payout reconciliat în bancă: venitul lipsește din registre"));
+
+        if (parts.Count > 0)
+        {
+            return new ReconciliationControlDto(ReconciliationControl.UnreconciledPayouts, false, true, string.Join("; ", parts) + ".");
+        }
+
+        bool settled = reports.Count > 0 || entries.Any(e => e.SettlementGroupId is not null);
+        return settled
             ? new ReconciliationControlDto(ReconciliationControl.UnreconciledPayouts, true, true, "Toate payout-urile sunt reconciliate.")
-            : new ReconciliationControlDto(ReconciliationControl.UnreconciledPayouts, false, true, $"{open.Count} payout-uri nereconciliate ({Lei(open.Sum(e => e.Amount))}).");
+            : new ReconciliationControlDto(ReconciliationControl.UnreconciledPayouts, true, false, "Fără payout-uri în lună.");
     }
 
     /// <summary>Tranzacțiile fără document sau de verificat, plus propunerile de asociere fără răspuns.</summary>
@@ -388,14 +416,10 @@ internal static class MonthReconciliation
     private static async Task<ReconciliationControlDto> BankBalanceAsync(
         IApplicationDbContext db, Guid pfaId, Guid userId, DateOnly start, DateOnly end, List<LedgerEntry> entries, AccountingOptions options, CancellationToken cancellationToken)
     {
-        Guid? declared = await db.PfaBankAccountDeclarations.AsNoTracking()
-            .Where(d => d.PfaRegistrationId == pfaId)
-            .Select(d => d.BankConnectionId)
-            .FirstOrDefaultAsync(cancellationToken);
-        decimal account = await db.BankTransactions.AsNoTracking()
-            .Where(t => t.UserId == userId && !t.IsPending && t.Currency == "RON" &&
-                        (declared == null || t.Account.BankConnectionId == declared) &&
-                        (t.BookingDate ?? t.ValueDate) >= start && (t.BookingDate ?? t.ValueDate) <= end)
+        // Aceleași tranzacții pe care le importă ledger-ul (QA 3).
+        IQueryable<BankTransaction> transactions = await Ledger.PfaBankTransactions.QueryAsync(db, pfaId, userId, cancellationToken);
+        decimal account = await transactions
+            .Where(t => t.Currency == "RON" && (t.BookingDate ?? t.ValueDate) >= start && (t.BookingDate ?? t.ValueDate) <= end)
             .SumAsync(t => t.Amount, cancellationToken);
 
         RjipView rjip = GetRjipQueryHandler.Build(

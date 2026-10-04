@@ -76,12 +76,12 @@ internal sealed class GetBankTransactionsQueryHandler(
         // Capete inclusive: „luna martie" înseamnă și 31 martie.
         if (query.From is DateOnly from)
         {
-            transactions = transactions.Where(bt => bt.BookingDate != null && bt.BookingDate >= from);
+            transactions = transactions.Where(bt => (bt.BookingDate ?? bt.ValueDate) != null && (bt.BookingDate ?? bt.ValueDate) >= from);
         }
 
         if (query.To is DateOnly to)
         {
-            transactions = transactions.Where(bt => bt.BookingDate != null && bt.BookingDate <= to);
+            transactions = transactions.Where(bt => (bt.BookingDate ?? bt.ValueDate) != null && (bt.BookingDate ?? bt.ValueDate) <= to);
         }
 
         int totalCount = await transactions.CountAsync(cancellationToken);
@@ -94,13 +94,13 @@ internal sealed class GetBankTransactionsQueryHandler(
             .SumAsync(bt => bt.Amount, cancellationToken);
 
         List<BankTransactionResponse> items = await transactions
-            .OrderByDescending(bt => bt.BookingDate)
+            .OrderByDescending(bt => bt.BookingDate ?? bt.ValueDate)
             .ThenByDescending(bt => bt.ImportedAtUtc)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(bt => new BankTransactionResponse(
                 bt.Id,
-                bt.BookingDate,
+                bt.BookingDate ?? bt.ValueDate,
                 bt.Amount,
                 bt.Currency,
                 bt.CounterpartyName,

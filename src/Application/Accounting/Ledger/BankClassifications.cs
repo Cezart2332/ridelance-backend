@@ -99,6 +99,54 @@ public static class BankClassifications
         DeductibilityService.Resolve(entry, rules);
     }
 
+    /// <summary>
+    /// După o modificare din ecranul Bancă (tip, categorie, document): starea de reconciliere și propunerea
+    /// se aliniază cu clasificarea, ca RJIP, excepțiile și REF să citească același lucru (QA 1). O plată
+    /// neclasificată căreia i se alege o categorie devine cheltuială.
+    /// </summary>
+    public static void Sync(LedgerEntry entry, LedgerRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if (entry.Source != LedgerSource.Bank || entry.SettlementGroupId is not null || entry.TransactionType == LedgerTransactionType.PlatformSettlement)
+        {
+            return;
+        }
+
+        if (entry.Category is not null && entry.Amount < 0 && entry.TransactionType == LedgerTransactionType.Other)
+        {
+            entry.TransactionType = LedgerTransactionType.Expense;
+        }
+
+        // Încă neclasificată (încasare neidentificată sau propunere neconfirmată): rămâne excepție.
+        if (entry.TransactionType == LedgerTransactionType.Other && entry.ReconciliationStatus != ReconciliationStatus.Matched)
+        {
+            return;
+        }
+
+        BankClassification? classification = Of(entry);
+        if (classification is null)
+        {
+            return;
+        }
+
+        entry.ProposedClassification = null;
+        bool documented = entry.SourceDocumentId is not null || entry.EFacturaMessageId is not null;
+        entry.ReconciliationStatus = classification switch
+        {
+            BankClassification.Expense when entry.ReconciliationStatus == ReconciliationStatus.Partial => ReconciliationStatus.Partial,
+            BankClassification.Expense => documented ? ReconciliationStatus.Matched : ReconciliationStatus.Unmatched,
+            _ => ReconciliationStatus.Matched,
+        };
+        DeductibilityService.Resolve(entry, rules);
+    }
+
+    /// <summary>„Verificat” cere o clasificare: încasarea neidentificată și propunerea neconfirmată nu se verifică (QA 8).</summary>
+    public static bool NeedsClassification(LedgerEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        return entry.Source == LedgerSource.Bank && entry.ReconciliationStatus == ReconciliationStatus.NeedsReview;
+    }
+
     /// <summary>Clasificarea deja aplicată pe o înregistrare bancară, dacă tipul o spune.</summary>
     public static BankClassification? Of(LedgerEntry entry)
     {

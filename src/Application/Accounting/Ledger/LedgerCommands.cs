@@ -18,6 +18,9 @@ internal static class LedgerErrors
 
     public static readonly Error CategoryRequired = Error.Conflict("Accounting.CategoryRequired", "Alege categoria cheltuielii înainte de verificare.");
 
+    public static readonly Error ClassificationRequired = Error.Conflict(
+        "Accounting.ClassificationRequired", "Clasifică tranzacția (sau confirmă propunerea) înainte de verificare.");
+
     public static readonly Error DescriptionRequired = Error.Problem("Accounting.DescriptionRequired", "Descrierea e obligatorie.");
 
     public static readonly Error AmountRequired = Error.Problem("Accounting.AmountRequired", "Suma trebuie să fie diferită de zero.");
@@ -132,7 +135,11 @@ internal sealed class UpdateLedgerEntryCommandHandler(IApplicationDbContext db, 
             entry.AccountingPeriod = period;
         }
 
-        DeductibilityService.Resolve(entry, await LedgerSupport.RulesAsync(db, entry.PfaRegistrationId, cancellationToken));
+        LedgerRules rules = await LedgerSupport.RulesAsync(db, entry.PfaRegistrationId, cancellationToken);
+        DeductibilityService.Resolve(entry, rules);
+
+        // QA 1: o clasificare din Bancă e aceeași pentru RJIP, excepții și REF.
+        BankClassifications.Sync(entry, rules);
         Result valid = await LedgerSupport.ValidateAsync(db, entry, cancellationToken);
         if (valid.IsFailure)
         {
@@ -314,6 +321,12 @@ internal sealed class VerifyLedgerEntryCommandHandler(IApplicationDbContext db, 
         if (open.IsFailure)
         {
             return Result.Failure<LedgerEntryDto>(open.Error);
+        }
+
+        // QA 8: verificarea confirmă o clasificare, nu o înlocuiește.
+        if (BankClassifications.NeedsClassification(entry))
+        {
+            return Result.Failure<LedgerEntryDto>(LedgerErrors.ClassificationRequired);
         }
 
         if (entry.TransactionType == LedgerTransactionType.Expense && entry.Category is null)

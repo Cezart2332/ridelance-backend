@@ -81,20 +81,8 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
 
     public async Task<LedgerImportResult> ImportAsync(LedgerImportContext context, CancellationToken cancellationToken)
     {
-        // Conturile PFA-ului: conexiunea declarată în onboarding, altfel toate conturile utilizatorului.
-        Guid? connectionId = await db.PfaBankAccountDeclarations
-            .Where(d => d.PfaRegistrationId == context.PfaId)
-            .Select(d => d.BankConnectionId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        IQueryable<BankTransaction> transactions = db.BankTransactions.AsNoTracking()
-            .Where(t => !t.IsPending && (t.BookingDate != null || t.ValueDate != null) && t.Amount != 0 &&
-                t.UserId == context.UserId && t.Account.UserId == context.UserId && t.Account.IsActive &&
-                t.Account.Connection.Status == BankConnectionStatus.Linked &&
-                t.ProviderConsentId == t.Account.Connection.ProviderConsentId);
-        transactions = connectionId is { } connection
-            ? transactions.Where(t => t.Account.BankConnectionId == connection)
-            : transactions.Where(t => t.UserId == context.UserId);
+        // Conturile PFA-ului: aceeași definiție ca în controlul de sold (QA 3).
+        IQueryable<BankTransaction> transactions = await PfaBankTransactions.QueryAsync(db, context.PfaId, context.UserId, cancellationToken);
         if (context.From is { } from)
         {
             transactions = transactions.Where(t => (t.BookingDate ?? t.ValueDate) >= from);

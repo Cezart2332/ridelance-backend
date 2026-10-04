@@ -26,7 +26,7 @@ using Xunit;
 namespace UnitTests.Accounting;
 
 /// <summary>B6: importul și clasificarea ledger-ului, deductibilitatea, documentele și rapoartele Z.</summary>
-public sealed class LedgerTests : IDisposable
+public sealed partial class LedgerTests : IDisposable
 {
     private static readonly DateOnly Day = new(2026, 10, 10);
 

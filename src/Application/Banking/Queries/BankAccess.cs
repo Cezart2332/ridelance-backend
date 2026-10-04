@@ -43,10 +43,18 @@ internal static class BankAccess
         return isAssignedAccountant ? target : Result.Failure<Guid>(NotAllowed);
     }
 
-    public static Task<BankConnection?> CurrentConnectionAsync(
-        IApplicationDbContext context, Guid userId, CancellationToken cancellationToken) =>
-        context.BankConnections.AsNoTracking()
-            .Where(c => c.UserId == userId && c.Status == BankConnectionStatus.Linked)
-            .OrderByDescending(c => c.LinkedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
+    public static async Task<BankConnection?> CurrentConnectionAsync(
+        IApplicationDbContext context, Guid userId, CancellationToken cancellationToken)
+    {
+        // Pentru un PFA, conexiunea declarată în onboarding: aceeași din care se importă ledger-ul și
+        // se verifică soldul (QA 3), nu ultima conexiune legată.
+        Guid? declared = await context.PfaRegistrations.AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .Join(context.PfaBankAccountDeclarations, p => p.Id, d => d.PfaRegistrationId, (p, d) => d.BankConnectionId)
+            .FirstOrDefaultAsync(id => id != null, cancellationToken);
+        IQueryable<BankConnection> linked = context.BankConnections.AsNoTracking()
+            .Where(c => c.UserId == userId && c.Status == BankConnectionStatus.Linked);
+        return (declared is { } id ? await linked.FirstOrDefaultAsync(c => c.Id == id, cancellationToken) : null)
+            ?? await linked.OrderByDescending(c => c.LinkedAtUtc).FirstOrDefaultAsync(cancellationToken);
+    }
 }

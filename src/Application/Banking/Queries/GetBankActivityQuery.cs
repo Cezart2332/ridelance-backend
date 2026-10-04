@@ -76,9 +76,9 @@ internal sealed class GetBankActivityQueryHandler(
                 && bt.Account.UserId == userId
                 && bt.Account.BankConnectionId == connectionId
                 && bt.Account.IsActive
-                && bt.BookingDate != null
-                && bt.BookingDate >= from
-                && bt.BookingDate <= to)
+                && (bt.BookingDate ?? bt.ValueDate) != null
+                && (bt.BookingDate ?? bt.ValueDate) >= from
+                && (bt.BookingDate ?? bt.ValueDate) <= to)
             .ToListAsync(cancellationToken);
 
         List<BankActivityAccount> accounts = await context.BankAccounts
@@ -96,7 +96,7 @@ internal sealed class GetBankActivityQueryHandler(
         string bucket = Normalize(query.Bucket);
 
         List<BankActivityBucket> buckets = [.. transactions
-            .GroupBy(bt => BucketStart(bt.BookingDate!.Value, bucket))
+            .GroupBy(bt => BucketStart((bt.BookingDate ?? bt.ValueDate)!.Value, bucket))
             .OrderBy(g => g.Key)
             .Select(g => new BankActivityBucket(
                 g.Key,
