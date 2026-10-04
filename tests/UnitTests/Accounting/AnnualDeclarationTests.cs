@@ -86,14 +86,44 @@ public sealed class AnnualDeclarationTests : IDisposable
         d207.Blockers.ShouldHaveSingleItem().ShouldContain("în D100 lunare 7,00 lei");
     }
 
-    /// <summary>F32: Σ plăților din registru trebuie să fie Σ comisioanelor decontate; o decizie de confirmat oprește D207.</summary>
+    /// <summary>
+    /// F32, QA 14: diferența față de comisioanele decontate și regula de confirmat sunt de verificat, nu opresc
+    /// D207; o regulă neconfirmată lipsește din D100, deci totalul diferă și D207 se oprește pe această cauză.
+    /// </summary>
     [Fact]
-    public void F32_PaymentsMustMatchTheSettledCommissionsAndBeConfirmed()
+    public void F32_QA14_OnlyADifferenceFromTheMonthlyD100Stops()
     {
-        D207Engine.Build(2026, [Payment("EE102090374", 350, 2, 7)], [new("2026-03", "EE102090374", 7)], 500)
-            .Blockers.ShouldHaveSingleItem().ShouldContain("comisioanele decontate 500,00 lei");
-        D207Engine.Build(2026, [Payment("EE102090374", 350, 16, 56, status: NonResidentDecisionStatus.NeedsLegalConfirmation)], [], 350)
-            .Blockers.ShouldContain("O regulă de nerezident e de confirmat.");
+        AnnualCalculation<D207DataModel> paid = D207Engine.Build(2026, [Payment("EE102090374", 350, 2, 7)], [new("2026-03", "EE102090374", 7)], 500);
+        paid.IsBlocked.ShouldBeFalse();
+        paid.Review.ShouldHaveSingleItem().ShouldContain("comisioanele decontate 500,00 lei");
+
+        AnnualCalculation<D207DataModel> waiting = D207Engine.Build(2026, [Payment("EE102090374", 350, 16, 56, status: NonResidentDecisionStatus.NeedsLegalConfirmation)], [], 350);
+        waiting.Review.ShouldContain("O regulă de nerezident e de confirmat.");
+        waiting.Blockers.ShouldHaveSingleItem().ShouldContain("în D100 lunare 0,00 lei");
+    }
+
+    /// <summary>
+    /// QA 14: D100 vechi (din facturi) pentru Uber NL și Bolt EE, fără plăți în registru: D207 le agregă pe beneficiar,
+    /// inclusiv cel scutit, și nu se oprește.
+    /// </summary>
+    [Fact]
+    public void QA14_D207AggregatesTheMonthlyD100WhenTheRegistryIsEmpty()
+    {
+        AnnualCalculation<D207DataModel> d207 = D207Engine.Build(
+            2026,
+            [],
+            [
+                new("2026-08", "EE102090374", 45.46m, 2273.23m, "Bolt Operations OÜ", "EE", 2, "Convenția RO–EE"),
+                new("2026-08", "NL852071589B01", 0m, 557.31m, "Uber B.V.", "NL", 0, "Convenția RO–NL"),
+            ],
+            null);
+
+        d207.IsBlocked.ShouldBeFalse();
+        d207.Model.Beneficiaries.Select(b => (b.TaxId, b.GrossIncome, b.TaxWithheld, b.ExemptIncome, b.DeclaredInD100)).ShouldBe(
+        [
+            ("EE102090374", 2273.23m, 45.46m, 0m, 45.46m),
+            ("NL852071589B01", 557.31m, 0m, 557.31m, 0m),
+        ]);
     }
 
     // ---------- D205 ----------

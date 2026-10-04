@@ -269,9 +269,10 @@ internal sealed class AnnualDeclarationService(
                         v.VersionNo == v.Declaration.Versions.Max(other => other.VersionNo))
             .SelectMany(v => v.Lines
                 .Where(l => l.SupersededAtUtc == null && l.RuleCode == MonthlyTaxEngine.D100CommissionRule)
-                .Select(l => new { v.Declaration.Period, l.SupplierVatId, l.Value }))
+                .Select(l => new { v.Declaration.Period, l.SupplierVatId, l.Value, l.Base, l.SupplierName, l.SupplierCountry, l.Rate, l.Treaty }))
             .ToListAsync(cancellationToken);
-        return [.. lines.Select(l => new D100Declared(l.Period, l.SupplierVatId ?? string.Empty, l.Value))];
+        return [.. lines.Select(l => new D100Declared(
+            l.Period, l.SupplierVatId ?? string.Empty, l.Value, l.Base, l.SupplierName ?? string.Empty, l.SupplierCountry ?? string.Empty, l.Rate ?? 0, l.Treaty))];
     }
 
     /// <summary>Comisioanele reținute la decontare în an (plățile efective către nerezidenți, ledger R21).</summary>

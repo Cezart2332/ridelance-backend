@@ -18,7 +18,9 @@ public sealed record D207Payment(
     string? Treaty);
 
 /// <summary>Impozitul unui beneficiar dintr-o D100 lunară generată (versiunea curentă).</summary>
-public sealed record D100Declared(string Period, string SupplierTaxId, decimal Tax);
+/// <param name="Gross">Baza rândului D100 (venitul brut plătit), pentru lunile fără plăți în registru.</param>
+public sealed record D100Declared(
+    string Period, string SupplierTaxId, decimal Tax, decimal Gross = 0, string SupplierName = "", string Country = "", decimal Rate = 0, string? Treaty = null);
 
 /// <summary>Un beneficiar nerezident în D207: totalurile anului (F30), inclusiv venitul scutit (F31).</summary>
 public sealed record D207Beneficiary(
@@ -48,24 +50,52 @@ public sealed record AnnualCalculation<T>(T Model, IReadOnlyList<string> Blocker
 /// </summary>
 public static class D207Engine
 {
+    /// <summary>
+    /// QA 14: D207 agregă plățile către nerezidenți și impozitul lor pe beneficiar, inclusiv cele scutite.
+    /// Lunile cu D100 dar fără plăți în registru (D100 vechi, din facturi) intră din rândurile D100. Se
+    /// oprește doar când totalul unui beneficiar diferă de Σ D100 lunare; restul sunt de verificat.
+    /// </summary>
     /// <param name="paidTotal">Σ comisioanelor reținute la decontare în an (ledger); <c>null</c> = fără control.</param>
     public static AnnualCalculation<D207DataModel> Build(int year, IReadOnlyList<D207Payment> payments, IReadOnlyList<D100Declared> declared, decimal? paidTotal)
     {
         ArgumentNullException.ThrowIfNull(payments);
         ArgumentNullException.ThrowIfNull(declared);
         var blockers = new List<string>();
+        var review = new List<string>();
 
         int waiting = payments.Count(p => p.Status == NonResidentDecisionStatus.NeedsLegalConfirmation);
         if (waiting > 0)
         {
-            blockers.Add(waiting == 1 ? "O regulă de nerezident e de confirmat." : $"{waiting} reguli de nerezident sunt de confirmat.");
+            review.Add(waiting == 1 ? "O regulă de nerezident e de confirmat." : $"{waiting} reguli de nerezident sunt de confirmat.");
         }
+
+        // Plățile din registru, plus lunile declarate în D100 fără plăți în registru pentru același beneficiar.
+        static string Month(DateOnly date) => date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
+        HashSet<(string, string)> registered = [.. payments.Select(p => (p.SupplierTaxId.ToUpperInvariant(), Month(p.PaymentDate)))];
+        List<D207Payment> all =
+        [
+            .. payments,
+            .. declared
+                .Where(d => !registered.Contains((d.SupplierTaxId.ToUpperInvariant(), d.Period)))
+                .Select(d => new D207Payment(
+                    Guid.Empty,
+                    System.DateOnly.ParseExact(d.Period + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                    d.SupplierName.Length > 0 ? d.SupplierName : d.SupplierTaxId,
+                    d.Country.Length > 0 ? d.Country : d.SupplierTaxId[..Math.Min(2, d.SupplierTaxId.Length)],
+                    d.SupplierTaxId,
+                    "COMMISSION",
+                    d.Gross,
+                    d.Rate,
+                    d.Tax,
+                    NonResidentDecisionStatus.Auto,
+                    d.Treaty)),
+        ];
 
         var declaredByBeneficiary = declared
             .GroupBy(d => d.SupplierTaxId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Sum(d => d.Tax), StringComparer.OrdinalIgnoreCase);
 
-        List<D207Beneficiary> beneficiaries = [.. payments
+        List<D207Beneficiary> beneficiaries = [.. all
             .GroupBy(p => (TaxId: p.SupplierTaxId.ToUpperInvariant(), p.IncomeType))
             .OrderBy(g => g.Key.TaxId, StringComparer.Ordinal)
             .Select(g =>
@@ -85,7 +115,7 @@ public static class D207Engine
                     declaredByBeneficiary.GetValueOrDefault(g.Key.TaxId));
             })];
 
-        // F32: totalul pe beneficiar = Σ D100 lunare.
+        // F32: totalul pe beneficiar = Σ D100 lunare — singurul motiv de oprire.
         foreach (D207Beneficiary beneficiary in beneficiaries.Where(b => b.TaxWithheld != b.DeclaredInD100))
         {
             blockers.Add(
@@ -93,18 +123,13 @@ public static class D207Engine
                 $"în D100 lunare {AccountingJson.Amount(beneficiary.DeclaredInD100)} lei.");
         }
 
-        foreach (string orphan in declaredByBeneficiary.Keys.Where(id => beneficiaries.All(b => !string.Equals(b.TaxId, id, StringComparison.OrdinalIgnoreCase))))
-        {
-            blockers.Add($"D100 are impozit pentru {orphan}, fără plăți în registrul anual de nerezidenți.");
-        }
-
         decimal gross = beneficiaries.Sum(b => b.GrossIncome);
         if (paidTotal is { } paid && paid != gross)
         {
-            blockers.Add($"Plățile către nerezidenți din registru însumează {AccountingJson.Amount(gross)} lei, comisioanele decontate {AccountingJson.Amount(paid)} lei.");
+            review.Add($"Plățile către nerezidenți însumează {AccountingJson.Amount(gross)} lei, comisioanele decontate {AccountingJson.Amount(paid)} lei.");
         }
 
-        return new(new D207DataModel(year, beneficiaries, gross, beneficiaries.Sum(b => b.TaxWithheld), paidTotal), blockers, []);
+        return new(new D207DataModel(year, beneficiaries, gross, beneficiaries.Sum(b => b.TaxWithheld), paidTotal), blockers, review);
     }
 }
 
