@@ -110,3 +110,29 @@ Toate sunt în `scripts/diagnostics/`, doar `SELECT`. Fiecare are sus ce verific
 10. `10_estimate_runs_requires_clarification.sql` — rulările REQUIRES_CLARIFICATION.
 
 Nu există migrații de date sau scripturi de corecție. Le scriu separat, idempotente, după rezultate.
+
+## Stare după reparații (04.10.2026)
+
+Teste: 1052 unitare + 28 arhitectură verzi. Seed-ul local e în `tests/UnitTests/Accounting/LedgerTests.Qa.cs`
+(titularul „Ionescu Andrei-Victor”, transferurile 200/600/100, „From Victor I” 630, ghiseul.ro 567,
+comisionul lunar de 50, Booking 822,28, Bolt 20.758,20 / 2.273,23, Uber 4.173,86 / 557,31 cu payout-urile).
+
+| # | Reparat în cod | Test | Așteaptă date |
+| --- | --- | --- | --- |
+| 1 | Bancă → `BankClassifications.Sync`; ecranul Bancă arată explicația, documentul, excepția și deductibilul din REF | `QA1_ABankScreenClassificationIsTheSameEverywhere` | 03: dacă 200 lei e transfer către titular, nu Service auto |
+| 2 | controlul de payout-uri cere decontarea rapoartelor confirmate | `QA2_PlatformReportsWithPayoutsBecomeIncomeAndCommission`, `QA2_ConfirmedReportsWithoutPayoutsAreNotReconciled` | 04: dacă banca de test primește payout-uri |
+| 3 | `PfaBankTransactions` comun importului și controlului de sold; widgetul pe conexiunea declarată și data valutei | `QA3_TheBalanceCheckUsesTheSameTransactionsAsTheImport` | 01, 02: cifrele −142,00 / −95,01 / +272,78 |
+| 4 | D301/D390 cu bază 0 nu există; fără TaxPointDate nicio declarație (regula F12) | `QA4_NoTaxPointDateOrZeroBaseGivesNoVatDeclaration` | 05: declarațiile din august generate înainte de F12 |
+| 5 | un singur dicționar de etichete; tranzițiile manuale doar Admin, cu motiv | `QA5_ManualStatusChangesAreAdminOnlyWithAReason` | 05: statusuri fără recipisă |
+| 6 | perioadele au `canClose` și motive din aceeași reconciliere | `QA6_PeriodsShowCanCloseFromTheSameReconciliation` | — |
+| 7 | titularul cu prenume compus / inițiale | `QA7_ACompoundFirstNameOwnerIsRecognised`, `QA7_OwnerTransfersBecomeTransfersToConfirm` | 03: profilul „testr test” |
+| 8 | „Verifică” cere clasificare | `QA8_VerifyRequiresAClassification` | — |
+| 9 | bonul se propune doar pentru plată cu același comerciant, niciodată comision/propunere; fără preselecție | `QA9_AReceiptIsNeverMatchedWithAPaymentOfAnotherKind` | — |
+| 10 | „Document lipsă” înaintea „De verificat”; contor separat pentru încasări; rânduri care se deschid | `QA10_ClientTransactionsShowRealStatesAndSeparateCounters` | 08: octombrie gol |
+| 11 | `GET /pfa/declarations` din DeclarationRecord; „Taxe & declarații” le arată | `QA11_ThePfaSeesItsMonthlyDeclarations` | — |
+| 12 | cifra veche „Taxe estimate (anual)” scoasă; perioada în etichete; net ≤ brut | `QA12_TheTotalIsTheSumOfTheComponentsAndNetIsAtMostGross` | sursa de venit a estimărilor rămâne `pfa_monthly_incomes` (mutarea pe ledger, pas separat) |
+| 13 | numerarul citit și scris în `cash_register_states`; venit cash fără Z oprește luna | `QA13_CashIncomeWithoutZReportsBlocksTheMonth` | 09 |
+| 14 | D207 agregă și D100 vechi; se oprește doar la diferență față de Σ D100 | `QA14_D207AggregatesTheMonthlyD100WhenTheRegistryIsEmpty`, `F32_QA14_…` | — |
+| 15 | PFA fără CIF = alertă de profil, nu rând; starea lunii pe loc | `QA15_APfaWithoutCifIsAProfileAlertNotABatchRow` | 06, 07: duplicate de test |
+| 16 | o rulare identică nu se mai salvează | `FiscalProfileTests` (QA 16) | 10 |
+| 17–24 | REF drill-down fără rând gol; active „Mijloc fix / Cheltuială curentă”, date zz.ll.aaaa; Fișa MF; RJIP fără repetare și fără coloane ascunse; Document cu referință în Bancă; Bancă pe luna aleasă; un formatter de sume | `AssetSheetTests` + verificare în browser (mock) | — |
