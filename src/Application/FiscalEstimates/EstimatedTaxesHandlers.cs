@@ -94,8 +94,25 @@ internal sealed class RecalculateEstimatedTaxesCommandHandler(
 
         TaxResult result = engine.Calculate(input, parameters.For(profile.TaxYear));
 
-        await FiscalEstimateInvalidation.MarkStaleAsync(context, pfa.Id, profile.TaxYear, nowUtc, cancellationToken);
         FiscalEstimateRun run = EstimatedTaxesMapping.ToRun(pfa.Id, profile, snapshot, result, nowUtc);
+
+        // QA 16: același rezultat (stare, motiv, sume, profil, reguli) nu devine o rulare nouă la fiecare
+        // marcare „stale”; ultima rulare rămâne valabilă pentru azi și jobul nu o mai reia.
+        FiscalEstimateRun? latest = await context.FiscalEstimateRuns
+            .Include(r => r.Calculations)
+            .Where(r => r.PfaRegistrationId == pfa.Id && r.TaxYear == profile.TaxYear)
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (latest is not null && EstimatedTaxesMapping.Fingerprint(latest) == EstimatedTaxesMapping.Fingerprint(run))
+        {
+            latest.Stale = false;
+            latest.StaleSinceUtc = null;
+            latest.AsOf = run.AsOf;
+            await context.SaveChangesAsync(cancellationToken);
+            return latest.Id;
+        }
+
+        await FiscalEstimateInvalidation.MarkStaleAsync(context, pfa.Id, profile.TaxYear, nowUtc, cancellationToken);
         context.FiscalEstimateRuns.Add(run);
         await context.SaveChangesAsync(cancellationToken);
 
@@ -272,6 +289,16 @@ internal sealed class RequestEstimateRecalculationCommandHandler(IApplicationDbC
 
 internal static class EstimatedTaxesMapping
 {
+    /// <summary>Ce face două rulări identice: starea, regulile, profilul, lipsurile și fiecare componentă (QA 16).</summary>
+    public static string Fingerprint(FiscalEstimateRun run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        IEnumerable<string> components = run.Calculations
+            .OrderBy(c => c.Component, StringComparer.Ordinal)
+            .Select(c => $"{c.Component}:{c.Status}:{c.Amount?.ToString(System.Globalization.CultureInfo.InvariantCulture)}:{c.ReasonCode}:{c.MissingInputsJson}");
+        return $"{run.Status}|{run.RuleVersion}|{run.ProfileRevision}|{run.MissingInputsJson}|{run.AssumptionsJson}|{string.Join(";", components)}";
+    }
+
     private static readonly string[] Order =
         [TaxComponents.Cas, TaxComponents.Cass, TaxComponents.IncomeTax, TaxComponents.PlatformTaxes];
 

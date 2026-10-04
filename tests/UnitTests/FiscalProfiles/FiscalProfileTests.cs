@@ -484,6 +484,18 @@ public sealed class FiscalProfileTests
         done.Reserve!.Weekly.ShouldNotBeNull();
         done.Components!.ShouldAllBe(c => c.Breakdown == null);
 
+        // QA 16: o recalculare cu aceleași date (doar marcată „stale”, ca la fiecare trecere a jobului) nu
+        // adaugă o rulare nouă în istoric; ultima redevine valabilă.
+        for (int pass = 0; pass < 3; pass++)
+        {
+            await FiscalEstimateInvalidation.MarkStaleAsync(db, pfa.Id, 2026, DateTime.UtcNow, default);
+            await db.SaveChangesAsync();
+            await recalculate.Handle(new RecalculateEstimatedTaxesCommand(pfa.Id, 2026), default);
+        }
+
+        (await db.FiscalEstimateRuns.CountAsync()).ShouldBe(1);
+        (await db.FiscalEstimateRuns.SingleAsync()).Stale.ShouldBeFalse();
+
         // Editarea staff-ului: rularea veche expiră, iar cea nouă poartă revizia nouă.
         int revisionBefore = (await db.FiscalEstimateRuns.SingleAsync()).ProfileRevision;
         await new EditFiscalProfileCommandHandler(db, Service(db, admin.Id)).Handle(
