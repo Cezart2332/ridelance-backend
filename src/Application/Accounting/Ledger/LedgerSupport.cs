@@ -102,20 +102,28 @@ internal static class LedgerSupport
     }
 
     /// <summary>Înregistrările, cu versiunea rândului (<c>xmin</c>), în forma din contract.</summary>
+    /// <summary>
+    /// Înregistrările, cu explicația, documentul și excepția din RJIP (QA 1, 21): ecranul Bancă arată
+    /// aceeași clasificare ca registrul. Fără <paramref name="db"/> (apeluri interne), fără ele.
+    /// </summary>
     public static async Task<List<LedgerEntryDto>> DtosAsync(
         IQueryable<LedgerEntry> entries,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IApplicationDbContext? db = null)
     {
         var rows = await entries
             .Select(e => new { Entry = e, RowVersion = EF.Property<uint>(e, "xmin") })
             .ToListAsync(cancellationToken);
-        return [.. rows.Select(row => Dto(row.Entry, row.RowVersion))];
+        Registers.RjipSources? sources = db is null
+            ? null
+            : await Registers.RjipSources.LoadAsync(db, rows.Select(row => new Registers.RegisterEntry(row.Entry, row.Entry.Amount, row.Entry.DeductibleAmount, null)), cancellationToken);
+        return [.. rows.Select(row => Dto(row.Entry, row.RowVersion, sources))];
     }
 
     public static async Task<LedgerEntryDto> DtoAsync(IApplicationDbContext db, Guid id, CancellationToken cancellationToken) =>
-        (await DtosAsync(db.LedgerEntries.AsNoTracking().Where(e => e.Id == id), cancellationToken)).Single();
+        (await DtosAsync(db.LedgerEntries.AsNoTracking().Where(e => e.Id == id), cancellationToken, db)).Single();
 
-    public static LedgerEntryDto Dto(LedgerEntry e, uint rowVersion) => new(
+    public static LedgerEntryDto Dto(LedgerEntry e, uint rowVersion, Registers.RjipSources? sources = null) => new(
         e.Id,
         e.PfaRegistrationId,
         e.Date,
@@ -145,7 +153,24 @@ internal static class LedgerSupport
         e.DocumentDate,
         e.PersonalAmount,
         e.StornoOfEntryId,
-        e.CorrectsEntryId);
+        e.CorrectsEntryId,
+        sources is null ? null : Registers.RjipExplanations.Explain(e, sources),
+        sources is null ? null : Registers.RjipExplanations.Document(e, sources),
+        Registers.RjipExplanations.ExceptionOf(e),
+        e.ProposedClassification,
+        RefDeductible(e));
+
+    /// <summary>Cât din cheltuială intră în REF: doar justificată cu document (R01), aceeași regulă ca registrul.</summary>
+    public static decimal? RefDeductible(LedgerEntry e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        if (e.TransactionType != LedgerTransactionType.Expense || !e.IsCashMovement)
+        {
+            return null;
+        }
+
+        return e.ReconciliationStatus is ReconciliationStatus.Matched or ReconciliationStatus.Partial ? e.DeductibleAmount ?? 0 : 0;
+    }
 
     /// <summary>Regula sau setarea aplicată, pentru „sumă × % = deductibil”.</summary>
     private static DeductibilityRuleRef? RuleOf(LedgerEntry e)

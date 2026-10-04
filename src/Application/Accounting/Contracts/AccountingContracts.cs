@@ -398,7 +398,12 @@ public sealed record LedgerEntryDto(
     DateOnly? DocumentDate,
     decimal PersonalAmount,
     Guid? StornoOfEntryId = null,
-    Guid? CorrectsEntryId = null);
+    Guid? CorrectsEntryId = null,
+    string? Explanation = null,
+    string? DocumentRef = null,
+    Registers.RegisterExceptionKind? Exception = null,
+    BankClassification? ProposedClassification = null,
+    decimal? RefDeductibleAmount = null);
 
 /// <summary>Câmpurile trimise sunt doar cele schimbate; <c>Reason</c> e obligatoriu.</summary>
 public sealed record UpdateLedgerEntryRequest(JsonElement Fields, string Reason);

@@ -80,7 +80,8 @@ internal sealed class ListLedgerQueryHandler(IApplicationDbContext db) : IQueryH
         int total = await entries.CountAsync(cancellationToken);
         List<LedgerEntryDto> items = await LedgerSupport.DtosAsync(
             entries.OrderByDescending(e => e.Date).ThenByDescending(e => e.CreatedAtUtc).Skip((page - 1) * pageSize).Take(pageSize),
-            cancellationToken);
+            cancellationToken,
+            db);
         return new Paged<LedgerEntryDto>(items, page, pageSize, total);
     }
 }
