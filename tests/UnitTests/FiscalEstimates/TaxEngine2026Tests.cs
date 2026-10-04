@@ -362,6 +362,28 @@ public sealed class TaxEngine2026Tests
             .Amount.ShouldBe(tax);
     }
 
+    /// <summary>
+    /// QA 12: toate cifrele cardului vin din același calcul — totalul anual e suma componentelor, suma de pus
+    /// deoparte e totalul minus plățile, iar netul realizat nu depășește venitul brut realizat.
+    /// </summary>
+    [Theory]
+    [InlineData(58_714, 0)]
+    [InlineData(58_714, 5_932.11)]
+    [InlineData(20_000, 1_000)]
+    public void QA12_TheTotalIsTheSumOfTheComponentsAndNetIsAtMostGross(decimal net, decimal payments)
+    {
+        TaxResult r = Run(net, payments: payments);
+        decimal components = new[] { TaxComponents.Cas, TaxComponents.Cass, TaxComponents.IncomeTax }.Sum(c => C(r, c).Amount ?? 0);
+        r.Reserve.AnnualEstimated.ShouldBe(components);
+        r.Reserve.Total.ShouldBe(Math.Max(0, components - payments));
+
+        var snapshot = new FinancialSnapshot(Guid.NewGuid(), new DateOnly(2026, 9, 30), 2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 1),
+            [new MonthFigures(7, 7_859.78m, 500m), new MonthFigures(8, 6_000m, -900m), new MonthFigures(9, 5_000m, 0m)], 0);
+        IncomeProjection projection = IncomeProjector.Project(snapshot);
+        projection.NetRealized.ShouldBeLessThanOrEqualTo(snapshot.GrossIncomeYtd);
+        projection.NetRealized.ShouldBe(18_859.78m - 500m);
+    }
+
     private static List<MonthFigures> Months(int from, int to, decimal income) =>
         Enumerable.Range(from, to - from + 1).Select(m => new MonthFigures(m, income, 0)).ToList();
 }

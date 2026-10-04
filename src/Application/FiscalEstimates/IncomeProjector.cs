@@ -23,7 +23,8 @@ public sealed record FinancialSnapshot(
     decimal RecordedTaxPayments)
 {
     public decimal GrossIncomeYtd => Months.Where(m => m.Month <= AsOf.Month).Sum(m => m.Income);
-    public decimal DeductibleExpensesYtd => Months.Where(m => m.Month <= AsOf.Month).Sum(m => m.Expenses);
+    /// <summary>Cheltuielile anului, niciodată negative: netul realizat nu poate depăși venitul (QA 12).</summary>
+    public decimal DeductibleExpensesYtd => Months.Where(m => m.Month <= AsOf.Month).Sum(m => Math.Max(0, m.Expenses));
 }
 
 /// <summary>
