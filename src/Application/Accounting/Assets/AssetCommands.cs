@@ -61,10 +61,20 @@ internal static class AssetSupport
     {
         decimal accumulated = asset.Kind == AssetKind.FixedAsset ? Depreciation.AccumulatedAt(lines, asOf) : 0;
         decimal remaining = asset.EntryValue - accumulated;
-        AssetStatus status = asset.Status == AssetStatus.Active && lines.Count > 0 && remaining == 0 ? AssetStatus.FullyDepreciated : asset.Status;
+        // QA 19: fără punere în funcțiune (sau clasă, durată) activul e încă în clasificare, oricare ar fi starea salvată.
+        AssetStatus status = asset.Status;
+        if (status == AssetStatus.Active && !asset.IsComplete)
+        {
+            status = AssetStatus.PendingClassification;
+        }
+        else if (status == AssetStatus.Active && lines.Count > 0 && remaining == 0)
+        {
+            status = AssetStatus.FullyDepreciated;
+        }
+
         decimal? monthly = lines.Count == 0 ? null : lines.OrderBy(l => l.Year).ThenBy(l => l.Month).First().Amount;
         return new AssetDto(
-            asset.Id, asset.PfaRegistrationId, asset.InventoryNumber, asset.Name, asset.Kind, status, asset.AcquisitionEntryId,
+            asset.Id, asset.PfaRegistrationId, asset.InventoryNumber, CleanName(asset.Name), asset.Kind, status, asset.AcquisitionEntryId,
             asset.DocumentRef, asset.SupplierName, asset.EntryDate, asset.InServiceDate, asset.EntryValue, asset.DepreciationClassCode,
             asset.NormalLifeMonths, asset.Method, asset.DisposalDate, asset.DisposalReason, document, monthly, asOf, accumulated, remaining);
     }
@@ -97,6 +107,23 @@ internal static class AssetSupport
     }
 
     public static DateOnly Today(IDateTimeProvider? clock) => DateOnly.FromDateTime(clock?.UtcNow ?? DateTime.UtcNow);
+
+    /// <summary>
+    /// Denumirea fără separatori rămași de la câmpuri goale („Laptop Acer — .” → „Laptop Acer”, QA 19).
+    /// </summary>
+    public static string CleanName(string? name)
+    {
+        string text = (name ?? string.Empty).Trim();
+        string previous;
+        do
+        {
+            previous = text;
+            text = text.TrimEnd(' ', '.', ',', ';', ':', '-', '–', '—').Trim();
+        }
+        while (text != previous);
+
+        return text.Length == 0 ? (name ?? string.Empty).Trim() : text;
+    }
 }
 
 // ─── Liste ───────────────────────────────────────────────────────────────────────────────────────
@@ -234,7 +261,7 @@ internal sealed class DecideFixedAssetCommandHandler(IApplicationDbContext db, I
             Id = Guid.NewGuid(),
             PfaRegistrationId = entry.PfaRegistrationId,
             InventoryNumber = await AssetSupport.NextNumberAsync(db, entry.PfaRegistrationId, kind, cancellationToken),
-            Name = LedgerSupport.Cut(string.IsNullOrWhiteSpace(command.Name) ? entry.Description : command.Name.Trim(), 500),
+            Name = LedgerSupport.Cut(AssetSupport.CleanName(string.IsNullOrWhiteSpace(command.Name) ? entry.Description : command.Name), 500),
             Kind = kind,
             Status = AssetStatus.PendingClassification,
             AcquisitionEntryId = entry.Id,
@@ -279,7 +306,7 @@ internal sealed class CreateManualAssetCommandHandler(IApplicationDbContext db, 
             Id = Guid.NewGuid(),
             PfaRegistrationId = command.PfaId,
             InventoryNumber = await AssetSupport.NextNumberAsync(db, command.PfaId, request.Kind, cancellationToken),
-            Name = request.Name.Trim(),
+            Name = AssetSupport.CleanName(request.Name),
             Kind = request.Kind,
             Status = AssetStatus.PendingClassification,
             DocumentRef = request.DocumentRef.Trim(),
@@ -337,7 +364,7 @@ internal sealed class ClassifyAssetCommandHandler(IApplicationDbContext db, IUse
         }
 
         var before = new { asset.Name, asset.DocumentRef, asset.SupplierName, asset.InServiceDate, asset.DepreciationClassCode, asset.NormalLifeMonths, asset.Status };
-        asset.Name = request.Name.Trim();
+        asset.Name = AssetSupport.CleanName(request.Name);
         asset.DocumentRef = request.DocumentRef.Trim();
         asset.SupplierName = request.SupplierName?.Trim();
         asset.InServiceDate = request.InServiceDate;

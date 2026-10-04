@@ -38,6 +38,17 @@ internal sealed class ExportAssetSheetQueryHandler(IApplicationDbContext db, IRe
             .OrderBy(l => l.Year).ThenBy(l => l.Month)
             .ToListAsync(cancellationToken);
 
+        // QA 19: un activ complet fără linii salvate are totuși planul lui (aceeași regulă ca la generare).
+        if (lines.Count == 0 && await db.PfaAssets.AsNoTracking().SingleAsync(a => a.Id == asset.Id, cancellationToken) is { IsComplete: true } complete)
+        {
+            FixedAssetRule? rule = await db.FixedAssetRules.AsNoTracking()
+                .Where(r => r.ValidFrom <= (complete.InServiceDate ?? complete.EntryDate))
+                .OrderByDescending(r => r.ValidFrom)
+                .FirstOrDefaultAsync(cancellationToken);
+            lines = [.. Depreciation.Plan(complete, rule?.DepreciationStart ?? DepreciationStart.NextMonth, [])
+                .Select(line => new DepreciationLine { Year = line.Year, Month = line.Month, Amount = line.Amount, Accumulated = line.Accumulated, Remaining = line.Remaining })];
+        }
+
         var document = new RegisterDocument(
             "FIȘA MIJLOCULUI FIX",
             "14-2-2",
@@ -47,7 +58,7 @@ internal sealed class ExportAssetSheetQueryHandler(IApplicationDbContext db, IRe
                 $"Document de achiziție: {asset.DocumentRef}{(asset.SupplierName is { Length: > 0 } supplier ? $", furnizor {supplier}" : string.Empty)}",
                 $"Data intrării: {RegisterData.Date(asset.EntryDate)}; punere în funcțiune: {(asset.InServiceDate is { } inService ? RegisterData.Date(inService) : "—")}",
                 $"Valoare de intrare: {RegisterData.Amount(asset.EntryValue)} lei; clasa {asset.DepreciationClassCode ?? "—"}; durata normală {asset.NormalLifeMonths?.ToString(CultureInfo.InvariantCulture) ?? "—"} luni; metoda liniară",
-                asset.DisposalDate is { } disposal ? $"Ieșit din gestiune la {RegisterData.Date(disposal)}: {asset.DisposalReason}" : "În folosință",
+                State(asset),
             ],
             [
                 new("Nr. crt.", Width: 0.5f),
@@ -61,6 +72,17 @@ internal sealed class ExportAssetSheetQueryHandler(IApplicationDbContext db, IRe
                 [index + 1, $"{line.Month:00}.{line.Year}", line.Amount, line.Accumulated, line.Remaining]))],
             ["Model conform OMFP nr. 2634/2015. Amortizarea începe în luna următoare punerii în funcțiune; diferența de rotunjire e în ultima lună."]);
         return RegisterFiles.Export(exporter, document, query.Format, $"Fisa_MF_{asset.InventoryNumber}_{pfa.Cui}");
+    }
+
+    /// <summary>Starea pe fișă: ieșit, în clasificare (fără punere în funcțiune) sau în folosință.</summary>
+    private static string State(AssetDto asset)
+    {
+        if (asset.DisposalDate is { } disposal)
+        {
+            return $"Ieșit din gestiune la {RegisterData.Date(disposal)}: {asset.DisposalReason}";
+        }
+
+        return asset.Status == AssetStatus.PendingClassification ? "În clasificare" : "În folosință";
     }
 }
 
