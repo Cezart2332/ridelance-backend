@@ -52,7 +52,8 @@ public sealed record ListPeriodsQuery(Guid PfaId) : IQuery<IReadOnlyList<Account
 /// Lunile contabile ale unui PFA (§3.5): toate lunile de la începutul colaborării până la luna
 /// curentă (sau până la încetare); o lună fără rând e <c>OPEN</c>.
 /// </summary>
-internal sealed class ListPeriodsQueryHandler(IApplicationDbContext db) : IQueryHandler<ListPeriodsQuery, IReadOnlyList<AccountingPeriodDto>>
+internal sealed class ListPeriodsQueryHandler(IApplicationDbContext db, Microsoft.Extensions.Options.IOptions<AccountingOptions>? options = null)
+    : IQueryHandler<ListPeriodsQuery, IReadOnlyList<AccountingPeriodDto>>
 {
     public async Task<Result<IReadOnlyList<AccountingPeriodDto>>> Handle(ListPeriodsQuery query, CancellationToken cancellationToken)
     {
@@ -75,16 +76,53 @@ internal sealed class ListPeriodsQueryHandler(IApplicationDbContext db) : IQuery
             periods.Add(LedgerSupport.PeriodOf(month));
         }
 
-        return periods.Reverse().Select(period =>
+        var result = new List<AccountingPeriodDto>();
+        foreach (string period in periods.Reverse())
         {
             PfaAccountingPeriod? row = stored.FirstOrDefault(p => p.Period == period);
-            return new AccountingPeriodDto(
+            AccountingPeriodStatus status = row?.Status ?? AccountingPeriodStatus.Open;
+
+            // QA 6: același răspuns „poate închide” ca reconcilierea lunii (un singur serviciu).
+            IReadOnlyList<string> blockers = status == AccountingPeriodStatus.Open
+                ? await MonthClosing.BlockersAsync(db, query.PfaId, period, engagement, options?.Value ?? new AccountingOptions(), cancellationToken)
+                : [];
+            result.Add(new AccountingPeriodDto(
                 query.PfaId,
                 period,
-                row?.Status ?? AccountingPeriodStatus.Open,
+                status,
                 row?.ClosedByUserId is { } by && users.TryGetValue(by, out UserRef? user) ? user : null,
-                row?.ClosedAtUtc);
-        }).ToList();
+                row?.ClosedAtUtc,
+                status == AccountingPeriodStatus.Open && blockers.Count == 0,
+                blockers));
+        }
+
+        return result;
+    }
+}
+
+/// <summary>
+/// „Poate închide luna?” — un singur răspuns pentru „Luna aceasta” și „Perioade contabile” (QA 6):
+/// luna s-a încheiat, e în colaborare și toate controalele reconcilierii trec.
+/// </summary>
+internal static class MonthClosing
+{
+    public static async Task<IReadOnlyList<string>> BlockersAsync(
+        IApplicationDbContext db, Guid pfaId, string period, EngagementInfo engagement, AccountingOptions options, CancellationToken cancellationToken)
+    {
+        var start = DateOnly.ParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        DateOnly end = start.AddMonths(1).AddDays(-1);
+        if (end >= DateOnly.FromDateTime(DateTime.UtcNow))
+        {
+            return ["Luna nu s-a încheiat."];
+        }
+
+        if (end < engagement.StartDate || engagement.EndDate is { } finished && start > finished)
+        {
+            return ["Luna e în afara colaborării."];
+        }
+
+        MonthReconciliationDto reconciliation = await MonthReconciliation.BuildAsync(db, pfaId, period, options, DateTime.UtcNow, cancellationToken);
+        return [.. reconciliation.Controls.Where(c => !c.Passed).Select(c => c.Detail)];
     }
 }
 

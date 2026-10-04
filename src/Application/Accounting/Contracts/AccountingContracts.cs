@@ -581,7 +581,10 @@ public sealed record InventoryItemRequest(string Action, decimal? Value, string?
 
 public sealed record AddInventoryItemRequest(InventoryCategory Category, string Description, decimal Value, string? Note);
 
-public sealed record AccountingPeriodDto(Guid PfaId, string Period, AccountingPeriodStatus Status, UserRef? ClosedBy, DateTime? ClosedAt);
+/// <param name="CanClose">„Închide luna” e permis: luna s-a încheiat și toate controalele reconcilierii trec (QA 6).</param>
+/// <param name="Blockers">Ce oprește închiderea, din aceeași reconciliere ca „Luna aceasta”.</param>
+public sealed record AccountingPeriodDto(
+    Guid PfaId, string Period, AccountingPeriodStatus Status, UserRef? ClosedBy, DateTime? ClosedAt, bool CanClose = false, IReadOnlyList<string>? Blockers = null);
 
 public sealed record PeriodCorrectionRequest(Guid? LedgerEntryId, JsonElement Change, string Reason);
 

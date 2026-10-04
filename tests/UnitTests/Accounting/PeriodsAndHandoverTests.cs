@@ -102,6 +102,26 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         (await _db.PfaAccountingPeriods.AnyAsync()).ShouldBeFalse();
     }
 
+    /// <summary>QA 6: „Perioade contabile” arată „Închide luna” doar unde reconcilierea o permite, cu motivele.</summary>
+    [Fact]
+    public async Task QA6_PeriodsShowCanCloseFromTheSameReconciliation()
+    {
+        LedgerEntry unknown = Entry(new DateOnly(2026, 9, 12), 822.28m);
+        (unknown.TransactionType, unknown.ReconciliationStatus, unknown.Status) = (LedgerTransactionType.Other, ReconciliationStatus.NeedsReview, LedgerEntryStatus.NeedsReview);
+        await _db.SaveChangesAsync();
+
+        IReadOnlyList<AccountingPeriodDto> periods = (await new ListPeriodsQueryHandler(_db).Handle(new ListPeriodsQuery(_pfa), CancellationToken.None)).Value;
+
+        AccountingPeriodDto september = periods.Single(p => p.Period == "2026-09");
+        september.CanClose.ShouldBeFalse();
+        september.Blockers!.ShouldContain(b => b.Contains("de verificat", StringComparison.Ordinal));
+        (await Close("2026-09")).IsFailure.ShouldBeTrue();
+
+        AccountingPeriodDto august = periods.Single(p => p.Period == "2026-08");
+        august.CanClose.ShouldBe((await Reconciliation("2026-08")).CanClose);
+        periods.Single(p => p.Period == "2026-10").Blockers.ShouldBe(["Luna nu s-a încheiat."]);
+    }
+
     /// <summary>O încasare neidentificată sau o plată neclasificată blochează „Închide luna”.</summary>
     [Fact]
     public async Task AnUnidentifiedIncome_BlocksClosingTheMonth()
