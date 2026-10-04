@@ -9,6 +9,7 @@ internal sealed class FiscalLinkClientConfiguration : IEntityTypeConfiguration<F
     public void Configure(EntityTypeBuilder<FiscalLinkClient> builder)
     {
         builder.HasKey(c => c.Id);
+        builder.Property(c => c.LastSyncError).HasMaxLength(1000);
 
         // Un PFA, un client FiscalLink: al doilea „Conectează” nu face un comerciant dublură.
         builder.HasIndex(c => c.PfaRegistrationId).IsUnique();

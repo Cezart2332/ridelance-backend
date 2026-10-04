@@ -19,6 +19,12 @@ internal sealed class RecordFiscalReceiptsCommandHandler(IApplicationDbContext d
 {
     public async Task<Result<int>> Handle(RecordFiscalReceiptsCommand command, CancellationToken cancellationToken)
     {
+        if (command.Receipts.Any(r => string.IsNullOrWhiteSpace(r.RegisterSerial) || r.RegisterSerial.Trim().Length > 32 ||
+                                      string.IsNullOrWhiteSpace(r.Number) || r.Number.Trim().Length > 32 || r.Total < 0 ||
+                                      r.ExternalId?.Length > 64))
+        {
+            return Result.Failure<int>(Error.Problem("Accounting.InvalidFiscalReceipt", "Bonul fiscal are date invalide (serie, număr sau total)."));
+        }
         TimeZoneInfo romania = PfaDashboard.PfaDashboardPeriod.RomaniaTimeZone();
         var known = (await db.FiscalReceipts.AsNoTracking()
                 .Where(r => r.PfaRegistrationId == command.PfaId)
@@ -90,16 +96,22 @@ internal static class ZControls
             return;
         }
 
-        receipts.ForEach(r => r.ZReportId = report.Id);
         LedgerEntry? entry = report.LedgerEntryId is { } id
             ? db.LedgerEntries.Local.FirstOrDefault(e => e.Id == id) ?? await db.LedgerEntries.SingleOrDefaultAsync(e => e.Id == id, cancellationToken)
             : null;
-        if (entry is null || entry.Status == LedgerEntryStatus.Locked)
+        bool ambiguousRegister = report.RegisterSerial == null && receipts.Select(r => r.RegisterSerial).Distinct().Skip(1).Any();
+        if (!ambiguousRegister)
+        {
+            receipts.ForEach(r => r.ZReportId = report.Id);
+        }
+        if (entry is null || entry.Status == LedgerEntryStatus.Locked ||
+            await db.PfaAccountingPeriods.AnyAsync(p => p.PfaRegistrationId == report.PfaRegistrationId &&
+                p.Period == entry.AccountingPeriod && p.Status == AccountingPeriodStatus.Closed, cancellationToken))
         {
             return;
         }
 
-        entry.ReconciliationStatus = receipts.Sum(r => r.Total) == report.Total
+        entry.ReconciliationStatus = !ambiguousRegister && receipts.Sum(r => r.Total) == report.Total
             ? ReconciliationStatus.Matched
             : ReconciliationStatus.NeedsReview;
     }

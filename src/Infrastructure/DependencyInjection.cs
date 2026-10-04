@@ -128,6 +128,8 @@ public static class DependencyInjection
         services.Configure<Infrastructure.FiscalLink.FiscalLinkOptions>(configuration.GetSection(Infrastructure.FiscalLink.FiscalLinkOptions.SectionName));
         services.AddHttpClient<IFiscalLinkService, Infrastructure.FiscalLink.FiscalLinkService>(client =>
             client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddHttpClient<IFiscalLinkAccountingService, Infrastructure.FiscalLink.FiscalLinkAccountingService>(client =>
+            client.Timeout = TimeSpan.FromSeconds(30));
 
         // Bolt
         services.AddHttpClient();

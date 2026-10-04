@@ -19,5 +19,10 @@ public sealed class FiscalLinkOptions
     /// <summary>Cheia de gestiune (Setări → Chei API → Gestiune).</summary>
     public string? ManagementKey { get; set; }
 
+    /// <summary>Cheia Comenzi: citirea istoricului comenzilor cloud, fără emiterea de bonuri sau Z.</summary>
+    public string? CommandKey { get; set; }
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ManagementKey);
+
+    public bool AccountingConfigured => IsConfigured && !string.IsNullOrWhiteSpace(CommandKey);
 }

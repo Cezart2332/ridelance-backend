@@ -205,7 +205,7 @@ internal sealed class UploadZReportCommandHandler(
         }
 
         string zNumber = number.Trim();
-        if (await db.ZReports.AnyAsync(z => z.PfaRegistrationId == command.PfaId && z.ZNumber == zNumber, cancellationToken))
+        if (await db.ZReports.AnyAsync(z => z.PfaRegistrationId == command.PfaId && z.ZNumber == zNumber && z.Date == date, cancellationToken))
         {
             return Result.Failure<ZReportUploadResult>(LedgerUploadErrors.ZDuplicate(zNumber));
         }
@@ -216,7 +216,7 @@ internal sealed class UploadZReportCommandHandler(
             command.PfaId,
             date,
             LedgerSource.CashZ,
-            $"{command.PfaId:N}:Z{zNumber}",
+            $"{command.PfaId:N}:{date:yyyyMMdd}:Z{zNumber}",
             $"Raport Z nr. {zNumber}",
             null,
             $"Încasări numerar, raport Z nr. {zNumber}",
@@ -236,6 +236,8 @@ internal sealed class UploadZReportCommandHandler(
             Date = date,
             ZNumber = zNumber,
             Total = total,
+            TotalCash = total,
+            TotalCard = 0,
             DocumentId = document.Id,
             LedgerEntryId = entry.Id,
             CreatedAtUtc = DateTime.UtcNow,

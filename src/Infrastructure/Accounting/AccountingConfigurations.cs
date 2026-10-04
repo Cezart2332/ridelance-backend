@@ -672,7 +672,7 @@ internal sealed class ZReportConfiguration : IEntityTypeConfiguration<ZReport>
         builder.Property(z => z.TotalCash).AsMoney();
         builder.Property(z => z.TotalCard).AsMoney();
         builder.Property(z => z.RegisterSerial).HasMaxLength(32);
-        builder.HasIndex(z => new { z.PfaRegistrationId, z.ZNumber }).IsUnique();
+        builder.HasIndex(z => new { z.PfaRegistrationId, z.RegisterSerial, z.ZNumber, z.Date }).IsUnique().AreNullsDistinct(false);
         builder.RestrictToPfa(z => z.PfaRegistrationId);
         builder.RestrictToDocument(z => z.DocumentId);
         builder.HasOne<LedgerEntry>().WithMany().HasForeignKey(z => z.LedgerEntryId).OnDelete(DeleteBehavior.Restrict);

@@ -352,7 +352,7 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
                         e.PlatformDocument.DocumentType == PlatformDocumentType.PlatformReport &&
                         e.PlatformDocument.Platform != null &&
                         (e.PlatformDocument.Status == PlatformDocumentStatus.Confirmed || e.PlatformDocument.Status == PlatformDocumentStatus.Locked))
-            .Select(e => new { e.PlatformDocumentId, e.PlatformDocument.Platform, e.PlatformDocument.Period, e.PeriodFrom, e.PeriodTo, e.Amount, e.CommissionAmount, e.Currency })
+            .Select(e => new { e.PlatformDocumentId, e.PlatformDocument.Platform, e.PlatformDocument.Period, e.PeriodFrom, e.PeriodTo, e.Amount, e.CashAmount, e.CommissionAmount, e.Currency })
             .ToListAsync(cancellationToken);
 
         int updated = 0;
@@ -394,13 +394,22 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
                      d.DeletedAtUtc == null && d.DocumentType == PlatformDocumentType.CommissionInvoice &&
                      (d.Status == PlatformDocumentStatus.Confirmed || d.Status == PlatformDocumentStatus.Locked),
                 cancellationToken);
-            if (report.Amount is not { } gross || report.CommissionAmount is not { } rawCommission || !invoice)
+            if (report.Amount is not { } reportedGross || report.CommissionAmount is not { } rawCommission || !invoice)
             {
                 notes.Add($"{name} {month}: raportul sau factura de comision lipsesc; payout-urile rămân nereconciliate.");
                 continue;
             }
 
             decimal commission = Math.Abs(rawCommission);
+            // Cash is recorded once through the Z. The platform withholds its full fee from the
+            // online settlement; online gross minus that fee must equal the bank payout.
+            decimal cash = report.CashAmount ?? 0;
+            if (cash < 0 || cash > reportedGross)
+            {
+                notes.Add($"{name} {month}: suma cash din raport este invalidă; verifică raportul.");
+                continue;
+            }
+            decimal gross = reportedGross - cash;
             decimal net = gross - commission;
             decimal paid = payouts.Sum(e => e.Amount);
             if (payouts.Count == 0 || net <= 0 || !string.Equals(report.Currency ?? "RON", "RON", StringComparison.OrdinalIgnoreCase) || paid != net)

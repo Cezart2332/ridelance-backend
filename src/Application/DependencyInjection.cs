@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<Accounting.Ledger.ILedgerSource, Accounting.Ledger.PlatformLedgerSource>();
         services.AddScoped<Accounting.Ledger.ILedgerSource, Accounting.Ledger.OblioLedgerSource>();
         services.AddScoped<Accounting.Ledger.ILedgerSource, Accounting.Ledger.EFacturaLedgerSource>();
+        services.AddScoped<Accounting.Ledger.ILedgerSource, Accounting.Ledger.FiscalLinkLedgerSource>();
 
         services.AddScoped<PfaRegistrations.Onboarding.OnboardingStateService>();
         services.AddScoped<Companies.Onboarding.FleetOnboardingService>();

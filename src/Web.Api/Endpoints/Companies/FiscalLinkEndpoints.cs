@@ -30,5 +30,15 @@ internal sealed class FiscalLinkEndpoints : IEndpoint
             Result<FiscalLinkConnectionDto> result = await handler.Handle(new ConnectFiscalLinkCommand(), cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
         });
+
+        group.MapGet("accounting", async (
+            IQueryHandler<GetFiscalLinkAccountingSyncQuery, FiscalLinkAccountingSyncDto> handler,
+            CancellationToken cancellationToken) =>
+            (await handler.Handle(new GetFiscalLinkAccountingSyncQuery(), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
+        group.MapPost("accounting/sync", async (
+            ICommandHandler<SyncFiscalLinkAccountingCommand, FiscalLinkAccountingSyncDto> handler,
+            CancellationToken cancellationToken) =>
+            (await handler.Handle(new SyncFiscalLinkAccountingCommand(), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
     }
 }

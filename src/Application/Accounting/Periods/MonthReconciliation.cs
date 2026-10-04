@@ -266,19 +266,20 @@ internal static class MonthReconciliation
                 : new ReconciliationControlDto(ReconciliationControl.CashRegister, false, true, $"Venit cash {Lei(cashIncome)} fără rapoarte Z.");
         }
 
-        List<DateOnly> receiptDays = await db.FiscalReceipts.AsNoTracking()
+        var receiptDays = await db.FiscalReceipts.AsNoTracking()
             .Where(r => r.PfaRegistrationId == pfaId && r.Date >= start && r.Date <= end)
-            .Select(r => r.Date).Distinct().ToListAsync(cancellationToken);
-        List<DateOnly> zDays = await db.ZReports.AsNoTracking()
+            .Select(r => new { r.Date, Serial = r.RegisterSerial }).Distinct().ToListAsync(cancellationToken);
+        var zDays = await db.ZReports.AsNoTracking()
             .Where(z => z.PfaRegistrationId == pfaId && z.Date >= start && z.Date <= end)
-            .Select(z => z.Date).Distinct().ToListAsync(cancellationToken);
-        List<DateOnly> missing = [.. receiptDays.Except(zDays).Order()];
+            .Select(z => new { z.Date, Serial = z.RegisterSerial }).Distinct().ToListAsync(cancellationToken);
+        var missing = receiptDays.Where(r => !zDays.Any(z => z.Date == r.Date &&
+            (z.Serial == r.Serial || z.Serial == null && receiptDays.Count(day => day.Date == r.Date) == 1))).ToList();
         int mismatched = entries.Count(e => e.Source == LedgerSource.CashZ && e.ReconciliationStatus == ReconciliationStatus.NeedsReview);
 
         if (missing.Count > 0)
         {
             return new ReconciliationControlDto(ReconciliationControl.CashRegister, false, true,
-                $"Lipsește raportul Z pentru {string.Join(", ", missing.Select(d => d.ToString("dd.MM", CultureInfo.InvariantCulture)))}.");
+                $"Lipsește raportul Z pentru {string.Join(", ", missing.Select(d => $"{d.Date:dd.MM} ({d.Serial})"))}.");
         }
 
         return mismatched > 0

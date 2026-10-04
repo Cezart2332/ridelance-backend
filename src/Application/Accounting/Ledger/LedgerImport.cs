@@ -12,7 +12,7 @@ namespace Application.Accounting.Ledger;
 /// după fiecare. Rulat zilnic de job, pentru toate PFA-urile active (B6); pentru un dosar inactiv,
 /// doar operațiunile de până la încheierea colaborării (B8).
 /// </summary>
-public sealed record RunLedgerImportCommand(Guid PfaId) : ICommand<IReadOnlyList<LedgerImportResult>>;
+public sealed record RunLedgerImportCommand(Guid PfaId, bool FiscalLinkOnly = false) : ICommand<IReadOnlyList<LedgerImportResult>>;
 
 internal sealed class RunLedgerImportCommandHandler(
     IApplicationDbContext db,
@@ -47,7 +47,7 @@ internal sealed class RunLedgerImportCommandHandler(
             to);
 
         var results = new List<LedgerImportResult>();
-        foreach (ILedgerSource source in sources.OrderBy(s => s.Order))
+        foreach (ILedgerSource source in sources.Where(s => !command.FiscalLinkOnly || s is FiscalLinkLedgerSource).OrderBy(s => s.Order))
         {
             results.Add(await source.ImportAsync(context, cancellationToken));
             await db.SaveChangesAsync(cancellationToken);

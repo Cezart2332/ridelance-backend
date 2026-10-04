@@ -19,6 +19,10 @@ public sealed class FiscalLinkClient : Entity
 
     public DateTime CreatedAtUtc { get; set; }
 
+    public DateTime? LastSyncAttemptAtUtc { get; set; }
+    public DateTime? LastSyncAtUtc { get; set; }
+    public string? LastSyncError { get; set; }
+
     public User User { get; set; } = null!;
     public PfaRegistration PfaRegistration { get; set; } = null!;
 }
