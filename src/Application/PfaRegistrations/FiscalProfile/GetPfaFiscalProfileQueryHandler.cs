@@ -42,10 +42,16 @@ internal sealed class GetPfaFiscalProfileQueryHandler(
             .AsNoTracking()
             .SingleOrDefaultAsync(c => c.PfaRegistrationId == query.PfaRegistrationId, cancellationToken);
 
+        Domain.Accounting.CashRegisterState? cash = await context.CashRegisterStates
+            .AsNoTracking()
+            .SingleOrDefaultAsync(c => c.PfaRegistrationId == query.PfaRegistrationId, cancellationToken);
+
         return new PfaFiscalSettingsResponse(
-            profile is null
-                ? PfaFiscalProfileMapper.DefaultProfile(query.PfaRegistrationId)
-                : PfaFiscalProfileMapper.MapProfile(profile),
+            PfaFiscalProfileMapper.WithCash(
+                profile is null
+                    ? PfaFiscalProfileMapper.DefaultProfile(query.PfaRegistrationId)
+                    : PfaFiscalProfileMapper.MapProfile(profile),
+                cash),
             accountEntities.Select(PfaFiscalProfileMapper.MapAccount).ToList(),
             consent is null
                 ? PfaFiscalProfileMapper.DefaultConsent(query.PfaRegistrationId)

@@ -71,4 +71,32 @@ internal static class PfaFiscalProfileMapper
 
     public static PfaFleetConsentResponse DefaultConsent(Guid pfaRegistrationId) =>
         new(null, pfaRegistrationId, false, null, false, null, "2026-06");
+
+    /// <summary>
+    /// QA 13: numerarul are o singură sursă, starea casei de marcat din contabilitate. Setările fiscale o
+    /// citesc de acolo: venit cash = răspunsul „da” la numerar, casa = activă.
+    /// </summary>
+    public static PfaFiscalProfileResponse WithCash(PfaFiscalProfileResponse response, Domain.Accounting.CashRegisterState? cash)
+    {
+        if (cash is null)
+        {
+            return response;
+        }
+
+        string register = nameof(PfaCashRegisterStatus.No);
+        if (cash.Status == Domain.Accounting.CashRegisterStatus.Active)
+        {
+            register = nameof(PfaCashRegisterStatus.Yes);
+        }
+        else if (cash.CashRequested)
+        {
+            register = nameof(PfaCashRegisterStatus.ToVerify);
+        }
+
+        return response with
+        {
+            CashRevenueStatus = cash.CashRequested ? nameof(PfaTriStateStatus.Yes) : nameof(PfaTriStateStatus.No),
+            CashRegisterStatus = register,
+        };
+    }
 }

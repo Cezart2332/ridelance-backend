@@ -102,6 +102,26 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         (await _db.PfaAccountingPeriods.AnyAsync()).ShouldBeFalse();
     }
 
+    /// <summary>QA 13: venit cash (1.312,43 lei din evidența lunară) fără casă de marcat și fără Z → reconcilierea cere Z-urile.</summary>
+    [Fact]
+    public async Task QA13_CashIncomeWithoutZReportsBlocksTheMonth()
+    {
+        _db.PfaMonthlyIncomes.Add(new Domain.PfaRegistrations.PfaMonthlyIncome { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Year = 2026, Month = 8, VenitCash = 1312.43m });
+        await _db.SaveChangesAsync();
+
+        ReconciliationControlDto cash = Control(await Reconciliation("2026-08"), ReconciliationControl.CashRegister);
+        (cash.Passed, cash.Applicable, cash.Detail).ShouldBe((false, true, "Venit cash 1.312,43 lei fără rapoarte Z."));
+
+        // Setările fiscale citesc numerarul din starea casei de marcat (o singură sursă).
+        var state = new CashRegisterState { PfaRegistrationId = _pfa, CashRequested = true };
+        Application.PfaRegistrations.FiscalProfile.PfaFiscalProfileResponse settings = Application.PfaRegistrations.FiscalProfile.PfaFiscalProfileMapper.WithCash(
+            Application.PfaRegistrations.FiscalProfile.PfaFiscalProfileMapper.DefaultProfile(_pfa), state);
+        (settings.CashRevenueStatus, settings.CashRegisterStatus).ShouldBe(("Yes", "ToVerify"));
+        state.CashRequested = false;
+        Application.PfaRegistrations.FiscalProfile.PfaFiscalProfileMapper.WithCash(Application.PfaRegistrations.FiscalProfile.PfaFiscalProfileMapper.DefaultProfile(_pfa), state)
+            .CashRevenueStatus.ShouldBe("No");
+    }
+
     /// <summary>QA 6: „Perioade contabile” arată „Închide luna” doar unde reconcilierea o permite, cu motivele.</summary>
     [Fact]
     public async Task QA6_PeriodsShowCanCloseFromTheSameReconciliation()

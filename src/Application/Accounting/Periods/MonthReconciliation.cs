@@ -253,7 +253,17 @@ internal static class MonthReconciliation
         CashRegisterState? cash = await db.CashRegisterStates.AsNoTracking().FirstOrDefaultAsync(c => c.PfaRegistrationId == pfaId, cancellationToken);
         if (cash is not { Status: CashRegisterStatus.Active, ActivationDate: { } activated } || activated > end)
         {
-            return new ReconciliationControlDto(ReconciliationControl.CashRegister, true, false, "Fără casă de marcat în lună.");
+            // QA 13: venit cash fără casă de marcat activă și fără rapoarte Z nu trece.
+            decimal cashIncome = await CashIncomeAsync(db, pfaId, start, entries, cancellationToken);
+            if (cashIncome <= 0)
+            {
+                return new ReconciliationControlDto(ReconciliationControl.CashRegister, true, false, "Fără casă de marcat și fără venit cash în lună.");
+            }
+
+            bool hasZ = await db.ZReports.AnyAsync(z => z.PfaRegistrationId == pfaId && z.Date >= start && z.Date <= end, cancellationToken);
+            return hasZ
+                ? new ReconciliationControlDto(ReconciliationControl.CashRegister, true, true, "Rapoarte Z încărcate.")
+                : new ReconciliationControlDto(ReconciliationControl.CashRegister, false, true, $"Venit cash {Lei(cashIncome)} fără rapoarte Z.");
         }
 
         List<DateOnly> receiptDays = await db.FiscalReceipts.AsNoTracking()
@@ -274,6 +284,26 @@ internal static class MonthReconciliation
         return mismatched > 0
             ? new ReconciliationControlDto(ReconciliationControl.CashRegister, false, true, $"{mismatched} rapoarte Z nu corespund bonurilor.")
             : new ReconciliationControlDto(ReconciliationControl.CashRegister, true, true, $"{zDays.Count} rapoarte Z.");
+    }
+
+    /// <summary>
+    /// Venitul cash al lunii, din orice sursă: încasări cash în ledger, numerarul din rapoartele platformelor
+    /// și evidența lunară (cursele cash din integrare).
+    /// </summary>
+    private static async Task<decimal> CashIncomeAsync(
+        IApplicationDbContext db, Guid pfaId, DateOnly start, List<LedgerEntry> entries, CancellationToken cancellationToken)
+    {
+        decimal ledger = entries.Where(e => e.PaymentMethod == PaymentMethod.Cash && e.Amount > 0 && e.StornoOfEntryId is null).Sum(e => e.Amount);
+        string period = start.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+        decimal reports = (await db.DocumentExtractions.AsNoTracking()
+            .Where(e => e.IsCurrent && e.PlatformDocument.PfaRegistrationId == pfaId && e.PlatformDocument.Period == period &&
+                        e.PlatformDocument.DeletedAtUtc == null && e.PlatformDocument.DocumentType == PlatformDocumentType.PlatformReport)
+            .Select(e => e.CashAmount)
+            .ToListAsync(cancellationToken)).Sum(amount => amount ?? 0);
+        decimal monthly = await db.PfaMonthlyIncomes.AsNoTracking()
+            .Where(i => i.PfaRegistrationId == pfaId && i.Year == start.Year && i.Month == start.Month)
+            .SumAsync(i => i.VenitCash, cancellationToken);
+        return Math.Max(ledger, Math.Max(reports, monthly));
     }
 
     /// <summary>Raportul fiscal și factura de comision ale platformei, încărcate și confirmate.</summary>

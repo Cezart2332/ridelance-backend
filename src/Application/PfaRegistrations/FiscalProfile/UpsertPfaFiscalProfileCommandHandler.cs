@@ -75,9 +75,26 @@ internal sealed class UpsertPfaFiscalProfileCommandHandler(
         profile.UpdatedAtUtc = DateTime.UtcNow;
         profile.UpdatedByUserId = userContext.UserId;
 
+        // QA 13: răspunsul despre numerar se scrie în starea casei de marcat, sursa unică citită de
+        // card, reconciliere și setări. „De verificat” nu schimbă nimic.
+        Domain.Accounting.CashRegisterState? cash = await context.CashRegisterStates
+            .SingleOrDefaultAsync(c => c.PfaRegistrationId == profile.PfaRegistrationId, cancellationToken);
+        if (cashRevenueStatus != PfaTriStateStatus.ToVerify)
+        {
+            if (cash is null)
+            {
+                cash = new Domain.Accounting.CashRegisterState { PfaRegistrationId = profile.PfaRegistrationId };
+                context.CashRegisterStates.Add(cash);
+            }
+
+            cash.CashRequested = cashRevenueStatus == PfaTriStateStatus.Yes;
+            cash.CashRequestedAnsweredAtUtc ??= DateTime.UtcNow;
+            cash.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
         await context.SaveChangesAsync(cancellationToken);
 
-        return PfaFiscalProfileMapper.MapProfile(profile);
+        return PfaFiscalProfileMapper.WithCash(PfaFiscalProfileMapper.MapProfile(profile), cash);
     }
 
     private static bool TryParse<T>(string value, out T parsed)
