@@ -150,6 +150,7 @@ public interface IApplicationDbContext
     DbSet<Domain.Accounting.DeclarationRectificationTask> DeclarationRectificationTasks { get; }
     DbSet<Domain.Accounting.NonResidentTaxDecision> NonResidentTaxDecisions { get; }
     DbSet<Domain.Accounting.CounterpartyClassificationRule> CounterpartyClassificationRules { get; }
+    DbSet<Domain.Accounting.PlatformInboxItem> PlatformInboxItems { get; }
     DbSet<Domain.Accounting.RentalContract> RentalContracts { get; }
     DbSet<Domain.Accounting.RentPayment> RentPayments { get; }
     DbSet<Domain.Accounting.AnnualTaxAnswers> AnnualTaxAnswers { get; }

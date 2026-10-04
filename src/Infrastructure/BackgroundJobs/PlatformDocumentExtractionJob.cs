@@ -50,6 +50,25 @@ internal sealed class PlatformDocumentExtractionJob(
                         logger.LogWarning("Extracția documentului {DocumentId} a eșuat: {Error}", id, result.Error.Description);
                     }
                 }
+
+                // Încărcarea globală: documentele fără CUI se citesc și se caută după comision.
+                List<Guid> inbox = await db.PlatformInboxItems
+                    .Where(i => i.Status == PlatformInboxStatus.Matching)
+                    .OrderBy(i => i.UploadedAtUtc)
+                    .Select(i => i.Id)
+                    .Take(BatchSize)
+                    .ToListAsync(stoppingToken);
+                foreach (Guid id in inbox)
+                {
+                    using IServiceScope itemScope = scopeFactory.CreateScope();
+                    ICommandHandler<RunPlatformInboxMatchingCommand> matching =
+                        itemScope.ServiceProvider.GetRequiredService<ICommandHandler<RunPlatformInboxMatchingCommand>>();
+                    Result result = await matching.Handle(new RunPlatformInboxMatchingCommand(id), stoppingToken);
+                    if (result.IsFailure)
+                    {
+                        logger.LogWarning("Alocarea documentului {ItemId} a eșuat: {Error}", id, result.Error.Description);
+                    }
+                }
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

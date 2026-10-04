@@ -809,6 +809,32 @@ internal sealed class CounterpartyClassificationRuleConfiguration : IEntityTypeC
     }
 }
 
+internal sealed class PlatformInboxItemConfiguration : IEntityTypeConfiguration<PlatformInboxItem>
+{
+    public void Configure(EntityTypeBuilder<PlatformInboxItem> builder)
+    {
+        builder.ToTable("platform_inbox_items");
+        builder.HasKey(i => i.Id);
+        builder.Property(i => i.FileName).HasMaxLength(500).IsRequired();
+        builder.Property(i => i.FileHash).HasMaxLength(64).IsRequired();
+        builder.Property(i => i.Period).HasMaxLength(AccountingMapping.PeriodLength).IsRequired();
+        builder.Property(i => i.Status).AsText();
+        builder.Property(i => i.MatchedBy).HasConversion<string>().HasMaxLength(AccountingMapping.EnumLength);
+        builder.Property(i => i.Reason).HasMaxLength(1000);
+        builder.Property(i => i.DetectedCui).HasMaxLength(16);
+        builder.Property(i => i.Platform).HasConversion<string>().HasMaxLength(AccountingMapping.EnumLength);
+        builder.Property(i => i.DocumentType).AsText();
+        builder.Property(i => i.CommissionAmount).AsMoney();
+        builder.HasIndex(i => i.Status);
+        builder.HasIndex(i => i.FileHash);
+        builder.RestrictToDocument(i => i.SourceDocumentId);
+        builder.RestrictToPfa(i => i.PfaRegistrationId);
+        builder.HasOne<PlatformDocument>().WithMany().HasForeignKey(i => i.PlatformDocumentId).OnDelete(DeleteBehavior.Restrict);
+        builder.RestrictToUser(i => i.UploadedByUserId);
+        builder.RestrictToUser(i => i.ResolvedByUserId);
+    }
+}
+
 internal sealed class RentalContractConfiguration : IEntityTypeConfiguration<RentalContract>
 {
     public void Configure(EntityTypeBuilder<RentalContract> builder)

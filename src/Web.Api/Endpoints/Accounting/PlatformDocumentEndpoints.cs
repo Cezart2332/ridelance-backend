@@ -13,6 +13,8 @@ namespace Web.Api.Endpoints.Accounting;
 /// <summary>Documentele Uber/Bolt ale unui PFA (spec contabilitate §4.2, B1).</summary>
 internal sealed class PlatformDocumentEndpoints : IEndpoint
 {
+    public sealed record AssignInboxRequest(Guid PfaId);
+
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         RouteGroupBuilder group = app.MapGroup("accounting")
@@ -55,6 +57,34 @@ internal sealed class PlatformDocumentEndpoints : IEndpoint
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .DisableAntiforgery();
+
+        // Încărcarea globală din „Clienți PFA”: alocare automată după CUI, numele fișierului sau comision.
+        group.MapPost("platform-inbox", async (
+            [FromForm] IFormFileCollection files,
+            [FromForm] string period,
+            ICommandHandler<UploadPlatformInboxCommand, IReadOnlyList<PlatformInboxResultDto>> handler,
+            CancellationToken cancellationToken) =>
+        {
+            var uploads = new List<InboxUploadFile>();
+            foreach (IFormFile file in files)
+            {
+                using var buffer = new MemoryStream();
+                await file.CopyToAsync(buffer, cancellationToken);
+                uploads.Add(new InboxUploadFile(file.FileName, file.ContentType, buffer.ToArray()));
+            }
+
+            return (await handler.Handle(new UploadPlatformInboxCommand(period, uploads), cancellationToken)).Match(Results.Ok, CustomResults.Problem);
+        })
+        .DisableAntiforgery();
+
+        group.MapGet("platform-inbox", async (bool? all, IQueryHandler<GetPlatformInboxQuery, IReadOnlyList<PlatformInboxItemDto>> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new GetPlatformInboxQuery(all != true), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
+        group.MapPost("platform-inbox/{id:guid}/assign", async (Guid id, AssignInboxRequest request, ICommandHandler<AssignPlatformInboxItemCommand> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new AssignPlatformInboxItemCommand(id, request.PfaId), cancellationToken)).Match(Results.NoContent, CustomResults.Problem));
+
+        group.MapPost("platform-inbox/{id:guid}/dismiss", async (Guid id, ICommandHandler<DismissPlatformInboxItemCommand> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new DismissPlatformInboxItemCommand(id), cancellationToken)).Match(Results.NoContent, CustomResults.Problem));
 
         group.MapGet("platform-documents/{id:guid}", async (
             Guid id,

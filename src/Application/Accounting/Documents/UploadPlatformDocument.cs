@@ -101,21 +101,8 @@ internal sealed class UploadPlatformDocumentCommandHandler(
             AiStatus = DocumentAiStatus.None,
         };
 
-        var document = new PlatformDocument
-        {
-            Id = Guid.NewGuid(),
-            PfaRegistrationId = pfa.Id,
-            Period = command.Period,
-            SourceDocumentId = file.Id,
-            FileHash = hash,
-            Status = PlatformDocumentStatus.Extracting,
-            UploadedByUserId = userContext.UserId,
-            UploadedAtUtc = DateTime.UtcNow,
-        };
-
         db.Documents.Add(file);
-        db.PlatformDocuments.Add(document);
-        AccountingAudit.Record(db, pfa.Id, nameof(PlatformDocument), document.Id, "UPLOAD", null, new { command.FileName, command.Period }, null, userContext.UserId);
+        PlatformDocument document = PlatformDocumentStore.Create(db, pfa.Id, pfa.UserId, command.Period, file, hash, userContext.UserId);
         await db.SaveChangesAsync(cancellationToken);
 
         Dictionary<Guid, UserRef> users = await PlatformDocumentSupport.UsersAsync(db, [userContext.UserId], cancellationToken);
@@ -131,5 +118,32 @@ internal sealed class UploadPlatformDocumentCommandHandler(
             UploadedBy = PlatformDocumentSupport.UserOrSystem(users, userContext.UserId),
             UploadedAt = document.UploadedAtUtc,
         };
+    }
+}
+
+/// <summary>
+/// Documentul de platformă al unui client, din fișierul deja salvat: același drum pentru încărcarea din
+/// dosar și pentru cea globală din „Clienți PFA”. Intră în coada de extracție.
+/// </summary>
+internal static class PlatformDocumentStore
+{
+    public static PlatformDocument Create(IApplicationDbContext db, Guid pfaId, Guid pfaUserId, string period, Document file, string hash, Guid userId)
+    {
+        file.UserId = pfaUserId;
+        file.PfaRegistrationId = pfaId;
+        var document = new PlatformDocument
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = pfaId,
+            Period = period,
+            SourceDocumentId = file.Id,
+            FileHash = hash,
+            Status = PlatformDocumentStatus.Extracting,
+            UploadedByUserId = userId,
+            UploadedAtUtc = DateTime.UtcNow,
+        };
+        db.PlatformDocuments.Add(document);
+        AccountingAudit.Record(db, pfaId, nameof(PlatformDocument), document.Id, "UPLOAD", null, new { file.OriginalFileName, period }, null, userId);
+        return document;
     }
 }
