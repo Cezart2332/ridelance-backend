@@ -614,6 +614,29 @@ public sealed class MonthProcessingTests : IDisposable
             .Handle(new TransitionDeclarationVersionCommand(versionId, action, text), CancellationToken.None);
     }
 
+    /// <summary>QA 11: PFA-ul vede taxele lunii din declarațiile generate: sumă, termen (25 a lunii următoare), stare.</summary>
+    [Fact]
+    public async Task QA11_ThePfaSeesItsMonthlyDeclarations()
+    {
+        await GenerateIon();
+        Guid d301 = await IonVersion(DeclarationType.D301);
+        Guid user = await _db.PfaRegistrations.Where(p => p.Id == _ion).Select(p => p.UserId).SingleAsync();
+        var query = new GetClientDeclarationsQueryHandler(_db, new FixedUser(user));
+
+        ClientDeclarationDto vat = (await query.Handle(new GetClientDeclarationsQuery(2026), CancellationToken.None)).Value.Single(d => d.Type == DeclarationType.D301);
+        DeclarationVersion version = await _db.DeclarationVersions.AsNoTracking().Include(v => v.Declaration).SingleAsync(v => v.Id == d301);
+        (vat.Amount, vat.State, vat.ReceiptDocumentId).ShouldBe((version.Amount, ClientDeclarationState.InPreparation, (Guid?)null));
+        vat.DueDate.ShouldBe(DateOnly.ParseExact(version.Declaration.Period + "-25", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture).AddMonths(1));
+
+        await Transition(d301, DeclarationAction.Validate);
+        await Transition(d301, DeclarationAction.MarkSigned);
+        await Transition(d301, DeclarationAction.MarkSubmitted);
+        (await query.Handle(new GetClientDeclarationsQuery(2026), CancellationToken.None)).Value.Single(d => d.Type == DeclarationType.D301).State.ShouldBe(ClientDeclarationState.Submitted);
+        await Receipt(d301, "77");
+        ClientDeclarationDto confirmed = (await query.Handle(new GetClientDeclarationsQuery(2026), CancellationToken.None)).Value.Single(d => d.Type == DeclarationType.D301);
+        (confirmed.State, confirmed.ReceiptDocumentId.HasValue).ShouldBe((ClientDeclarationState.ConfirmedByAnaf, true));
+    }
+
     /// <summary>QA 5: contabilul nu schimbă manual statusul; Adminul doar cu motiv; „Recipisă validă” doar cu recipisa.</summary>
     [Fact]
     public async Task QA5_ManualStatusChangesAreAdminOnlyWithAReason()

@@ -22,6 +22,15 @@ internal sealed class ClientLedgerEndpoints : IEndpoint
             .RequireAuthorization()
             .WithTags(Tags.Accounting);
 
+        // QA 11: taxele lunare de plată, din declarațiile generate (sumă, termen, stare).
+        app.MapGet("pfa/declarations", async (
+            int year,
+            IQueryHandler<Application.Accounting.Declarations.GetClientDeclarationsQuery, IReadOnlyList<Application.Accounting.Declarations.ClientDeclarationDto>> handler,
+            CancellationToken cancellationToken) =>
+            (await handler.Handle(new Application.Accounting.Declarations.GetClientDeclarationsQuery(year), cancellationToken)).Match(Results.Ok, CustomResults.Problem))
+            .RequireAuthorization()
+            .WithTags(Tags.Accounting);
+
         group.MapGet("transactions", async (
             DateOnly from,
             DateOnly to,
