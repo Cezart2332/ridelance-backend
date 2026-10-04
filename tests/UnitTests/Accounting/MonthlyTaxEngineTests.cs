@@ -204,6 +204,21 @@ public sealed class MonthlyTaxEngineTests
         result.BlockingReasons.ShouldContain(reason => reason.Contains("lipsește data impozitării", StringComparison.Ordinal));
     }
 
+    /// <summary>QA 4: fără TaxPointDate nu se calculează nicio declarație de TVA; o D390/D301 cu bază 0 nu există.</summary>
+    [Fact]
+    public void QA4_NoTaxPointDateOrZeroBaseGivesNoVatDeclaration()
+    {
+        TaxResult missing = MonthlyTaxEngine.Calculate(Input(invoices: [Bolt(2830.54m) with { TaxPointDate = null }]));
+        missing.IsBlocked.ShouldBeTrue();
+
+        TaxResult zero = MonthlyTaxEngine.Calculate(Input(invoices: [Bolt(0m)]));
+        zero.Declarations[DeclarationType.D301].Applicable.ShouldBeFalse();
+        zero.Declarations[DeclarationType.D390].Applicable.ShouldBeFalse();
+
+        TaxResult real = MonthlyTaxEngine.Calculate(Input(invoices: [Bolt(2830.54m)]));
+        (real.Declarations[DeclarationType.D301].Lines.Sum(l => l.Base), real.Declarations[DeclarationType.D390].Lines.Sum(l => l.Base)).ShouldBe((2830.54m, 2830.54m));
+    }
+
     /// <summary>Scenariul 1 și F15–F17: o factură UE de 1.000 lei, cota 21% → D301 1.000 / 210, D390 un rând S, bazele egale.</summary>
     [Fact]
     public void S1_F15_F16_F17_OneEuInvoiceGivesMatchingD301AndD390()

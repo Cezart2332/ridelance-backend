@@ -241,12 +241,13 @@ public static class MonthlyTaxEngine
                 [DeclarationType.D100] = new(
                     DeclarationType.D100, d100.Count > 0 || d100Blockers.Count > 0, d100, d100Total,
                     $"Impozit pe veniturile nerezidenților din comisioane: {AccountingJson.Amount(d100Total)} lei.", null, d100Warnings, withholding, d100Blockers),
+                // QA 4: o D301/D390 cu bază 0 nu există (nimic de declarat).
                 [DeclarationType.D301] = new(
-                    DeclarationType.D301, d301.Count > 0, d301, d301Total,
+                    DeclarationType.D301, d301Base != 0, d301, d301Total,
                     $"TVA pentru serviciile intracomunitare achiziționate: {AccountingJson.Amount(d301Total)} lei. Veniturile din curse nu intră în bază.",
                     rideIncome,
                     d301Warnings),
-                [DeclarationType.D390] = new(DeclarationType.D390, d390.Count > 0, d390, 0, "0 lei de plată, doar raportare.", null),
+                [DeclarationType.D390] = new(DeclarationType.D390, d390Base != 0, d390, 0, "0 lei de plată, doar raportare.", null),
             });
     }
 
