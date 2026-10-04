@@ -614,6 +614,7 @@ internal sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<Ledger
         builder.Property(e => e.TaxableIncomeAmount).AsMoney();
         builder.Property(e => e.IncomeSource).AsText();
         builder.Property(e => e.FixedAssetReview).AsText();
+        builder.Property(e => e.ProposedClassification).HasConversion<string>().HasMaxLength(AccountingMapping.EnumLength);
         builder.Ignore(e => e.IsCashMovement);
         builder.Ignore(e => e.BusinessAmount);
         builder.Ignore(e => e.NonDeductibleAmount);
@@ -790,6 +791,21 @@ internal sealed class NonResidentTaxDecisionConfiguration : IEntityTypeConfigura
         builder.HasIndex(d => d.PaymentId).IsUnique();
         builder.HasOne<NonResidentPayment>().WithMany().HasForeignKey(d => d.PaymentId).OnDelete(DeleteBehavior.Restrict);
         builder.RestrictToUser(d => d.ConfirmedByUserId);
+    }
+}
+
+internal sealed class CounterpartyClassificationRuleConfiguration : IEntityTypeConfiguration<CounterpartyClassificationRule>
+{
+    public void Configure(EntityTypeBuilder<CounterpartyClassificationRule> builder)
+    {
+        builder.ToTable("counterparty_classification_rules");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.NameKey).HasMaxLength(256).IsRequired();
+        builder.Property(r => r.Iban).HasMaxLength(34);
+        builder.Property(r => r.Classification).AsText();
+        builder.HasIndex(r => new { r.PfaRegistrationId, r.Incoming, r.NameKey });
+        builder.RestrictToPfa(r => r.PfaRegistrationId);
+        builder.RestrictToUser(r => r.CreatedByUserId);
     }
 }
 

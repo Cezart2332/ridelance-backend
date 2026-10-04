@@ -13,6 +13,8 @@ namespace Web.Api.Endpoints.Accounting;
 /// <summary>Registrele contabile (RJIP, REF, Registru-inventar) și activele (spec contabilitate §4.6, B7).</summary>
 internal sealed class RegisterEndpoints : IEndpoint
 {
+    public sealed record ClassifyRequest(Domain.Accounting.BankClassification Classification, bool ApplyToSimilar);
+
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         RouteGroupBuilder group = app.MapGroup("accounting/pfas/{pfaId:guid}")
@@ -21,6 +23,18 @@ internal sealed class RegisterEndpoints : IEndpoint
 
         group.MapGet("registers/status", async (Guid pfaId, int year, IQueryHandler<Application.Accounting.Periods.GetRegisterStatusQuery, Application.Accounting.Periods.RegisterStatusDto> handler, CancellationToken cancellationToken) =>
             (await handler.Handle(new Application.Accounting.Periods.GetRegisterStatusQuery(pfaId, year), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
+        group.MapGet("registers/exceptions", async (Guid pfaId, int year, IQueryHandler<GetRegisterExceptionsQuery, RegisterExceptionsDto> handler, CancellationToken cancellationToken) =>
+            (await handler.Handle(new GetRegisterExceptionsQuery(pfaId, year), cancellationToken)).Match(Results.Ok, CustomResults.Problem));
+
+        app.MapPost("accounting/ledger-entries/{id:guid}/classify", async (
+            Guid id,
+            ClassifyRequest request,
+            ICommandHandler<ClassifyBankEntryCommand, ClassificationResultDto> handler,
+            CancellationToken cancellationToken) =>
+            (await handler.Handle(new ClassifyBankEntryCommand(id, request.Classification, request.ApplyToSimilar), cancellationToken)).Match(Results.Ok, CustomResults.Problem))
+            .RequireAuthorization(Permissions.ManageAccounting)
+            .WithTags(Tags.Accounting);
 
         group.MapGet("registers/rjip", async (Guid pfaId, DateOnly from, DateOnly to, bool? regenerate, IQueryHandler<GetRjipQuery, RjipView> handler, CancellationToken cancellationToken) =>
             (await handler.Handle(new GetRjipQuery(pfaId, from, to, regenerate ?? false), cancellationToken)).Match(Results.Ok, CustomResults.Problem));

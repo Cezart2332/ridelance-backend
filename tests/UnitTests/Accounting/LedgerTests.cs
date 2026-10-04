@@ -6,6 +6,7 @@ using Application.Accounting;
 using Application.Accounting.Contracts;
 using Application.Accounting.Declarations;
 using Application.Accounting.Ledger;
+using Application.Accounting.Registers;
 using Application.Invoicing;
 using Domain.Accounting;
 using Domain.Banking;
@@ -245,12 +246,120 @@ public sealed class LedgerTests : IDisposable
 
         await Import();
 
+        // Propuneri, nu clasificări: neutre fiscal și de confirmat până la decizia contabilului.
         LedgerEntry withdrawal = await _db.LedgerEntries.SingleAsync(e => e.Amount < 0);
-        (withdrawal.TransactionType, withdrawal.DeductibleAmount, withdrawal.ReconciliationStatus)
-            .ShouldBe((LedgerTransactionType.OwnerWithdrawal, (decimal?)null, ReconciliationStatus.Matched));
+        (withdrawal.ProposedClassification, withdrawal.TransactionType, withdrawal.DeductibleAmount, withdrawal.ReconciliationStatus)
+            .ShouldBe((BankClassification.OwnerWithdrawal, LedgerTransactionType.Other, (decimal?)null, ReconciliationStatus.NeedsReview));
         LedgerEntry contribution = await _db.LedgerEntries.SingleAsync(e => e.Amount > 0);
-        (contribution.TransactionType, contribution.ReconciliationStatus).ShouldBe((LedgerTransactionType.OwnerContribution, ReconciliationStatus.Matched));
+        (contribution.ProposedClassification, contribution.TaxableIncomeAmount, contribution.ReconciliationStatus)
+            .ShouldBe((BankClassification.OwnerContribution, 0m, ReconciliationStatus.NeedsReview));
     }
+
+    /// <summary>
+    /// Datele de test din Open Banking: titularul (în detalii, cu numele prescurtat), ghiseul.ro și
+    /// comisionul băncii sunt propuneri; Booking.com rămâne excepție fără propunere. RJIP-ul nu mai
+    /// conține text din bancă, iar documentul are referința tranzacției.
+    /// </summary>
+    [Fact]
+    public async Task Rjip_BankRowsAreProposalsWithAccountingExplanations()
+    {
+        Transaction(-200m, null, "To Ion Popescu", new DateOnly(2026, 7, 10));
+        Transaction(-50m, null, "Company Free plan fee", new DateOnly(2026, 7, 15));
+        Transaction(630m, null, "From Ion P", new DateOnly(2026, 7, 25));
+        Transaction(-567m, null, "www.ghiseul.ro/mfinante", new DateOnly(2026, 7, 25));
+        Transaction(822.28m, "Booking.com Bv", "Payment from Booking.com Bv", new DateOnly(2026, 9, 15));
+
+        await Import();
+
+        RegisterExceptionsDto exceptions = (await new GetRegisterExceptionsQueryHandler(_db).Handle(new GetRegisterExceptionsQuery(_pfa, 2026), CancellationToken.None)).Value;
+        exceptions.Groups.SelectMany(g => g.Items.Select(i => (g.Kind, i.Amount, i.Proposal?.Classification))).ShouldBe(
+        [
+            (RegisterExceptionKind.UnidentifiedIncome, 822.28m, (BankClassification?)null),
+            (RegisterExceptionKind.UnclassifiedPayment, -50m, BankClassification.BankFee),
+            (RegisterExceptionKind.UnclassifiedPayment, -567m, BankClassification.TaxPayment),
+            (RegisterExceptionKind.TransferToConfirm, -200m, BankClassification.OwnerWithdrawal),
+            (RegisterExceptionKind.TransferToConfirm, 630m, BankClassification.OwnerContribution),
+        ]);
+        exceptions.Groups.SelectMany(g => g.Items).Single(i => i.Amount == 630m).Proposal!.Label.ShouldBe("Aport titular");
+        exceptions.Groups.SelectMany(g => g.Items).Single(i => i.Amount == -200m).Proposal!.Label.ShouldBe("Transfer către titular");
+        exceptions.Groups.SelectMany(g => g.Items).Single(i => i.Amount == -567m).Proposal!.Label.ShouldBe("Plată impozite/contribuții ANAF");
+        exceptions.Groups.SelectMany(g => g.Items).Single(i => i.Amount == -50m).Proposal!.Label.ShouldBe("Comision administrare cont bancar");
+        exceptions.Total.ShouldBe(5);
+
+        // Neclasificate: nu intră în REF.
+        (await _db.LedgerEntries.SumAsync(e => e.TaxableIncomeAmount)).ShouldBe(0m);
+
+        RjipView rjip = (await new GetRjipQueryHandler(_db).Handle(new GetRjipQuery(_pfa, new DateOnly(2026, 7, 1), new DateOnly(2026, 9, 30)), CancellationToken.None)).Value;
+        string[] bankTexts = ["To Ion", "plan fee", "ghiseul", "From Ion", "Booking"];
+        rjip.Rows.ShouldAllBe(row => bankTexts.All(text => !row.Operation.Contains(text, StringComparison.OrdinalIgnoreCase)));
+        rjip.Rows.ShouldAllBe(row => row.Document.StartsWith("Extras bancar, ref. ", StringComparison.Ordinal) && row.Exception != null);
+        rjip.Rows.Select(row => (row.No, row.Operation)).ShouldBe(
+        [
+            (1, "Plată neclasificată"),
+            (2, "Plată neclasificată"),
+            (3, "Încasare neclasificată"),
+            (4, "Plată neclasificată"),
+            (1, "Încasare neidentificată"),
+        ]);
+        rjip.Rows[0].BankDetails.ShouldBe("To Ion Popescu");
+    }
+
+    /// <summary>„Aplică la toate similare”: regula pe contrapartidă reclasifică lunile deschise și importurile viitoare.</summary>
+    [Fact]
+    public async Task ApplyToSimilar_ReclassifiesOpenMonthsAndFutureImports()
+    {
+        Transaction(-50m, null, "Company Free plan fee", new DateOnly(2026, 7, 15));
+        Transaction(-50m, null, "Company Free plan fee", new DateOnly(2026, 8, 15));
+        Transaction(-50m, null, "Company Free plan fee", new DateOnly(2026, 9, 15));
+        Transaction(822.28m, "Booking.com Bv", "Payment from Booking.com Bv", new DateOnly(2026, 9, 15));
+        await Import();
+        (await Status()).RjipExceptions.ShouldBe(4);
+
+        LedgerEntry july = await _db.LedgerEntries.SingleAsync(e => e.Date == new DateOnly(2026, 7, 15));
+        ClassificationResultDto result = (await new ClassifyBankEntryCommandHandler(_db, new FixedUser(_accountant))
+            .Handle(new ClassifyBankEntryCommand(july.Id, BankClassification.BankFee, ApplyToSimilar: true), CancellationToken.None)).Value;
+
+        result.Classified.ShouldBe(3);
+        RegisterStatusSummary(await Status()).ShouldBe((1, 1));
+        List<LedgerEntry> fees = await _db.LedgerEntries.Where(e => e.Amount == -50m).ToListAsync();
+        fees.ShouldAllBe(e => e.TransactionType == LedgerTransactionType.Expense && e.Category == BankClassifications.BankFeeCategory &&
+                              e.ReconciliationStatus == ReconciliationStatus.Matched && e.ProposedClassification == null);
+
+        // Luna următoare se clasifică singură și nu mai e excepție.
+        Transaction(-50m, null, "Company Free plan fee", new DateOnly(2026, 10, 15));
+        await Import();
+        LedgerEntry october = await _db.LedgerEntries.SingleAsync(e => e.Date == new DateOnly(2026, 10, 15));
+        (october.Category, october.ReconciliationStatus).ShouldBe((BankClassifications.BankFeeCategory, ReconciliationStatus.Matched));
+        (await Status()).RjipExceptions.ShouldBe(1);
+
+        RjipView rjip = (await new GetRjipQueryHandler(_db).Handle(new GetRjipQuery(_pfa, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31)), CancellationToken.None)).Value;
+        rjip.Rows.ShouldHaveSingleItem().Operation.ShouldBe("Comision administrare cont bancar");
+    }
+
+    /// <summary>Clasificarea respectă sensul tranzacției; aportul confirmat nu e venit, încasarea din activitate da.</summary>
+    [Fact]
+    public async Task Classify_ChecksTheDirectionAndDecidesTheRef()
+    {
+        Transaction(822.28m, "Booking.com Bv", "Payment from Booking.com Bv", new DateOnly(2026, 9, 15));
+        await Import();
+        LedgerEntry booking = await _db.LedgerEntries.SingleAsync();
+        var classify = new ClassifyBankEntryCommandHandler(_db, new FixedUser(_accountant));
+
+        (await classify.Handle(new ClassifyBankEntryCommand(booking.Id, BankClassification.TaxPayment, false), CancellationToken.None))
+            .Error.Code.ShouldBe("Accounting.ClassifyDirection");
+        (await classify.Handle(new ClassifyBankEntryCommand(booking.Id, BankClassification.ActivityIncome, false), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        (await _db.LedgerEntries.SingleAsync()).TaxableIncomeAmount.ShouldBe(822.28m);
+        (await classify.Handle(new ClassifyBankEntryCommand(booking.Id, BankClassification.NonTaxable, false), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        (await _db.LedgerEntries.SingleAsync()).TaxableIncomeAmount.ShouldBe(0m);
+        (await _db.CounterpartyClassificationRules.AnyAsync()).ShouldBeFalse();
+    }
+
+    private async Task<Application.Accounting.Periods.RegisterStatusDto> Status() =>
+        (await new Application.Accounting.Periods.GetRegisterStatusQueryHandler(_db, new Application.Accounting.FiscalRegister.GetRefQueryHandler(_db))
+            .Handle(new Application.Accounting.Periods.GetRegisterStatusQuery(_pfa, 2026), CancellationToken.None)).Value;
+
+    private static (int Exceptions, int Unclassified) RegisterStatusSummary(Application.Accounting.Periods.RegisterStatusDto status) =>
+        (status.RjipExceptions, status.Unclassified);
 
     [Fact]
     public async Task R42_R43_TaxPaymentsAndTransfersBetweenOwnAccounts()
@@ -706,7 +815,7 @@ public sealed class LedgerTests : IDisposable
 
     private DeclarationFiles Files() => new(_db, new AnafDeclarationXmlService(), _files, new PlainSecrets());
 
-    private void Transaction(decimal amount, string counterparty, string? details, DateOnly? date = null, string? iban = null)
+    private void Transaction(decimal amount, string? counterparty, string? details, DateOnly? date = null, string? iban = null)
     {
         _db.BankTransactions.Add(new BankTransaction
         {

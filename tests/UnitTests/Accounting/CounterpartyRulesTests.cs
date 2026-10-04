@@ -21,6 +21,27 @@ public sealed class CounterpartyRulesTests
     public void R40_OwnerNameInAnyOrderAndCaseIsTheOwner(string name) =>
         Classify(-2000, name).ShouldBe(CounterpartyKind.OwnerWithdrawal);
 
+    /// <summary>Fără nume de contrapartidă, titularul se recunoaște din detalii, și cu numele prescurtat de bancă.</summary>
+    [Theory]
+    [InlineData(-200, "To Ion Popescu", CounterpartyKind.OwnerWithdrawal)]
+    [InlineData(630, "From Ion P", CounterpartyKind.OwnerContribution)]
+    [InlineData(630, "From I Popescu", CounterpartyKind.OwnerContribution)]
+    [InlineData(630, "From Ion", CounterpartyKind.None)]
+    [InlineData(630, "From Ion M", CounterpartyKind.None)]
+    public void R40_R41_TheOwnerInTheDetails(int amount, string details, CounterpartyKind kind) =>
+        Classify(amount, null, details: details).ShouldBe(kind);
+
+    [Theory]
+    [InlineData("www.ghiseul.ro/mfinante", CounterpartyKind.Tax)]
+    [InlineData("Company Free plan fee", CounterpartyKind.BankFee)]
+    [InlineData("Comision administrare cont 07/2026", CounterpartyKind.BankFee)]
+    public void R42_GhiseulAndBankFeesFromTheDetails(string details, CounterpartyKind kind) =>
+        Classify(-50, null, details: details).ShouldBe(kind);
+
+    [Fact]
+    public void NameKey_IgnoresMonthlyReferences() =>
+        CounterpartyRules.NameKey(null, "Plan fee 07/2026 ref 123").ShouldBe(CounterpartyRules.NameKey(null, "Plan fee 08/2026 ref 456"));
+
     [Fact]
     public void R41_MoneyFromTheOwnerIsAContribution() =>
         Classify(2000, "Popescu Ion").ShouldBe(CounterpartyKind.OwnerContribution);

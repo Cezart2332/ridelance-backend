@@ -25,6 +25,9 @@ public enum CounterpartyKind
 
     /// <summary>Între conturile PFA-ului (R43): fără efect fiscal.</summary>
     InternalTransfer = 5,
+
+    /// <summary>Comisionul băncii pentru administrarea contului („plan fee”).</summary>
+    BankFee = 6,
 }
 
 /// <summary>Cine e PFA-ul pentru banca lui: numele titularului și conturile proprii.</summary>
@@ -42,6 +45,12 @@ public static class CounterpartyRules
 
     /// <summary>Cuvintele care marchează un cont al PFA-ului, nu al persoanei.</summary>
     private static readonly string[] PfaMarkers = ["PFA", "PERSOANA FIZICA AUTORIZATA", "II", "INTREPRINDERE INDIVIDUALA"];
+
+    /// <summary>Cuvintele dinaintea numelui în detaliile unui transfer („To Victor Ionescu”, „De la …”).</summary>
+    private static readonly HashSet<string> TransferWords = new(StringComparer.Ordinal)
+    {
+        "TO", "FROM", "CATRE", "DE", "LA", "TRANSFER", "PLATA", "P2P", "SENT", "RECEIVED", "MONEY", "PAYMENT",
+    };
 
     private static readonly HashSet<string> LegalForms = new(StringComparer.Ordinal)
     {
@@ -84,9 +93,11 @@ public static class CounterpartyRules
         }
 
         // R40 / R41: titularul, ca persoană. Același nume cu marcaj de PFA e alt cont al PFA-ului (R43).
-        if (IsOwner(counterpartyName, identity.OwnerNames))
+        // Fără nume de contrapartidă, numele se caută în detalii („To Victor Ionescu”, „From Victor I”).
+        string? owner = string.IsNullOrWhiteSpace(counterpartyName) ? remittance : counterpartyName;
+        if (IsOwner(owner, identity.OwnerNames))
         {
-            if (HasPfaMarker(counterpartyName))
+            if (HasPfaMarker(owner))
             {
                 return CounterpartyKind.InternalTransfer;
             }
@@ -94,7 +105,40 @@ public static class CounterpartyRules
             return amount < 0 ? CounterpartyKind.OwnerWithdrawal : CounterpartyKind.OwnerContribution;
         }
 
+        // Comisionul de administrare al băncii.
+        if (amount < 0 && text.Length > 0 &&
+            Regex.IsMatch(Normalize(text), options.BankFeePattern, RegexOptions.CultureInvariant, PatternTimeout))
+        {
+            return CounterpartyKind.BankFee;
+        }
+
         return CounterpartyKind.None;
+    }
+
+    /// <summary>IBAN de Trezorerie (<c>RO..TREZ..</c>): plata e sigur la buget, nu doar după nume.</summary>
+    public static bool IsTreasuryIban(string? iban) => iban?.Contains("TREZ", StringComparison.OrdinalIgnoreCase) ?? false;
+
+    /// <summary>
+    /// Plata e sigur la buget: IBAN de Trezorerie sau contrapartida e chiar Trezoreria / ANAF. Doar
+    /// detaliile plății („www.ghiseul.ro/mfinante”) dau o propunere, nu o clasificare.
+    /// </summary>
+    public static bool IsTaxAuthority(string? counterpartyName, string? counterpartyIban, AccountingOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return IsTreasuryIban(counterpartyIban) ||
+               !string.IsNullOrWhiteSpace(counterpartyName) &&
+               Regex.IsMatch(Normalize(counterpartyName), options.TaxCounterpartyPattern, RegexOptions.CultureInvariant, PatternTimeout);
+    }
+
+    /// <summary>
+    /// Cheia regulii învățate: numele contrapartidei sau, fără el, detaliile plății, normalizate, fără
+    /// cifre (referințele lunare) și fără forme juridice.
+    /// </summary>
+    public static string NameKey(string? counterpartyName, string? remittance)
+    {
+        string source = string.IsNullOrWhiteSpace(counterpartyName) ? remittance ?? string.Empty : counterpartyName;
+        string withoutDigits = new([.. NormalizeMerchant(source).Select(ch => char.IsDigit(ch) ? ' ' : ch)]);
+        return string.Join(' ', withoutDigits.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     /// <summary>
@@ -103,13 +147,49 @@ public static class CounterpartyRules
     /// </summary>
     public static bool IsOwner(string? counterpartyName, IEnumerable<string> ownerNames)
     {
+        List<string> owners = [.. ownerNames];
         HashSet<string> counterparty = Words(counterpartyName);
-        if (counterparty.Count < 2)
+        if (counterparty.Count >= 2 && owners.Select(Words).Any(owner => owner.Count >= 2 && owner.SetEquals(counterparty)))
         {
-            return false;
+            return true;
         }
 
-        return ownerNames.Select(Words).Any(owner => owner.Count >= 2 && owner.SetEquals(counterparty));
+        // Numele prescurtat de bancă: „Victor I” = „Victor Ionescu” (un cuvânt întreg, restul inițiale).
+        List<string> tokens = Tokens(counterpartyName);
+        return tokens.Count >= 2 && tokens.Any(token => token.Length > 1) &&
+               owners.Select(name => Tokens(name)).Any(owner => owner.Count == tokens.Count && SameWithInitials(owner, tokens));
+    }
+
+    /// <summary>Fiecare cuvânt are pereche: același cuvânt sau inițiala lui.</summary>
+    private static bool SameWithInitials(List<string> owner, List<string> tokens)
+    {
+        var left = new List<string>(owner);
+        foreach (string token in tokens.OrderByDescending(token => token.Length))
+        {
+            string? pair = left.FirstOrDefault(word => word == token) ??
+                           (token.Length == 1 ? left.FirstOrDefault(word => word[0] == token[0]) : null);
+            if (pair is null)
+            {
+                return false;
+            }
+
+            left.Remove(pair);
+        }
+
+        return true;
+    }
+
+    /// <summary>Cuvintele unui nume, inclusiv inițialele, fără cuvintele de transfer, marcaje și forme juridice.</summary>
+    private static List<string> Tokens(string? name)
+    {
+        string normalized = $" {Normalize(name)} ";
+        foreach (string marker in PfaMarkers)
+        {
+            normalized = normalized.Replace($" {marker} ", " ", StringComparison.Ordinal);
+        }
+
+        return [.. normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(word => !LegalForms.Contains(word) && !TransferWords.Contains(word) && word.All(char.IsLetter))];
     }
 
     /// <summary>Majuscule, fără diacritice, spațiile comprimate (§5 pas 2).</summary>

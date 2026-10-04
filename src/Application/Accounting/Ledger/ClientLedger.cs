@@ -107,6 +107,8 @@ internal static class ClientLedger
         {
             { StornoOfEntryId: not null } => ClientTransactionState.Correction,
             { TransactionType: LedgerTransactionType.PlatformSettlement } => ClientTransactionState.PayoutPending,
+            // Transferul cu titularul propus din contrapartidă: pentru PFA e un transfer, contabilul îl confirmă.
+            { ProposedClassification: BankClassification.OwnerWithdrawal or BankClassification.OwnerContribution or BankClassification.InternalTransfer } => ClientTransactionState.Transfer,
             { ReconciliationStatus: ReconciliationStatus.NeedsReview } or { Status: LedgerEntryStatus.NeedsReview, ReconciliationStatus: not ReconciliationStatus.Matched } => ClientTransactionState.NeedsReview,
             { TransactionType: LedgerTransactionType.OwnerWithdrawal or LedgerTransactionType.OwnerContribution or LedgerTransactionType.InternalTransfer or LedgerTransactionType.Transfer } => ClientTransactionState.Transfer,
             { TransactionType: LedgerTransactionType.Tax } => ClientTransactionState.Tax,

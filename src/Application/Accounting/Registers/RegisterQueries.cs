@@ -64,10 +64,11 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
             return Result.Failure<RjipView>(AccountingErrors.PfaNotFound);
         }
 
+        List<RegisterEntry> entries = await RegisterData.EntriesAsync(db, query.PfaId, query.From, query.To, cancellationToken);
         RjipView live = Build(
-            query.PfaId, query.From, query.To,
-            await RegisterData.EntriesAsync(db, query.PfaId, query.From, query.To, cancellationToken),
-            options?.Value.ManualChannelMapping ?? ManualChannelMapping.OwnerContributionAndCash);
+            query.PfaId, query.From, query.To, entries,
+            options?.Value.ManualChannelMapping ?? ManualChannelMapping.OwnerContributionAndCash,
+            await RjipSources.LoadAsync(db, entries, cancellationToken));
         return query.Regenerate ? live : await WithSnapshotsAsync(live, cancellationToken);
     }
 
@@ -104,7 +105,7 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
         IEnumerable<RjipRow> rows = live.Rows
             .Where(row => !frozen.ContainsKey(RegisterData.PeriodOf(row.Date)))
             .Concat(frozen.Values.SelectMany(view => view.Rows).Where(row => row.Date >= live.From && row.Date <= live.To));
-        return WithTotals(live.PfaId, live.From, live.To, [.. rows.OrderBy(row => row.Date)]);
+        return WithTotals(live.PfaId, live.From, live.To, [.. rows]);
     }
 
     private static IEnumerable<string> Months(DateOnly from, DateOnly to)
@@ -117,16 +118,23 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
 
     internal static RjipView Build(
         Guid pfaId, DateOnly from, DateOnly to, IEnumerable<RegisterEntry> entries,
-        ManualChannelMapping manual = ManualChannelMapping.OwnerContributionAndCash)
+        ManualChannelMapping manual = ManualChannelMapping.OwnerContributionAndCash,
+        RjipSources? sources = null)
     {
+        RjipSources known = sources ?? RjipSources.Empty;
         List<RjipRow> rows = [.. entries
             .Where(e => RegisterData.IsCashMovement(e.Entry) && e.AmountLei != 0)
-            .SelectMany(e => Rows(e, manual))];
+            .SelectMany(e => Rows(e, manual, known))];
         return WithTotals(pfaId, from, to, rows);
     }
 
-    private static RjipView WithTotals(Guid pfaId, DateOnly from, DateOnly to, List<RjipRow> rows)
+    /// <summary>Totalurile lunare și Nr. crt., continuu în fiecare lună, în ordinea datelor.</summary>
+    private static RjipView WithTotals(Guid pfaId, DateOnly from, DateOnly to, List<RjipRow> unordered)
     {
+        List<RjipRow> rows = [.. unordered
+            .OrderBy(row => row.Date)
+            .GroupBy(row => RegisterData.PeriodOf(row.Date))
+            .SelectMany(month => month.Select((row, index) => row with { No = index + 1 }))];
         List<RjipMonthTotal> totals = [.. rows
             .GroupBy(row => RegisterData.PeriodOf(row.Date))
             .OrderBy(group => group.Key, StringComparer.Ordinal)
@@ -143,11 +151,11 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
     /// Rândurile unei înregistrări. O plată cu card sau cont neconectat (Q1) nu are coloana ei: după
     /// configurare, e o plată în numerar precedată de aportul titularului, doar numerar sau doar bancă.
     /// </summary>
-    private static IEnumerable<RjipRow> Rows(RegisterEntry item, ManualChannelMapping manual)
+    private static IEnumerable<RjipRow> Rows(RegisterEntry item, ManualChannelMapping manual, RjipSources sources)
     {
         if (item.Entry.PaymentMethod != PaymentMethod.Manual)
         {
-            yield return Row(item, item.Entry.PaymentMethod == PaymentMethod.Cash);
+            yield return Row(item, item.Entry.PaymentMethod == PaymentMethod.Cash, sources);
             yield break;
         }
 
@@ -159,7 +167,7 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
                 "Aport titular (plată cu card sau cont neconectat)", value, 0, 0, 0);
         }
 
-        yield return Row(item, manual != ManualChannelMapping.Bank);
+        yield return Row(item, manual != ManualChannelMapping.Bank, sources);
     }
 
     /// <summary>
@@ -177,19 +185,12 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
     /// </summary>
     public const string BankStatement = "Extras bancar";
 
-    private static RjipRow Row(RegisterEntry item, bool cash)
+    private static RjipRow Row(RegisterEntry item, bool cash, RjipSources sources)
     {
         LedgerEntry entry = item.Entry;
         (bool incoming, decimal value) = Column(item);
-        string operation = entry.Counterparty is { Length: > 0 } counterparty && !entry.Description.Contains(counterparty, StringComparison.OrdinalIgnoreCase)
-            ? $"{entry.Description} – {counterparty}"
-            : entry.Description;
-        bool bank = entry.PaymentMethod == PaymentMethod.Bank;
-        string document = bank ? BankStatement : entry.DocumentLabel;
-        if (bank && entry.DocumentLabel is { Length: > 0 } label && !label.StartsWith("Extras", StringComparison.OrdinalIgnoreCase))
-        {
-            operation += $", {label}";
-        }
+        string operation = RjipExplanations.Explain(entry, sources);
+        string document = RjipExplanations.Document(entry, sources);
 
         if (item.CurrencyNote is not null)
         {
@@ -204,7 +205,11 @@ internal sealed class GetRjipQueryHandler(IApplicationDbContext db, Microsoft.Ex
             cash && incoming ? value : 0,
             cash && !incoming ? value : 0,
             !cash && incoming ? value : 0,
-            !cash && !incoming ? value : 0);
+            !cash && !incoming ? value : 0,
+            0,
+            RjipExplanations.ExceptionOf(entry),
+            RjipExplanations.BankDetails(entry, sources),
+            entry.ProposedClassification);
     }
 }
 
@@ -226,11 +231,10 @@ internal sealed class ExportRjipQueryHandler(IApplicationDbContext db, IQueryHan
 
         (string name, string cui) = (await RegisterData.PfaAsync(db, query.PfaId, cancellationToken))!.Value;
         var lines = new List<RegisterLine>();
-        int number = 0;
         foreach (IGrouping<string, RjipRow> month in view.Value.Rows.GroupBy(row => RegisterData.PeriodOf(row.Date)))
         {
             lines.AddRange(month.Select(row => new RegisterLine(
-                [++number, RegisterData.Date(row.Date), row.Document, row.Operation, Cell(row.CashIn), Cell(row.BankIn), Cell(row.CashOut), Cell(row.BankOut)])));
+                [row.No, RegisterData.Date(row.Date), row.Document, row.Operation, Cell(row.CashIn), Cell(row.BankIn), Cell(row.CashOut), Cell(row.BankOut)])));
             RjipMonthTotal total = view.Value.MonthTotals.Single(t => t.Period == month.Key);
             lines.Add(new RegisterLine(
                 [null, null, null, $"Total {MonthName(month.Key)}", total.CashIn, total.BankIn, total.CashOut, total.BankOut], Emphasis: true));

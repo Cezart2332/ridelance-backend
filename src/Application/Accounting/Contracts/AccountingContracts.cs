@@ -511,7 +511,23 @@ public sealed record ManualAssetRequest(
     string? SupplierName,
     string? Reason);
 
-public sealed record RjipRow(Guid LedgerEntryId, DateOnly Date, string Document, string Operation, decimal CashIn, decimal CashOut, decimal BankIn, decimal BankOut);
+/// <param name="No">Nr. crt., continuu pe lună (model 14-1-1/b).</param>
+/// <param name="Exception">De rezolvat înainte de închiderea lunii; <c>null</c> = în regulă.</param>
+/// <param name="BankDetails">Textul brut al băncii, doar pentru ecran (nu intră în export).</param>
+/// <param name="Proposal">Clasificarea propusă din contrapartidă, încă neconfirmată.</param>
+public sealed record RjipRow(
+    Guid LedgerEntryId,
+    DateOnly Date,
+    string Document,
+    string Operation,
+    decimal CashIn,
+    decimal CashOut,
+    decimal BankIn,
+    decimal BankOut,
+    int No = 0,
+    Registers.RegisterExceptionKind? Exception = null,
+    string? BankDetails = null,
+    BankClassification? Proposal = null);
 
 public sealed record RjipMonthTotal(string Period, decimal CashIn, decimal CashOut, decimal BankIn, decimal BankOut);
 

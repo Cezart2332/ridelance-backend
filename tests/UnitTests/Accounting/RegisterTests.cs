@@ -33,6 +33,11 @@ public sealed class RegisterTests : IDisposable
 
     public RegisterTests()
     {
+        _db.ExpenseCategoryRules.Add(new ExpenseCategoryRule
+        {
+            Id = Guid.NewGuid(), Category = "FUEL", Label = "Combustibil", VehicleRelated = true,
+            DefaultDeductibility = DeductibilityType.Percent100, ValidFrom = new DateOnly(2025, 1, 1),
+        });
         // Ca în DependencyInjection: licența Community se setează la pornirea aplicației.
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         var user = new User { Id = Guid.NewGuid(), Email = "ion@ridelance.ro", FirstName = "Ion", LastName = "Popescu" };
@@ -51,13 +56,14 @@ public sealed class RegisterTests : IDisposable
         RjipView rjip = await Rjip(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31));
         RefView refView = await Ref(2026);
 
-        rjip.Rows.Select(r => (r.Document, r.CashIn, r.CashOut, r.BankIn, r.BankOut)).ShouldBe(
+        rjip.Rows.Select(r => (r.No, r.Document.Split(", ref. ")[0], r.CashIn, r.CashOut, r.BankIn, r.BankOut)).ShouldBe(
         [
-            ("Extras bancar", 0m, 0m, 0m, 300m),
-            ("Extras bancar", 0m, 0m, 1850m, 0m),
-            ("Raport Z nr. 125", 420m, 0m, 0m, 0m),
+            (1, "Extras bancar", 0m, 0m, 0m, 300m),
+            (2, "Extras bancar", 0m, 0m, 1850m, 0m),
+            (3, "Raport Z nr. 125", 420m, 0m, 0m, 0m),
         ]);
-        rjip.Rows[0].Operation.ShouldBe("Plată combustibil – OMV Petrom");
+        rjip.Rows.Take(2).ShouldAllBe(r => r.Document.StartsWith("Extras bancar, ref. ", StringComparison.Ordinal));
+        rjip.Rows.Select(r => r.Operation).ShouldBe(["Combustibil", "Încasare venit din activitate", "Încasări numerar, raport Z nr. 125"]);
         rjip.MonthTotals.ShouldBe([new RjipMonthTotal("2026-10", 420m, 0m, 1850m, 300m)]);
 
         (refView.Status, refView.AsOf).ShouldBe((RefStatus.Current, (DateOnly?)null));
@@ -149,7 +155,7 @@ public sealed class RegisterTests : IDisposable
         RjipRow row = (await Rjip(Day, Day)).Rows.ShouldHaveSingleItem();
 
         row.BankOut.ShouldBe(500m);
-        row.Operation.ShouldBe("Abonament – OMV Petrom (100,00 EUR × 5 (BNR 09.10.2026))");
+        row.Operation.ShouldBe("Cheltuială neclasificată (100,00 EUR × 5 (BNR 09.10.2026))");
         (await Ref(2026)).Rows[1].Value.ShouldBe(500m);
     }
 
@@ -229,12 +235,14 @@ public sealed class RegisterTests : IDisposable
     [Fact]
     public async Task Rjip_BankRowsShowTheStatementAndTheSupportingDocumentInTheExplanation()
     {
-        Entry(new DateOnly(2026, 9, 3), -250m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Carburant", deductible: 200m).DocumentLabel = "Bon fiscal 381";
+        LedgerEntry fuel = Entry(new DateOnly(2026, 9, 3), -250m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Carburant", deductible: 200m);
+        fuel.DocumentLabel = "Bon fiscal 381";
+        fuel.Category = "FUEL";
         await _db.SaveChangesAsync();
 
         RjipRow row = (await Rjip(new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30))).Rows.ShouldHaveSingleItem();
 
-        (row.Document, row.Operation, row.BankOut).ShouldBe(("Extras bancar", "Carburant – OMV Petrom, Bon fiscal 381", 250m));
+        (row.Document.StartsWith("Extras bancar, ref. ", StringComparison.Ordinal), row.Operation, row.BankOut).ShouldBe((true, "Combustibil, bon fiscal 381", 250m));
     }
 
     /// <summary>§3: exportul CSV, cu totalul fiecărei luni și al anului.</summary>
@@ -254,6 +262,11 @@ public sealed class RegisterTests : IDisposable
         lines.ShouldContain(";;;Total octombrie 2026;420,00;1850,00;0,00;300,00");
         lines.ShouldContain(";;;Total noiembrie 2026;0,00;0,00;100,00;0,00");
         lines.ShouldContain(";;;Total Anul 2026;420,00;1850,00;100,00;300,00");
+
+        // Model 14-1-1/b: Nr. crt. continuu pe lună, documentul cu felul și numărul; fără textul băncii.
+        lines.ShouldContain(line => line.StartsWith("1;10.10.2026;Extras bancar, ref. ", StringComparison.Ordinal) && line.Contains(";Combustibil;", StringComparison.Ordinal));
+        lines.ShouldContain(line => line.StartsWith("3;10.10.2026;Raport Z nr. 125;", StringComparison.Ordinal));
+        lines.ShouldContain(line => line.StartsWith("1;05.11.2026;", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -332,11 +345,12 @@ public sealed class RegisterTests : IDisposable
     /// <summary>Spec §5.3, cum îl lasă ledger-ul după import (B6).</summary>
     private void ADayInRidelance()
     {
-        Entry(Day, -300m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Plată combustibil", deductible: 300m);
+        Entry(Day, -300m, LedgerTransactionType.Expense, PaymentMethod.Bank, "Plată combustibil", deductible: 300m).Category = "FUEL";
         Entry(Day, 1850m, LedgerTransactionType.Income, PaymentMethod.Bank, "Payout Bolt", counterparty: "BOLT OPERATIONS OU");
         LedgerEntry z = Entry(Day, 420m, LedgerTransactionType.Income, PaymentMethod.Cash, "Încasări numerar, raport Z nr. 125", counterparty: null);
         z.DocumentLabel = "Raport Z nr. 125";
         z.BankTransactionId = null;
+        z.Source = LedgerSource.CashZ;
         _db.SaveChanges();
     }
 

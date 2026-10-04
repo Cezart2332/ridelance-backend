@@ -196,7 +196,8 @@ internal static class PeriodSnapshots
         var start = DateOnly.ParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture);
         DateOnly end = start.AddMonths(1).AddDays(-1);
         List<Registers.RegisterEntry> entries = await Registers.RegisterData.EntriesAsync(db, pfaId, start, end, cancellationToken);
-        RjipView rjip = Registers.GetRjipQueryHandler.Build(pfaId, start, end, entries, manual ?? ManualChannelMapping.OwnerContributionAndCash);
+        RjipView rjip = Registers.GetRjipQueryHandler.Build(
+            pfaId, start, end, entries, manual ?? ManualChannelMapping.OwnerContributionAndCash, await Registers.RjipSources.LoadAsync(db, entries, cancellationToken));
         RefView refView = await FiscalRegister.GetRefQueryHandler.ComputeAsync(db, pfaId, end.Year, RefStatus.Intermediate, end, cancellationToken);
 
         db.AccountingPeriodSnapshots.Add(new AccountingPeriodSnapshot

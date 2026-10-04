@@ -111,6 +111,12 @@ public sealed class LedgerEntry : Entity, IAccountingRecord
     public Guid? CorrectsEntryId { get; set; }
 
     /// <summary>
+    /// Clasificarea propusă din contrapartidă (titular, ANAF, comision bancar), neaplicată până la
+    /// confirmarea Adminului. Cât există, înregistrarea e o excepție a RJIP.
+    /// </summary>
+    public BankClassification? ProposedClassification { get; set; }
+
+    /// <summary>
     /// Venitul impozabil din înregistrare (spec registre §4), stabilit de Tax Engine: suma încasării
     /// efective, 0 la aporturi, transferuri, rambursări și payout-uri nereconciliate. REF-ul îl citește.
     /// </summary>

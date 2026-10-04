@@ -14,6 +14,7 @@ namespace Application.Accounting.Periods;
 /// </summary>
 /// <param name="RjipExceptions">Tranzacții fără document, de verificat sau payout-uri nereconciliate.</param>
 /// <param name="Inventory">Ultima inventariere care nu e finală, dacă există.</param>
+/// <param name="Unclassified">Încasări și plăți bancare neclasificate: nu intră în REF până la clasificare.</param>
 /// <param name="AssetsInClassification">Achiziții „posibil mijloc fix” fără decizie + active fără clasificare.</param>
 public sealed record RegisterStatusDto(
     Guid PfaId,
@@ -25,7 +26,8 @@ public sealed record RegisterStatusDto(
     InventoryStatus? Inventory,
     Guid? InventoryCountId,
     int AssetsInClassification,
-    AccountingPeriodStatus YearStatus);
+    AccountingPeriodStatus YearStatus,
+    int Unclassified = 0);
 
 /// <summary><c>GET /accounting/pfas/{pfaId}/registers/status?year=</c></summary>
 public sealed record GetRegisterStatusQuery(Guid PfaId, int Year) : IQuery<RegisterStatusDto>;
@@ -48,6 +50,11 @@ internal sealed class GetRegisterStatusQueryHandler(IApplicationDbContext db, IQ
                  (e.ReconciliationStatus == ReconciliationStatus.Unmatched ||
                   e.ReconciliationStatus == ReconciliationStatus.NeedsReview ||
                   e.TransactionType == LedgerTransactionType.PlatformSettlement),
+            cancellationToken);
+
+        int unclassified = await db.LedgerEntries.AsNoTracking().CountAsync(
+            e => e.PfaRegistrationId == query.PfaId && e.Date >= start && e.Date <= end && e.StornoOfEntryId == null && !e.ClosedPeriodFlag &&
+                 e.ReconciliationStatus == ReconciliationStatus.NeedsReview,
             cancellationToken);
 
         var inventory = await db.InventoryCounts.AsNoTracking()
@@ -77,6 +84,7 @@ internal sealed class GetRegisterStatusQueryHandler(IApplicationDbContext db, IQ
             inventory?.Status,
             inventory?.Id,
             pending + incomplete,
-            year);
+            year,
+            unclassified);
     }
 }

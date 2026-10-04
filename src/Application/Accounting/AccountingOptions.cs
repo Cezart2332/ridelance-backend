@@ -73,7 +73,10 @@ public sealed class AccountingOptions
     /// Contrapartidele plăților de taxe (R42), pe textul normalizat (majuscule, fără diacritice) al
     /// numelui și detaliilor. IBAN-urile Trezoreriei (<c>RO..TREZ..</c>) se recunosc oricum.
     /// </summary>
-    public string TaxCounterpartyPattern { get; init; } = @"\b(TREZORERIA|TREZORERIE|ANAF|DGRFP|AJFP|BUGETUL DE STAT|BUGET DE STAT|IMPOZIT|CONTRIBUTII)\b";
+    public string TaxCounterpartyPattern { get; init; } = @"\b(TREZORERIA|TREZORERIE|ANAF|DGRFP|AJFP|BUGETUL DE STAT|BUGET DE STAT|IMPOZIT|CONTRIBUTII|GHISEUL|MFINANTE)\b";
+
+    /// <summary>Comisionul de administrare al băncii, pe textul normalizat al plății.</summary>
+    public string BankFeePattern { get; init; } = @"\b(PLAN FEE|ACCOUNT FEE|MONTHLY FEE|SUBSCRIPTION FEE|MAINTENANCE FEE|COMISION ADMINISTRARE|TAXA ADMINISTRARE|COMISION ADMINISTRARE CONT|ABONAMENT CONT)\b";
 
     /// <summary>
     /// Contrapartidele bancare ale platformelor (expresii regulate pe numele plătitorului și pe

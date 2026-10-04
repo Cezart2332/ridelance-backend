@@ -102,6 +102,35 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         (await _db.PfaAccountingPeriods.AnyAsync()).ShouldBeFalse();
     }
 
+    /// <summary>O încasare neidentificată sau o plată neclasificată blochează „Închide luna”.</summary>
+    [Fact]
+    public async Task AnUnidentifiedIncome_BlocksClosingTheMonth()
+    {
+        LedgerEntry unknown = Entry(new DateOnly(2026, 8, 12), 822.28m);
+        (unknown.TransactionType, unknown.ReconciliationStatus, unknown.Status) = (LedgerTransactionType.Other, ReconciliationStatus.NeedsReview, LedgerEntryStatus.NeedsReview);
+        await _db.SaveChangesAsync();
+
+        Control(await Reconciliation("2026-08"), ReconciliationControl.OpenTransactions).Passed.ShouldBeFalse();
+        (await Close("2026-08")).Error.Code.ShouldBe("Accounting.MonthNotReconciled");
+    }
+
+    /// <summary>§6: încasări − plăți bancă din RJIP ≠ variația contului → închiderea e blocată, cu diferența.</summary>
+    [Fact]
+    public async Task ABankBalanceDifference_BlocksClosingTheMonth()
+    {
+        Entry(new DateOnly(2026, 8, 12), -300m).ReconciliationStatus = ReconciliationStatus.Matched;
+        _db.BankTransactions.Add(new BankTransaction
+        {
+            Id = Guid.NewGuid(), BankAccountId = _account, UserId = _user, ProviderConsentId = "consent",
+            ProviderTransactionId = "fara-inregistrare", BookingDate = new DateOnly(2026, 8, 20), Amount = -45m, Currency = "RON", ImportedAtUtc = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+
+        ReconciliationControlDto balance = Control(await Reconciliation("2026-08"), ReconciliationControl.BankBalance);
+        (balance.Passed, balance.Detail).ShouldBe((false, "Contul -345,00 lei, RJIP bancă -300,00 lei: diferență -45,00 lei."));
+        (await Close("2026-08")).Error.Code.ShouldBe("Accounting.MonthNotReconciled");
+    }
+
     [Fact]
     public async Task R21_ReconciledPayout_ShowsGrossCommissionAndNoDifference()
     {

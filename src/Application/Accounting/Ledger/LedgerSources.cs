@@ -134,10 +134,14 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
             });
         }
 
+        List<CounterpartyClassificationRule> learned = await db.CounterpartyClassificationRules.AsNoTracking()
+            .Where(r => r.PfaRegistrationId == context.PfaId)
+            .ToListAsync(cancellationToken);
+
         int created = 0;
         foreach (BankTransaction transaction in fresh.Where(t => !proposals.ContainsKey(t)))
         {
-            LedgerEntry entry = Entry(context, identity, transaction);
+            LedgerEntry entry = Entry(context, identity, transaction, learned);
             DeductibilityService.Resolve(entry, context.Rules);
             db.LedgerEntries.Add(entry);
             created++;
@@ -203,7 +207,13 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
         return new PfaIdentity(names, ibans.Where(i => i is not null).Select(i => i!.ToUpperInvariant()).ToHashSet(StringComparer.Ordinal));
     }
 
-    private static LedgerEntry Entry(LedgerImportContext context, PfaIdentity identity, BankTransaction transaction)
+    /// <summary>
+    /// Înregistrarea unei tranzacții (spec flux contabil §6): payout-ul platformei, transferul între
+    /// conturile proprii și plata la un IBAN de Trezorerie sunt sigure; o regulă învățată pe contrapartidă
+    /// se aplică direct; titularul, ANAF după nume și comisionul bancar rămân propuneri de confirmat.
+    /// </summary>
+    private static LedgerEntry Entry(
+        LedgerImportContext context, PfaIdentity identity, BankTransaction transaction, IReadOnlyList<CounterpartyClassificationRule> learned)
     {
         DateOnly date = (transaction.BookingDate ?? transaction.ValueDate)!.Value;
         string label = $"Extras {date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)}";
@@ -212,43 +222,61 @@ internal sealed class BankLedgerSource(IApplicationDbContext db) : ILedgerSource
         CounterpartyKind kind = CounterpartyRules.Classify(
             transaction.Amount, transaction.CounterpartyName, transaction.CounterpartyIban, details, identity, context.Options);
 
-        (LedgerSource source, LedgerTransactionType type, string description, ReconciliationStatus reconciliation, LedgerEntryStatus status) = kind switch
+        if (kind == CounterpartyKind.PlatformSettlement)
         {
-            CounterpartyKind.PlatformSettlement => (
-                PlatformPayouts.PlatformOf(context.Options, transaction.CounterpartyName, details)!.Value,
-                LedgerTransactionType.PlatformSettlement,
-                $"Payout {(PlatformPayouts.PlatformOf(context.Options, transaction.CounterpartyName, details) == LedgerSource.Bolt ? "Bolt" : "Uber")}{suffix}",
-                ReconciliationStatus.NeedsReconciliation,
-                LedgerEntryStatus.AutoImported),
-            CounterpartyKind.OwnerWithdrawal => (LedgerSource.Bank, LedgerTransactionType.OwnerWithdrawal, $"Transfer către titular (utilizare venit){suffix}", ReconciliationStatus.Matched, LedgerEntryStatus.AutoImported),
-            CounterpartyKind.OwnerContribution => (LedgerSource.Bank, LedgerTransactionType.OwnerContribution, $"Aport titular{suffix}", ReconciliationStatus.Matched, LedgerEntryStatus.AutoImported),
-            CounterpartyKind.Tax => (LedgerSource.Bank, LedgerTransactionType.Tax, $"Plată ANAF / Trezorerie{suffix}", ReconciliationStatus.Matched, LedgerEntryStatus.AutoImported),
-            CounterpartyKind.InternalTransfer => (LedgerSource.Bank, LedgerTransactionType.InternalTransfer, $"Transfer între conturile PFA{suffix}", ReconciliationStatus.Matched, LedgerEntryStatus.AutoImported),
-            _ when transaction.Amount > 0 => (
-                LedgerSource.Bank,
-                LedgerTransactionType.Other,
-                $"Încasare neidentificată{suffix}",
-                ReconciliationStatus.NeedsReview,
-                LedgerEntryStatus.NeedsReview),
-            _ => (LedgerSource.Bank, LedgerTransactionType.Expense, details ?? transaction.CounterpartyName ?? "Plată bancară", ReconciliationStatus.Unmatched, LedgerEntryStatus.AutoImported),
-        };
+            LedgerSource platform = PlatformPayouts.PlatformOf(context.Options, transaction.CounterpartyName, details)!.Value;
+            LedgerEntry payout = LedgerSupport.New(
+                context.PfaId, date, platform, transaction.Id.ToString("N"), label, transaction.CounterpartyName,
+                $"Payout {(platform == LedgerSource.Bolt ? "Bolt" : "Uber")}{suffix}",
+                LedgerTransactionType.PlatformSettlement, PaymentMethod.Bank, transaction.Amount, transaction.Currency, LedgerEntryStatus.AutoImported, context.ClosedPeriods);
+            payout.BankTransactionId = transaction.Id;
+            payout.ReconciliationStatus = ReconciliationStatus.NeedsReconciliation;
+            return payout;
+        }
 
         LedgerEntry entry = LedgerSupport.New(
-            context.PfaId, date, source, transaction.Id.ToString("N"), label, transaction.CounterpartyName, description,
-            type, PaymentMethod.Bank, transaction.Amount, transaction.Currency, status, context.ClosedPeriods);
+            context.PfaId, date, LedgerSource.Bank, transaction.Id.ToString("N"), label, transaction.CounterpartyName,
+            (details ?? transaction.CounterpartyName ?? (transaction.Amount > 0 ? "Încasare bancară" : "Plată bancară")).Trim(),
+            transaction.Amount > 0 ? LedgerTransactionType.Other : LedgerTransactionType.Expense,
+            PaymentMethod.Bank, transaction.Amount, transaction.Currency, LedgerEntryStatus.AutoImported, context.ClosedPeriods);
         entry.BankTransactionId = transaction.Id;
-        entry.ReconciliationStatus = reconciliation;
 
-        if (type == LedgerTransactionType.Expense)
+        bool certain = kind == CounterpartyKind.InternalTransfer ||
+                       kind == CounterpartyKind.Tax && CounterpartyRules.IsTaxAuthority(transaction.CounterpartyName, transaction.CounterpartyIban, context.Options);
+        BankClassification? proposal = BankClassifications.FromKind(kind);
+        if (certain)
         {
-            ExpenseCategoryRule? rule = DeductibilityService.Classify(context.Rules.Categories, date, transaction.CounterpartyName, details);
-            entry.Category = rule?.Category;
-            if (rule is null && !entry.ClosedPeriodFlag)
+            BankClassifications.Apply(entry, proposal!.Value, context.Rules, verified: false);
+        }
+        else if (BankClassifications.Match(learned, transaction.Amount, transaction.CounterpartyName, transaction.CounterpartyIban, details) is { } rule)
+        {
+            BankClassifications.Apply(entry, rule.Classification, context.Rules, verified: false);
+        }
+        else if (proposal is { } proposed)
+        {
+            BankClassifications.Propose(entry, proposed);
+        }
+        else if (transaction.Amount > 0)
+        {
+            // Încasare neidentificată: în RJIP (mișcare efectivă), dar nu venit până la clasificare.
+            entry.ReconciliationStatus = ReconciliationStatus.NeedsReview;
+            if (!entry.ClosedPeriodFlag)
+            {
+                entry.Status = LedgerEntryStatus.NeedsReview;
+            }
+        }
+        else
+        {
+            ExpenseCategoryRule? category = DeductibilityService.Classify(context.Rules.Categories, date, transaction.CounterpartyName, details);
+            entry.Category = category?.Category;
+            entry.ReconciliationStatus = ReconciliationStatus.Unmatched;
+            if (category is null && !entry.ClosedPeriodFlag)
             {
                 entry.Status = LedgerEntryStatus.NeedsReview;
             }
         }
 
+        entry.Description = LedgerSupport.Cut(entry.Description, LedgerSupport.DescriptionLength);
         return entry;
     }
 }
