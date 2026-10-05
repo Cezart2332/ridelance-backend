@@ -1,0 +1,6 @@
+# Găsiri istorice verificate. Gitleaks scanează tot istoricul git, inclusiv fișierele șterse.
+# 2026-10-05: .env și cheia Enable Banking au fost scoase din istoric (chei rotite);
+# rămâne doar secretul TOTP fix al conturilor de test din seed-ul e2e (nu e o cheie reală).
+# Nu adăuga găsiri fără să verifici conținutul și scopul lor.
+
+9459d855d3c4b0a900de07458267c745cfbd4cfe:tests/UnitTests/Accounting/AccountingE2ESeed.cs:generic-api-key:52
