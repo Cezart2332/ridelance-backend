@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<Accounting.VatRegistration.VatRegistrationService>();
         services.AddScoped<Accounting.Anaf.AnafEFacturaService>();
         services.AddScoped<Accounting.Spv.SpvService>();
+        services.AddScoped<Expenses.ExpenseAccountingService>();
         // Sursele ledger-ului (B6), rulate în ordinea lor de importul zilnic.
         services.AddScoped<Accounting.Ledger.ILedgerSource, Accounting.Ledger.BankLedgerSource>();
         services.AddScoped<Accounting.Ledger.ILedgerSource, Accounting.Ledger.PlatformLedgerSource>();

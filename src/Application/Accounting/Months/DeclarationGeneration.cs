@@ -28,6 +28,11 @@ internal static class DeclarationGeneration
         Guid? userId,
         CancellationToken cancellationToken)
     {
+        if (!MonthlyDeclarationPeriod.IsCompleted(data.Period, DateTime.UtcNow))
+        {
+            return (false, MonthlyDeclarationPeriod.Message);
+        }
+
         // Idempotență pe tip: o declarație existentă nu se recreează; una amânată (D100 până la
         // confirmarea regulii, F23) se generează la rularea următoare.
         HashSet<DeclarationType> existing = [.. await db.Declarations

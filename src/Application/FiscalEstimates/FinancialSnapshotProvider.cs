@@ -1,6 +1,7 @@
 using Application.Abstractions.Data;
+using Application.Accounting.Ledger;
+using Domain.Accounting;
 using Application.FiscalProfiles;
-using Domain.Expenses;
 using Domain.FiscalEstimates;
 using Domain.FiscalProfiles;
 using Domain.PfaRegistrations;
@@ -43,12 +44,17 @@ internal sealed class FinancialSnapshotProvider(IApplicationDbContext context) :
             .Where(i => i.PfaRegistrationId == pfa.Id && i.Year == year)
             .ToListAsync(cancellationToken);
 
-        var expenses = await context.DeductibleExpenses
-            .AsNoTracking()
-            .Where(e => e.PfaRegistrationId == pfa.Id && e.Year == year && e.Status == ExpenseStatus.Confirmed)
-            .GroupBy(e => e.Month)
-            .Select(g => new { Month = g.Key, Amount = g.Sum(e => e.AmountRon ?? 0m) })
+        List<LedgerEntry> paidExpenses = await context.LedgerEntries.AsNoTracking()
+            .Where(e => e.PfaRegistrationId == pfa.Id && e.Date >= yearStart && e.Date <= effectiveAsOf &&
+                e.TransactionType == LedgerTransactionType.Expense && e.Category != LedgerSupport.PlatformCommissionCategory)
             .ToListAsync(cancellationToken);
+        // Platform income above already excludes commission. Other expenses use the same
+        // justified, actually paid deductible portion as REF, never the uploaded invoice total.
+        var expenses = paidExpenses.GroupBy(e => e.Date.Month)
+            .Select(g => new { Month = g.Key, Amount = g.Sum(e => LedgerSupport.RefDeductible(e) ?? 0m) }).ToList();
+        var depreciation = await context.DepreciationLines.AsNoTracking()
+            .Where(l => l.PfaRegistrationId == pfa.Id && l.Year == year && l.Month <= effectiveAsOf.Month)
+            .GroupBy(l => l.Month).Select(g => new { Month = g.Key, Amount = g.Sum(l => l.Amount) }).ToListAsync(cancellationToken);
 
         Dictionary<int, PfaPriorPeriodMonth> prior = await context.PfaPriorPeriodMonths
             .AsNoTracking()
@@ -61,7 +67,7 @@ internal sealed class FinancialSnapshotProvider(IApplicationDbContext context) :
                 // O singură înregistrare pe lună: venitul din platforme (net de comision) sau, dacă
                 // contabilul a trecut altfel împărțirea cash/card, totalul acela — niciodată amândouă.
                 incomes.Where(i => i.Month == month).Sum(i => i.ComputeVenitTotal()),
-                expenses.Where(e => e.Month == month).Sum(e => e.Amount)))
+                expenses.Where(e => e.Month == month).Sum(e => e.Amount) + depreciation.Where(e => e.Month == month).Sum(e => e.Amount)))
             .ToList();
 
         // Luna trecută de contabil pentru perioada de dinainte de RIDElance e totalul ei: înlocuiește

@@ -33,6 +33,11 @@ internal sealed class StartMonthJobCommandHandler(IApplicationDbContext db, IUse
             return Result.Failure<JobRef>(AccountingErrors.InvalidPeriod);
         }
 
+        if (!MonthlyDeclarationPeriod.IsCompleted(command.Period, DateTime.UtcNow))
+        {
+            return Result.Failure<JobRef>(Error.Problem("Accounting.MonthInProgress", MonthlyDeclarationPeriod.Message));
+        }
+
         var job = new BackgroundJob
         {
             Id = Guid.NewGuid(),
@@ -79,6 +84,13 @@ internal sealed class RunMonthJobCommandHandler(
 
         MonthJobParameters parameters = AccountingJson.Deserialize(job.ParametersJson, new MonthJobParameters(string.Empty));
         string period = parameters.Period;
+        if (!MonthlyDeclarationPeriod.IsCompleted(period, DateTime.UtcNow))
+        {
+            job.Status = BackgroundJobStatus.Failed;
+            job.FinishedAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+            return Result.Failure(Error.Problem("Accounting.MonthInProgress", MonthlyDeclarationPeriod.Message));
+        }
         MonthJobResults results = AccountingJson.Deserialize(job.ResultJson, new MonthJobResults([], []));
         var settings = TaxEngineSettings.ForPeriod(await TaxRuleSet.LoadAsync(db, cancellationToken), period);
 

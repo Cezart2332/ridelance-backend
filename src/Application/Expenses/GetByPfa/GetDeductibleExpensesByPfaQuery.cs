@@ -92,6 +92,20 @@ internal sealed class GetDeductibleExpensesByPfaQueryHandler(
                 e.Status.ToString()))
             .ToListAsync(cancellationToken);
 
-        return items;
+        var documentIds = items.Select(i => i.DocumentId).ToList();
+        List<Domain.Accounting.LedgerEntry> payments = await context.LedgerEntries.AsNoTracking()
+            .Where(e => e.PfaRegistrationId == pfa.Id && e.SourceDocumentId != null && documentIds.Contains(e.SourceDocumentId.Value))
+            .ToListAsync(cancellationToken);
+        return items.Select(item =>
+        {
+            Domain.Accounting.LedgerEntry? entry = payments.FirstOrDefault(e => e.SourceDocumentId == item.DocumentId);
+            return item with
+            {
+                LedgerEntryId = entry?.Id,
+                DeductibleAmount = entry?.ReconciliationStatus is Domain.Accounting.ReconciliationStatus.Matched or Domain.Accounting.ReconciliationStatus.Partial ? entry.DeductibleAmount : null,
+                PaymentMethod = entry?.PaymentMethod.ToString(),
+                PaymentDate = entry?.Date,
+            };
+        }).ToList();
     }
 }

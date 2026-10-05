@@ -2,8 +2,10 @@ using Application.Abstractions;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Notifications;
+using Application.Accounting.Ledger;
 using Application.Documents.AiVerification;
 using Application.Notifications;
+using Domain.Accounting;
 using Domain.Documents;
 using Domain.Notifications;
 using Domain.Users;
@@ -40,6 +42,35 @@ internal sealed class UpdateDocumentStatusCommandHandler(
         if (user is null || user.Role != UserRole.Admin && user.Role != UserRole.Contabil)
         {
             return Result.Failure(DocumentErrors.AccessDenied);
+        }
+
+        if (document.Category == DocumentCategory.Cheltuiala && document.PfaRegistrationId is {} pfaId)
+        {
+            if (user.Role == UserRole.Contabil && !await context.PfaRegistrations.AnyAsync(p => p.Id == pfaId && p.AssignedContabilId == user.Id, cancellationToken))
+            {
+                return Result.Failure(DocumentErrors.AccessDenied);
+            }
+            List<LedgerEntry> payments = await context.LedgerEntries.Where(e => e.PfaRegistrationId == pfaId && e.SourceDocumentId == document.Id).ToListAsync(cancellationToken);
+            foreach (LedgerEntry payment in payments)
+            {
+                Result editable = await UpdateLedgerEntryCommandHandler.EnsureEditableAsync(context, payment, cancellationToken);
+                if (editable.IsFailure)
+                {
+                    return editable;
+                }
+                if (command.Status == DocumentStatus.Rejected)
+                {
+                    payment.ReconciliationStatus = ReconciliationStatus.NeedsReview;
+                    payment.Status = LedgerEntryStatus.NeedsReview;
+                }
+                else if (command.Status == DocumentStatus.Verified)
+                {
+                    ExpenseDocument? source = await context.ExpenseDocuments.SingleOrDefaultAsync(d => d.PfaRegistrationId == pfaId && d.DocumentId == document.Id, cancellationToken);
+                    string? cui = await context.PfaRegistrations.Where(p => p.Id == pfaId).Select(p => p.Cui).SingleAsync(cancellationToken);
+                    payment.ReconciliationStatus = ReceiptSplit.Confidence(source?.BeneficiaryCui, cui, payment.Category);
+                    payment.Status = payment.ReconciliationStatus == ReconciliationStatus.Matched ? LedgerEntryStatus.Verified : LedgerEntryStatus.NeedsReview;
+                }
+            }
         }
 
         DocumentStatus previousStatus = document.Status;

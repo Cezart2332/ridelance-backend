@@ -32,6 +32,10 @@ internal sealed class DeclarationActions(
         }
 
         DeclarationVersion version = found.Value;
+        if (!DeclarationTypes.IsAnnual(version.Declaration.Type) && !Months.MonthlyDeclarationPeriod.IsCompleted(version.Declaration.Period, DateTime.UtcNow))
+        {
+            return Result.Failure(Error.Problem("Accounting.MonthInProgress", Months.MonthlyDeclarationPeriod.Message));
+        }
         if (!DeclarationStateMachine.IsAllowed(version.Status, action))
         {
             return Result.Failure(DeclarationErrors.InvalidTransition(version.Status, action));

@@ -3,6 +3,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Expenses.Create;
 using Application.Expenses.Ocr;
+using Domain.Accounting;
 using Domain.Documents;
 using Domain.Expenses;
 using Domain.PfaRegistrations;
@@ -30,7 +31,15 @@ public sealed record UpdateDeductibleExpenseCommand(
     string? SupplierName,
     decimal? VatAmount,
     string? DocumentTypeLabel,
-    bool Confirm) : ICommand<DeductibleExpenseResponse>;
+    bool Confirm,
+    string? PaymentMethod = null,
+    DateOnly? PaymentDate = null,
+    Guid? LedgerEntryId = null,
+    string? AccountingCategory = null,
+    decimal PersonalAmount = 0,
+    string? DocumentNumber = null,
+    string? Reason = null,
+    bool ApproveDocument = false) : ICommand<DeductibleExpenseResponse>;
 
 internal sealed class UpdateDeductibleExpenseCommandValidator : AbstractValidator<UpdateDeductibleExpenseCommand>
 {
@@ -47,6 +56,10 @@ internal sealed class UpdateDeductibleExpenseCommandValidator : AbstractValidato
         RuleFor(c => c.VatAmount).GreaterThanOrEqualTo(0).When(c => c.VatAmount.HasValue);
         RuleFor(c => c.SupplierName).MaximumLength(300);
         RuleFor(c => c.DocumentTypeLabel).MaximumLength(100);
+        RuleFor(c => c.DocumentNumber).MaximumLength(64);
+        RuleFor(c => c.AccountingCategory).MaximumLength(64);
+        RuleFor(c => c.PersonalAmount).GreaterThanOrEqualTo(0);
+        RuleFor(c => c.Reason).MaximumLength(1024);
 
         RuleFor(c => c)
             .Must(c => MoneyParser.IsVatPlausible(c.AmountRon, c.VatAmount))
@@ -62,7 +75,8 @@ internal sealed class UpdateDeductibleExpenseCommandValidator : AbstractValidato
 
 internal sealed class UpdateDeductibleExpenseCommandHandler(
     IApplicationDbContext context,
-    IUserContext userContext)
+    IUserContext userContext,
+    ExpenseAccountingService accounting)
     : ICommandHandler<UpdateDeductibleExpenseCommand, DeductibleExpenseResponse>
 {
     public async Task<Result<DeductibleExpenseResponse>> Handle(
@@ -92,6 +106,11 @@ internal sealed class UpdateDeductibleExpenseCommandHandler(
             return Result.Failure<DeductibleExpenseResponse>(ExpenseErrors.AccessDenied);
         }
 
+        if (command.ApproveDocument && caller?.Role is not (UserRole.Admin or UserRole.Contabil))
+        {
+            return Result.Failure<DeductibleExpenseResponse>(ExpenseErrors.AccessDenied);
+        }
+
         DeductibleExpense? expense = await context.DeductibleExpenses
             .SingleOrDefaultAsync(
                 e => e.Id == command.ExpenseId && e.PfaRegistrationId == command.PfaRegistrationId,
@@ -103,12 +122,29 @@ internal sealed class UpdateDeductibleExpenseCommandHandler(
                 Error.NotFound("Expense.NotFound", "Cheltuiala nu a fost găsită."));
         }
 
+        // Guard existing payments before changing their source data, including closed periods.
+        Guid? linked = await context.ExpenseDocuments.Where(d => d.DocumentId == expense.DocumentId && d.PfaRegistrationId == pfa.Id)
+            .Select(d => d.LedgerEntryId).SingleOrDefaultAsync(cancellationToken);
+        if (linked is {} linkedId)
+        {
+            LedgerEntry payment = await context.LedgerEntries.SingleAsync(e => e.Id == linkedId && e.PfaRegistrationId == pfa.Id, cancellationToken);
+            Result editable = await Application.Accounting.Ledger.UpdateLedgerEntryCommandHandler.EnsureEditableAsync(context, payment, cancellationToken);
+            if (editable.IsFailure)
+            {
+                return Result.Failure<DeductibleExpenseResponse>(editable.Error);
+            }
+
+            if (!command.Confirm || command.PaymentMethod == null)
+            {
+                return Result.Failure<DeductibleExpenseResponse>(Error.Problem("Expense.PaymentExists", "Cheltuiala are o plată în registre. Corectează documentul împreună cu plata."));
+            }
+        }
         expense.CatalogCategory = command.CatalogCategory.Trim();
         expense.ItemName = command.ItemName.Trim();
         expense.DeductibleLabel = command.DeductibleLabel.Trim();
         expense.AmountRon = command.AmountRon;
-        expense.Year = command.Year;
-        expense.Month = command.Month;
+        expense.Year = command.ExpenseDate?.Year ?? command.Year;
+        expense.Month = command.ExpenseDate?.Month ?? command.Month;
         expense.ExpenseDate = command.ExpenseDate;
         expense.SupplierName = string.IsNullOrWhiteSpace(command.SupplierName) ? null : command.SupplierName.Trim();
         expense.VatAmount = command.VatAmount;
@@ -117,6 +153,23 @@ internal sealed class UpdateDeductibleExpenseCommandHandler(
             : command.DocumentTypeLabel.Trim();
         expense.Status = command.Confirm ? ExpenseStatus.Confirmed : ExpenseStatus.Draft;
         expense.UpdatedAtUtc = DateTime.UtcNow;
+
+        if (command.Confirm)
+        {
+            Result saved = await accounting.SavePaymentAsync(expense, command.PaymentMethod, command.PaymentDate,
+                command.LedgerEntryId, command.AccountingCategory, command.PersonalAmount, command.DocumentNumber, command.Reason, cancellationToken);
+            if (saved.IsFailure)
+            {
+                return Result.Failure<DeductibleExpenseResponse>(saved.Error);
+            }
+        }
+
+        if (command.ApproveDocument)
+        {
+            Document reviewed = await context.Documents.SingleAsync(d => d.Id == expense.DocumentId && d.PfaRegistrationId == pfa.Id, cancellationToken);
+            reviewed.Status = DocumentStatus.Verified;
+            reviewed.ReviewNote = null;
+        }
 
         await context.SaveChangesAsync(cancellationToken);
 
@@ -130,6 +183,14 @@ internal sealed class UpdateDeductibleExpenseCommandHandler(
                 Error.Failure("Expense.DocumentMissing", "Documentul cheltuielii nu mai există."));
         }
 
-        return CreateDeductibleExpenseCommandHandler.Map(expense, document);
+        Domain.Accounting.LedgerEntry? savedPayment = await context.LedgerEntries.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.PfaRegistrationId == pfa.Id && e.SourceDocumentId == expense.DocumentId, cancellationToken);
+        return CreateDeductibleExpenseCommandHandler.Map(expense, document) with
+        {
+            LedgerEntryId = savedPayment?.Id,
+            DeductibleAmount = savedPayment?.ReconciliationStatus is Domain.Accounting.ReconciliationStatus.Matched or Domain.Accounting.ReconciliationStatus.Partial ? savedPayment.DeductibleAmount : null,
+            PaymentMethod = savedPayment?.PaymentMethod.ToString(),
+            PaymentDate = savedPayment?.Date,
+        };
     }
 }

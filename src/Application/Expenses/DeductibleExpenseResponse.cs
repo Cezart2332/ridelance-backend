@@ -28,4 +28,8 @@ public sealed record DeductibleExpenseResponse(
     string Currency,
     string? DocumentTypeLabel,
     string Source,
-    string Status);
+    string Status,
+    Guid? LedgerEntryId = null,
+    decimal? DeductibleAmount = null,
+    string? PaymentMethod = null,
+    DateOnly? PaymentDate = null);

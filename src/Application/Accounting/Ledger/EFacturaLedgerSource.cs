@@ -41,6 +41,49 @@ internal sealed class EFacturaLedgerSource(IApplicationDbContext db) : ILedgerSo
             return new LedgerImportResult(LedgerSource.EFactura, 0, 0, []);
         }
 
+        int uploadedLinked = 0;
+        var uploadNotes = new List<string>();
+        List<ExpenseDocument> uploaded = await db.ExpenseDocuments.Where(d => d.PfaRegistrationId == context.PfaId && d.LedgerEntryId != null && d.Number != null).ToListAsync(cancellationToken);
+        List<LedgerEntry> documentedPayments = await db.LedgerEntries.Where(e => e.PfaRegistrationId == context.PfaId && e.SourceDocumentId != null &&
+            e.EFacturaMessageId == null && e.Amount < 0 && e.TransactionType == LedgerTransactionType.Expense && e.Status != LedgerEntryStatus.Locked && !e.ClosedPeriodFlag).ToListAsync(cancellationToken);
+        var uploadedMatches = new List<(EFacturaMessage Invoice, LedgerEntry Payment)>();
+        foreach (EFacturaMessage invoice in invoices.Where(i => i.PaidAmount == 0))
+        {
+            string cui = new((invoice.SupplierCif ?? string.Empty).Where(char.IsDigit).ToArray());
+            if (cui.Length == 0 || string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
+            {
+                continue;
+            }
+            foreach (ExpenseDocument document in uploaded.Where(d => d.Number == invoice.InvoiceNumber && d.Date == invoice.IssueDate && d.Total == invoice.TotalAmount &&
+                new string((d.MerchantCui ?? string.Empty).Where(char.IsDigit).ToArray()) == cui))
+            {
+                LedgerEntry? payment = documentedPayments.SingleOrDefault(e => e.Id == document.LedgerEntryId && e.SourceDocumentId == document.DocumentId &&
+                    e.Date >= invoice.IssueDate && -e.Amount == invoice.TotalAmount && !context.ClosedPeriods.Contains(e.AccountingPeriod));
+                if (payment != null)
+                {
+                    uploadedMatches.Add((invoice, payment));
+                }
+            }
+        }
+        foreach ((EFacturaMessage invoice, LedgerEntry payment) in uploadedMatches)
+        {
+            if (uploadedMatches.Count(m => m.Invoice.Id == invoice.Id) != 1 || uploadedMatches.Count(m => m.Payment.Id == payment.Id) != 1)
+            {
+                uploadNotes.Add($"Factura {invoice.InvoiceNumber} are mai multe potriviri cu documente încărcate; verifică asocierea manual.");
+                continue;
+            }
+            // Attach the ANAF original to the existing cash/bank payment, preserving its tax treatment.
+            payment.EFacturaMessageId = invoice.Id;
+            invoice.PaidAmount = Math.Abs(payment.Amount);
+            invoice.PaymentStatus = InvoicePaymentStatus.Paid;
+            uploadedLinked++;
+        }
+
+        invoices = invoices.Where(i => i.PaymentStatus != InvoicePaymentStatus.Paid).ToList();
+        if (invoices.Count == 0)
+        {
+            return new LedgerImportResult(LedgerSource.EFactura, 0, uploadedLinked, uploadNotes);
+        }
         DateOnly earliest = invoices.Min(i => i.IssueDate!.Value);
         List<LedgerEntry> payments = await db.LedgerEntries
             .Where(e => e.PfaRegistrationId == context.PfaId &&
@@ -75,8 +118,8 @@ internal sealed class EFacturaLedgerSource(IApplicationDbContext db) : ILedgerSo
             }
         }
 
-        int updated = 0;
-        var notes = new List<string>();
+        int updated = uploadedLinked;
+        var notes = new List<string>(uploadNotes);
         foreach ((EFacturaMessage Invoice, LedgerEntry Payment, bool Partial) candidate in candidates)
         {
             bool unique = candidates.Count(c => c.Payment == candidate.Payment) == 1 &&

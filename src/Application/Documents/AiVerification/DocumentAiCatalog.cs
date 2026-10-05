@@ -257,6 +257,11 @@ public static class DocumentAiCatalog
                 new("vat_amount", "Valoarea TVA, exact cum e scrisă pe document; lasă gol dacă nu apare explicit", ExtractedFieldType.Text, Required: false),
                 new("currency", "Moneda documentului (RON, EUR)", ExtractedFieldType.Text, Required: false),
                 new("document_type", "Tipul documentului: bon fiscal, factură sau chitanță", ExtractedFieldType.Text, Required: false),
+                new("document_number", "Numărul bonului sau seria și numărul facturii, exact cum sunt scrise", ExtractedFieldType.Text, Required: false),
+                new("beneficiary_cui", "CUI/CIF client al cumpărătorului, dacă este înscris; nu confunda cu CUI furnizor", ExtractedFieldType.Cui, Required: false),
+                new("items_description", "Produsele sau serviciile cumpărate, așa cum apar pe document", ExtractedFieldType.Text, Required: false),
+                new("expense_category", "Propune categoria după produsele cumpărate: FUEL pentru benzină/motorină/GPL, CAR_SERVICE pentru service/piese/anvelope, CAR_INSURANCE pentru RCA/CASCO, CAR_WASH pentru spălătorie, CAR_RENTAL pentru chirie auto, EV_CHARGING pentru încărcare electrică auto, ACCOUNTING pentru contabilitate, SOFTWARE pentru abonamente software ale activității, PHONE pentru telefonie, CASH_REGISTER pentru casă de marcat/consumabile, PERSONAL pentru cumpărături personale. Lasă gol dacă nu se potrivește. Nu decide deductibilitatea fiscală.", ExtractedFieldType.Text, Required: false),
+                new("personal_amount", "Suma articolelor personale (cafea, alimente, tutun) explicit identificate separat pe document, dacă sunt prezente; lasă gol dacă nu există sau nu poți citi sumele", ExtractedFieldType.Text, Required: false),
             ],
             // Un bon nu se respinge pentru că modelul nu-i recunoaște „tipul”: extragerea
             // eșuată lasă formularul editabil manual, nu blochează adăugarea cheltuielii.

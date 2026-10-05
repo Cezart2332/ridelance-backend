@@ -15,6 +15,18 @@ internal sealed class DeductibleExpenses : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
+        app.MapPost("pfa-registrations/{id:guid}/deductible-expenses/sync-sources", async (
+            Guid id, ICommandHandler<SyncExpenseSourcesCommand, IReadOnlyList<string>> handler, CancellationToken ct) =>
+        {
+            Result<IReadOnlyList<string>> result = await handler.Handle(new SyncExpenseSourcesCommand(id), ct);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        }).RequireAuthorization().WithTags(Tags.PfaRegistrations);
+        app.MapGet("pfa-registrations/{id:guid}/deductible-expenses/{expenseId:guid}/suggestion", async (
+            Guid id, Guid expenseId, decimal? total, IQueryHandler<GetExpenseSuggestionQuery, ExpenseSuggestion> handler, CancellationToken ct) =>
+        {
+            Result<ExpenseSuggestion> result = await handler.Handle(new GetExpenseSuggestionQuery(id, expenseId, total), ct);
+            return result.Match(Results.Ok, CustomResults.Problem);
+        }).RequireAuthorization().WithTags(Tags.PfaRegistrations);
         app.MapGet("pfa-registrations/{id:guid}/deductible-expenses", async (
             Guid id,
             int? year,
@@ -93,7 +105,9 @@ internal sealed class DeductibleExpenses : IEndpoint
                 request.SupplierName,
                 request.VatAmount,
                 request.DocumentTypeLabel,
-                request.Confirm);
+                request.Confirm,
+                request.PaymentMethod, request.PaymentDate, request.LedgerEntryId, request.AccountingCategory,
+                request.PersonalAmount, request.DocumentNumber, request.Reason, request.ApproveDocument);
 
             Result<DeductibleExpenseResponse> result = await handler.Handle(command, cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
@@ -113,5 +127,13 @@ internal sealed class DeductibleExpenses : IEndpoint
         string? SupplierName,
         decimal? VatAmount,
         string? DocumentTypeLabel,
-        bool Confirm);
+        bool Confirm,
+        string? PaymentMethod = null,
+        DateOnly? PaymentDate = null,
+        Guid? LedgerEntryId = null,
+        string? AccountingCategory = null,
+        decimal PersonalAmount = 0,
+        string? DocumentNumber = null,
+        string? Reason = null,
+        bool ApproveDocument = false);
 }
