@@ -3,6 +3,7 @@ using System.Text.Json;
 using Application.Abstractions.Ai;
 using Application.Accounting;
 using Application.Accounting.Contracts;
+using Application.Accounting.Documents;
 using Domain.Accounting;
 using Infrastructure.Ai;
 using Microsoft.Extensions.Logging;
@@ -30,7 +31,7 @@ internal sealed class OpenRouterDocumentExtractor(
     [
         "supplier_name", "supplier_country", "supplier_vat_id", "invoice_number", "invoice_date",
         "period_from", "period_to", "currency", "amount", "commission_amount",
-        "tax_point_date", "withheld_tax", "cash_amount",
+        "tax_point_date", "withheld_tax", "cash_amount", "fare_total", "other_income_total", "customer_refunds",
     ];
 
     public async Task<Result<DocumentExtractionResult>> ExtractAsync(DocumentExtractionRequest request, CancellationToken cancellationToken)
@@ -101,14 +102,18 @@ internal sealed class OpenRouterDocumentExtractor(
         "tax_point_date („Data impozitării” / tax point de pe factură, dacă apare; Uber o trece pe linia facturii; null altfel), " +
         "currency (cod ISO din 3 litere), " +
         "amount (la factură: valoarea totală facturată a serviciilor, NU soldul «De plătit» după rețineri; " +
-        "la raport: veniturile brute TOTALE, inclusiv alte servicii, bonusuri, bacșișuri și taxe incluse în total, " +
-        "înainte de comision; citește «Venituri totale» / totalul veniturilor, NU doar linia curselor și NU suma netă de plată), " +
+        "la raportul Uber: «Venituri totale», inclusiv alte servicii, bonusuri și bacșișuri, înainte de comision, NU doar linia " +
+        "curselor și NU suma netă de plată; la rezumatul lunar Bolt, care nu are un rând de venituri totale: null — totalul " +
+        "îl compune codul din fare_total și other_income_total), " +
         "commission_amount (comisionul final al platformei după reduceri, nu comisionul înainte de deduceri), " +
         "other_amounts (alte sume, de ex. TVA, cu eticheta lor), " +
         "withheld_tax (impozitul reținut la sursă, ca sumă, dacă documentul îl arată — ex. „Reținere la sursă” în rezumatul " +
         "lunar Bolt; o simplă mențiune a procentului, fără sumă, nu se trece). " +
-        "cash_amount (doar la raport: venitul încasat în numerar de șofer, ex. „Numerar încasat” / „Cash collected”, " +
-        "ca sumă pozitivă; null la facturi sau dacă nu apare). " +
+        "cash_amount (doar la raport: venitul încasat în numerar de șofer, ex. „Numerar încasat” / „Cash collected” / " +
+        "„Tarif cursă (numerar)” la Bolt, ca sumă pozitivă; null la facturi sau dacă nu apare). " +
+        "Doar la rezumatul lunar Bolt, altfel null: fare_total (rândul TOTAL din secțiunea „DEFALCARE TARIF”), " +
+        "other_income_total (rândul TOTAL din secțiunea „DEFALCARE ALTE VENITURI”, 0 dacă așa scrie), " +
+        "customer_refunds („Rambursări clienți”, ca sumă pozitivă, 0 dacă așa scrie). " +
         "Uber emite facturi săptămânale și un sumar fiscal lunar; Bolt o factură lunară și un rezumat lunar. " +
         "Datele în format YYYY-MM-DD. Sumele ca numere, cu punct zecimal, fără separator de mii. " +
         "Pentru fiecare câmp completat, source_snippets conține textul EXACT din document din care l-ai citit " +
@@ -137,6 +142,9 @@ internal sealed class OpenRouterDocumentExtractor(
             ["tax_point_date"] = nullableString,
             ["withheld_tax"] = nullableNumber,
             ["cash_amount"] = nullableNumber,
+            ["fare_total"] = nullableNumber,
+            ["other_income_total"] = nullableNumber,
+            ["customer_refunds"] = nullableNumber,
             ["other_amounts"] = new
             {
                 type = "array",
@@ -200,6 +208,11 @@ internal sealed class OpenRouterDocumentExtractor(
                     .Select(item => new OtherAmount(item.Label!, item.Amount!.Value)));
             }
 
+            // Componentele brutului Bolt, sub etichete fixe: codul le adună și le verifică în text.
+            AddComponent(others, ReportComponents.FareTotal, Number(fields, "fare_total"));
+            AddComponent(others, ReportComponents.OtherIncomeTotal, Number(fields, "other_income_total"));
+            AddComponent(others, ReportComponents.CustomerRefunds, Number(fields, "customer_refunds") is { } refunds ? Math.Abs(refunds) : null);
+
             var extracted = new ExtractedFields(
                 Text(fields, "supplier_name"),
                 Text(fields, "supplier_country")?.ToUpperInvariant(),
@@ -215,6 +228,10 @@ internal sealed class OpenRouterDocumentExtractor(
                 Date(fields, "tax_point_date"),
                 Number(fields, "withheld_tax"),
                 Number(fields, "cash_amount") is { } cash ? Math.Abs(cash) : null);
+            if (type == PlatformDocumentType.PlatformReport)
+            {
+                extracted = ReportComponents.WithGross(extracted);
+            }
 
             var snippets = new Dictionary<string, string>();
             if (root.TryGetProperty("source_snippets", out JsonElement source) && source.ValueKind == JsonValueKind.Object)
@@ -239,6 +256,17 @@ internal sealed class OpenRouterDocumentExtractor(
         {
             return Result.Failure<DocumentExtractionResult>(Error.Failure("Ai.InvalidResponse", "Răspunsul citirii nu a putut fi interpretat."));
         }
+    }
+
+    private static void AddComponent(List<OtherAmount> others, string label, decimal? amount)
+    {
+        if (amount is not { } value)
+        {
+            return;
+        }
+
+        others.RemoveAll(other => other.Label.Equals(label, StringComparison.OrdinalIgnoreCase));
+        others.Add(new OtherAmount(label, value));
     }
 
     private static string ToPascal(string snake) =>

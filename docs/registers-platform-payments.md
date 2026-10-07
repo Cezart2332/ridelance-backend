@@ -28,3 +28,18 @@ Regula `NON_RECOVERABLE_VAT` este inserată prin migrarea `20261005120000_AddNon
 Testele verifică plata în altă lună, REF/RJIP, idempotența, plăți parțiale, declarații/dosare incompatibile, perioade închise, documente deja asociate și venitul total Uber. Testul browser verifică alegerea lunii obligației, confirmarea tratamentului și afișarea diferențelor de reconciliere.
 
 Aceste verificări nu confirmă situația unui dosar din producție. Sumele încasate în alte perioade, soldurile reportate și ajustările Bolt necesită documente de decontare. Asocierea D301 nu produce o nouă declarație și nu reprezintă confirmarea efectuării unei plăți către ANAF în lipsa tranzacției bancare.
+
+## Rezumatul lunar Bolt (din octombrie 2026)
+
+Rezumatul Bolt nu are un rând „Venituri totale”. Modelul citește separat `fare_total` (TOTAL la „Defalcare tarif”), `other_income_total` (TOTAL la „Defalcare alte venituri”) și `customer_refunds` („Rambursări clienți”), iar codul adună brutul (`ReportComponents`). Fiecare componentă e verificată în textul PDF-ului; verificarea `ARITHMETIC` a raportului cere brutul și ca el să fie exact tarif + alte venituri.
+
+Decontul Bolt așteptat în bancă:
+
+```
+online   = brut − numerar − rambursări clienți
+payout   = online − comision + suma returnată de Bolt pentru impozitul de 2%
+```
+
+La potrivire, payout-ul se împarte în: venit brut online (`Income`), comision (`Expense`, `PLATFORM_COMMISSION`) și suma returnată pentru impozit (`Other`, încasare în RJIP, nici venit, nici cheltuială). Impozitul pe comision rămâne pe D100 la 2% din comisionul facturat (Convenția România–Estonia, art. 12 alin. (2)), chiar dacă Bolt returnează o sumă ușor diferită.
+
+Exemplu, septembrie 2026: brut 23.754,90 + 98,85 = 23.853,75; numerar 7.540,50; comision 2.149,09; returnat 42,77 → payout 14.206,93.

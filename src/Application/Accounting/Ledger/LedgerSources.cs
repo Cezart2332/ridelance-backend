@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Application.Abstractions.Data;
 using Application.Accounting.Contracts;
+using Application.Accounting.Documents;
 using Application.Abstractions.Services;
 using Application.Invoicing;
 using Domain.Accounting;
@@ -416,8 +417,21 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
                 notes.Add($"{name} {month}: venitul total confirmat nu este valid; verifică documentele.");
                 continue;
             }
-            decimal gross = reportedGross - cash;
-            decimal net = gross - commission;
+
+            List<OtherAmount> adjustments = AccountingJson.Deserialize<List<OtherAmount>>(report.OtherAmountsJson, []);
+            // Rambursările către pasageri ies din decont: banii aceia n-au rămas încasați de șofer.
+            decimal refunds = Math.Abs(adjustments.FirstOrDefault(a => a.Label.Equals(ReportComponents.CustomerRefunds, StringComparison.OrdinalIgnoreCase))?.Amount ?? 0);
+            // Bolt reține tot comisionul, apoi dă înapoi 2% din el ca șoferul să plătească impozitul
+            // pe veniturile nerezidenților (D100). Suma intră în bancă, dar nu e venit.
+            decimal withheld = report.Platform == Platform.Bolt ? Math.Abs(report.WithheldTax ?? 0) : 0;
+            decimal gross = reportedGross - cash - refunds;
+            if (gross <= 0)
+            {
+                notes.Add($"{name} {month}: după numerar și rambursări nu rămâne venit online; verifică raportul.");
+                continue;
+            }
+
+            decimal net = gross - commission + withheld;
             decimal paid = payouts.Sum(e => e.Amount);
             if (payouts.Count == 0 || net <= 0 || !string.Equals(report.Currency ?? "RON", "RON", StringComparison.OrdinalIgnoreCase) || paid != net)
             {
@@ -426,29 +440,30 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
                     .ToList()
                     .ForEach(e => e.ReconciliationStatus = ReconciliationStatus.NeedsReview);
                 notes.Add($"{name} {month}: payout-urile din bancă ({AccountingJson.Amount(paid)} lei) nu dau netul din raport ({AccountingJson.Amount(net)} lei), diferență {AccountingJson.Amount(paid - net)} lei.");
-                notes.Add($"{name} {month}: calcul verificat — venituri totale {AccountingJson.Amount(reportedGross)} lei, numerar {AccountingJson.Amount(cash)} lei (se înregistrează prin Z), comision {AccountingJson.Amount(commission)} lei. Verifică perioadele deconturilor săptămânale și soldurile reportate; confirmarea raportului sau a declarațiilor nu înregistrează automat o plată.");
-                if (report.Platform == Platform.Bolt && report.WithheldTax is > 0)
-                {
-                    notes.Add($"Bolt {month}: raportul arată {AccountingJson.Amount(report.WithheldTax.Value)} lei pentru impozitul reținut la sursă. Bolt restituie această sumă operatorului pentru plata la ANAF; verifică decontul, fără a o scădea încă o dată din comision sau a o înregistra ca plată ANAF înainte de achitare.");
-                }
-                List<OtherAmount> adjustments = AccountingJson.Deserialize<List<OtherAmount>>(report.OtherAmountsJson, []);
-                if (adjustments.Count > 0)
-                {
-                    notes.Add($"{name} {month}: alte sume din document — {string.Join("; ", adjustments.Select(a => $"{a.Label}: {AccountingJson.Amount(a.Amount)} lei"))}. Verifică în decont dacă sunt deja incluse în venit/comision înainte de corecție.");
-                }
+                notes.Add($"{name} {month}: calcul — venit brut {AccountingJson.Amount(reportedGross)} − numerar {AccountingJson.Amount(cash)} (se înregistrează prin Z) − rambursări clienți {AccountingJson.Amount(refunds)} − comision {AccountingJson.Amount(commission)} + sumă returnată pentru impozitul de 2% {AccountingJson.Amount(withheld)} = {AccountingJson.Amount(net)} lei. Verifică perioadele deconturilor și soldurile reportate; confirmarea raportului nu înregistrează automat o plată.");
                 continue;
             }
 
             decimal allocated = 0;
+            decimal allocatedWithheld = 0;
             for (int i = 0; i < payouts.Count; i++)
             {
                 LedgerEntry payout = payouts[i];
-                decimal share = i == payouts.Count - 1
+                bool last = i == payouts.Count - 1;
+                decimal share = last
                     ? commission - allocated
                     : LedgerInvariants.Round(commission * payout.Amount / net);
+                decimal withheldShare = last
+                    ? withheld - allocatedWithheld
+                    : LedgerInvariants.Round(withheld * payout.Amount / net);
                 allocated += share;
-                db.LedgerEntries.Add(Settle(context, payout, report.PlatformDocumentId, name, month, share));
-                created++;
+                allocatedWithheld += withheldShare;
+                foreach (LedgerEntry entry in Settle(context, payout, report.PlatformDocumentId, name, month, share, withheldShare))
+                {
+                    db.LedgerEntries.Add(entry);
+                    created++;
+                }
+
                 updated++;
             }
         }
@@ -457,13 +472,15 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
     }
 
     /// <summary>
-    /// Payout-ul devine venitul brut (payout + comision), iar comisionul o plată separată, pe aceeași
-    /// tranzacție și în același grup: împreună dau exact suma virată.
+    /// Payout-ul devine venitul brut (payout + comision − suma returnată pentru impozit), comisionul o
+    /// plată separată, iar suma returnată de Bolt pentru impozitul de 2% o încasare care nu e venit —
+    /// toate pe aceeași tranzacție și în același grup: împreună dau exact suma virată.
     /// </summary>
-    private static LedgerEntry Settle(LedgerImportContext context, LedgerEntry payout, Guid reportId, string name, string month, decimal commission)
+    private static IEnumerable<LedgerEntry> Settle(
+        LedgerImportContext context, LedgerEntry payout, Guid reportId, string name, string month, decimal commission, decimal withheld)
     {
         var group = Guid.NewGuid();
-        payout.Amount = LedgerInvariants.Round(payout.Amount + commission);
+        payout.Amount = LedgerInvariants.Round(payout.Amount + commission - withheld);
         payout.TransactionType = LedgerTransactionType.Income;
         payout.Description = LedgerSupport.Cut($"Venit brut din curse {name}, raport {month}", LedgerSupport.DescriptionLength);
         payout.PlatformDocumentId = reportId;
@@ -480,7 +497,24 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
         fee.ReconciliationStatus = ReconciliationStatus.Matched;
         fee.Category = LedgerSupport.PlatformCommissionCategory;
         DeductibilityService.Resolve(fee, context.Rules);
-        return fee;
+        yield return fee;
+
+        if (withheld == 0)
+        {
+            yield break;
+        }
+
+        // Nu e venit (impozitul e al Bolt, reținut din comision: Convenția România–Estonia, art. 12)
+        // și nici cheltuială: e o încasare în RJIP, care acoperă plata D100.
+        LedgerEntry refund = LedgerSupport.New(
+            context.PfaId, payout.Date, payout.Source, $"{payout.BankTransactionId:N}:withholding", payout.DocumentLabel, name,
+            $"Sumă returnată de {name} pentru impozitul pe veniturile nerezidenților (2% din comision), raport {month}",
+            LedgerTransactionType.Other, PaymentMethod.Bank, withheld, payout.Currency, LedgerEntryStatus.AutoImported, context.ClosedPeriods);
+        refund.BankTransactionId = payout.BankTransactionId;
+        refund.PlatformDocumentId = reportId;
+        refund.SettlementGroupId = group;
+        refund.ReconciliationStatus = ReconciliationStatus.Matched;
+        yield return refund;
     }
 }
 

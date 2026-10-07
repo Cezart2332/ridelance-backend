@@ -101,8 +101,11 @@ public sealed class AccountingOptions
     /// <summary>Modelul pentru extracție; gol = modelul implicit OpenRouter.</summary>
     public string? ExtractionModel { get; init; }
 
-    /// <summary>Versiunea promptului, salvată pe fiecare extracție.</summary>
-    public string ExtractionPromptVersion { get; init; } = "accounting-extraction-v2";
+    /// <summary>
+    /// Versiunea promptului, salvată pe fiecare extracție. v3: rezumatul Bolt se citește pe componente
+    /// (tarif, alte venituri, rambursări), iar brutul îl adună codul.
+    /// </summary>
+    public string ExtractionPromptVersion { get; init; } = "accounting-extraction-v3";
 
     /// <summary>Dimensiunea maximă a unui PDF încărcat.</summary>
     public long MaxUploadBytes { get; init; } = 25 * 1024 * 1024;

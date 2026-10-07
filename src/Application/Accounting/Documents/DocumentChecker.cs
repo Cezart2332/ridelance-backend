@@ -33,6 +33,11 @@ public static class DocumentChecker
         bool invoice = subject.DocumentType == PlatformDocumentType.CommissionInvoice;
         var checks = new List<DocumentCheck> { AmountInText(subject, fields) };
 
+        if (!invoice)
+        {
+            checks.Add(ReportArithmetic(fields));
+        }
+
         if (invoice)
         {
             checks.Add(Arithmetic(fields));
@@ -71,7 +76,9 @@ public static class DocumentChecker
     private static DocumentCheck AmountInText(CheckSubject subject, ExtractedFields fields)
     {
         var amounts = new List<(string Label, decimal Value)>();
-        if (fields.Amount is { } amount)
+        // Brutul compus din componentele raportului Bolt nu apare ca atare în PDF: se verifică
+        // componentele lui, iar suma lor o verifică ReportArithmetic.
+        if (fields.Amount is { } amount && amount != ReportComponents.Gross(fields))
         {
             amounts.Add(("total", amount));
         }
@@ -103,6 +110,44 @@ public static class DocumentChecker
                 false,
                 string.Join(" ", missing.Select(item => $"Suma {AccountingJson.Amount(item.Value)} ({item.Label}) nu apare în textul documentului.")),
                 null);
+    }
+
+    /// <summary>
+    /// Raportul are venitul brut, iar la Bolt el e exact tarif + alte venituri. Fără brut, venitul
+    /// lunii nu ajunge în registre: decontul din bancă nu se poate descompune în venit și comision.
+    /// </summary>
+    private static DocumentCheck ReportArithmetic(ExtractedFields fields)
+    {
+        if (fields.Amount is not { } gross || gross <= 0)
+        {
+            return new DocumentCheck(
+                DocumentCheckCode.Arithmetic,
+                false,
+                "Venitul brut (înainte de comision) lipsește din raport. Completează-l din document: fără el, venitul lunii nu intră în registre.",
+                null);
+        }
+
+        if (ReportComponents.Gross(fields) is { } components && components != gross)
+        {
+            decimal fares = ReportComponents.Of(fields, ReportComponents.FareTotal) ?? 0;
+            decimal other = ReportComponents.Of(fields, ReportComponents.OtherIncomeTotal) ?? 0;
+            return new DocumentCheck(
+                DocumentCheckCode.Arithmetic,
+                false,
+                $"Tarif {AccountingJson.Amount(fares)} + alte venituri {AccountingJson.Amount(other)} = {AccountingJson.Amount(components)}, nu {AccountingJson.Amount(gross)}.",
+                null);
+        }
+
+        if (fields.CashAmount is { } cash && cash > gross)
+        {
+            return new DocumentCheck(
+                DocumentCheckCode.Arithmetic,
+                false,
+                $"Numerarul {AccountingJson.Amount(cash)} depășește venitul brut {AccountingJson.Amount(gross)}.",
+                null);
+        }
+
+        return new DocumentCheck(DocumentCheckCode.Arithmetic, true, $"Venit brut {AccountingJson.Amount(gross)} lei, înainte de comision.", null);
     }
 
     private static DocumentCheck Arithmetic(ExtractedFields fields)

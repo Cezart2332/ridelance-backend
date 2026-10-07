@@ -4,6 +4,7 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Services;
 using Application.Accounting;
 using Application.Accounting.Contracts;
+using Application.Accounting.Documents;
 using Application.Accounting.Declarations;
 using Application.Accounting.Ledger;
 using Application.Accounting.Registers;
@@ -177,6 +178,68 @@ public sealed partial class LedgerTests : IDisposable
         entries.ShouldAllBe(e => e.PlatformDocumentId == report);
         entries.Sum(e => e.Amount).ShouldBe(4650m);
         (entries[1].Category, entries[1].DeductibleAmount).ShouldBe(("PLATFORM_COMMISSION", (decimal?)350m));
+    }
+
+    /// <summary>
+    /// Rezumatul Bolt din septembrie 2026: brut 23.853,75 (din care numerar 7.540,50), comision
+    /// 2.149,09, plus 42,77 dați înapoi de Bolt pentru impozitul de 2% pe comision. Plata în bancă e
+    /// 16.313,25 − 2.149,09 + 42,77 = 14.206,93. Înainte, cei 42,77 lipseau din calcul și decontul
+    /// nu se potrivea niciodată.
+    /// </summary>
+    [Fact]
+    public async Task R21_BoltPayout_IncludesTheWithholdingRefund_AsANonIncomeReceipt()
+    {
+        Transaction(14206.93m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 9, 2));
+        Report(Platform.Bolt, income: 23853.75m, commission: 2149.09m, cash: 7540.50m, withheld: 42.77m);
+        CommissionInvoice(Platform.Bolt);
+
+        IReadOnlyList<LedgerImportResult> results = await Import();
+
+        results.SelectMany(r => r.Notes).ShouldBeEmpty();
+        List<LedgerEntry> entries = await _db.LedgerEntries.OrderByDescending(e => e.Amount).ToListAsync();
+        entries.Select(e => (e.TransactionType, e.Amount)).ShouldBe(
+        [
+            (LedgerTransactionType.Income, 16313.25m),
+            (LedgerTransactionType.Other, 42.77m),
+            (LedgerTransactionType.Expense, -2149.09m),
+        ]);
+        entries.Sum(e => e.Amount).ShouldBe(14206.93m);
+        entries.Select(e => e.SettlementGroupId).Distinct().ShouldHaveSingleItem().ShouldNotBeNull();
+        entries.ShouldAllBe(e => e.ReconciliationStatus == ReconciliationStatus.Matched);
+        // Doar venitul din curse e impozabil; suma returnată nu e nici venit, nici cheltuială.
+        entries.Single(e => e.TransactionType == LedgerTransactionType.Other).DeductibleAmount.ShouldBeNull();
+    }
+
+    /// <summary>Rezumatul Bolt din august 2026: rambursările către clienți (123,10) ies din decont.</summary>
+    [Fact]
+    public async Task R21_BoltPayout_SubtractsCustomerRefunds()
+    {
+        Transaction(14190.84m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 9, 2));
+        Report(
+            Platform.Bolt, income: 20758.20m, commission: 2273.23m, cash: 4216m, withheld: 44.97m,
+            others: [new OtherAmount(ReportComponents.FareTotal, 20758.20m), new OtherAmount(ReportComponents.CustomerRefunds, 123.10m)]);
+        CommissionInvoice(Platform.Bolt);
+
+        IReadOnlyList<LedgerImportResult> results = await Import();
+
+        results.SelectMany(r => r.Notes).ShouldBeEmpty();
+        List<LedgerEntry> entries = await _db.LedgerEntries.ToListAsync();
+        entries.Single(e => e.TransactionType == LedgerTransactionType.Income).Amount.ShouldBe(20758.20m - 4216m - 123.10m);
+        entries.Sum(e => e.Amount).ShouldBe(14190.84m);
+    }
+
+    /// <summary>Uber nu dă înapoi nimic pentru impozit: suma reținută din raport nu intră în decont.</summary>
+    [Fact]
+    public async Task R21_UberPayout_IgnoresTheWithholdingLine()
+    {
+        Transaction(4650m, "UBER BV", "Payout", new DateOnly(2026, 9, 2));
+        Report(Platform.Uber, income: 5000m, commission: 350m, withheld: 7m);
+        CommissionInvoice(Platform.Uber);
+
+        IReadOnlyList<LedgerImportResult> results = await Import();
+
+        results.SelectMany(r => r.Notes).ShouldBeEmpty();
+        (await _db.LedgerEntries.CountAsync()).ShouldBe(2);
     }
 
     [Fact]
@@ -859,7 +922,13 @@ public sealed partial class LedgerTests : IDisposable
         _db.SaveChanges();
     }
 
-    private Guid Report(Platform platform, decimal income, decimal commission)
+    private Guid Report(
+        Platform platform,
+        decimal income,
+        decimal commission,
+        decimal? cash = null,
+        decimal? withheld = null,
+        IReadOnlyList<OtherAmount>? others = null)
     {
         var file = new Document { Id = Guid.NewGuid(), OriginalFileName = "raport.pdf", ContentType = "application/pdf", Origin = DocumentOrigin.AccountingUpload };
         var document = new PlatformDocument
@@ -886,6 +955,9 @@ public sealed partial class LedgerTests : IDisposable
             Currency = "RON",
             Amount = income,
             CommissionAmount = commission,
+            CashAmount = cash,
+            WithheldTax = withheld,
+            OtherAmountsJson = AccountingJson.Serialize(others ?? []),
         });
         _db.SaveChanges();
         return document.Id;

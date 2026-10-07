@@ -210,7 +210,7 @@ public sealed class DocumentCheckerTests
         Check(RunInvoice(Invoice(), Context(reportIncome: null)), DocumentCheckCode.SettlementCorrelation).Passed.ShouldBeTrue();
 
     [Fact]
-    public void Reports_skip_the_invoice_only_checks()
+    public void Reports_skip_the_invoice_only_checks_but_check_their_gross()
     {
         ExtractedFields report = Invoice() with { InvoiceNumber = null, Amount = 8000m, OtherAmounts = [] };
         IReadOnlyList<DocumentCheck> checks = DocumentChecker.Run(
@@ -219,7 +219,7 @@ public sealed class DocumentCheckerTests
             Context());
 
         checks.Select(check => check.Code).ShouldBe(
-            [DocumentCheckCode.AmountInText, DocumentCheckCode.PeriodMatch, DocumentCheckCode.CurrencyAllowed, DocumentCheckCode.SettlementCorrelation]);
+            [DocumentCheckCode.AmountInText, DocumentCheckCode.Arithmetic, DocumentCheckCode.PeriodMatch, DocumentCheckCode.CurrencyAllowed, DocumentCheckCode.SettlementCorrelation]);
         checks.ShouldAllBe(check => check.Passed);
     }
 }
