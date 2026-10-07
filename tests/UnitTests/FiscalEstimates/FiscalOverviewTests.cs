@@ -73,11 +73,11 @@ public sealed class FiscalOverviewTests : IDisposable
     }
 
     [Theory]
-    [InlineData("""{"employment":"full","salaryAboveCassMin":"yes","pensioner":"no"}""", "Salariat ≥ 6 salarii")]
-    [InlineData("""{"employment":"part","salaryAboveCassMin":"no","pensioner":"no"}""", "Salariat < 6 salarii")]
-    [InlineData("""{"employment":"none","student":"yes","pensioner":"no"}""", "Student")]
-    [InlineData("""{"employment":"none","ownPensionSystem":"yes"}""", "Sistem propriu")]
-    [InlineData("""{"employment":"none","pensioner":"no","student":"no"}""", "Standard")]
+    [InlineData("""{"pensioner":"yes","student":"no","employedFullTime":"yes"}""", "Pensionar · Angajat")]
+    [InlineData("""{"employment":"full","salaryAboveCassMin":"yes","pensioner":"no"}""", "Angajat")]
+    [InlineData("""{"employment":"part","salaryAboveCassMin":"no","pensioner":"no"}""", "Standard")]
+    [InlineData("""{"student":"yes","pensioner":"no"}""", "Student")]
+    [InlineData("""{"pensioner":"no","student":"no","employedFullTime":"no"}""", "Standard")]
     [InlineData("nu e json", "Standard")]
     public void Profile_label_names_the_situation_that_changes_the_taxes(string answers, string label) =>
         FiscalProfileLabels.Of(answers).ShouldBe(label);

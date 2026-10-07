@@ -44,13 +44,7 @@ public static class TaxReasons
     public const string CoverageGap = "COVERAGE_GAP";
     public const string ShortHistory = "SHORT_HISTORY";
     public const string DataCorrectionPending = "DATA_CORRECTION_PENDING";
-    public const string PensionerMidYear = "PENSIONER_MID_YEAR";
-    public const string OtherIndependentTotal = "OTHER_INDEPENDENT_TOTAL";
-    public const string CassExceptionUnknown = "CASS_EXCEPTION_UNKNOWN";
-    public const string CassOptIn = "CASS_OPT_IN";
     public const string CarriedLosses = "CARRIED_LOSSES";
-    public const string CrossBorder = "CROSS_BORDER";
-    public const string TaxPaymentsMissing = "TAX_PAYMENTS_MISSING";
 }
 
 public static class TaxWarnings
@@ -61,38 +55,28 @@ public static class TaxWarnings
     public const string CoverageGap = "COVERAGE_GAP";
 }
 
-/// <summary>Flagurile din profilul fiscal care schimbă calculul (spec §5). Cumulative, per contribuție.</summary>
+/// <summary>
+/// Situația fiscală a PFA-ului, din profilul simplificat: pensionar, student, angajat full-time.
+/// Cumulative — un pensionar angajat are ambele excepții.
+/// </summary>
+/// <remarks>
+/// Ce schimbă fiecare (Codul fiscal):
+/// <list type="bullet">
+/// <item>Pensionar: nu datorează CAS (art. 150 alin. (1)); CASS fără completarea până la 6 salarii (art. 174 alin. (7) lit. c)).</item>
+/// <item>Student sub 26 de ani: CASS 10% din net, fără completare (art. 154 alin. (1) lit. a), art. 174 alin. (8) lit. a)); CAS ca oricine.</item>
+/// <item>Angajat full-time: CASS fără completare, salariul trecând de 6 salarii minime (art. 174 alin. (7) lit. a)); CAS ca oricine (art. 150 alin. (2) scutește doar drepturile de autor).</item>
+/// </list>
+/// </remarks>
 public sealed record ProfileFlags
 {
-    public bool PensionerFullYear { get; init; }
-    public bool PensionerMidYear { get; init; }
-    public bool OwnPensionSystem { get; init; }
-    public bool SalariedCassExempt { get; init; }
-
-    /// <summary>Salariat, dar nu știm dacă salariul trece de pragul CASS (răspuns lipsă pe profil vechi).</summary>
-    public bool SalariedCassUnknown { get; init; }
-
-    public bool StudentCassExempt { get; init; }
-    public bool OtherIncome { get; init; }
-
-    /// <summary>Plătește deja CASS pentru celelalte venituri: <c>true</c> / <c>false</c>, <c>null</c> = nu știm.</summary>
-    public bool? OtherIncomeCassInsured { get; init; }
-    public bool OtherIndependent { get; init; }
-
-    /// <summary>Netul anual al celorlalte activități independente, când e cunoscut.</summary>
-    public decimal? OtherIndependentNetAnnual { get; init; }
-    public decimal? CasVoluntaryBase { get; init; }
-    public bool CassOptIn { get; init; }
-
-    /// <summary>Baza CASS aleasă prin opțiune, când e cunoscută.</summary>
-    public decimal? CassOptInBase { get; init; }
-    public bool CarriedLosses { get; init; }
-
-    /// <summary>Pierderea reportată recuperabilă în anul fiscal, când e cunoscută.</summary>
-    public decimal? CarriedLossesAmount { get; init; }
-    public bool CrossBorder { get; init; }
-    public bool TaxPaymentsMade { get; init; }
+    public bool Pensioner { get; init; }
+    public bool Student { get; init; }
+    public bool EmployedFullTime { get; init; }
     public bool PendingCorrection { get; init; }
+
+    /// <summary>Pierderea reportată, doar din istoricul D212 (motorul anual); profilul nu o mai cere.</summary>
+    public bool CarriedLosses { get; init; }
+    public decimal? CarriedLossesAmount { get; init; }
 }
 
 /// <summary>

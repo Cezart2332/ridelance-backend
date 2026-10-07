@@ -45,7 +45,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
         DateTime? UserLastActivityAtUtc,
         DateTime? ChatActivityAtUtc,
         DateTime? DeletedAtUtc,
-        PfaTaxProfileStatus? FiscalProfileStatus = null);
+        PfaTaxProfileStatus? FiscalProfileStatus = null,
+        string? FiscalAnswersJson = null);
 
     public async Task<Result<PfaRegistrationListResponse>> Handle(
         GetAllPfaRegistrationsQuery query,
@@ -111,6 +112,10 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                 context.PfaTaxProfiles
                     .Where(t => t.PfaRegistrationId == r.Id && t.TaxYear == taxYear)
                     .Select(t => (PfaTaxProfileStatus?)t.Status)
+                    .FirstOrDefault(),
+                context.PfaTaxProfiles
+                    .Where(t => t.PfaRegistrationId == r.Id && t.TaxYear == taxYear)
+                    .Select(t => t.AnswersJson)
                     .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
@@ -225,7 +230,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     x.OnboardingCompletedAtUtc,
                     hasRegistration,
                     x.DeletedAtUtc,
-                    FiscalProfileService.StatusCode(x.FiscalProfileStatus ?? PfaTaxProfileStatus.NotStarted));
+                    FiscalProfileService.StatusCode(x.FiscalProfileStatus ?? PfaTaxProfileStatus.NotStarted),
+                    x.FiscalAnswersJson is null ? null : FiscalProfileService.Deserialize(x.FiscalAnswersJson));
             })
             .ToList();
 

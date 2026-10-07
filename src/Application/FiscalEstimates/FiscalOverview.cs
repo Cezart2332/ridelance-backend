@@ -137,39 +137,18 @@ internal sealed class ListFiscalOverviewQueryHandler(IApplicationDbContext conte
     }
 }
 
-/// <summary>Eticheta scurtă a profilului fiscal, din răspunsurile PFA-ului (situațiile care schimbă taxele).</summary>
+/// <summary>Eticheta scurtă a profilului fiscal: situația PFA-ului („Pensionar · Angajat”, „Standard”).</summary>
 public static class FiscalProfileLabels
 {
     public static string Of(string answersJson)
     {
-        Dictionary<string, JsonElement> answers;
         try
         {
-            answers = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(answersJson) ?? [];
+            return FiscalProfileSchema.Label(FiscalProfileService.Deserialize(answersJson));
         }
         catch (JsonException)
         {
             return "Standard";
         }
-
-        string? Answer(string key) =>
-            answers.TryGetValue(key, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-
-        if (Answer("pensioner") == "yes")
-        {
-            return "Pensionar";
-        }
-
-        if (Answer("ownPensionSystem") == "yes")
-        {
-            return "Sistem propriu";
-        }
-
-        if (Answer("employment") is "full" or "part")
-        {
-            return Answer("salaryAboveCassMin") == "yes" ? "Salariat ≥ 6 salarii" : "Salariat < 6 salarii";
-        }
-
-        return Answer("student") == "yes" ? "Student" : "Standard";
     }
 }

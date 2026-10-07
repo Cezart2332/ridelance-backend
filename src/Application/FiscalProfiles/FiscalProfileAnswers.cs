@@ -1,75 +1,27 @@
 namespace Application.FiscalProfiles;
 
 /// <summary>
-/// Răspunsurile din formularul profilului fiscal, cu exact cheile din spec (§4). Tipat, nu un
-/// dicționar liber: o cheie scrisă greșit în frontend nu ajunge în baza de date.
+/// Situația fiscală a PFA-ului: singurele lucruri care schimbă CAS și CASS pentru un șofer
+/// ridesharing. Fiecare e <c>yes</c> / <c>no</c>; „Niciuna” înseamnă toate trei <c>no</c>.
+/// Se pot combina — un pensionar angajat are ambele excepții.
 /// </summary>
 /// <remarks>
-/// Toate sunt opționale aici, pentru că ciorna se salvează la fiecare pas. Ce e obligatoriu și
-/// când decide <see cref="FiscalProfileSchema"/>. Nicio întrebare nu are varianta „Nu știu”.
-/// Câmpurile marcate „contabil” nu sunt în formular: le completează contabilul din evidența lui
-/// (<see cref="StaffTaxInputs"/>), iar salvarea formularului nu le atinge.
+/// Înainte era un formular de 22 de întrebări (alte venituri, pierderi, opțiuni CASS, CAS
+/// voluntar, documente din perioade anterioare). Au fost scoase: un șofer le răspundea greu,
+/// iar calculul îl face oricum contabilul. Răspunsurile vechi din <c>AnswersJson</c> se ignoră la
+/// citire; doar <c>employment: "full"</c> se traduce în <see cref="EmployedFullTime"/>.
 /// </remarks>
 public sealed record FiscalProfileAnswers
 {
-    // Pasul 1 — Datele PFA
-    public string? DataCorrect { get; init; }
-    public string? CorrectionDetails { get; init; }
-    public string? PriorDocs { get; init; }
-    public string? PriorDocsLocation { get; init; }
-
-    // Pasul 2 — Situația ta
-    public string? Employment { get; init; }
-    public DateOnly? EmploymentStart { get; init; }
-    public DateOnly? EmploymentEnd { get; init; }
-
-    /// <summary>Salariul brut pe anul fiscal trece de pragul minim CASS (motorul de taxe, spec §1).</summary>
-    public string? SalaryAboveCassMin { get; init; }
+    /// <summary>Are calitatea de pensionar (Codul fiscal art. 150 alin. (1), art. 174 alin. (7) lit. c)).</summary>
     public string? Pensioner { get; init; }
-    public DateOnly? PensionerSince { get; init; }
+
+    /// <summary>Elev sau student, sub 26 de ani (art. 154 alin. (1) lit. a), art. 174 alin. (8) lit. a)).</summary>
     public string? Student { get; init; }
-    public string? OwnPensionSystem { get; init; }
-    public string? PrivateContact { get; init; }
 
-    // Pasul 3 — Alte venituri
-    public string? OtherIndependent { get; init; }
-    public string? OtherIndependentRecords { get; init; }
-
-    /// <summary>Contabil: netul pe anul fiscal din celelalte activități independente, lei.</summary>
-    public decimal? OtherIndependentNetAnnual { get; init; }
-    public string? OtherIncome { get; init; }
-
-    /// <summary>Contabil: plătește deja CASS pentru chirii, dividende, investiții (<c>yes</c> / <c>no</c>).</summary>
-    public string? OtherIncomeCassInsured { get; init; }
-    public string? TaxPaymentsMade { get; init; }
-    public string? CarriedLosses { get; init; }
-
-    /// <summary>Contabil: pierderea reportată care se mai poate recupera în anul fiscal, lei.</summary>
-    public decimal? CarriedLossesAmount { get; init; }
-    public string? CassOptIn { get; init; }
-
-    /// <summary>Contabil: baza pe care PFA-ul a optat să plătească CASS, lei pe an.</summary>
-    public decimal? CassOptInBase { get; init; }
-    public string? CasVoluntary { get; init; }
-
-    /// <summary>Baza CAS aleasă, lei pe an, când e peste minim.</summary>
-    public decimal? CasVoluntaryBase { get; init; }
-    public string? CrossBorder { get; init; }
-    public string? Notes { get; init; }
+    /// <summary>Angajat cu normă întreagă în altă parte (art. 174 alin. (7) lit. a)).</summary>
+    public string? EmployedFullTime { get; init; }
 }
-
-/// <summary>
-/// Ce întrebări condiționate apar pentru PFA-ul ăsta, calculat din datele precompletate.
-/// </summary>
-/// <param name="AskPriorDocs">Există un interval din anul fiscal neacoperit de datele din RIDElance.</param>
-/// <param name="PriorFrom">Începutul intervalului neacoperit.</param>
-/// <param name="PriorTo">Sfârșitul intervalului neacoperit.</param>
-/// <param name="AskCarriedLosses">PFA-ul e înființat înainte de anul fiscal, deci poate avea pierderi reportate.</param>
-public sealed record FiscalProfileConditions(
-    bool AskPriorDocs,
-    DateOnly? PriorFrom,
-    DateOnly? PriorTo,
-    bool AskCarriedLosses);
 
 /// <summary>Un câmp schimbat, pentru istoricul reviziilor.</summary>
 public sealed record FiscalProfileFieldChange(string Field, string? OldValue, string? NewValue);

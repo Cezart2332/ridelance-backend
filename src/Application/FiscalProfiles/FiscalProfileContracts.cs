@@ -37,11 +37,8 @@ public sealed record FiscalProfileResponse(
     DateTime UpdatedAtUtc,
     FiscalProfileActor? LastChangedBy,
     FiscalProfileFacts Facts,
-    FiscalProfileConditions Conditions,
     /// <summary>Cererile de corectare deschise. Doar pentru staff; PFA-ul le vede ca listă goală.</summary>
-    IReadOnlyList<DataCorrectionResponse> Corrections,
-    /// <summary>Pragul minim CASS al anului, pentru textul întrebării despre salariu. Din configurație.</summary>
-    decimal? CassMinThreshold);
+    IReadOnlyList<DataCorrectionResponse> Corrections);
 
 public sealed record FiscalProfileRevisionResponse(
     int Revision,

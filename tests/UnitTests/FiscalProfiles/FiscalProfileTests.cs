@@ -27,122 +27,56 @@ public sealed class FiscalProfileTests
 
     private static FiscalProfileAnswers Complete() => new()
     {
-        DataCorrect = "yes",
-        Employment = "none",
         Pensioner = "no",
         Student = "no",
-        OwnPensionSystem = "no",
-        PrivateContact = "no",
-        OtherIndependent = "no",
-        OtherIncome = "no",
-        TaxPaymentsMade = "no",
-        CassOptIn = "no",
-        CasVoluntary = "no",
-        CarriedLosses = "no",
-        CrossBorder = "no",
+        EmployedFullTime = "no",
     };
-
-    private static readonly FiscalProfileConditions NoConditions = new(false, null, null, false);
 
     // ── Schema ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Nicio_intrebare_nu_are_varianta_Nu_stiu_si_nu_se_intreaba_de_norma_de_venit()
+    public void Profilul_are_doar_trei_situatii()
     {
-        foreach (FiscalProfileSchema.Question question in FiscalProfileSchema.Questions)
-        {
-            question.Options.ShouldNotContain(o => o.Contains("stiu", StringComparison.OrdinalIgnoreCase) || o == "unknown");
-            question.Key.ShouldNotContain("norma", Case.Insensitive);
-        }
+        FiscalProfileSchema.Situations.Select(s => s.Key).ShouldBe(["pensioner", "student", "employedFullTime"]);
     }
 
     [Fact]
-    public void Campurile_ascunse_se_sterg_si_nu_blocheaza_validarea()
-    {
-        FiscalProfileAnswers answers = Complete() with
-        {
-            Employment = "none",
-            EmploymentStart = new DateOnly(2025, 1, 1),
-            Pensioner = "no",
-            PensionerSince = new DateOnly(2020, 1, 1),
-            CorrectionDetails = "rămas de la varianta „Nu”",
-            PriorDocs = "have",
-            CarriedLosses = "yes",
-        };
-
-        FiscalProfileAnswers normalized = FiscalProfileSchema.Normalize(answers, NoConditions);
-
-        normalized.EmploymentStart.ShouldBeNull();
-        normalized.PensionerSince.ShouldBeNull();
-        normalized.CorrectionDetails.ShouldBeNull();
-        normalized.PriorDocs.ShouldBeNull();
-        normalized.CarriedLosses.ShouldBeNull();
-        FiscalProfileSchema.Validate(normalized, NoConditions, requireAll: true).ShouldBeEmpty();
-    }
+    public void Niciuna_inseamna_toate_trei_nu_si_e_un_raspuns_complet() =>
+        FiscalProfileSchema.Validate(Complete(), requireAll: true).ShouldBeEmpty();
 
     [Fact]
-    public void Campurile_conditionate_vizibile_sunt_obligatorii()
+    public void Fara_raspuns_nu_se_poate_confirma()
     {
-        var conditions = new FiscalProfileConditions(true, new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 14), true);
-        FiscalProfileAnswers answers = Complete() with { DataCorrect = "no", Employment = "full", Pensioner = "yes", PriorDocs = "have", CarriedLosses = null };
+        Dictionary<string, string> errors = FiscalProfileSchema.Validate(new FiscalProfileAnswers { Pensioner = "yes" }, requireAll: true);
 
-        Dictionary<string, string> errors = FiscalProfileSchema.Validate(answers, conditions, requireAll: true);
-
-        errors["correctionDetails"].ShouldBe(FiscalProfileSchema.FillText);
-        errors["employmentStart"].ShouldBe(FiscalProfileSchema.FillDate);
-        errors["pensionerSince"].ShouldBe(FiscalProfileSchema.FillDate);
-        errors["priorDocsLocation"].ShouldBe(FiscalProfileSchema.ChooseAnswer);
-        errors["carriedLosses"].ShouldBe(FiscalProfileSchema.ChooseAnswer);
-        errors.ShouldNotContainKey("employmentEnd");
-        errors.ShouldNotContainKey("notes");
+        errors.Keys.ShouldBe(["student", "employedFullTime"], ignoreOrder: true);
+        errors["student"].ShouldBe(FiscalProfileSchema.ChooseAnswer);
     }
 
     [Fact]
     public void Ciorna_accepta_raspunsuri_lipsa_dar_nu_optiuni_inventate()
     {
-        FiscalProfileSchema.Validate(new FiscalProfileAnswers { Employment = "full" }, NoConditions, requireAll: false).ShouldBeEmpty();
-        FiscalProfileSchema.Validate(new FiscalProfileAnswers { Employment = "nu_stiu" }, NoConditions, requireAll: false)
-            .ShouldContainKey("employment");
+        FiscalProfileSchema.Validate(new FiscalProfileAnswers { Pensioner = "yes" }, requireAll: false).ShouldBeEmpty();
+        FiscalProfileSchema.Validate(new FiscalProfileAnswers { Student = "nu_stiu" }, requireAll: false).ShouldContainKey("student");
     }
 
-    // ── Întrebările condiționate ─────────────────────────────────────────────
+    [Theory]
+    [InlineData("no", "no", "no", "Standard")]
+    [InlineData("yes", "no", "yes", "Pensionar · Angajat")]
+    [InlineData("no", "yes", "no", "Student")]
+    public void Eticheta_spune_situatia(string pensioner, string student, string employed, string label) =>
+        FiscalProfileSchema.Label(new FiscalProfileAnswers { Pensioner = pensioner, Student = student, EmployedFullTime = employed })
+            .ShouldBe(label);
 
+    /// <summary>Profilurile completate cu formularul vechi rămân valabile: întrebările scoase se ignoră.</summary>
     [Fact]
-    public void PFA_existent_intrat_recent_are_interval_neacoperit()
+    public void Un_profil_vechi_se_citeste_fara_intrebarile_scoase()
     {
-        FiscalProfileConditions c = FiscalProfileService.ComputeConditions(
-            2026, new DateOnly(2019, 5, 2), PfaSource.Existing, new DateOnly(2026, 3, 15), null);
+        FiscalProfileAnswers old = FiscalProfileService.Deserialize(
+            """{"dataCorrect":"yes","employment":"full","salaryAboveCassMin":"yes","pensioner":"yes","student":"no","crossBorder":"no","carriedLosses":"yes"}""");
 
-        c.AskPriorDocs.ShouldBeTrue();
-        c.PriorFrom.ShouldBe(new DateOnly(2026, 1, 1));
-        c.PriorTo.ShouldBe(new DateOnly(2026, 3, 14));
-        c.AskCarriedLosses.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void PFA_nou_infiintat_dupa_acces_nu_primeste_intrebarile_de_interval_si_pierderi()
-    {
-        FiscalProfileConditions c = FiscalProfileService.ComputeConditions(
-            2026, new DateOnly(2026, 4, 10), PfaSource.ViaPartner, new DateOnly(2026, 3, 15), null);
-
-        c.AskPriorDocs.ShouldBeFalse();
-        c.AskCarriedLosses.ShouldBeFalse();
-    }
-
-    [Fact]
-    public void Luna_procesata_de_contabil_muta_inceputul_acoperirii()
-    {
-        FiscalProfileConditions c = FiscalProfileService.ComputeConditions(
-            2026, new DateOnly(2018, 1, 1), PfaSource.Existing, new DateOnly(2026, 6, 20), new DateOnly(2026, 2, 1));
-
-        c.PriorTo.ShouldBe(new DateOnly(2026, 1, 31));
-    }
-
-    [Fact]
-    public void Acces_din_anul_trecut_inseamna_an_acoperit()
-    {
-        FiscalProfileService.ComputeConditions(2026, new DateOnly(2018, 1, 1), PfaSource.Existing, new DateOnly(2025, 6, 1), null)
-            .AskPriorDocs.ShouldBeFalse();
+        old.ShouldBe(new FiscalProfileAnswers { Pensioner = "yes", Student = "no", EmployedFullTime = "yes" });
+        FiscalProfileService.Deserialize("""{"employment":"part"}""").EmployedFullTime.ShouldBe("no");
     }
 
     // ── Fluxul PFA ───────────────────────────────────────────────────────────
@@ -157,7 +91,7 @@ public sealed class FiscalProfileTests
         FiscalProfileService service = Service(db, owner.Id);
 
         Result<FiscalProfileResponse> draft = await new SaveFiscalProfileDraftCommandHandler(service)
-            .Handle(new SaveFiscalProfileDraftCommand(2026, new FiscalProfileAnswers { Employment = "none" }, null), default);
+            .Handle(new SaveFiscalProfileDraftCommand(2026, new FiscalProfileAnswers { Pensioner = "no" }, null), default);
         draft.Value.Status.ShouldBe("DRAFT");
 
         (await new GetEstimatedTaxesQueryHandler(db, service).Handle(new GetEstimatedTaxesQuery(FiscalProfileScope.Pfa, null, 2026), default))
@@ -179,27 +113,10 @@ public sealed class FiscalProfileTests
         (await db.PfaTaxProfileRevisions.CountAsync()).ShouldBe(1);
     }
 
-    [Fact]
-    public async Task Raspunsul_Nu_la_date_deschide_o_cerere_de_corectare_fara_sa_atinga_sursa()
-    {
-        await using ApplicationDbContext db = NewDb();
-        (User owner, PfaRegistration pfa) = Seed(db);
-        FiscalProfileService service = Service(db, owner.Id);
-
-        await new CompleteFiscalProfileCommandHandler(db, service).Handle(
-            new CompleteFiscalProfileCommand(2026, Complete() with { DataCorrect = "no", CorrectionDetails = "Activitatea a început în iunie." }, true, null),
-            default);
-
-        PfaDataCorrectionRequest correction = await db.PfaDataCorrectionRequests.SingleAsync();
-        correction.Details.ShouldBe("Activitatea a început în iunie.");
-        correction.PfaRegistrationId.ShouldBe(pfa.Id);
-        (await db.PfaRegistrations.SingleAsync()).Cui.ShouldBe("12345678");
-    }
-
     // ── Staff ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Staff_editeaza_cu_motiv_obligatoriu_si_nu_poate_completa_profilul()
+    public async Task Staff_alege_situatia_cu_motiv_si_deblocheaza_estimarile()
     {
         await using ApplicationDbContext db = NewDb();
         (_, PfaRegistration pfa) = Seed(db);
@@ -216,15 +133,16 @@ public sealed class FiscalProfileTests
             new EditFiscalProfileCommand(FiscalProfileScope.Admin, pfa.Id, 2026, Complete(), "Discutat telefonic", 0), default);
 
         edited.IsSuccess.ShouldBeTrue();
-        // Toate răspunsurile date de staff, dar tot ciornă: doar PFA-ul confirmă.
-        edited.Value.Status.ShouldBe("DRAFT");
+        // Selectorul rapid din lista de clienți: cu situația aleasă, profilul e complet.
+        edited.Value.Status.ShouldBe("COMPLETED");
+        edited.Value.EstimatedTaxesUnlockedAtUtc.ShouldBe(Now);
         edited.Value.Revision.ShouldBe(1);
 
         FiscalProfileRevisionResponse revision = (await new GetFiscalProfileRevisionsQueryHandler(db, service)
             .Handle(new GetFiscalProfileRevisionsQuery(FiscalProfileScope.Admin, pfa.Id, 2026), default)).Value.Single();
         revision.Actor.Role.ShouldBe("admin");
         revision.Reason.ShouldBe("Discutat telefonic");
-        revision.Changes.ShouldContain(c => c.Field == "employment" && c.OldValue == null && c.NewValue == "none");
+        revision.Changes.ShouldContain(c => c.Field == "employedFullTime" && c.OldValue == null && c.NewValue == "no");
     }
 
     [Fact]
@@ -274,63 +192,6 @@ public sealed class FiscalProfileTests
         (await new GetFiscalProfileQueryHandler(Service(db, other.Id))
             .Handle(new GetFiscalProfileQuery(FiscalProfileScope.Admin, pfa.Id, 2026), default))
             .IsFailure.ShouldBeTrue();
-    }
-
-    [Fact]
-    public async Task Contabilul_completeaza_sumele_iar_formularul_PFA_nu_le_atinge()
-    {
-        await using ApplicationDbContext db = NewDb();
-        (User owner, PfaRegistration pfa) = Seed(db);
-        User contabil = AddUser(db, UserRole.Contabil);
-        pfa.AssignedContabilId = contabil.Id;
-        await db.SaveChangesAsync();
-
-        FiscalProfileService pfaService = Service(db, owner.Id);
-        FiscalProfileAnswers answers = Complete() with { OtherIndependent = "yes", OtherIndependentRecords = "yes", OtherIncome = "yes" };
-        await new SaveFiscalProfileDraftCommandHandler(pfaService).Handle(new SaveFiscalProfileDraftCommand(2026, answers, null), default);
-        Result<FiscalProfileResponse> completed = await new CompleteFiscalProfileCommandHandler(db, pfaService)
-            .Handle(new CompleteFiscalProfileCommand(2026, answers, true, null), default);
-        completed.IsSuccess.ShouldBeTrue();
-
-        // PFA-ul nu poate folosi ruta contabilului.
-        (await new SaveStaffTaxInputsCommandHandler(db, pfaService)
-            .Handle(new SaveStaffTaxInputsCommand(FiscalProfileScope.Pfa, pfa.Id, 2026, new StaffTaxInputs(1, null, null, null), null), default))
-            .IsFailure.ShouldBeTrue();
-
-        FiscalProfileService staff = Service(db, contabil.Id);
-        StaffTaxInputsResponse shown = (await new GetStaffTaxInputsQueryHandler(staff)
-            .Handle(new GetStaffTaxInputsQuery(FiscalProfileScope.Accounting, pfa.Id, 2026), default)).Value;
-        shown.AskOtherIndependentNetAnnual.ShouldBeTrue();
-        shown.AskOtherIncomeCassInsured.ShouldBeTrue();
-        shown.AskCassOptInBase.ShouldBeFalse();
-
-        // O sumă pentru o întrebare la care PFA-ul a spus „Nu” nu se păstrează.
-        Result<StaffTaxInputsResponse> saved = await new SaveStaffTaxInputsCommandHandler(db, staff).Handle(
-            new SaveStaffTaxInputsCommand(FiscalProfileScope.Accounting, pfa.Id, 2026, new StaffTaxInputs(18_000, "yes", null, 30_000), shown.Revision),
-            default);
-        saved.IsSuccess.ShouldBeTrue();
-        saved.Value.OtherIndependentNetAnnual.ShouldBe(18_000);
-        saved.Value.OtherIncomeCassInsured.ShouldBe("yes");
-        saved.Value.CassOptInBase.ShouldBeNull();
-
-        // PFA-ul își editează profilul cu formularul, care nu are sumele: ele rămân.
-        FiscalProfileResponse current = (await new GetFiscalProfileQueryHandler(pfaService)
-            .Handle(new GetFiscalProfileQuery(FiscalProfileScope.Pfa, null, 2026), default)).Value;
-        Result<FiscalProfileResponse> edited = await new EditFiscalProfileCommandHandler(db, pfaService).Handle(
-            new EditFiscalProfileCommand(FiscalProfileScope.Pfa, null, 2026, answers with { TaxPaymentsMade = "yes" }, null, current.Revision),
-            default);
-        edited.IsSuccess.ShouldBeTrue();
-        PfaTaxProfile profile = await db.PfaTaxProfiles.SingleAsync(p => p.PfaRegistrationId == pfa.Id);
-        FiscalProfileAnswers stored = FiscalProfileService.Deserialize(profile.AnswersJson);
-        stored.OtherIndependentNetAnnual.ShouldBe(18_000);
-        stored.OtherIncomeCassInsured.ShouldBe("yes");
-
-        // „Nu” la activitățile independente șterge și netul lor.
-        await new EditFiscalProfileCommandHandler(db, pfaService).Handle(
-            new EditFiscalProfileCommand(FiscalProfileScope.Pfa, null, 2026, answers with { OtherIndependent = "no", OtherIndependentRecords = null }, null, profile.Revision),
-            default);
-        FiscalProfileService.Deserialize((await db.PfaTaxProfiles.SingleAsync(p => p.PfaRegistrationId == pfa.Id)).AnswersJson)
-            .OtherIndependentNetAnnual.ShouldBeNull();
     }
 
     // ── Reamintiri ───────────────────────────────────────────────────────────
@@ -460,7 +321,7 @@ public sealed class FiscalProfileTests
 
         // Ciornă: endpointul e blocat și nu se creează nicio rulare.
         await new SaveFiscalProfileDraftCommandHandler(service)
-            .Handle(new SaveFiscalProfileDraftCommand(2026, new FiscalProfileAnswers { Employment = "none" }, null), default);
+            .Handle(new SaveFiscalProfileDraftCommand(2026, new FiscalProfileAnswers { Pensioner = "no" }, null), default);
         (await recalculate.Handle(new RecalculateEstimatedTaxesCommand(pfa.Id, 2026), default)).Value.ShouldBeNull();
         (await db.FiscalEstimateRuns.CountAsync()).ShouldBe(0);
 
@@ -552,7 +413,7 @@ public sealed class FiscalProfileTests
     }
 
     private static FiscalProfileService Service(ApplicationDbContext db, Guid userId) =>
-        new(db, new StubUser(userId), new NoLookup(), new FixedClock(), NullLogger<FiscalProfileService>.Instance, new TaxYearParametersProvider());
+        new(db, new StubUser(userId), new NoLookup(), new FixedClock(), NullLogger<FiscalProfileService>.Instance);
 
     private static ApplicationDbContext NewDb() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,

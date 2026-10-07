@@ -84,7 +84,7 @@ internal sealed class RecalculateEstimatedTaxesCommandHandler(
 
         FinancialSnapshot snapshot = await snapshots.GetAsync(pfa, profile, today, cancellationToken);
         IncomeProjection projection = IncomeProjector.Project(snapshot);
-        ProfileFlags flags = ProfileFlagsMapper.Map(FiscalProfileService.Deserialize(profile.AnswersJson), profile.TaxYear, pendingCorrection);
+        ProfileFlags flags = ProfileFlagsMapper.Map(FiscalProfileService.Deserialize(profile.AnswersJson), pendingCorrection);
 
         var yearEnd = new DateOnly(profile.TaxYear, 12, 31);
         int weeksLeft = Math.Max(1, (int)Math.Ceiling(Math.Max(0, yearEnd.DayNumber - snapshot.AsOf.DayNumber) / 7m));

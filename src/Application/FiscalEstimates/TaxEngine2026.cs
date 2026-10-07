@@ -49,69 +49,45 @@ public sealed class TaxEngine2026 : ITaxEngine
 
         decimal n = Math.Max(0, projected);
 
-        if (flags.CrossBorder)
-        {
-            return Finish(input, parameters, AllThree(TaxStatuses.RequiresClarification, TaxReasons.CrossBorder, ["crossBorderDetails"]), platformTaxes, []);
-        }
-
-        // Fără netul celorlalte activități nu știm plafonul CAS (se aplică pe total), deci nimic.
-        if (flags.OtherIndependent && flags.OtherIndependentNetAnnual is null)
-        {
-            return Finish(
-                input,
-                parameters,
-                AllThree(TaxStatuses.RequiresClarification, TaxReasons.OtherIndependentTotal, ["otherIndependentNetAnnual"]),
-                platformTaxes,
-                []);
-        }
-
-        decimal otherNet = flags.OtherIndependent ? Math.Max(0, flags.OtherIndependentNetAnnual ?? 0) : 0;
-
         var warnings = new List<string>();
         if (projection.UncoveredPeriod is not null)
         {
             warnings.Add(TaxWarnings.CoverageGap);
         }
 
-        ComponentResult cas = Cas(n, otherNet, flags, parameters, warnings);
-        (ComponentResult cass, decimal cassDeductible) = Cass(n, otherNet, flags, parameters);
+        ComponentResult cas = Cas(n, flags, parameters, warnings);
+        (ComponentResult cass, decimal cassDeductible) = Cass(n, flags, parameters);
         ComponentResult tax = IncomeTax(n, cas, cassDeductible, flags, parameters);
 
         return Finish(input, parameters, [cas, cass, tax], platformTaxes, warnings);
     }
 
-    /// <param name="otherNet">Netul anual al celorlalte activități independente (0 dacă nu are).</param>
-    private static ComponentResult Cas(decimal n, decimal otherNet, ProfileFlags flags, TaxYearParameters p, List<string> warnings)
+    /// <summary>
+    /// CAS: 0 sub 12 salarii minime, apoi pe baza de 12 sau 24 de salarii (art. 148). Pensionarul
+    /// nu datorează CAS (art. 150 alin. (1)); studentul și angajatul da.
+    /// </summary>
+    private static ComponentResult Cas(decimal n, ProfileFlags flags, TaxYearParameters p, List<string> warnings)
     {
-        if (flags.PensionerFullYear || flags.OwnPensionSystem)
+        if (flags.Pensioner)
         {
             return Estimated(TaxComponents.Cas, 0, new Dictionary<string, object?>
             {
                 ["N"] = n,
-                ["exception"] = flags.PensionerFullYear ? "pensionerFullYear" : "ownPensionSystem",
+                ["exception"] = "pensioner",
             });
         }
 
-        if (flags.PensionerMidYear)
+        decimal casBase = p.CasThreshold24;
+        if (n < p.CasThreshold12)
         {
-            return Clarify(TaxComponents.Cas, TaxReasons.PensionerMidYear, ["pensionerSince"]);
+            casBase = 0;
+        }
+        else if (n < p.CasThreshold24)
+        {
+            casBase = p.CasThreshold12;
         }
 
-        // Plafoanele CAS se aplică pe tot netul din activități independente, nu doar pe PFA (spec §6).
-        decimal nCas = n + otherNet;
-        decimal thresholdBase = p.CasThreshold24;
-        if (nCas < p.CasThreshold12)
-        {
-            thresholdBase = 0;
-        }
-        else if (nCas < p.CasThreshold24)
-        {
-            thresholdBase = p.CasThreshold12;
-        }
-
-        decimal casBase = flags.CasVoluntaryBase is decimal voluntary ? Math.Max(thresholdBase, voluntary) : thresholdBase;
-
-        if (IsNear(nCas, p.CasThreshold12) || IsNear(nCas, p.CasThreshold24))
+        if (IsNear(n, p.CasThreshold12) || IsNear(n, p.CasThreshold24))
         {
             warnings.Add(TaxWarnings.CasThresholdNear);
         }
@@ -119,49 +95,17 @@ public sealed class TaxEngine2026 : ITaxEngine
         return Estimated(TaxComponents.Cas, Round(p.CasRate * casBase), new Dictionary<string, object?>
         {
             ["N"] = n,
-            ["otherIndependentNet"] = otherNet,
-            ["N_CAS"] = nCas,
-            ["thresholdBase"] = thresholdBase,
-            ["voluntaryBase"] = flags.CasVoluntaryBase,
             ["base"] = casBase,
             ["rate"] = p.CasRate,
         });
     }
 
     /// <summary>
-    /// CASS pe profitul PFA, apoi opțiunea de plată CASS, dacă PFA-ul a ales-o: se plătește cea mai
-    /// mare dintre cele două. Deductibilul (pentru impozit) rămâne 10% din N.
+    /// CASS: 10% din net, plafonat la 72 de salarii (art. 170 alin. (1)). Sub 6 salarii se
+    /// completează până la minim (art. 174 alin. (6)), cu excepția pensionarului, studentului și
+    /// angajatului full-time (art. 174 alin. (7) și (8)). Deductibilul pentru impozit rămâne 10% din net.
     /// </summary>
-    private static (ComponentResult Result, decimal Deductible) Cass(decimal n, decimal otherNet, ProfileFlags flags, TaxYearParameters p)
-    {
-        (ComponentResult result, decimal deductible) = CassOnProfit(n, otherNet, flags, p);
-        if (!flags.CassOptIn)
-        {
-            return (result, deductible);
-        }
-
-        if (flags.CassOptInBase is not decimal optInBase)
-        {
-            return (Clarify(TaxComponents.Cass, TaxReasons.CassOptIn, ["cassOptInBase"]), deductible);
-        }
-
-        if (result.Status != TaxStatuses.Estimated)
-        {
-            return (result, deductible);
-        }
-
-        decimal optInAmount = Round(p.CassRate * Math.Min(optInBase, p.CassMaxBase));
-        var breakdown = new Dictionary<string, object?>(result.Breakdown) { ["optInBase"] = optInBase };
-        if (optInAmount <= (result.Amount ?? 0))
-        {
-            return (result with { Breakdown = breakdown }, deductible);
-        }
-
-        breakdown["branch"] = "optIn";
-        return (Estimated(TaxComponents.Cass, optInAmount, breakdown), deductible);
-    }
-
-    private static (ComponentResult Result, decimal Deductible) CassOnProfit(decimal n, decimal otherNet, ProfileFlags flags, TaxYearParameters p)
+    private static (ComponentResult Result, decimal Deductible) Cass(decimal n, ProfileFlags flags, TaxYearParameters p)
     {
         decimal baseCass = Math.Min(n, p.CassMaxBase);
         decimal deductible = Round(p.CassRate * baseCass);
@@ -173,43 +117,25 @@ public sealed class TaxEngine2026 : ITaxEngine
             ["deductible"] = deductible,
         };
 
+        // Pierdere sau net zero: nu se datorează CASS (art. 174 alin. (2)).
         if (n <= 0)
         {
             breakdown["branch"] = "zero";
             return (Estimated(TaxComponents.Cass, 0, breakdown), 0);
         }
 
-        // Minimul se completează o singură dată, pe tot netul din activități independente: cu
-        // celelalte activități peste prag, PFA-ul plătește doar 10% din profitul lui.
-        if (n + otherNet >= p.CassMinThreshold)
+        if (n >= p.CassMinThreshold)
         {
-            breakdown["branch"] = n >= p.CassMinThreshold ? "rate" : "combined";
-            breakdown["otherIndependentNet"] = otherNet;
+            breakdown["branch"] = "rate";
             return (Estimated(TaxComponents.Cass, deductible, breakdown), deductible);
         }
 
-        // Sub prag: excepțiile scot doar completarea până la minim, nu CASS pe profitul PFA.
         string? exception = CassMinimumException(flags);
         if (exception is not null)
         {
             breakdown["branch"] = "exception";
             breakdown["exception"] = exception;
             return (Estimated(TaxComponents.Cass, deductible, breakdown), deductible);
-        }
-
-        if (flags.PensionerMidYear)
-        {
-            return (Clarify(TaxComponents.Cass, TaxReasons.PensionerMidYear, ["pensionerSince"]), deductible);
-        }
-
-        if (flags.SalariedCassUnknown)
-        {
-            return (Clarify(TaxComponents.Cass, TaxReasons.CassExceptionUnknown, ["salaryAboveCassMin"]), deductible);
-        }
-
-        if (flags.OtherIncome && flags.OtherIncomeCassInsured is null)
-        {
-            return (Clarify(TaxComponents.Cass, TaxReasons.CassExceptionUnknown, ["otherIncomeCassInsured"]), deductible);
         }
 
         breakdown["branch"] = "minimum";
@@ -219,22 +145,17 @@ public sealed class TaxEngine2026 : ITaxEngine
 
     private static string? CassMinimumException(ProfileFlags flags)
     {
-        if (flags.SalariedCassExempt)
+        if (flags.EmployedFullTime)
         {
-            return "salariedCassExempt";
+            return "employedFullTime";
         }
 
-        if (flags.PensionerFullYear)
+        if (flags.Pensioner)
         {
-            return "pensionerFullYear";
+            return "pensioner";
         }
 
-        if (flags.OtherIncome && flags.OtherIncomeCassInsured == true)
-        {
-            return "otherIncomeCassInsured";
-        }
-
-        return flags.StudentCassExempt ? "studentCassExempt" : null;
+        return flags.Student ? "student" : null;
     }
 
     private static ComponentResult IncomeTax(decimal n, ComponentResult cas, decimal cassDeductible, ProfileFlags flags, TaxYearParameters p)
@@ -292,12 +213,6 @@ public sealed class TaxEngine2026 : ITaxEngine
                 status = TaxStatuses.RequiresClarification;
             }
             reserve = new ReserveResult(status, null, null, null, missing, three[0].ReasonCode, assumedZero);
-        }
-        else if (input.Flags.TaxPaymentsMade && input.RecordedTaxPayments <= 0)
-        {
-            // PFA-ul spune că a plătit deja, dar plățile nu apar în evidență: o sumă de pus deoparte
-            // fără ele ar fi prea mare.
-            reserve = new ReserveResult(TaxStatuses.RequiresClarification, null, null, null, missing, TaxReasons.TaxPaymentsMissing, assumedZero);
         }
         else
         {

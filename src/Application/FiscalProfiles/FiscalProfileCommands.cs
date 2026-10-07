@@ -93,12 +93,8 @@ internal sealed class SaveFiscalProfileDraftCommandHandler(FiscalProfileService 
             return Result.Failure<FiscalProfileResponse>(revision.Error);
         }
 
-        FiscalProfileConditions conditions = await service.ConditionsAsync(pfa.Value, profile, cancellationToken);
-        // Datele completate de contabil nu vin din formular: rămân cele salvate.
-        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(
-            FiscalProfileSchema.KeepStaffInputs(command.Answers ?? new FiscalProfileAnswers(), FiscalProfileService.Deserialize(profile.AnswersJson)),
-            conditions);
-        Dictionary<string, string> errors = FiscalProfileSchema.Validate(answers, conditions, requireAll: false);
+        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(command.Answers ?? new FiscalProfileAnswers());
+        Dictionary<string, string> errors = FiscalProfileSchema.Validate(answers, requireAll: false);
         if (errors.Count > 0)
         {
             return Result.Failure<FiscalProfileResponse>(FiscalProfileService.ToValidationError(errors));
@@ -153,12 +149,8 @@ internal sealed class CompleteFiscalProfileCommandHandler(IApplicationDbContext 
             return Result.Failure<FiscalProfileResponse>(revision.Error);
         }
 
-        FiscalProfileConditions conditions = await service.ConditionsAsync(pfa.Value, profile, cancellationToken);
-        // Datele completate de contabil nu vin din formular: rămân cele salvate.
-        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(
-            FiscalProfileSchema.KeepStaffInputs(command.Answers ?? new FiscalProfileAnswers(), FiscalProfileService.Deserialize(profile.AnswersJson)),
-            conditions);
-        Dictionary<string, string> errors = FiscalProfileSchema.Validate(answers, conditions, requireAll: true);
+        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(command.Answers ?? new FiscalProfileAnswers());
+        Dictionary<string, string> errors = FiscalProfileSchema.Validate(answers, requireAll: true);
         if (!command.Confirmed)
         {
             errors["confirmed"] = "Bifează confirmarea ca să activezi estimările.";
@@ -181,18 +173,7 @@ internal sealed class CompleteFiscalProfileCommandHandler(IApplicationDbContext 
         service.Touch(profile);
         service.AddRevision(profile, FiscalProfileScope.Pfa, FiscalProfileSchema.Diff(before, answers), null);
 
-        List<AdminCallTask> openTasks = await context.AdminCallTasks
-            .Where(t => t.PfaRegistrationId == pfa.Value.Id
-                && t.TaxYear == command.Year
-                && (t.State == AdminCallTaskState.Open || t.State == AdminCallTaskState.Rescheduled))
-            .ToListAsync(cancellationToken);
-        foreach (AdminCallTask task in openTasks)
-        {
-            task.State = AdminCallTaskState.ResolvedByCompletion;
-            task.ClosedAtUtc = now;
-        }
-
-        FiscalProfileCorrections.OpenIfNeeded(context, pfa.Value, profile, before, answers, now, onConfirmation: true);
+        await FiscalProfileCompletion.CloseCallTasksAsync(context, pfa.Value.Id, command.Year, now, cancellationToken);
         await FiscalEstimateInvalidation.MarkStaleAsync(context, pfa.Value.Id, command.Year, now, cancellationToken);
 
         if (pfa.Value.AssignedContabilId is Guid contabilId)
@@ -273,15 +254,11 @@ internal sealed class EditFiscalProfileCommandHandler(IApplicationDbContext cont
             return Result.Failure<FiscalProfileResponse>(revision.Error);
         }
 
-        FiscalProfileConditions conditions = await service.ConditionsAsync(pfa.Value, profile, cancellationToken);
-        // Datele completate de contabil nu vin din formular: rămân cele salvate.
-        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(
-            FiscalProfileSchema.KeepStaffInputs(command.Answers ?? new FiscalProfileAnswers(), FiscalProfileService.Deserialize(profile.AnswersJson)),
-            conditions);
+        FiscalProfileAnswers answers = FiscalProfileSchema.Normalize(command.Answers ?? new FiscalProfileAnswers());
 
         // Un profil completat rămâne complet după editare; o ciornă poate rămâne parțială.
         Dictionary<string, string> errors = FiscalProfileSchema.Validate(
-            answers, conditions, requireAll: profile.Status == PfaTaxProfileStatus.Completed);
+            answers, requireAll: profile.Status == PfaTaxProfileStatus.Completed);
         if (errors.Count > 0)
         {
             return Result.Failure<FiscalProfileResponse>(FiscalProfileService.ToValidationError(errors));
@@ -300,13 +277,21 @@ internal sealed class EditFiscalProfileCommandHandler(IApplicationDbContext cont
             profile.Status = PfaTaxProfileStatus.Draft;
         }
 
+        // Situația aleasă de admin sau contabil (selectorul rapid din lista de clienți) e tot ce
+        // cere profilul: cu toate trei răspunsurile date, estimările se deblochează. Fără asta,
+        // selectorul ar fi lăsat profilul în ciornă, iar estimările nu rulează decât pe unul completat.
+        if (isStaff && profile.Status != PfaTaxProfileStatus.Completed
+            && FiscalProfileSchema.Validate(answers, requireAll: true).Count == 0)
+        {
+            DateTime now = service.UtcNow;
+            profile.Status = PfaTaxProfileStatus.Completed;
+            profile.CompletedAtUtc = now;
+            profile.EstimatedTaxesUnlockedAtUtc = now;
+            await FiscalProfileCompletion.CloseCallTasksAsync(context, pfa.Value.Id, command.Year, now, cancellationToken);
+        }
+
         service.Touch(profile);
         service.AddRevision(profile, command.Scope, changes, reason);
-
-        if (!isStaff)
-        {
-            FiscalProfileCorrections.OpenIfNeeded(context, pfa.Value, profile, before, answers, service.UtcNow, onConfirmation: false);
-        }
 
         // Orice editare (PFA, admin, contabilitate) schimbă ce intră în calcul.
         await FiscalEstimateInvalidation.MarkStaleAsync(context, pfa.Value.Id, command.Year, service.UtcNow, cancellationToken);
@@ -470,41 +455,27 @@ internal static class FiscalProfileCorrections
 
     public static DataCorrectionResponse ToResponse(PfaDataCorrectionRequest c) =>
         new(c.Id, c.Fields, c.Details, c.State.ToString(), c.CreatedAtUtc, c.ResolvedAtUtc);
+}
 
-    /// <summary>
-    /// „Nu, trebuie corectate” de la pasul 1 devine o cerere de corectare pentru echipă. Sursa
-    /// datelor nu se atinge. La confirmare se deschide mereu (ciorna n-a deschis nimic); la o
-    /// editare, doar dacă textul s-a schimbat.
-    /// </summary>
-    public static void OpenIfNeeded(
+internal static class FiscalProfileCompletion
+{
+    /// <summary>Profilul e completat: sarcinile de apel deschise pentru el se închid.</summary>
+    public static async Task CloseCallTasksAsync(
         IApplicationDbContext context,
-        PfaRegistration pfa,
-        PfaTaxProfile profile,
-        FiscalProfileAnswers before,
-        FiscalProfileAnswers after,
+        Guid pfaRegistrationId,
+        int year,
         DateTime nowUtc,
-        bool onConfirmation)
+        CancellationToken cancellationToken)
     {
-        if (after.DataCorrect != FiscalProfileSchema.No || string.IsNullOrWhiteSpace(after.CorrectionDetails))
+        List<AdminCallTask> openTasks = await context.AdminCallTasks
+            .Where(t => t.PfaRegistrationId == pfaRegistrationId
+                && t.TaxYear == year
+                && (t.State == AdminCallTaskState.Open || t.State == AdminCallTaskState.Rescheduled))
+            .ToListAsync(cancellationToken);
+        foreach (AdminCallTask task in openTasks)
         {
-            return;
+            task.State = AdminCallTaskState.ResolvedByCompletion;
+            task.ClosedAtUtc = nowUtc;
         }
-
-        bool unchanged = before.DataCorrect == FiscalProfileSchema.No
-            && string.Equals(before.CorrectionDetails, after.CorrectionDetails, StringComparison.Ordinal);
-        if (unchanged && !onConfirmation)
-        {
-            return;
-        }
-
-        context.PfaDataCorrectionRequests.Add(new PfaDataCorrectionRequest
-        {
-            Id = Guid.NewGuid(),
-            PfaRegistrationId = pfa.Id,
-            ProfileId = profile.Id,
-            Fields = AccountData,
-            Details = after.CorrectionDetails,
-            CreatedAtUtc = nowUtc,
-        });
     }
 }

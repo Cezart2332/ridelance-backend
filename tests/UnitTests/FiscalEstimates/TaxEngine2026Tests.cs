@@ -49,8 +49,8 @@ public sealed class TaxEngine2026Tests
     {
         ProfileFlags flags = scenario switch
         {
-            "B" => new ProfileFlags { SalariedCassExempt = true },
-            "D" => new ProfileFlags { PensionerFullYear = true },
+            "B" => new ProfileFlags { EmployedFullTime = true },
+            "D" => new ProfileFlags { Pensioner = true },
             _ => new ProfileFlags(),
         };
 
@@ -87,72 +87,59 @@ public sealed class TaxEngine2026Tests
         C(r, TaxComponents.Cass).Breakdown["branch"].ShouldBe(cassBranch);
     }
 
-    // ── §12.3 Cazuri de status ──────────────────────────────────────────────
+    // ── §12.3 Situațiile din profil ─────────────────────────────────────────
 
+    /// <summary>Codul fiscal art. 150 alin. (1): pensionarul nu datorează CAS, oricât ar câștiga.</summary>
     [Fact]
-    public void Alte_venituri_sub_prag_cer_clarificare_doar_la_CASS()
+    public void Pensionarul_nu_plateste_CAS_dar_plateste_CASS_fara_minim()
     {
-        TaxResult r = Run(20_000, new ProfileFlags { OtherIncome = true });
+        TaxResult high = Run(60_000, new ProfileFlags { Pensioner = true });
+        C(high, TaxComponents.Cas).Amount.ShouldBe(0);
+        C(high, TaxComponents.Cass).Amount.ShouldBe(6_000);
 
-        C(r, TaxComponents.Cass).Status.ShouldBe(TaxStatuses.RequiresClarification);
-        C(r, TaxComponents.Cass).Amount.ShouldBeNull();
-        C(r, TaxComponents.Cass).ReasonCode.ShouldBe(TaxReasons.CassExceptionUnknown);
-        C(r, TaxComponents.IncomeTax).Status.ShouldBe(TaxStatuses.Estimated);
-        C(r, TaxComponents.IncomeTax).Amount.ShouldBe(1_800);
-        r.Reserve.Status.ShouldBe(TaxStatuses.Partial);
-        r.Reserve.Missing.ShouldBe([TaxComponents.Cass]);
+        TaxResult low = Run(10_000, new ProfileFlags { Pensioner = true });
+        C(low, TaxComponents.Cass).Amount.ShouldBe(1_000);
+        C(low, TaxComponents.Cass).Breakdown["exception"].ShouldBe("pensioner");
+    }
+
+    /// <summary>
+    /// Art. 154 alin. (1) lit. a): studentul cu venituri din activități independente datorează CASS
+    /// pentru ele. Scapă doar de completarea până la 6 salarii (art. 174 alin. (8) lit. a)).
+    /// </summary>
+    [Fact]
+    public void Studentul_plateste_CASS_din_profit_fara_minim_si_CAS_ca_oricine()
+    {
+        TaxResult low = Run(10_000, new ProfileFlags { Student = true });
+        C(low, TaxComponents.Cass).Amount.ShouldBe(1_000);
+        C(low, TaxComponents.Cas).Amount.ShouldBe(0);
+
+        C(Run(60_000, new ProfileFlags { Student = true }), TaxComponents.Cas).Amount.ShouldBe(12_150);
+    }
+
+    /// <summary>
+    /// Art. 174 alin. (7) lit. a): angajatul nu completează CASS la minim. Art. 150 alin. (2) îl scutește
+    /// de CAS doar pentru drepturile de autor, deci pe PFA plătește CAS peste 12 salarii.
+    /// </summary>
+    [Fact]
+    public void Angajatul_plateste_CAS_peste_prag_si_CASS_fara_minim()
+    {
+        C(Run(10_000, new ProfileFlags { EmployedFullTime = true }), TaxComponents.Cass).Amount.ShouldBe(1_000);
+        C(Run(60_000, new ProfileFlags { EmployedFullTime = true }), TaxComponents.Cas).Amount.ShouldBe(12_150);
     }
 
     [Fact]
-    public void Alte_venituri_peste_prag_nu_conteaza()
+    public void Pensionar_si_angajat_exceptiile_se_cumuleaza()
     {
-        TaxResult r = Run(60_000, new ProfileFlags { OtherIncome = true });
-        C(r, TaxComponents.Cass).Status.ShouldBe(TaxStatuses.Estimated);
-        C(r, TaxComponents.Cass).Amount.ShouldBe(6_000);
-    }
-
-    [Fact]
-    public void Pensionar_devenit_in_cursul_anului()
-    {
-        TaxResult high = Run(30_000, new ProfileFlags { PensionerMidYear = true });
-        C(high, TaxComponents.Cas).Status.ShouldBe(TaxStatuses.RequiresClarification);
-        C(high, TaxComponents.IncomeTax).Status.ShouldBe(TaxStatuses.RequiresClarification);
-        C(high, TaxComponents.Cass).Status.ShouldBe(TaxStatuses.Estimated);
-        C(high, TaxComponents.Cass).Amount.ShouldBe(3_000);
-
-        TaxResult low = Run(20_000, new ProfileFlags { PensionerMidYear = true });
-        C(low, TaxComponents.Cass).Status.ShouldBe(TaxStatuses.RequiresClarification);
-    }
-
-    [Fact]
-    public void Pensionar_si_salariat_exceptiile_se_cumuleaza()
-    {
-        TaxResult r = Run(20_000, new ProfileFlags { PensionerFullYear = true, SalariedCassExempt = true });
+        TaxResult r = Run(20_000, new ProfileFlags { Pensioner = true, EmployedFullTime = true });
         C(r, TaxComponents.Cas).Amount.ShouldBe(0);
         C(r, TaxComponents.Cass).Amount.ShouldBe(2_000);
     }
 
     [Fact]
-    public void Studentul_nu_primeste_CASS_zero()
+    public void Fara_nicio_situatie_sub_prag_plateste_CASS_minim()
     {
-        TaxResult r = Run(30_000, new ProfileFlags { StudentCassExempt = true });
-        C(r, TaxComponents.Cas).Amount.ShouldBe(0);
-        C(r, TaxComponents.Cass).Amount.ShouldBe(3_000);
-    }
-
-    [Fact]
-    public void Salariat_sub_pragul_CASS_plateste_minimul()
-    {
-        // salaryAboveCassMin = no: nici excepție, nici necunoscut.
         TaxResult r = Run(20_000, new ProfileFlags());
         C(r, TaxComponents.Cass).Amount.ShouldBe(2_430);
-    }
-
-    [Fact]
-    public void CAS_voluntar_pe_baza_declarata()
-    {
-        TaxResult r = Run(30_000, new ProfileFlags { CasVoluntaryBase = 60_000 });
-        C(r, TaxComponents.Cas).Amount.ShouldBe(15_000);
     }
 
     [Fact]
@@ -245,15 +232,6 @@ public sealed class TaxEngine2026Tests
     }
 
     [Fact]
-    public void Plati_declarate_dar_neinregistrate_cer_clarificare()
-    {
-        TaxResult r = Run(20_000, new ProfileFlags { TaxPaymentsMade = true });
-        r.Reserve.Status.ShouldBe(TaxStatuses.RequiresClarification);
-        r.Reserve.ReasonCode.ShouldBe(TaxReasons.TaxPaymentsMissing);
-        r.Reserve.Total.ShouldBeNull();
-    }
-
-    [Fact]
     public void An_fara_parametri()
     {
         TaxResult r = Engine.Calculate(Input(20_000), new TaxYearParametersProvider().For(2027));
@@ -287,70 +265,10 @@ public sealed class TaxEngine2026Tests
         Run((decimal)net).Warnings.Contains(TaxWarnings.CasThresholdNear).ShouldBe(near);
     }
 
+    /// <summary>Pierderea din istoricul D212 (motorul anual), fără sumă: de clarificat.</summary>
     [Fact]
-    public void Alte_activitati_independente_si_strainatate_cer_clarificare()
-    {
-        Run(60_000, new ProfileFlags { OtherIndependent = true }).Components.Take(3)
-            .ShouldAllBe(c => c.Status == TaxStatuses.RequiresClarification && c.ReasonCode == TaxReasons.OtherIndependentTotal);
-        Run(60_000, new ProfileFlags { CrossBorder = true }).Components.Take(3)
-            .ShouldAllBe(c => c.ReasonCode == TaxReasons.CrossBorder);
+    public void Pierderi_fara_suma_cer_clarificare_la_impozit() =>
         C(Run(60_000, new ProfileFlags { CarriedLosses = true }), TaxComponents.IncomeTax).ReasonCode.ShouldBe(TaxReasons.CarriedLosses);
-        C(Run(60_000, new ProfileFlags { CassOptIn = true }), TaxComponents.Cass).ReasonCode.ShouldBe(TaxReasons.CassOptIn);
-    }
-
-    [Fact]
-    public void Toate_de_clarificat_inseamna_rezerva_de_clarificat_nu_date_insuficiente()
-    {
-        TaxResult r = Run(60_000, new ProfileFlags { OtherIndependent = true });
-        r.Reserve.Status.ShouldBe(TaxStatuses.RequiresClarification);
-        r.Reserve.Total.ShouldBeNull();
-    }
-
-    [Fact]
-    public void Netul_altor_activitati_intra_in_plafonul_CAS()
-    {
-        // PFA 30.000 + alte activități 30.000 = 60.000 ⇒ CAS pe 12 salarii, CASS doar pe profitul PFA.
-        TaxResult r = Run(30_000, new ProfileFlags { OtherIndependent = true, OtherIndependentNetAnnual = 30_000 });
-        C(r, TaxComponents.Cas).Amount.ShouldBe(12_150);
-        C(r, TaxComponents.Cass).Amount.ShouldBe(3_000);
-        C(r, TaxComponents.IncomeTax).Amount.ShouldBe(1_485);
-        r.Reserve.Status.ShouldBe(TaxStatuses.Estimated);
-    }
-
-    [Fact]
-    public void Cu_alte_activitati_peste_prag_nu_se_completeaza_CASS_la_minim()
-    {
-        TaxResult r = Run(20_000, new ProfileFlags { OtherIndependent = true, OtherIndependentNetAnnual = 10_000 });
-        C(r, TaxComponents.Cass).Amount.ShouldBe(2_000);
-        C(r, TaxComponents.Cass).Breakdown["branch"].ShouldBe("combined");
-        C(r, TaxComponents.Cas).Amount.ShouldBe(0);
-    }
-
-    [Theory]
-    [InlineData(true, 2_000)]
-    [InlineData(false, 2_430)]
-    public void CASS_pe_alte_venituri_raspuns_cunoscut(bool insured, int cass)
-    {
-        C(Run(20_000, new ProfileFlags { OtherIncome = true, OtherIncomeCassInsured = insured }), TaxComponents.Cass)
-            .Amount.ShouldBe(cass);
-    }
-
-    [Fact]
-    public void CASS_pe_alte_venituri_necunoscut_cere_clarificare()
-    {
-        ComponentResult cass = C(Run(20_000, new ProfileFlags { OtherIncome = true }), TaxComponents.Cass);
-        cass.Status.ShouldBe(TaxStatuses.RequiresClarification);
-        cass.MissingInputs.ShouldBe(["otherIncomeCassInsured"]);
-    }
-
-    [Theory]
-    [InlineData(24_300, 2_430)]
-    [InlineData(50_000, 5_000)]
-    public void Optiunea_CASS_plateste_maximul_dintre_baza_aleasa_si_profit(int optInBase, int cass)
-    {
-        // Net 10.000: pe profit ar fi minimul, 2.430.
-        C(Run(10_000, new ProfileFlags { CassOptIn = true, CassOptInBase = optInBase }), TaxComponents.Cass).Amount.ShouldBe(cass);
-    }
 
     [Theory]
     [InlineData(5_000, 1_300)]

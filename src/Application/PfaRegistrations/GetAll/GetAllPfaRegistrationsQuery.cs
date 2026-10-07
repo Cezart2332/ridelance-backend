@@ -47,4 +47,6 @@ public sealed record PfaRegistrationSummary(
     /// <summary>Contul a fost închis. Datele rămân; lista PFA îl arată la „Șterse”.</summary>
     DateTime? DeletedAtUtc = null,
     /// <summary>Profilul fiscal al anului curent: <c>NOT_STARTED</c>, <c>DRAFT</c> sau <c>COMPLETED</c>.</summary>
-    string FiscalProfileStatus = "NOT_STARTED");
+    string FiscalProfileStatus = "NOT_STARTED",
+    /// <summary>Situația fiscală a anului curent (pensionar, student, angajat), pentru selectorul rapid din listă.</summary>
+    FiscalProfiles.FiscalProfileAnswers? FiscalSituation = null);

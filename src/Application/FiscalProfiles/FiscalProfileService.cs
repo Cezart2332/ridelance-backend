@@ -23,8 +23,7 @@ internal sealed class FiscalProfileService(
     IUserContext userContext,
     ICompanyLookupService companyLookup,
     IDateTimeProvider clock,
-    ILogger<FiscalProfileService> logger,
-    FiscalEstimates.TaxYearParametersProvider taxParameters)
+    ILogger<FiscalProfileService> logger)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -129,7 +128,9 @@ internal sealed class FiscalProfileService(
             PfaRegisteredOn = previous?.PfaRegisteredOn,
             PfaRegisteredOnSource = previous?.PfaRegisteredOnSource,
             PfaRegisteredOnObservedAtUtc = previous?.PfaRegisteredOnObservedAtUtc,
-            AnswersJson = previous is null ? "{}" : Serialize(CarryOver(Deserialize(previous.AnswersJson))),
+            // Situația (pensionar, student, angajat) se poate schimba de la un an la altul, dar de
+            // obicei rămâne: anul nou pornește de la ea, iar PFA-ul doar o confirmă.
+            AnswersJson = previous is null ? "{}" : Serialize(Deserialize(previous.AnswersJson)),
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -155,99 +156,33 @@ internal sealed class FiscalProfileService(
         }
     }
 
-    public static FiscalProfileAnswers Deserialize(string json) =>
-        JsonSerializer.Deserialize<FiscalProfileAnswers>(string.IsNullOrWhiteSpace(json) ? "{}" : json, Json)
-            ?? new FiscalProfileAnswers();
-
-    public static string Serialize(FiscalProfileAnswers answers) => JsonSerializer.Serialize(answers, Json);
-
     /// <summary>
-    /// Ce se păstrează de la un an la altul: situația personală, nu faptele anului (plăți făcute,
-    /// opțiunea CASS, confirmarea datelor, documentele perioadei lipsă).
+    /// Răspunsurile salvate. Cheile vechiului formular (alte venituri, pierderi, opțiuni) se
+    /// ignoră; un profil vechi cu <c>employment: "full"</c> rămâne „angajat full-time”.
     /// </summary>
-    public static FiscalProfileAnswers CarryOver(FiscalProfileAnswers previous)
+    public static FiscalProfileAnswers Deserialize(string json)
     {
-        ArgumentNullException.ThrowIfNull(previous);
-        return previous with
+        string text = string.IsNullOrWhiteSpace(json) ? "{}" : json;
+        FiscalProfileAnswers answers = JsonSerializer.Deserialize<FiscalProfileAnswers>(text, Json) ?? new FiscalProfileAnswers();
+        if (answers.EmployedFullTime is not null)
         {
-            DataCorrect = null,
-            CorrectionDetails = null,
-            PriorDocs = null,
-            PriorDocsLocation = null,
-            TaxPaymentsMade = null,
-            CassOptIn = null,
-            CassOptInBase = null,
-            CasVoluntary = null,
-            CasVoluntaryBase = null,
-            SalaryAboveCassMin = null,
-            CarriedLosses = null,
-            CarriedLossesAmount = null,
-            OtherIndependentNetAnnual = null,
-            Notes = null,
-        };
-    }
-
-    /// <summary>
-    /// Întrebările condiționate. Intervalul neacoperit: de la începutul anului (sau de la
-    /// înființare, dacă e mai târziu) până la prima zi pentru care RIDElance are date — accesul
-    /// în platformă sau prima lună procesată de contabil, oricare e mai devreme.
-    /// </summary>
-    public async Task<FiscalProfileConditions> ConditionsAsync(
-        PfaRegistration pfa,
-        PfaTaxProfile profile,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(pfa);
-        ArgumentNullException.ThrowIfNull(profile);
-
-        int year = profile.TaxYear;
-        int? firstProcessedMonth = await context.PfaMonthlyIncomes
-            .AsNoTracking()
-            .Where(m => m.PfaRegistrationId == pfa.Id && m.Year == year && m.IsProcessed)
-            .MinAsync(m => (int?)m.Month, cancellationToken);
-
-        DateOnly? access = profile.AccessGrantedAtUtc is DateTime at ? DateOnly.FromDateTime(ToRomania(at)) : null;
-        DateOnly? firstCovered = firstProcessedMonth is int month ? new DateOnly(year, month, 1) : null;
-
-        return ComputeConditions(year, profile.PfaRegisteredOn, pfa.PfaSource, access, firstCovered);
-    }
-
-    /// <summary>Partea pură a <see cref="ConditionsAsync"/>, testabilă fără bază de date.</summary>
-    public static FiscalProfileConditions ComputeConditions(
-        int year,
-        DateOnly? registeredOn,
-        PfaSource source,
-        DateOnly? accessOn,
-        DateOnly? firstCoveredOn)
-    {
-        var yearStart = new DateOnly(year, 1, 1);
-        var yearEnd = new DateOnly(year, 12, 31);
-
-        // Fără dată de înființare: un PFA adus de acasă poate avea ani în spate, unul înființat
-        // prin noi nu.
-        bool askCarriedLosses = registeredOn is DateOnly registered
-            ? registered < yearStart
-            : source == PfaSource.Existing;
-
-        DateOnly? coverageStart = (accessOn, firstCoveredOn) switch
-        {
-            (DateOnly a, DateOnly f) => a < f ? a : f,
-            (DateOnly a, null) => a,
-            (null, DateOnly f) => f,
-            _ => null,
-        };
-
-        bool createdWithUs = registeredOn is null && source != PfaSource.Existing;
-        DateOnly periodStart = registeredOn is DateOnly r && r > yearStart ? r : yearStart;
-
-        if (createdWithUs || coverageStart is not DateOnly start || start <= periodStart || periodStart > yearEnd)
-        {
-            return new FiscalProfileConditions(false, null, null, askCarriedLosses);
+            return answers;
         }
 
-        DateOnly to = start.AddDays(-1) < yearEnd ? start.AddDays(-1) : yearEnd;
-        return new FiscalProfileConditions(true, periodStart, to, askCarriedLosses);
+        using var document = JsonDocument.Parse(text);
+        bool legacy = document.RootElement.ValueKind == JsonValueKind.Object
+            && document.RootElement.TryGetProperty("employment", out JsonElement employment)
+            && employment.ValueKind == JsonValueKind.String;
+        if (!legacy)
+        {
+            return answers;
+        }
+
+        bool fullTime = document.RootElement.GetProperty("employment").GetString() == "full";
+        return answers with { EmployedFullTime = fullTime ? FiscalProfileSchema.Yes : FiscalProfileSchema.No };
     }
+
+    public static string Serialize(FiscalProfileAnswers answers) => JsonSerializer.Serialize(answers, Json);
 
     public async Task<FiscalProfileResponse> ToResponseAsync(
         PfaRegistration pfa,
@@ -258,7 +193,6 @@ internal sealed class FiscalProfileService(
         ArgumentNullException.ThrowIfNull(pfa);
         ArgumentNullException.ThrowIfNull(profile);
 
-        FiscalProfileConditions conditions = await ConditionsAsync(pfa, profile, cancellationToken);
         FiscalProfileActor? lastChangedBy = profile.LastChangedByUserId is Guid actorId
             ? await ActorAsync(actorId, pfa, cancellationToken)
             : null;
@@ -297,9 +231,7 @@ internal sealed class FiscalProfileService(
             profile.UpdatedAtUtc,
             lastChangedBy,
             facts,
-            conditions,
-            corrections,
-            taxParameters.For(profile.TaxYear)?.CassMinThreshold);
+            corrections);
     }
 
     public static string StatusCode(PfaTaxProfileStatus status) => status switch

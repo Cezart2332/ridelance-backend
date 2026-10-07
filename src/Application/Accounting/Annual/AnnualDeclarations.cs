@@ -337,7 +337,7 @@ internal sealed class AnnualDeclarationService(
 
         return new PersonalTaxProfile(
             year,
-            ProfileFlagsMapper.Map(FiscalProfileService.Deserialize(profile.AnswersJson), year, false),
+            ProfileFlagsMapper.Map(FiscalProfileService.Deserialize(profile.AnswersJson), false),
             answers?.HasExternalIncome,
             answers?.SupplementCompleted ?? false,
             answers?.AnafPrefilledNetIncome,
