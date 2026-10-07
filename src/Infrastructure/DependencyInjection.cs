@@ -145,6 +145,8 @@ public static class DependencyInjection
         }
         services.AddHttpClient<IDocumentAiAnalyzer, OpenRouterDocumentAiAnalyzer>(client =>
             client.Timeout = TimeSpan.FromMinutes(3));
+        // Ce spune PDF-ul despre el însuși (exportat din Word? semnat?), lângă citirea modelului.
+        services.AddSingleton<IDocumentForensics, Infrastructure.Dossiers.PdfForensics>();
         // Scrisul e mult mai scurt decât citirea unui PDF de zece pagini, iar butonul din editor
         // stă în fața unui om care așteaptă: trei minute acolo ar fi însemnat o pagină înghețată.
         services.AddHttpClient<IAiTextGenerator, OpenRouterTextGenerator>(client =>

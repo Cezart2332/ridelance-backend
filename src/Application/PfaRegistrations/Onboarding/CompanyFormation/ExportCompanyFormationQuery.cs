@@ -32,6 +32,7 @@ internal sealed class ExportCompanyFormationQueryHandler(
     [
         DocumentCategory.CarteIdentitate,
         DocumentCategory.Buletin,
+        DocumentCategory.CeiReaderPdf,
         DocumentCategory.PermisConducere,
         DocumentCategory.AtestatTransport,
     ];

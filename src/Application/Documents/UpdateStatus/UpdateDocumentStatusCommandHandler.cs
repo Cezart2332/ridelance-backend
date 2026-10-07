@@ -20,6 +20,7 @@ internal sealed class UpdateDocumentStatusCommandHandler(
     IWebPushService webPushService,
     IEmailService emailService,
     IMjmlRenderer mjmlRenderer,
+    DocumentIdentityService identityService,
     IConfiguration configuration)
     : ICommandHandler<UpdateDocumentStatusCommand>
 {
@@ -85,6 +86,13 @@ internal sealed class UpdateDocumentStatusCommandHandler(
         {
             string note = command.Note.Trim();
             document.ReviewNote = note.Length > 1024 ? note[..1024] : note;
+        }
+
+        // Adminul a verificat actul pe care potrivirea cu buletinul îl oprise: ce s-a citit din el
+        // ajunge acum pe profil, ca la orice document trecut.
+        if (command.Status == DocumentStatus.Verified && document.AiIdentityMismatch)
+        {
+            await identityService.ClearMismatchAsync(document, cancellationToken);
         }
 
         bool notifyRejection = command.Status == DocumentStatus.Rejected &&

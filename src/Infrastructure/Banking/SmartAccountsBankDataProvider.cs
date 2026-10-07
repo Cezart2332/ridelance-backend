@@ -97,7 +97,7 @@ internal sealed class SmartAccountsBankDataProvider(
             banks.Add(new BankInstitutionInfo(
                 code,
                 SmartAccountsJson.String(item, "name") ?? code,
-                SmartAccountsJson.String(item, "logo"),
+                RenderableLogo(SmartAccountsJson.String(item, "logo")),
                 SmartAccountsJson.String(item, "bic"),
                 SmartAccountsJson.Bool(item, "active") ?? true,
                 SmartAccountsJson.Bool(required, "requiresPSUId") ?? false,
@@ -109,6 +109,19 @@ internal sealed class SmartAccountsBankDataProvider(
             .Where(b => b.Active)
             .OrderBy(b => b.Name, StringComparer.CurrentCulture)
             .ToList();
+    }
+
+    /// <summary>
+    /// Furnizorul trimite logo-urile SVG ca <c>data:image/svg;base64,…</c>. Tipul corect e
+    /// <c>image/svg+xml</c>: cu cel trunchiat, browserul nu desenează imaginea deloc, iar lista de
+    /// bănci rămânea cu pătrate goale.
+    /// </summary>
+    internal static string? RenderableLogo(string? logo)
+    {
+        const string BrokenSvgPrefix = "data:image/svg;";
+        return logo is not null && logo.StartsWith(BrokenSvgPrefix, StringComparison.OrdinalIgnoreCase)
+            ? "data:image/svg+xml;" + logo[BrokenSvgPrefix.Length..]
+            : logo;
     }
 
     public async Task<BankConsentCreated> CreateConsentAsync(

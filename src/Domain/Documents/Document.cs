@@ -54,6 +54,20 @@ public sealed class Document : Entity
     public bool AiRequiresManualReview { get; set; }
 
     /// <summary>
+    /// De ce arată documentul suspect, pe rânduri: lipsă ștampilă sau semnătură, PDF scos dintr-un
+    /// editor de text, titular diferit de cel din buletin. Nu respinge nimic — documentul merge la
+    /// admin, iar omul vede primul rând ca motiv.
+    /// </summary>
+    public string? AiSuspicionReasons { get; set; }
+
+    /// <summary>
+    /// Numele, CNP-ul sau data nașterii de pe document nu se potrivesc cu buletinul. Cât timp e
+    /// adevărat, ce s-a citit din document nu ajunge pe profil: eligibilitatea nu se calculează
+    /// din permisul altcuiva. Se stinge când potrivirea reușește sau când adminul verifică actul.
+    /// </summary>
+    public bool AiIdentityMismatch { get; set; }
+
+    /// <summary>
     /// Cu câte grade trebuie rotită poza, în sensul acelor de ceasornic, ca actul să apară drept:
     /// 0, 90, 180 sau 270. O citește modelul care oricum verifică documentul.
     ///

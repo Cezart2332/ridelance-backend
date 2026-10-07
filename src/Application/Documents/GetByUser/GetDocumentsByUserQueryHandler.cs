@@ -33,7 +33,9 @@ internal sealed class GetDocumentsByUserQueryHandler(IApplicationDbContext conte
                 d.AiRequiresManualReview,
                 d.Origin.ToString(),
                 d.Origin == DocumentOrigin.UserUpload,
-                d.ReviewNote))
+                d.ReviewNote,
+                // Ultima proiecție: EF o evaluează în proces, deci împărțirea pe rânduri e permisă.
+                AiVerification.ReviewReasons.Split(d.AiSuspicionReasons)))
             .ToListAsync(cancellationToken);
 
         return documents;

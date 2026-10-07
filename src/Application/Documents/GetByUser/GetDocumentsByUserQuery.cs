@@ -31,4 +31,9 @@ public sealed record DocumentSummary(
     /// </summary>
     bool IsUserFacing = true,
     /// <summary>Motivul respingerii scris de un om (admin/contabil), cât timp e respins.</summary>
-    string? ReviewNote = null);
+    string? ReviewNote = null,
+    /// <summary>
+    /// De ce merge documentul la admin, pe rânduri: fără ștampilă, PDF din Word, titular diferit
+    /// de buletin. Omul vede primul rând; adminul pe toate.
+    /// </summary>
+    IReadOnlyList<string>? AiSuspicionReasons = null);

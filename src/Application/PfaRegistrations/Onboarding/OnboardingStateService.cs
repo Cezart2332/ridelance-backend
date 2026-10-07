@@ -191,7 +191,7 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
         [
             ([DocumentCategory.CertificatInregistrare], "judet"),
             ([DocumentCategory.CazierJudiciar], "judet"),
-            ([DocumentCategory.CarteIdentitate, DocumentCategory.Buletin], "domiciliu_judet"),
+            ([DocumentCategory.CarteIdentitate, DocumentCategory.Buletin, DocumentCategory.CeiReaderPdf], "domiciliu_judet"),
         ];
 
         Guid[] candidateIds = documents

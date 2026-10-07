@@ -59,13 +59,22 @@ internal sealed class CreatePfaRegistrationCommandHandler(
             .Select(c => c.User)
             .FirstOrDefault();
 
+        // Telefonul nu se mai cere în înrolare: e cel dat la crearea contului. Îl copiem pe dosar ca
+        // adminul și contabilul să-l vadă acolo unde l-au văzut mereu.
+        string? phone = string.IsNullOrWhiteSpace(command.Phone)
+            ? await context.Users
+                .Where(u => u.Id == command.UserId)
+                .Select(u => u.PhoneNumber)
+                .FirstOrDefaultAsync(cancellationToken)
+            : command.Phone.Trim();
+
         var registration = new PfaRegistration
         {
             Id = Guid.NewGuid(),
             UserId = command.UserId,
             RegistrationType = command.RegistrationType,
             FullName = command.FullName,
-            Phone = command.Phone,
+            Phone = phone,
             ContractDuration = command.ContractDuration,
             Street = command.Street,
             Number = command.Number,

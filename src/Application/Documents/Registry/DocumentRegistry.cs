@@ -44,7 +44,7 @@ public static class DocumentRegistry
     [
         // ── Documente personale ──
         new("id-card", "Carte de identitate", DocumentGroup.Personal,
-            [DocumentCategory.CarteIdentitate, DocumentCategory.Buletin], HasIssueDate: true, HasExpiryDate: true),
+            [DocumentCategory.CarteIdentitate, DocumentCategory.Buletin, DocumentCategory.CeiReaderPdf], HasIssueDate: true, HasExpiryDate: true),
         new("driving-license", "Permis de conducere", DocumentGroup.Personal,
             [DocumentCategory.PermisConducere], HasIssueDate: true, HasExpiryDate: true),
         new("professional-certificate", "Atestat profesional", DocumentGroup.Personal,

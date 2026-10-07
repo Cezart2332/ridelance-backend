@@ -26,6 +26,8 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
     IMjmlRenderer mjmlRenderer,
     IExtractedFieldApplier fieldApplier,
     ISecretProtector secretProtector,
+    IDocumentForensics documentForensics,
+    DocumentIdentityService identityService,
     IConfiguration configuration)
     : ICommandHandler<RunDocumentAiVerificationCommand>
 {
@@ -33,6 +35,8 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
 
     /// <summary>Prag sub care câmpul intră în verificarea manuală a adminului (nu blochează fluxul).</summary>
     private const double ManualReviewThreshold = 0.75;
+
+    private const string BlankTemplateReason = "Formularul e necompletat.";
 
     public async Task<Result> Handle(
         RunDocumentAiVerificationCommand command,
@@ -94,7 +98,8 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
                 expectation.Label,
                 expectation.Details,
                 expectation.ExpectsExpiryDate,
-                fieldRequests),
+                fieldRequests,
+                expectation.AuthenticityHints),
             cancellationToken);
 
         if (analysis.IsFailure)
@@ -115,26 +120,66 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         // Se reține chiar dacă documentul pică verificarea: dosarul se generează și din acte pe
         // care noi le-am respins, iar orientarea rămâne corectă indiferent de verdict.
         document.AiRotationDegrees = result.RotationDegrees;
+        // O verificare nouă pornește de la zero: motivele vechi erau ale citirii de atunci.
+        document.AiSuspicionReasons = null;
+        document.AiIdentityMismatch = false;
 
-        if (result.ExpiresAt.HasValue)
+        ExtractedValues values = await PopulateExtractedFieldsAsync(document, expectation, result, cancellationToken);
+        var reviewReasons = new List<string>();
+        DateOnly today = DocumentDateValidator.TodayInRomania();
+
+        DateOnly? expiresAt = ExpiryOf(expectation, result, values, reviewReasons);
+        if (expiresAt.HasValue)
         {
-            var expiresUtc = DateTime.SpecifyKind(
-                result.ExpiresAt.Value.ToDateTime(TimeOnly.MinValue),
-                DateTimeKind.Utc);
+            var expiresUtc = DateTime.SpecifyKind(expiresAt.Value.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
             document.AiExtractedExpiresAtUtc = expiresUtc;
             document.ExpiresAtUtc ??= expiresUtc;
         }
 
-        await PopulateExtractedFieldsAsync(document, expectation, result, cancellationToken);
+        AddFieldRuleReasons(document.Category, values, reviewReasons);
+
+        // Autenticitatea: ce a văzut modelul (antet, ștampilă, „pare făcut acasă”) plus ce spune
+        // fișierul despre el (PDF exportat din Word). Suspectul merge la admin; doar formularul
+        // gol se respinge, ca un act lipsă.
+        AuthenticityVerdict authenticity = DocumentAuthenticityEvaluator.Evaluate(
+            expectation,
+            result.Authenticity,
+            documentForensics.Inspect(fileBytes, document.ContentType));
+        reviewReasons.AddRange(authenticity.Reasons);
+
+        if (DocumentIdentityService.IsIdentityDocument(document.Category))
+        {
+            reviewReasons.AddRange(MrzReasons(values, today));
+        }
+
+        // Documentul e al aceluiași om ca buletinul? Dacă nu, ce s-a citit din el nu se aplică
+        // pe profil: eligibilitatea nu se calculează din permisul altcuiva.
+        IReadOnlyList<string> identityMismatches = await identityService.MismatchesAsync(
+            document, values.Plain, expectation.Label, cancellationToken);
+
+        if (identityMismatches.Count > 0)
+        {
+            DocumentIdentityService.MarkMismatch(document, identityMismatches);
+        }
+        else
+        {
+            await values.ApplyPendingAsync(fieldApplier, document, cancellationToken);
+        }
+
+        if (reviewReasons.Count > 0)
+        {
+            document.AiRequiresManualReview = true;
+            document.AiSuspicionReasons = ReviewReasons.Merge(document.AiSuspicionReasons, reviewReasons);
+        }
 
         // Verificarea temporală se face aici, pe ceasul serverului. Modelul doar citește datele:
         // nu are ceas, iar când îl lăsam să judece respingea acte bune ca „eliberate în viitor".
         DocumentDateVerdict dates = DocumentDateValidator.Evaluate(
             result.IssuedOn,
-            result.ExpiresAt,
+            expiresAt,
             expectation.ExpectsExpiryDate,
             expectation.IssueDateOnly,
-            DocumentDateValidator.TodayInRomania(),
+            today,
             expectation.ValidMonthsFromIssue);
 
         if (dates.NeedsManualReview)
@@ -142,12 +187,13 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             document.AiRequiresManualReview = true;
         }
 
-        bool isValid = result.MatchesExpectedType && result.IsReadable && !dates.IsRejected;
+        bool isValid = result.MatchesExpectedType && result.IsReadable && !dates.IsRejected && !authenticity.IsBlankTemplate;
 
         if (isValid)
         {
             document.AiStatus = DocumentAiStatus.Passed;
             await context.SaveChangesAsync(cancellationToken);
+            await AfterPassAsync(document, cancellationToken);
             return Result.Success();
         }
 
@@ -157,6 +203,10 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         if (dates.IsRejected)
         {
             document.AiSummary = Truncate(dates.Reason, 1024);
+        }
+        else if (authenticity.IsBlankTemplate)
+        {
+            document.AiSummary = BlankTemplateReason;
         }
 
         /*
@@ -179,6 +229,7 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
                 1024);
 
             await context.SaveChangesAsync(cancellationToken);
+            await AfterPassAsync(document, cancellationToken);
             return Result.Success();
         }
 
@@ -200,7 +251,15 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             ? "Documentul nu a trecut verificarea automată."
             : result.Reason.Trim();
 
-        string reason = dates.IsRejected ? dates.Reason : modelReason;
+        string reason = modelReason;
+        if (dates.IsRejected)
+        {
+            reason = dates.Reason;
+        }
+        else if (authenticity.IsBlankTemplate)
+        {
+            reason = BlankTemplateReason;
+        }
         string text =
             $"Documentul „{expectation.Label}” a fost respins la verificarea automată: {reason} Încarcă o variantă corectă.";
 
@@ -222,17 +281,134 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         return Result.Success();
     }
 
-    private async Task PopulateExtractedFieldsAsync(
+    /// <summary>
+    /// Expirarea documentului. Pe talon nu e „data de expirare” a modelului — acolo alegea orice dată
+    /// îi ieșea în cale, de obicei a înmatriculării —, ci cea mai îndepărtată viză din rubrica ITP.
+    /// </summary>
+    private static DateOnly? ExpiryOf(
+        DocumentAiExpectation expectation,
+        DocumentAiAnalysisResult result,
+        ExtractedValues values,
+        List<string> reviewReasons)
+    {
+        if (expectation.ExpiryFromField is null)
+        {
+            return result.ExpiresAt;
+        }
+
+        DateOnly? itp = DocumentFieldRules.LatestItpDate(
+            values.Get(expectation.ExpiryFromField),
+            DocumentDateValidator.Parse(values.Get("data_prima_inmatriculare")),
+            DocumentDateValidator.Parse(values.Get("data_inmatriculare")));
+
+        if (itp is null)
+        {
+            reviewReasons.Add("Nu am găsit data ITP pe talon.");
+        }
+
+        return itp;
+    }
+
+    /// <summary>Regulile pe câmpuri care nu țin de format: permisul și concluzia adeverințelor.</summary>
+    private static void AddFieldRuleReasons(DocumentCategory category, ExtractedValues values, List<string> reviewReasons)
+    {
+        if (category == DocumentCategory.PermisConducere &&
+            DocumentFieldRules.CategoryBProblem(
+                DocumentDateValidator.Parse(values.Get("category_b_obtained_on")),
+                DocumentDateValidator.Parse(values.Get("permis_emis_la_4a"))) is string problem)
+        {
+            reviewReasons.Add(problem);
+        }
+
+        if (DocumentFieldRules.SaysUnfit(values.Get("concluzie")))
+        {
+            reviewReasons.Add("Concluzia de pe document este „inapt”.");
+        }
+    }
+
+    /// <summary>
+    /// Zona MRZ a buletinului: cifrele de control și potrivirea cu datele tipărite. Un act editat
+    /// rar le nimerește. MRZ necitit nu spune nimic, deci nu adaugă nimic.
+    /// </summary>
+    private static IEnumerable<string> MrzReasons(ExtractedValues values, DateOnly today)
+    {
+        MrzReading? mrz = MrzValidator.Parse(values.Get("mrz_raw"), today);
+        if (mrz is null)
+        {
+            return [];
+        }
+
+        if (!mrz.ChecksValid)
+        {
+            return ["Codul MRZ de pe buletin nu se verifică."];
+        }
+
+        return IdentityCrossCheck
+            .Mismatches(IdentityFacts.From(mrz), IdentityFacts.From(values.Plain), "zona MRZ", compareDocumentNumbers: true)
+            .Select(_ => "Datele tipărite pe buletin nu corespund cu zona MRZ.")
+            .Distinct();
+    }
+
+    /// <summary>
+    /// După un buletin trecut, refacem comparația pe celelalte acte ale omului; după orice act,
+    /// eligibilitatea nu rămâne „Eligibil” cât timp unul pare al altcuiva.
+    /// </summary>
+    private async Task AfterPassAsync(Document document, CancellationToken cancellationToken)
+    {
+        if (DocumentIdentityService.IsIdentityDocument(document.Category) && !document.AiIdentityMismatch)
+        {
+            await identityService.RecheckOthersAsync(document, cancellationToken);
+            return;
+        }
+
+        await identityService.HoldEligibilityAsync(document.UserId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Ce s-a citit din document, în clar, plus câmpurile de aplicat pe entitățile de business.
+    /// Aplicarea se amână până după potrivirea cu buletinul: permisul altcuiva nu trebuie să ajungă
+    /// pe profil nici măcar pentru o clipă.
+    /// </summary>
+    private sealed class ExtractedValues
+    {
+        private readonly List<(string Key, string Value)> pending = [];
+
+        public Dictionary<string, string> Plain { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public string? Get(string key) => Plain.TryGetValue(key, out string? value) ? value : null;
+
+        public void Add(string key, string value, bool applyToBusiness)
+        {
+            Plain[key] = value;
+            if (applyToBusiness)
+            {
+                pending.Add((key, value));
+            }
+        }
+
+        public async Task ApplyPendingAsync(IExtractedFieldApplier applier, Document document, CancellationToken cancellationToken)
+        {
+            // Userul nu confirmă nimic: precompletăm direct entitatea de business.
+            // Adminul verifică/corectează ulterior din panoul dosarului.
+            foreach ((string key, string value) in pending)
+            {
+                await applier.ApplyAsync(document, key, value, cancellationToken);
+            }
+        }
+    }
+
+    private async Task<ExtractedValues> PopulateExtractedFieldsAsync(
         Document document,
         DocumentAiExpectation expectation,
         DocumentAiAnalysisResult result,
         CancellationToken cancellationToken)
     {
         document.AiConfidence = result.OverallConfidence;
+        var values = new ExtractedValues();
 
         if (expectation.FieldSpecs.Count == 0)
         {
-            return;
+            return values;
         }
 
         List<ExtractedField> existing = await context.ExtractedFields
@@ -323,16 +499,18 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
 
             // Valoarea confirmată de om câștigă întotdeauna — nu retrogradăm starea și nu
             // suprascriem coloana de business cu valoarea OCR.
-            if (row.ConfirmedSource == ExtractedFieldSource.None)
+            bool confirmedByHuman = row.ConfirmedSource != ExtractedFieldSource.None;
+            if (!confirmedByHuman)
             {
                 row.ReviewState = needsReview
                     ? ExtractedFieldReviewState.NeedsManualReview
                     : ExtractedFieldReviewState.Auto;
-
-                // Userul nu confirmă nimic: precompletăm direct entitatea de business.
-                // Adminul verifică/corectează ulterior din panoul dosarului.
-                await fieldApplier.ApplyAsync(document, spec.Key, normalized, cancellationToken);
             }
+
+            // Pentru comparații contează valoarea corectată de om, dacă există; la câmpurile
+            // sensibile coloana confirmată ține doar masca, deci rămânem pe citirea în clar.
+            string plain = confirmedByHuman && !spec.Sensitive ? row.ConfirmedValue ?? normalized : normalized;
+            values.Add(spec.Key, plain, applyToBusiness: !confirmedByHuman);
         }
 
         document.AiExtractedJson = JsonSerializer.Serialize(redacted);
@@ -342,6 +520,8 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         {
             await FlagManualIdentityReviewAsync(document, cancellationToken);
         }
+
+        return values;
     }
 
     /// <summary>

@@ -50,5 +50,11 @@ public enum DocumentCategory
     /// acordul GDPR, într-un singur fișier. Eterogen prin definiție, deci nu se verifică AI.
     /// </summary>
     DocumenteSemnate = 38,
+    /// <summary>
+    /// PDF-ul generat de RO CEI Reader din cipul cărții electronice. Vine lângă poza față-verso a
+    /// cărții (<see cref="CarteIdentitate"/>): domiciliul stă doar în cip, iar comparația celor
+    /// două arată dacă PDF-ul e chiar al cărții fotografiate.
+    /// </summary>
+    CeiReaderPdf = 39,
     Other = 99
 }

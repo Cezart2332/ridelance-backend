@@ -63,6 +63,9 @@ internal sealed class SubmitEligibilityProfileCommandHandler(
         profile.Status = evaluation.Status;
         profile.StatusReason = evaluation.Reasons.Count == 0 ? null : string.Join('\n', evaluation.Reasons);
 
+        // Un act care pare al altcuiva ține eligibilitatea la verificare.
+        await Documents.AiVerification.DocumentIdentityService.HoldIfMismatchedAsync(context, profile, cancellationToken);
+
         await context.SaveChangesAsync(cancellationToken);
 
         return Result.Success(new EligibilityProfileResponse(

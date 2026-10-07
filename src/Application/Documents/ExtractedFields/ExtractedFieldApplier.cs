@@ -185,6 +185,9 @@ internal sealed class ExtractedFieldApplier(
 
         profile.Status = evaluation.Status;
         profile.StatusReason = evaluation.Reasons.Count == 0 ? null : string.Join(" · ", evaluation.Reasons);
+
+        // Un act care pare al altcuiva ține eligibilitatea la verificare, oricât de bine ar ieși restul.
+        await AiVerification.DocumentIdentityService.HoldIfMismatchedAsync(context, profile, cancellationToken);
     }
 
     /// <summary>

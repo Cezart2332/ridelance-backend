@@ -12,7 +12,29 @@ public sealed record DocumentAiAnalysisRequest(
     string ExpectedDocumentLabel,
     string ExpectationDetails,
     bool ExpectsExpiryDate,
-    IReadOnlyList<AiFieldRequest> Fields);
+    IReadOnlyList<AiFieldRequest> Fields,
+    string? AuthenticityHints = null);
+
+/// <summary>
+/// Ce a văzut modelul pe document în afară de text: elementele care fac un act oficial. Fiecare
+/// valoare e <c>null</c> când modelul n-a răspuns la ea — necunoscut, nu „lipsește”.
+/// </summary>
+/// <param name="IsBlankTemplate">Formular sau șablon necompletat: rubricile de date sunt goale.</param>
+/// <param name="AppearsSelfMade">
+/// Arată scris acasă — într-un editor de text, de mână pe o foaie albă, decupat dintr-un alt act —
+/// nu emis de o instituție.
+/// </param>
+/// <param name="SuspicionReasons">Ce anume i s-a părut în neregulă, în română, pe scurt.</param>
+public sealed record DocumentAuthenticityReport(
+    bool? Letterhead,
+    bool? Stamp,
+    bool? Signature,
+    bool? RegistrationNumber,
+    string? IssuerName,
+    bool? IsBlankTemplate,
+    bool? AppearsSelfMade,
+    bool? IsScanOrPhotoOfPaper,
+    IReadOnlyList<string> SuspicionReasons);
 
 /// <summary>Valoarea extrasă pentru un câmp + încrederea auto-raportată de model (0..1).</summary>
 public sealed record AiFieldResult(string Key, string? Value, double Confidence);
@@ -50,7 +72,8 @@ public sealed record DocumentAiAnalysisResult(
     string Reason,
     IReadOnlyList<AiFieldResult> Fields,
     double OverallConfidence,
-    int RotationDegrees = 0);
+    int RotationDegrees = 0,
+    DocumentAuthenticityReport? Authenticity = null);
 
 public interface IDocumentAiAnalyzer
 {

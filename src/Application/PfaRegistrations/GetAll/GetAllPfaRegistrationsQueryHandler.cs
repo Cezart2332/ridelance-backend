@@ -94,7 +94,12 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     || r.OnboardingSections.Any(s => s.Status == OnboardingSectionStatus.AwaitingValidation)
                     || r.SignaturePacket != null
                         && r.SignaturePacket.SubmittedForReviewAtUtc != null
-                        && r.SignaturePacket.Status == SignaturePacketStatus.Draft,
+                        && r.SignaturePacket.Status == SignaturePacketStatus.Draft
+                    // Un document suspect (fără ștampilă, din Word, al altei persoane) încă
+                    // neverificat: tot la noi e mingea.
+                    || context.Documents.Any(d => d.UserId == r.UserId
+                        && d.Status == Domain.Documents.DocumentStatus.Pending
+                        && d.AiSuspicionReasons != null),
                 r.CreatedAtUtc,
                 r.User.LastActivityAtUtc,
                 context.ChatRooms

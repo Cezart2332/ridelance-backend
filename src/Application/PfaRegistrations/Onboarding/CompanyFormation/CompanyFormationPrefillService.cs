@@ -33,6 +33,8 @@ public sealed class CompanyFormationPrefillService(
     [
         DocumentCategory.CarteIdentitate,
         DocumentCategory.Buletin,
+        // Pe cartea electronică domiciliul stă doar în cip, deci doar în PDF-ul din RO CEI Reader.
+        DocumentCategory.CeiReaderPdf,
     ];
 
     /// <summary>
@@ -76,6 +78,8 @@ public sealed class CompanyFormationPrefillService(
             .AsNoTracking()
             .Where(d => d.UserId == userId
                 && d.Status != DocumentStatus.Rejected
+                // Un act de identitate care nu se potrivește cu celălalt nu completează nimic.
+                && !d.AiIdentityMismatch
                 && IdentityCategories.Contains(d.Category))
             .OrderByDescending(d => d.UploadedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);

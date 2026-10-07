@@ -20,11 +20,13 @@ public sealed class OpenRouterOptions
     public string? ReasoningEffort { get; set; } = "low";
 
     /// <summary>
-    /// Același lucru, pentru citirea documentelor: <c>low</c>. A stat o vreme pe <c>high</c> cât părea
-    /// că modelul citește prost; cauza era promptul (interzicea CNP-ul, seria și numărul), nu gânditul.
-    /// Se poate ridica din configurare (<c>OpenRouter__DocumentReasoningEffort</c>), fără cod.
+    /// Același lucru, pentru citirea documentelor: <c>medium</c>. Pe <c>low</c> extragerea mergea, dar
+    /// modelul nu se mai uita la ce face un act oficial — antet, ștampilă, MRZ, rubrica ITP — și
+    /// trecea o adeverință scrisă în Word. A stat o vreme pe <c>high</c> cât părea că citește prost;
+    /// cauza era promptul (interzicea CNP-ul, seria și numărul), nu gânditul. Se schimbă din
+    /// configurare (<c>OpenRouter__DocumentReasoningEffort</c>), fără cod.
     /// </summary>
-    public string? DocumentReasoningEffort { get; set; } = "low";
+    public string? DocumentReasoningEffort { get; set; } = "medium";
 
     public string BaseUrl { get; set; } = "https://openrouter.ai/api/v1";
 
