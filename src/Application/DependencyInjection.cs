@@ -62,6 +62,9 @@ public static class DependencyInjection
         // Reia în dosarul de înființare datele citite din buletin la pasul de eligibilitate.
         services.AddScoped<PfaRegistrations.Onboarding.CompanyFormation.CompanyFormationPrefillService>();
 
+        // Împuternicirea ANAF, generată la trimiterea pasului fiscal.
+        services.AddScoped<PfaRegistrations.Onboarding.AnafMandate.AnafMandateService>();
+
         // Anunțurile interne: dosar generat, plată încasată.
         services.AddScoped<PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier>();
         services.AddScoped<PfaRegistrations.Onboarding.CompanyFormation.ConsultoDossierSender>();

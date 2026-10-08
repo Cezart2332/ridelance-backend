@@ -1,5 +1,6 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Messaging;
+using Application.PfaRegistrations.Onboarding.AnafMandate;
 using Application.PfaRegistrations.Onboarding.Step2;
 using Domain.PfaRegistrations;
 using SharedKernel;
@@ -257,6 +258,20 @@ internal sealed class OnboardingStep2 : IEndpoint
                 cancellationToken);
 
             return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .RequireAuthorization()
+        .HasPermission("pfa:manage")
+        .WithTags(Tags.PfaRegistrations);
+
+        // Împuternicirea ANAF, refăcută după ce adminul a completat ce lipsea. Același număr.
+        app.MapPost("admin/onboarding/{id:guid}/anaf-mandate/regenerate", async (
+            Guid id,
+            ICommandHandler<RegenerateAnafMandateCommand, AnafMandateResult> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result<AnafMandateResult> result = await handler.Handle(new RegenerateAnafMandateCommand(id), cancellationToken);
+
+            return result.Match(Results.Ok, CustomResults.Problem);
         })
         .RequireAuthorization()
         .HasPermission("pfa:manage")

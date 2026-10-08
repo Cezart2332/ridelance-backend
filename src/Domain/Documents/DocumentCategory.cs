@@ -56,5 +56,10 @@ public enum DocumentCategory
     /// două arată dacă PDF-ul e chiar al cărții fotografiate.
     /// </summary>
     CeiReaderPdf = 39,
+    /// <summary>
+    /// Împuternicirea ANAF generată de noi la trimiterea pasului fiscal, cu datele clientului.
+    /// Nesemnată: pleacă la semnat în pachetul de semnături.
+    /// </summary>
+    ImputernicireAnaf = 40,
     Other = 99
 }

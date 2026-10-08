@@ -81,6 +81,12 @@ public static class DependencyInjection
         services.AddScoped<IDossierGenerator, ArrDossierGenerator>();
         services.AddScoped<ICompanyFormationPdfGenerator, CompanyFormationPdfGenerator>();
 
+        // Împuternicirea ANAF: mandatarul (CNP, CI) vine din configurare, numărul din secvență.
+        services.Configure<Application.PfaRegistrations.Onboarding.AnafMandate.AnafMandatarOptions>(
+            configuration.GetSection(Application.PfaRegistrations.Onboarding.AnafMandate.AnafMandatarOptions.SectionName));
+        services.AddScoped<IAnafMandatePdfGenerator, AnafMandatePdfGenerator>();
+        services.AddScoped<IAnafMandateNumberGenerator, AnafMandateNumberGenerator>();
+
         // Email Service
         services.AddHttpClient<IResend, ResendClient>();
         string? resendApiKey = configuration["Resend:ApiKey"] ?? Environment.GetEnvironmentVariable("Resend__ApiKey");

@@ -1,9 +1,11 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.PfaRegistrations.Onboarding.AnafMandate;
 using Domain.Notifications;
 using Domain.PfaRegistrations;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.Step2;
@@ -16,7 +18,9 @@ public sealed record SubmitFiscalForReviewCommand(Guid UserId) : ICommand;
 
 internal sealed class SubmitFiscalForReviewCommandHandler(
     IApplicationDbContext context,
-    OnboardingStateService stateService)
+    OnboardingStateService stateService,
+    AnafMandateService anafMandate,
+    ILogger<SubmitFiscalForReviewCommandHandler> logger)
     : ICommandHandler<SubmitFiscalForReviewCommand>
 {
     public async Task<Result> Handle(SubmitFiscalForReviewCommand command, CancellationToken cancellationToken)
@@ -105,6 +109,23 @@ internal sealed class SubmitFiscalForReviewCommandHandler(
         }
 
         await context.SaveChangesAsync(cancellationToken);
+
+        // Împuternicirea ANAF se generează acum, cu datele clientului, și intră în pachetul de
+        // semnături. O problemă aici nu oprește trimiterea: adminul o poate regenera din dosar.
+        try
+        {
+            AnafMandateResult? mandate = await anafMandate.GenerateAsync(registration.Id, cancellationToken);
+            if (mandate is { Missing.Count: > 0 })
+            {
+                logger.LogWarning(
+                    "Împuternicirea {Number} pentru PFA {PfaId} are date lipsă: {Missing}",
+                    mandate.Number, registration.Id, string.Join(", ", mandate.Missing));
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogError(exception, "Împuternicire ANAF negenerată pentru PFA {PfaId}", registration.Id);
+        }
 
         return Result.Success();
     }
