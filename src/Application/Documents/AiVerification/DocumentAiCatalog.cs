@@ -67,6 +67,16 @@ public static class DocumentAiCatalog
     /// <summary>Câmpul talonului cu datele ITP; expirarea talonului e cea mai îndepărtată dintre ele.</summary>
     public const string TalonItpField = "itp_valabil_pana_la_toate";
 
+    /// <summary>Zona MRZ a buletinului: câmp de control, nu de business.</summary>
+    public const string MrzField = "mrz_raw";
+
+    /// <summary>
+    /// Câmpurile citite doar pentru verificări în cod (MRZ). Nu se arată adminului ca date ale
+    /// clientului și nu trimit documentul la verificare manuală pe încrederea modelului.
+    /// </summary>
+    public static bool IsControlField(string key) =>
+        string.Equals(key, MrzField, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Actele din care se ia identitatea de referință: buletinul, în oricare formă.</summary>
     public static readonly DocumentCategory[] IdentityCategories =
         [DocumentCategory.CarteIdentitate, DocumentCategory.Buletin, DocumentCategory.CeiReaderPdf];

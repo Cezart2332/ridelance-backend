@@ -27,7 +27,7 @@ internal sealed class GetExtractedFieldsQueryHandler(IApplicationDbContext conte
 
         List<ExtractedField> fields = await context.ExtractedFields
             .AsNoTracking()
-            .Where(f => f.DocumentId == document.Id)
+            .Where(f => f.DocumentId == document.Id && f.FieldKey != AiVerification.DocumentAiCatalog.MrzField)
             .OrderBy(f => f.FieldKey)
             .ToListAsync(cancellationToken);
 

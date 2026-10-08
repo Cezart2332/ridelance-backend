@@ -449,7 +449,10 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             bool validatorPassed = ExtractedFieldValidators.Validate(spec.Type, normalized);
             double effective = ExtractedFieldValidators.EffectiveConfidence(validatorPassed, aiConfidence);
 
-            bool needsReview = !validatorPassed || effective < ManualReviewThreshold;
+            // Câmpurile de control (MRZ) nu trimit documentul la verificare pe încrederea modelului:
+            // ele se verifică determinist, prin cifrele de control, iar o nepotrivire devine motiv.
+            bool needsReview = !DocumentAiCatalog.IsControlField(spec.Key)
+                && (!validatorPassed || effective < ManualReviewThreshold);
             if (needsReview)
             {
                 requiresManualReview = true;
