@@ -31,15 +31,18 @@ Aceste verificări nu confirmă situația unui dosar din producție. Sumele înc
 
 ## Rezumatul lunar Bolt (din octombrie 2026)
 
-Rezumatul Bolt nu are un rând „Venituri totale”. Modelul citește separat `fare_total` (TOTAL la „Defalcare tarif”), `other_income_total` (TOTAL la „Defalcare alte venituri”) și `customer_refunds` („Rambursări clienți”), iar codul adună brutul (`ReportComponents`). Fiecare componentă e verificată în textul PDF-ului; verificarea `ARITHMETIC` a raportului cere brutul și ca el să fie exact tarif + alte venituri.
+Rezumatul Bolt nu are un rând „Venituri totale”. Modelul citește separat `fare_total` (TOTAL la „Defalcare tarif”), `other_income_total` (TOTAL la „Defalcare alte venituri”) și `customer_refunds` („Rambursări clienți”); fiecare componentă e verificată în textul PDF-ului.
+
+**Venitul brut din raport e doar TOTAL-ul de tarif** — cifra din raport. „Alte venituri” (bonusuri, compensări) intră în venit doar dacă decontul din bancă le conține.
 
 Decontul Bolt așteptat în bancă:
 
 ```
 online   = brut − numerar − rambursări clienți
 payout   = online − comision + suma returnată de Bolt pentru impozitul de 2%
+           (+ alte venituri, dacă banca arată că au fost încasate)
 ```
 
-La potrivire, payout-ul se împarte în: venit brut online (`Income`), comision (`Expense`, `PLATFORM_COMMISSION`) și suma returnată pentru impozit (`Other`, încasare în RJIP, nici venit, nici cheltuială). Impozitul pe comision rămâne pe D100 la 2% din comisionul facturat (Convenția România–Estonia, art. 12 alin. (2)), chiar dacă Bolt returnează o sumă ușor diferită.
+La potrivire, payout-ul se împarte în: venit brut online (`Income`), comision (`Expense`, `PLATFORM_COMMISSION`) și suma returnată pentru impozit (`Other`, încasare în RJIP, nici venit, nici cheltuială). Impozitul pe comision rămâne pe D100 la 2% din comisionul facturat (Convenția România–Estonia, art. 12 alin. (2)).
 
-Exemplu, septembrie 2026: brut 23.754,90 + 98,85 = 23.853,75; numerar 7.540,50; comision 2.149,09; returnat 42,77 → payout 14.206,93.
+Exemplu, septembrie 2026: brut 23.754,90; numerar 7.540,50; alte venituri 98,85; comision 2.149,09; returnat 42,77 → payout 14.108,08, sau 14.206,93 cu alte venituri încasate.

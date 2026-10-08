@@ -433,6 +433,15 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
 
             decimal net = gross - commission + withheld;
             decimal paid = payouts.Sum(e => e.Amount);
+
+            // „Alte venituri” (bonusuri, compensări) nu sunt în brutul din raport: intră în venit
+            // doar când decontul din bancă le conține, adică au fost chiar încasate.
+            decimal otherIncome = Math.Abs(adjustments.FirstOrDefault(a => a.Label.Equals(ReportComponents.OtherIncomeTotal, StringComparison.OrdinalIgnoreCase))?.Amount ?? 0);
+            if (otherIncome > 0 && paid != net && paid == net + otherIncome)
+            {
+                net += otherIncome;
+            }
+
             if (payouts.Count == 0 || net <= 0 || !string.Equals(report.Currency ?? "RON", "RON", StringComparison.OrdinalIgnoreCase) || paid != net)
             {
                 // R23: diferența se arată, nu se înregistrează.
@@ -440,7 +449,7 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
                     .ToList()
                     .ForEach(e => e.ReconciliationStatus = ReconciliationStatus.NeedsReview);
                 notes.Add($"{name} {month}: payout-urile din bancă ({AccountingJson.Amount(paid)} lei) nu dau netul din raport ({AccountingJson.Amount(net)} lei), diferență {AccountingJson.Amount(paid - net)} lei.");
-                notes.Add($"{name} {month}: calcul — venit brut {AccountingJson.Amount(reportedGross)} − numerar {AccountingJson.Amount(cash)} (se înregistrează prin Z) − rambursări clienți {AccountingJson.Amount(refunds)} − comision {AccountingJson.Amount(commission)} + sumă returnată pentru impozitul de 2% {AccountingJson.Amount(withheld)} = {AccountingJson.Amount(net)} lei. Verifică perioadele deconturilor și soldurile reportate; confirmarea raportului nu înregistrează automat o plată.");
+                notes.Add($"{name} {month}: calcul — venit brut {AccountingJson.Amount(reportedGross)} − numerar {AccountingJson.Amount(cash)} (se înregistrează prin Z) − rambursări clienți {AccountingJson.Amount(refunds)} − comision {AccountingJson.Amount(commission)} + sumă returnată pentru impozitul de 2% {AccountingJson.Amount(withheld)} = {AccountingJson.Amount(net)} lei{(otherIncome > 0 ? $" (cu alte venituri încasate: {AccountingJson.Amount(net + otherIncome)} lei)" : string.Empty)}. Verifică perioadele deconturilor și soldurile reportate; confirmarea raportului nu înregistrează automat o plată.");
                 continue;
             }
 

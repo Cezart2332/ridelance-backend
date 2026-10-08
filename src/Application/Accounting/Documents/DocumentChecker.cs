@@ -113,8 +113,8 @@ public static class DocumentChecker
     }
 
     /// <summary>
-    /// Raportul are venitul brut, iar la Bolt el e exact tarif + alte venituri. Fără brut, venitul
-    /// lunii nu ajunge în registre: decontul din bancă nu se poate descompune în venit și comision.
+    /// Raportul are venitul brut, iar la Bolt el e exact TOTAL-ul de tarif. Fără brut, venitul lunii
+    /// nu ajunge în registre: decontul din bancă nu se poate descompune în venit și comision.
     /// </summary>
     private static DocumentCheck ReportArithmetic(ExtractedFields fields)
     {
@@ -127,14 +127,12 @@ public static class DocumentChecker
                 null);
         }
 
-        if (ReportComponents.Gross(fields) is { } components && components != gross)
+        if (ReportComponents.Gross(fields) is { } fares && fares != gross)
         {
-            decimal fares = ReportComponents.Of(fields, ReportComponents.FareTotal) ?? 0;
-            decimal other = ReportComponents.Of(fields, ReportComponents.OtherIncomeTotal) ?? 0;
             return new DocumentCheck(
                 DocumentCheckCode.Arithmetic,
                 false,
-                $"Tarif {AccountingJson.Amount(fares)} + alte venituri {AccountingJson.Amount(other)} = {AccountingJson.Amount(components)}, nu {AccountingJson.Amount(gross)}.",
+                $"Venitul brut e TOTAL-ul de tarif, {AccountingJson.Amount(fares)}, nu {AccountingJson.Amount(gross)}.",
                 null);
         }
 

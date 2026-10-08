@@ -181,16 +181,18 @@ public sealed partial class LedgerTests : IDisposable
     }
 
     /// <summary>
-    /// Rezumatul Bolt din septembrie 2026: brut 23.853,75 (din care numerar 7.540,50), comision
-    /// 2.149,09, plus 42,77 dați înapoi de Bolt pentru impozitul de 2% pe comision. Plata în bancă e
-    /// 16.313,25 − 2.149,09 + 42,77 = 14.206,93. Înainte, cei 42,77 lipseau din calcul și decontul
-    /// nu se potrivea niciodată.
+    /// Rezumatul Bolt din septembrie 2026: brut 23.754,90 (TOTAL tarif, din care numerar 7.540,50),
+    /// alte venituri 98,85, comision 2.149,09, plus 42,77 dați înapoi de Bolt pentru impozitul de 2%.
+    /// Banca arată 16.214,40 + 98,85 − 2.149,09 + 42,77 = 14.206,93: alte venituri au fost încasate,
+    /// deci intră în venit. Înainte, cei 42,77 lipseau din calcul și decontul nu se potrivea niciodată.
     /// </summary>
     [Fact]
     public async Task R21_BoltPayout_IncludesTheWithholdingRefund_AsANonIncomeReceipt()
     {
         Transaction(14206.93m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 9, 2));
-        Report(Platform.Bolt, income: 23853.75m, commission: 2149.09m, cash: 7540.50m, withheld: 42.77m);
+        Report(
+            Platform.Bolt, income: 23754.90m, commission: 2149.09m, cash: 7540.50m, withheld: 42.77m,
+            others: [new OtherAmount(ReportComponents.FareTotal, 23754.90m), new OtherAmount(ReportComponents.OtherIncomeTotal, 98.85m)]);
         CommissionInvoice(Platform.Bolt);
 
         IReadOnlyList<LedgerImportResult> results = await Import();
@@ -208,6 +210,24 @@ public sealed partial class LedgerTests : IDisposable
         entries.ShouldAllBe(e => e.ReconciliationStatus == ReconciliationStatus.Matched);
         // Doar venitul din curse e impozabil; suma returnată nu e nici venit, nici cheltuială.
         entries.Single(e => e.TransactionType == LedgerTransactionType.Other).DeductibleAmount.ShouldBeNull();
+    }
+
+    /// <summary>„Alte venituri” care nu apar în bancă nu intră în venit: rămâne doar TOTAL-ul de tarif.</summary>
+    [Fact]
+    public async Task R21_BoltPayout_WithoutOtherIncomeInTheBank_KeepsOnlyTheFareTotal()
+    {
+        Transaction(14108.08m, "BOLT OPERATIONS OU", "Payout", new DateOnly(2026, 9, 2));
+        Report(
+            Platform.Bolt, income: 23754.90m, commission: 2149.09m, cash: 7540.50m, withheld: 42.77m,
+            others: [new OtherAmount(ReportComponents.OtherIncomeTotal, 98.85m)]);
+        CommissionInvoice(Platform.Bolt);
+
+        IReadOnlyList<LedgerImportResult> results = await Import();
+
+        results.SelectMany(r => r.Notes).ShouldBeEmpty();
+        List<LedgerEntry> entries = await _db.LedgerEntries.ToListAsync();
+        entries.Single(e => e.TransactionType == LedgerTransactionType.Income).Amount.ShouldBe(16214.40m);
+        entries.Sum(e => e.Amount).ShouldBe(14108.08m);
     }
 
     /// <summary>Rezumatul Bolt din august 2026: rambursările către clienți (123,10) ies din decont.</summary>

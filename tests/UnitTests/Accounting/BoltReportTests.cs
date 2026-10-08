@@ -58,12 +58,14 @@ public sealed class BoltReportTests
             fields,
             new CheckContext([], false, null, null, new AccountingOptions()));
 
+    /// <summary>Brutul e TOTAL-ul de la „Defalcare tarif”, exact ca în raport; alte venituri rămân separat.</summary>
     [Fact]
-    public void The_gross_is_composed_from_the_two_totals()
+    public void The_gross_is_the_fare_total()
     {
         ExtractedFields fields = Read();
 
-        fields.Amount.ShouldBe(23853.75m);
+        fields.Amount.ShouldBe(23754.90m);
+        ReportComponents.OtherIncome(fields).ShouldBe(98.85m);
         ReportComponents.Of(fields, ReportComponents.FareTotal).ShouldBe(23754.90m);
         ReportComponents.Of(fields, ReportComponents.OtherIncomeTotal).ShouldBe(98.85m);
         ReportComponents.Refunds(fields).ShouldBe(0m);
@@ -96,9 +98,9 @@ public sealed class BoltReportTests
     }
 
     [Fact]
-    public void A_gross_that_is_not_the_sum_of_its_components_fails()
+    public void A_gross_that_is_not_the_fare_total_fails()
     {
-        DocumentCheck arithmetic = Check(Read() with { Amount = 23754.90m })
+        DocumentCheck arithmetic = Check(Read() with { Amount = 23853.75m })
             .Single(check => check.Code == DocumentCheckCode.Arithmetic);
 
         arithmetic.Passed.ShouldBeFalse();
