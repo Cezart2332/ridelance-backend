@@ -119,13 +119,8 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(10));
         services.AddScoped<IInvoiceGenerator, InvoiceGenerator>();
 
-        // SMS-ul de confirmare a numărului de telefon.
-        services.Configure<Infrastructure.Sms.SmsOptions>(configuration.GetSection(Infrastructure.Sms.SmsOptions.SectionName));
-        services.AddHttpClient<ISmsService, Infrastructure.Sms.VonageSmsService>(client =>
-            client.Timeout = TimeSpan.FromSeconds(15));
-
         // Codurile de confirmare a telefonului prin Twilio Verify: Twilio le trimite de pe numerele
-        // lui și le verifică. Neconfigurat, confirmarea rămâne pe SMS-ul de mai sus.
+        // lui (fără număr cumpărat de noi) și le verifică.
         services.Configure<Infrastructure.Sms.TwilioOptions>(configuration.GetSection(Infrastructure.Sms.TwilioOptions.SectionName));
         services.AddHttpClient<IPhoneCodeVerifier, Infrastructure.Sms.TwilioVerifyService>(client =>
             client.Timeout = TimeSpan.FromSeconds(15));

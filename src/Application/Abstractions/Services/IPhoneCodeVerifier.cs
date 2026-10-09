@@ -18,8 +18,8 @@ public enum PhoneCodeCheck
 /// propriu, iar codul nu trece prin baza noastră.
 /// </summary>
 /// <remarks>
-/// Neconfigurat (<see cref="IsEnabled"/> fals), confirmarea rămâne pe drumul vechi: cod generat de
-/// noi și trimis ca SMS prin <see cref="ISmsService"/>.
+/// Neconfigurat (<see cref="IsEnabled"/> fals), trimiterea și verificarea eșuează explicit, cu un
+/// mesaj că SMS-ul nu e configurat — nu tăcut cu succes.
 /// </remarks>
 public interface IPhoneCodeVerifier
 {

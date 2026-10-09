@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Security.Cryptography;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
@@ -11,7 +9,7 @@ using SharedKernel;
 namespace Application.Users.PhoneVerification;
 
 /// <summary>
-/// Trimite prin SMS un cod de confirmare pe numărul contului.
+/// Trimite prin SMS un cod de confirmare pe numărul contului, prin Twilio Verify.
 /// </summary>
 /// <remarks>
 /// Numărul poate veni în comandă — atunci se și salvează pe cont, fiindcă cel care confirmă un
@@ -22,7 +20,6 @@ public sealed record SendPhoneCodeCommand(string? PhoneNumber = null) : ICommand
 internal sealed class SendPhoneCodeCommandHandler(
     IApplicationDbContext context,
     IUserContext userContext,
-    ISmsService smsService,
     IPhoneCodeVerifier codeVerifier) : ICommandHandler<SendPhoneCodeCommand>
 {
     public async Task<Result> Handle(SendPhoneCodeCommand command, CancellationToken cancellationToken)
@@ -71,47 +68,12 @@ internal sealed class SendPhoneCodeCommandHandler(
             return Result.Success();
         }
 
-        // Twilio Verify: codul îl generează, îl trimite și îl verifică Twilio. Noi ținem doar
-        // fereastra de valabilitate (pentru pauza dintre retrimiteri) și numărul de încercări.
-        if (codeVerifier.IsEnabled)
-        {
-            user.PhoneVerificationCode = null;
-            user.PhoneVerificationCodeExpiresAtUtc = DateTime.UtcNow.Add(Domain.Users.PhoneVerification.CodeLifetime);
-            user.PhoneVerificationAttempts = 0;
-            await context.SaveChangesAsync(cancellationToken);
-
-            return await codeVerifier.SendCodeAsync(international, cancellationToken);
-        }
-
-        string code = Issue(user);
-        await context.SaveChangesAsync(cancellationToken);
-
-        string message = string.Create(
-            CultureInfo.InvariantCulture,
-            $"Codul tău RIDElance este {code}. Expiră în {(int)Domain.Users.PhoneVerification.CodeLifetime.TotalMinutes} minute.");
-
-        return await smsService.SendAsync(international, message, cancellationToken);
-    }
-
-    /// <summary>
-    /// Pune un cod nou pe cont și îi resetează încercările.
-    /// </summary>
-    /// <remarks>
-    /// Cifrele vin din generatorul criptografic, ca la email: un cod ghicibil din cel anterior
-    /// n-ar mai confirma nimic.
-    /// </remarks>
-    private static string Issue(User user)
-    {
-        int max = (int)Math.Pow(10, Domain.Users.PhoneVerification.CodeLength);
-        string code = RandomNumberGenerator
-            .GetInt32(max)
-            .ToString(CultureInfo.InvariantCulture)
-            .PadLeft(Domain.Users.PhoneVerification.CodeLength, '0');
-
-        user.PhoneVerificationCode = code;
+        // Codul îl generează, îl trimite și îl verifică Twilio. Noi ținem doar fereastra de
+        // valabilitate (pentru pauza dintre retrimiteri) și numărul de încercări.
         user.PhoneVerificationCodeExpiresAtUtc = DateTime.UtcNow.Add(Domain.Users.PhoneVerification.CodeLifetime);
         user.PhoneVerificationAttempts = 0;
+        await context.SaveChangesAsync(cancellationToken);
 
-        return code;
+        return await codeVerifier.SendCodeAsync(international, cancellationToken);
     }
 }

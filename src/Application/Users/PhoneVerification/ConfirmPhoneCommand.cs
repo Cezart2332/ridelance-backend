@@ -11,6 +11,10 @@ namespace Application.Users.PhoneVerification;
 /// <summary>Confirmă numărul de telefon cu codul primit prin SMS.</summary>
 public sealed record ConfirmPhoneCommand(string Code) : ICommand;
 
+/// <summary>
+/// Codul se verifică la Twilio Verify, care l-a și trimis. Fereastra și încercările le ținem și noi,
+/// ca omul să primească mesajul potrivit („a expirat”, „prea multe încercări”) fără drum la Twilio.
+/// </summary>
 internal sealed class ConfirmPhoneCommandHandler(
     IApplicationDbContext context,
     IUserContext userContext,
@@ -32,43 +36,6 @@ internal sealed class ConfirmPhoneCommandHandler(
             return Result.Success();
         }
 
-        if (codeVerifier.IsEnabled)
-        {
-            return await ConfirmWithProviderAsync(user, command.Code.Trim(), cancellationToken);
-        }
-
-        if (user.PhoneVerificationCode is null || user.PhoneVerificationCodeExpiresAtUtc is null)
-        {
-            return Result.Failure(UserErrors.VerificationCodeMissing);
-        }
-
-        if (user.PhoneVerificationCodeExpiresAtUtc < DateTime.UtcNow)
-        {
-            return Result.Failure(UserErrors.VerificationCodeExpired);
-        }
-
-        if (user.PhoneVerificationAttempts >= Domain.Users.PhoneVerification.MaxAttempts)
-        {
-            return Result.Failure(UserErrors.VerificationTooManyAttempts);
-        }
-
-        if (!string.Equals(user.PhoneVerificationCode, command.Code.Trim(), StringComparison.Ordinal))
-        {
-            user.PhoneVerificationAttempts++;
-            await context.SaveChangesAsync(cancellationToken);
-            return Result.Failure(UserErrors.VerificationCodeInvalid);
-        }
-
-        await MarkVerifiedAsync(user, cancellationToken);
-        return Result.Success();
-    }
-
-    /// <summary>
-    /// Codul trimis prin Twilio Verify se verifică tot la Twilio. Fereastra și încercările le ținem
-    /// și noi, ca mesajele să fie aceleași ca pe drumul vechi.
-    /// </summary>
-    private async Task<Result> ConfirmWithProviderAsync(User user, string code, CancellationToken cancellationToken)
-    {
         if (user.PhoneVerificationCodeExpiresAtUtc is null || user.PhoneNumber is null)
         {
             return Result.Failure(UserErrors.VerificationCodeMissing);
@@ -90,7 +57,7 @@ internal sealed class ConfirmPhoneCommandHandler(
             return Result.Failure(UserErrors.PhoneInvalid);
         }
 
-        Result<PhoneCodeCheck> check = await codeVerifier.CheckCodeAsync(international, code, cancellationToken);
+        Result<PhoneCodeCheck> check = await codeVerifier.CheckCodeAsync(international, command.Code.Trim(), cancellationToken);
         if (check.IsFailure)
         {
             return Result.Failure(check.Error);
@@ -99,7 +66,11 @@ internal sealed class ConfirmPhoneCommandHandler(
         switch (check.Value)
         {
             case PhoneCodeCheck.Approved:
-                await MarkVerifiedAsync(user, cancellationToken);
+                user.PhoneVerifiedAtUtc = DateTime.UtcNow;
+                // Fereastra se închide: un cod consumat nu mai are voie să confirme a doua oară.
+                user.PhoneVerificationCodeExpiresAtUtc = null;
+                user.PhoneVerificationAttempts = 0;
+                await context.SaveChangesAsync(cancellationToken);
                 return Result.Success();
             case PhoneCodeCheck.Expired:
                 return Result.Failure(UserErrors.VerificationCodeExpired);
@@ -108,16 +79,5 @@ internal sealed class ConfirmPhoneCommandHandler(
                 await context.SaveChangesAsync(cancellationToken);
                 return Result.Failure(UserErrors.VerificationCodeInvalid);
         }
-    }
-
-    private async Task MarkVerifiedAsync(User user, CancellationToken cancellationToken)
-    {
-        user.PhoneVerifiedAtUtc = DateTime.UtcNow;
-        // Codul dispare: unul consumat nu mai are voie să confirme a doua oară.
-        user.PhoneVerificationCode = null;
-        user.PhoneVerificationCodeExpiresAtUtc = null;
-        user.PhoneVerificationAttempts = 0;
-
-        await context.SaveChangesAsync(cancellationToken);
     }
 }

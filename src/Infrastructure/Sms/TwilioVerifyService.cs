@@ -176,6 +176,17 @@ internal sealed class TwilioVerifyService(
         [property: JsonPropertyName("message")] string? Message);
 }
 
+internal static class SmsErrors
+{
+    public static readonly Error NotConfigured = Error.Problem(
+        "Sms.NotConfigured",
+        "Trimiterea prin SMS nu e configurată.");
+
+    public static readonly Error SendFailed = Error.Problem(
+        "Sms.SendFailed",
+        "Nu am putut trimite SMS-ul. Încearcă din nou în câteva minute.");
+}
+
 internal static class TwilioErrors
 {
     public static readonly Error TooManySends = Error.Problem(

@@ -53,7 +53,6 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.RefreshToken).HasMaxLength(256);
         builder.Property(u => u.EmailVerificationCode).HasMaxLength(16);
 
-        builder.Property(u => u.PhoneVerificationCode).HasMaxLength(16);
 
         // Proprietăți calculate din datele de confirmare; nu au coloană.
         builder.Ignore(u => u.IsEmailVerified);

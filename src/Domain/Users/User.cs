@@ -70,9 +70,10 @@ public sealed class User : Entity
     /// </remarks>
     public DateTime? PhoneVerifiedAtUtc { get; set; }
 
-    /// <summary>Codul din SMS. Se șterge la confirmare, ca să nu poată fi refolosit.</summary>
-    public string? PhoneVerificationCode { get; set; }
-
+    /// <summary>
+    /// Până când e valabil codul trimis prin SMS. Codul în sine îl ține Twilio Verify; noi păstrăm
+    /// fereastra, pentru pauza dintre retrimiteri și mesajul „a expirat”.
+    /// </summary>
     public DateTime? PhoneVerificationCodeExpiresAtUtc { get; set; }
 
     /// <summary>Câte coduri greșite s-au încercat de la ultima trimitere.</summary>
