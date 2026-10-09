@@ -22,7 +22,7 @@ internal static class OnboardingChecklistBuilder
         [OnboardingStepKey.ArrFleet] =
         [
             .. ArrFleetRules.PersonalDocuments,
-            ArrFleetRules.PaymentProof,
+            .. ArrFleetRules.PaymentProofs,
             .. ArrFleetRules.VehicleDocuments,
         ],
     };

@@ -21,7 +21,33 @@ public static class ArrFleetRules
         new("Cazier judiciar", DocumentCategory.CazierJudiciar),
     ];
 
-    public static readonly Requirement PaymentProof = new("Dovada plății", DocumentCategory.DovadaPlataArr);
+    /// <summary>
+    /// Cele trei plăți separate, în cuantum exact, cerute de ARR. Fiecare are dovada ei; suma
+    /// ecusoanelor depinde de platformele alese.
+    /// </summary>
+    public static readonly Requirement[] PaymentProofs =
+    [
+        new("Dovada plății autorizației de transport", DocumentCategory.ArrAuthorizationPaymentProof),
+        new("Dovada plății copiei conforme", DocumentCategory.ArrCertifiedCopyPaymentProof),
+        new("Dovada plății ecusoanelor", DocumentCategory.ArrBadgesPaymentProof),
+    ];
+
+    /// <summary>Plățile, cu suma, explicația și categoria dovezii, pentru platformele alese.</summary>
+    public static IReadOnlyList<ArrFleetPayment> Payments(ArrFleetPlatforms platforms)
+    {
+        var badges = SelectedProviders(platforms).Select(p => $"{Lei(ArrFleetPricing.BadgePerPlatformBani)} lei {p}").ToList();
+
+        return
+        [
+            new("Authorization", "Autorizația de transport", "Valabilă 3 ani.",
+                ArrFleetPricing.TransportAuthorizationBani, DocumentCategory.ArrAuthorizationPaymentProof),
+            new("CertifiedCopy", "Copia conformă", "Valabilă 1 an.",
+                ArrFleetPricing.CertifiedCopyBani, DocumentCategory.ArrCertifiedCopyPaymentProof),
+            new("Badges", "Ecusoanele",
+                badges.Count == 0 ? "Câte 8 lei pentru fiecare platformă aleasă." : $"Câte 8 lei pe platformă: {string.Join(", ", badges)}.",
+                ArrFleetPricing.BadgePerPlatformBani * badges.Count, DocumentCategory.ArrBadgesPaymentProof),
+        ];
+    }
 
     public static readonly Requirement[] VehicleDocuments =
     [
@@ -106,33 +132,6 @@ public static class ArrFleetRules
     public static ArrFleetPlatforms FlagOf(PfaPlatformProvider provider) =>
         provider == PfaPlatformProvider.Uber ? ArrFleetPlatforms.Uber : ArrFleetPlatforms.Bolt;
 
-    /// <summary>Rândurile plății, în ordinea din explicație. Ecusonul apare doar pentru platformele alese.</summary>
-    public static IReadOnlyList<PaymentLine> PaymentLines(ArrFleetPlatforms platforms)
-    {
-        var lines = new List<PaymentLine>
-        {
-            new("autorizația de transport (valabilă 3 ani)", ArrFleetPricing.TransportAuthorizationBani),
-            new("copia conformă (valabilă 1 an)", ArrFleetPricing.CertifiedCopyBani),
-        };
-
-        if (platforms.HasFlag(ArrFleetPlatforms.Bolt))
-        {
-            lines.Add(new("ecusoane Bolt", ArrFleetPricing.BadgePerPlatformBani));
-        }
-
-        if (platforms.HasFlag(ArrFleetPlatforms.Uber))
-        {
-            lines.Add(new("ecusoane Uber", ArrFleetPricing.BadgePerPlatformBani));
-        }
-
-        return lines;
-    }
-
-    /// <summary>„Plata este o sumă întreagă formată din: 300 lei autorizația…, 8 lei ecusoane Uber.”</summary>
-    public static string PaymentExplanation(ArrFleetPlatforms platforms) =>
-        "Plata este o sumă întreagă formată din: " +
-        string.Join(", ", PaymentLines(platforms).Select(l => $"{Lei(l.AmountBani)} lei {l.Label}")) + ".";
-
     public static string Lei(long bani) =>
         (bani / 100m).ToString(bani % 100 == 0 ? "#,0" : "#,0.00", CultureInfo.GetCultureInfo("ro-RO"));
 
@@ -147,12 +146,12 @@ public static class ArrFleetRules
             .FirstOrDefault();
 
     /// <summary>
-    /// Dovada plății e pentru o sumă care între timp s-a schimbat (clientul a schimbat platformele
-    /// după ce a încărcat-o).
+    /// Dovada plății ecusoanelor e pentru o sumă care între timp s-a schimbat: clientul a schimbat
+    /// platformele după ce a încărcat-o. Celelalte două plăți nu depind de platforme.
     /// </summary>
     public static bool PaymentProofOutdated(ArrFleetApplication application, IEnumerable<Document> documents)
     {
-        Document? proof = Latest(documents, PaymentProof.Category);
+        Document? proof = Latest(documents, DocumentCategory.ArrBadgesPaymentProof);
         return proof is not null
             && application.PaymentAmountChangedAtUtc is DateTime changedAt
             && proof.UploadedAtUtc < changedAt;
@@ -190,10 +189,14 @@ public static class ArrFleetRules
             }
         }
 
-        AddIfMissing(missing, documents, PaymentProof);
+        foreach (Requirement proof in PaymentProofs)
+        {
+            AddIfMissing(missing, documents, proof);
+        }
+
         if (PaymentProofOutdated(application, documents))
         {
-            missing.Add("dovada plății pentru suma actuală");
+            missing.Add("dovada plății ecusoanelor pentru suma actuală");
         }
 
         if (application.VehicleOwnership is null)
@@ -263,5 +266,5 @@ public static class ArrFleetRules
     }
 }
 
-/// <summary>Un rând din plată: ce acoperă și cât.</summary>
-public sealed record PaymentLine(string Label, long AmountBani);
+/// <summary>O plată separată către ARR: ce acoperă, cât și în ce categorie intră dovada.</summary>
+public sealed record ArrFleetPayment(string Kind, string Label, string Explanation, long AmountBani, DocumentCategory ProofCategory);

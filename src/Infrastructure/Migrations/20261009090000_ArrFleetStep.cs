@@ -12,8 +12,8 @@ namespace Infrastructure.Migrations
     /// - dosarele aflate pe pașii vechi primesc o cerere cu ce au ales deja (platformele, modul de
     ///   deținere a mașinii), ca nimic să nu se piardă; cele cu onboardingul încheiat intră direct
     ///   ca finalizate;
-    /// - cererile ARR, de copie conformă, ecusoanele, conturile de trezorerie ARR și secțiunile vechi
-    ///   dispar, odată cu pașii care le foloseau.
+    /// - cererile ARR, de copie conformă, ecusoanele și secțiunile vechi dispar, odată cu pașii care
+    ///   le foloseau. Conturile de trezorerie ARR rămân: plățile pasului nou merg în ele.
     ///
     /// Scrisă de mână, ca toate migrațiile din proiect. Nereversibilă: tabelele șterse nu se refac.
     /// </summary>
@@ -162,7 +162,6 @@ namespace Infrastructure.Migrations
             migrationBuilder.DropTable(name: "vehicle_badges", schema: "public");
             migrationBuilder.DropTable(name: "vehicle_copy_requests", schema: "public");
             migrationBuilder.DropTable(name: "arr_authorization_requests", schema: "public");
-            migrationBuilder.DropTable(name: "arr_accounts", schema: "public");
         }
 
         /// <inheritdoc />

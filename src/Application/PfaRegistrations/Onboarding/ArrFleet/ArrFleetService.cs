@@ -3,12 +3,11 @@ using Domain.Documents;
 using Domain.PfaRegistrations;
 using Domain.PfaRegistrations.ArrFleet;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace Application.PfaRegistrations.Onboarding.ArrFleet;
 
 /// <summary>Citirea și maparea pasului, comune clientului și adminului.</summary>
-internal sealed class ArrFleetService(IApplicationDbContext context, IOptions<ArrFleetOptions> options)
+internal sealed class ArrFleetService(IApplicationDbContext context, ArrAgencyResolver agencyResolver)
 {
     /// <summary>Dosarul cu tot ce citește pasul: conturile de platformă și cererea.</summary>
     public Task<PfaRegistration?> LoadAsync(
@@ -118,7 +117,17 @@ internal sealed class ArrFleetService(IApplicationDbContext context, IOptions<Ar
             })
             .ToList();
 
-        ArrFleetOptions payment = options.Value;
+        ArrAgencyResolution agency = await agencyResolver.ResolveAsync(registration, cancellationToken);
+
+        var payments = ArrFleetRules.Payments(application.Platforms)
+            .Select(p => new ArrFleetPaymentDto(
+                p.Kind,
+                p.Label,
+                p.Explanation,
+                p.AmountBani,
+                p.ProofCategory.ToString(),
+                ArrFleetRules.Latest(documents, p.ProofCategory) is not null))
+            .ToList();
 
         return new ArrFleetStateResponse(
             registration.Id,
@@ -128,8 +137,11 @@ internal sealed class ArrFleetService(IApplicationDbContext context, IOptions<Ar
             driverAccounts,
             application.VehicleOwnership?.ToString(),
             application.PaymentAmountBani,
-            ArrFleetRules.PaymentExplanation(application.Platforms),
-            new ArrFleetPaymentDetailsDto(payment.PaymentBeneficiary, payment.PaymentIban, payment.PaymentBank),
+            payments,
+            agency.Account is ArrAccount account
+                ? new ArrAgencyDto(account.CountyCode, account.CountyName, account.BeneficiaryName, account.Treasury, account.FiscalCode, account.Iban)
+                : null,
+            agency.Error,
             ArrFleetRules.PaymentProofOutdated(application, documents),
             application.SubmittedAtUtc,
             application.SubmittedAtUtc is null ? application.ReopenedReason : null,

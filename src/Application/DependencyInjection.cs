@@ -67,6 +67,7 @@ public static class DependencyInjection
 
         // Pasul „ARR & Cont Flotă”: citirea și maparea comune clientului și adminului.
         services.AddScoped<PfaRegistrations.Onboarding.ArrFleet.ArrFleetService>();
+        services.AddScoped<PfaRegistrations.Onboarding.ArrFleet.ArrAgencyResolver>();
 
         // Anunțurile interne: dosar generat, plată încasată.
         services.AddScoped<PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier>();

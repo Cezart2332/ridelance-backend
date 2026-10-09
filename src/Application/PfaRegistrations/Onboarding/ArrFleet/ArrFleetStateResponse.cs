@@ -12,8 +12,9 @@ public sealed record ArrFleetStateResponse(
     IReadOnlyList<ArrFleetDriverAccountDto> DriverAccounts,
     string? VehicleOwnership,
     long PaymentAmountBani,
-    string PaymentExplanation,
-    ArrFleetPaymentDetailsDto PaymentDetails,
+    IReadOnlyList<ArrFleetPaymentDto> Payments,
+    ArrAgencyDto? Agency,
+    string? AgencyError,
     bool PaymentProofOutdated,
     DateTime? SubmittedAtUtc,
     string? ReopenedReason,
@@ -32,6 +33,22 @@ public sealed record ArrFleetDriverAccountDto(
     string? FullName,
     bool RequiresPhoneCall);
 
-public sealed record ArrFleetPaymentDetailsDto(string? Beneficiary, string? Iban, string? Bank);
+/// <summary>O plată separată: suma, explicația și categoria în care se încarcă dovada ei.</summary>
+public sealed record ArrFleetPaymentDto(
+    string Kind,
+    string Label,
+    string Explanation,
+    long AmountBani,
+    string ProofCategory,
+    bool ProofUploaded);
+
+/// <summary>Agenția teritorială ARR din județul sediului social, cu contul ei de trezorerie.</summary>
+public sealed record ArrAgencyDto(
+    string CountyCode,
+    string CountyName,
+    string BeneficiaryName,
+    string Treasury,
+    string FiscalCode,
+    string Iban);
 
 public sealed record ArrFleetStatusLogDto(string FromStatus, string ToStatus, string? ChangedBy, DateTime ChangedAtUtc);

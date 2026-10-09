@@ -80,10 +80,6 @@ public static class DependencyInjection
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         services.AddScoped<ICompanyFormationPdfGenerator, CompanyFormationPdfGenerator>();
 
-        // Contul în care se plătește pasul „ARR & Cont Flotă”.
-        services.Configure<Application.PfaRegistrations.Onboarding.ArrFleet.ArrFleetOptions>(
-            configuration.GetSection(Application.PfaRegistrations.Onboarding.ArrFleet.ArrFleetOptions.SectionName));
-
         // Împuternicirea ANAF: mandatarul (CNP, CI) vine din configurare, numărul din secvență.
         services.Configure<Application.PfaRegistrations.Onboarding.AnafMandate.AnafMandatarOptions>(
             configuration.GetSection(Application.PfaRegistrations.Onboarding.AnafMandate.AnafMandatarOptions.SectionName));

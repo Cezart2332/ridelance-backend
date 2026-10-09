@@ -67,5 +67,13 @@ public enum DocumentCategory
     ContractInchiriere = 42,
     /// <summary>Contractul de leasing al mașinii.</summary>
     ContractLeasing = 43,
+    /// <summary>
+    /// Dovezile celor trei plăți separate cerute de ARR la pasul „ARR &amp; Cont Flotă”, toate în
+    /// contul de trezorerie al agenției din județul sediului social: autorizația, copia conformă și
+    /// ecusoanele.
+    /// </summary>
+    ArrAuthorizationPaymentProof = 44,
+    ArrCertifiedCopyPaymentProof = 45,
+    ArrBadgesPaymentProof = 46,
     Other = 99
 }

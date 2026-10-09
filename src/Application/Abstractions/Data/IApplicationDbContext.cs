@@ -75,6 +75,7 @@ public interface IApplicationDbContext
     DbSet<PfaOblioAccount> PfaOblioAccounts { get; }
     DbSet<Domain.PfaRegistrations.ArrFleet.ArrFleetApplication> ArrFleetApplications { get; }
     DbSet<Domain.PfaRegistrations.ArrFleet.ArrFleetStatusLog> ArrFleetStatusLogs { get; }
+    DbSet<ArrAccount> ArrAccounts { get; }
     DbSet<PfaVehicle> PfaVehicles { get; }
     DbSet<Document> Documents { get; }
     DbSet<ExtractedField> ExtractedFields { get; }

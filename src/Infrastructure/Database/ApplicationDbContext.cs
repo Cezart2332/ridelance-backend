@@ -81,6 +81,7 @@ public sealed class ApplicationDbContext(
     public DbSet<PfaOblioAccount> PfaOblioAccounts { get; set; }
     public DbSet<Domain.PfaRegistrations.ArrFleet.ArrFleetApplication> ArrFleetApplications { get; set; }
     public DbSet<Domain.PfaRegistrations.ArrFleet.ArrFleetStatusLog> ArrFleetStatusLogs { get; set; }
+    public DbSet<ArrAccount> ArrAccounts { get; set; }
     public DbSet<PfaVehicle> PfaVehicles { get; set; }
     public DbSet<Document> Documents { get; set; }
     public DbSet<ExtractedField> ExtractedFields { get; set; }
