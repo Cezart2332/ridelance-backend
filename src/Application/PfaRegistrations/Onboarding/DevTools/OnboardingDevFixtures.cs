@@ -1,5 +1,6 @@
 using Application.Abstractions.Data;
 using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.ArrFleet;
 
 namespace Application.PfaRegistrations.Onboarding.DevTools;
 
@@ -26,9 +27,7 @@ public static class OnboardingDevFixtures
     public const string Street = "Strada Testelor";
     public const string Number = "1";
     public const string PostalCode = "400001";
-    public const string PlateNumber = "CJ01TST";
     public const string Iban = "RO49AAAA1B31007593840000";
-    public const string ArrAuthorizationNumber = "TEST-ARR-0001";
 
     /// <summary>Pașii mari, în ordinea reală. Saltul la unul îi completează pe toți dinaintea lui.</summary>
     public static readonly OnboardingStepKey[] Order =
@@ -36,9 +35,7 @@ public static class OnboardingDevFixtures
         OnboardingStepKey.Eligibility,
         OnboardingStepKey.Pfa,
         OnboardingStepKey.Fiscal,
-        OnboardingStepKey.Arr,
-        OnboardingStepKey.Platforms,
-        OnboardingStepKey.Vehicle,
+        OnboardingStepKey.ArrFleet,
     ];
 
     /// <summary>Cheia unui pas, exact ca cea trimisă clientului.</summary>
@@ -47,9 +44,7 @@ public static class OnboardingDevFixtures
         OnboardingStepKey.Eligibility => "eligibility",
         OnboardingStepKey.Pfa => "pfa",
         OnboardingStepKey.Fiscal => "fiscal",
-        OnboardingStepKey.Arr => "arr",
-        OnboardingStepKey.Platforms => "platforms",
-        OnboardingStepKey.Vehicle => "vehicle",
+        OnboardingStepKey.ArrFleet => "arr_fleet",
         _ => throw new ArgumentOutOfRangeException(nameof(step)),
     };
 
@@ -93,14 +88,8 @@ public static class OnboardingDevFixtures
             case OnboardingStepKey.Fiscal:
                 ApplyFiscal(context, registration, nowUtc);
                 break;
-            case OnboardingStepKey.Arr:
-                ApplyArr(context, registration, nowUtc);
-                break;
-            case OnboardingStepKey.Platforms:
-                ApplyPlatforms(context, registration, nowUtc);
-                break;
-            case OnboardingStepKey.Vehicle:
-                ApplyVehicle(context, registration, nowUtc);
+            case OnboardingStepKey.ArrFleet:
+                ApplyArrFleet(context, registration, nowUtc);
                 break;
             default:
                 break;
@@ -210,26 +199,25 @@ public static class OnboardingDevFixtures
         packet.UpdatedAtUtc = nowUtc;
     }
 
-    private static void ApplyArr(IApplicationDbContext context, PfaRegistration registration, DateTime nowUtc)
+    private static void ApplyArrFleet(IApplicationDbContext context, PfaRegistration registration, DateTime nowUtc)
     {
-        ArrAuthorizationRequest arr = registration.ArrAuthorizationRequest ?? Add(context, registration,
-            new ArrAuthorizationRequest
+        ArrFleetApplication application = registration.ArrFleetApplication ?? Add(context, registration,
+            new ArrFleetApplication
             {
                 Id = Guid.NewGuid(),
                 PfaRegistrationId = registration.Id,
+                UserId = registration.UserId,
                 CreatedAtUtc = nowUtc,
             });
 
-        arr.AgencyName ??= County;
-        arr.Status = ArrAuthorizationStatus.Issued;
-        arr.AuthorizationNumber ??= ArrAuthorizationNumber;
-        arr.AuthorizationExpiresOn ??= DateOnly.FromDateTime(nowUtc.AddYears(5));
-        arr.SubmittedAtUtc ??= nowUtc;
-        arr.UpdatedAtUtc = nowUtc;
-    }
+        application.Platforms = ArrFleetPlatforms.Uber | ArrFleetPlatforms.Bolt;
+        application.PaymentAmountBani = ArrFleetPricing.AmountBani(application.Platforms);
+        application.VehicleOwnership ??= ArrFleetVehicleOwnership.Ownership;
+        application.SubmittedAtUtc ??= nowUtc;
+        application.Status = ArrFleetStatus.Completed;
+        application.ReopenedReason = null;
+        application.UpdatedAtUtc = nowUtc;
 
-    private static void ApplyPlatforms(IApplicationDbContext context, PfaRegistration registration, DateTime nowUtc)
-    {
         foreach (PfaPlatformProvider provider in new[] { PfaPlatformProvider.Uber, PfaPlatformProvider.Bolt })
         {
             PfaPlatformAccount? account = registration.PlatformAccounts
@@ -249,52 +237,10 @@ public static class OnboardingDevFixtures
             }
 
             account.IsSelectedByUser = true;
+            account.DriverHasExistingAccount ??= false;
             account.OnboardingStatus = PfaPlatformOnboardingStatus.Active;
             account.UpdatedAtUtc = nowUtc;
         }
-    }
-
-    private static void ApplyVehicle(IApplicationDbContext context, PfaRegistration registration, DateTime nowUtc)
-    {
-        PfaVehicle? vehicle = registration.Vehicles
-            .OrderByDescending(v => v.CreatedAtUtc)
-            .FirstOrDefault();
-
-        if (vehicle is null)
-        {
-            vehicle = new PfaVehicle
-            {
-                Id = Guid.NewGuid(),
-                PfaRegistrationId = registration.Id,
-                PlateNumber = PlateNumber,
-                OwnershipMode = VehicleOwnershipMode.Owned,
-                Status = PfaVehicleStatus.Active,
-                CreatedAtUtc = nowUtc,
-            };
-            context.PfaVehicles.Add(vehicle);
-            registration.Vehicles.Add(vehicle);
-        }
-
-        vehicle.PlateNumber ??= PlateNumber;
-        vehicle.Status = PfaVehicleStatus.Active;
-
-        VehicleCopyRequest copy = vehicle.CopyRequest ?? new VehicleCopyRequest
-        {
-            Id = Guid.NewGuid(),
-            PfaVehicleId = vehicle.Id,
-            Years = 1,
-            CreatedAtUtc = nowUtc,
-        };
-
-        if (vehicle.CopyRequest is null)
-        {
-            context.VehicleCopyRequests.Add(copy);
-            vehicle.CopyRequest = copy;
-        }
-
-        copy.Status = VehicleCopyRequestStatus.Issued;
-        copy.SubmittedAtUtc ??= nowUtc;
-        copy.UpdatedAtUtc = nowUtc;
     }
 
     private static T Add<T>(IApplicationDbContext context, PfaRegistration registration, T entity)
@@ -318,9 +264,9 @@ public static class OnboardingDevFixtures
                 context.OnboardingSignaturePackets.Add(packet);
                 registration.SignaturePacket = packet;
                 break;
-            case ArrAuthorizationRequest arr:
-                context.ArrAuthorizationRequests.Add(arr);
-                registration.ArrAuthorizationRequest = arr;
+            case ArrFleetApplication application:
+                context.ArrFleetApplications.Add(application);
+                registration.ArrFleetApplication = application;
                 break;
             default:
                 throw new ArgumentException($"Fixture nemapat: {typeof(T).Name}", nameof(entity));

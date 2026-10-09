@@ -8,6 +8,11 @@ public enum DocumentGroup
     Personal = 0,
     Pfa = 1,
     Vehicle = 2,
+    /// <summary>
+    /// Actele obținute de agent la pasul „ARR &amp; Cont Flotă”: autorizația, copia conformă și
+    /// ecusoanele. Le încarcă adminul; clientul le vede aici.
+    /// </summary>
+    Transport = 3,
 }
 
 /// <param name="Key">Identificatorul stabil al tipului, folosit de frontend ca cheie de listă.</param>
@@ -75,12 +80,19 @@ public static class DocumentRegistry
             [DocumentCategory.AsigurareCalatori], HasIssueDate: true, HasExpiryDate: true),
         new("casco", "CASCO", DocumentGroup.Vehicle,
             [DocumentCategory.Casco], HasIssueDate: true, HasExpiryDate: true, IsOptional: true),
-        new("copie-conforma", "Copie conformă", DocumentGroup.Vehicle,
+        new("vehicle-contract", "Contract de folosință a mașinii", DocumentGroup.Vehicle,
+            [DocumentCategory.ContractComodat, DocumentCategory.ContractInchiriere, DocumentCategory.ContractLeasing],
+            HasIssueDate: true, HasExpiryDate: false, IsOptional: true),
+
+        // ── Transport: obținute de agentul RIDElance ──
+        new("transport-authorization", "Autorizație de transport", DocumentGroup.Transport,
+            [DocumentCategory.AutorizatieTransportAlternativ], HasIssueDate: true, HasExpiryDate: true),
+        new("copie-conforma", "Copie conformă", DocumentGroup.Transport,
             [DocumentCategory.CopieConforma], HasIssueDate: true, HasExpiryDate: true),
-        new("ecuson-uber", "Ecuson Uber", DocumentGroup.Vehicle,
-            [DocumentCategory.EcusonUber], HasIssueDate: true, HasExpiryDate: true),
-        new("ecuson-bolt", "Ecuson Bolt", DocumentGroup.Vehicle,
-            [DocumentCategory.EcusonBolt], HasIssueDate: true, HasExpiryDate: true),
+        new("ecuson-uber", "Ecuson Uber", DocumentGroup.Transport,
+            [DocumentCategory.EcusonUber], HasIssueDate: true, HasExpiryDate: true, IsOptional: true),
+        new("ecuson-bolt", "Ecuson Bolt", DocumentGroup.Transport,
+            [DocumentCategory.EcusonBolt], HasIssueDate: true, HasExpiryDate: true, IsOptional: true),
     ];
 
     public static IReadOnlyList<DocumentTypeDef> ForGroup(DocumentGroup group) =>

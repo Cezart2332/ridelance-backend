@@ -1,16 +1,17 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.ArrFleet;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.PfaRegistrations.Onboarding.TestSkip;
 
 /// <summary>
-/// DOAR PENTRU TESTARE — de șters. Avansează onboardingul cu un pas (din cei 6) forțând starea
+/// DOAR PENTRU TESTARE — de șters. Avansează onboardingul cu un pas (din cei 4) forțând starea
 /// entităților ghidate, FĂRĂ documente. Fiecare apel finalizează primul pas neîncheiat, ca testerul
 /// să ajungă la înrolare fără să încarce nimic. Înrolarea reală se produce tot prin poarta unică
-/// (<see cref="OnboardingProgress.TryMarkCompleted"/>) când toți cei 6 pași sunt Completed.
+/// (<see cref="OnboardingProgress.TryMarkCompleted"/>) când toți pașii sunt Completed.
 /// </summary>
 internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext context)
     : ICommandHandler<SkipOnboardingStepCommand>
@@ -30,9 +31,8 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
             // pașii „fiscal" și „pfa" din navigații null: skipul ar recalcula mereu același pas.
             .Include(r => r.SignaturePacket)
             .Include(r => r.CompanyFormationRequest)
-            .Include(r => r.ArrAuthorizationRequest)
+            .Include(r => r.ArrFleetApplication)
             .Include(r => r.PlatformAccounts)
-            .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
             .Where(r => r.UserId == command.UserId)
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -74,9 +74,7 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
             {
                 case "pfa": ForcePfa(registration, now); break;
                 case "fiscal": ForceFiscal(registration, now); break;
-                case "arr": ForceArr(registration, now); break;
-                case "platforms": ForcePlatforms(registration, now); break;
-                case "vehicle": ForceVehicle(registration, now); break;
+                case "arr_fleet": ForceArrFleet(registration, now); break;
                 default: break;
             }
         }
@@ -171,18 +169,31 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
         packet.UpdatedAtUtc = now;
     }
 
-    private void ForceArr(PfaRegistration registration, DateTime now)
+    private void ForceArrFleet(PfaRegistration registration, DateTime now)
     {
-        ArrAuthorizationRequest arr = registration.ArrAuthorizationRequest ?? AddArr(registration, now);
-        arr.Status = ArrAuthorizationStatus.Issued;
-        arr.AuthorizationNumber ??= "TEST-ARR-0001";
-        arr.UpdatedAtUtc = now;
-    }
+        ArrFleetApplication application = registration.ArrFleetApplication ?? new ArrFleetApplication
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = registration.Id,
+            UserId = registration.UserId,
+            CreatedAtUtc = now,
+        };
 
-    private void ForcePlatforms(PfaRegistration registration, DateTime now)
-    {
+        if (registration.ArrFleetApplication is null)
+        {
+            context.ArrFleetApplications.Add(application);
+            registration.ArrFleetApplication = application;
+        }
+
+        application.Platforms = ArrFleetPlatforms.Uber;
+        application.PaymentAmountBani = ArrFleetPricing.AmountBani(ArrFleetPlatforms.Uber);
+        application.VehicleOwnership = ArrFleetVehicleOwnership.Ownership;
+        application.SubmittedAtUtc ??= now;
+        application.Status = ArrFleetStatus.Completed;
+        application.UpdatedAtUtc = now;
+
         PfaPlatformAccount? account = registration.PlatformAccounts
-            .FirstOrDefault(p => p.Kind == PfaPlatformAccountKind.Driver);
+            .FirstOrDefault(p => p.Kind == PfaPlatformAccountKind.Driver && p.Provider == PfaPlatformProvider.Uber);
 
         if (account is null)
         {
@@ -198,46 +209,9 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
         }
 
         account.IsSelectedByUser = true;
+        account.DriverHasExistingAccount ??= false;
         account.OnboardingStatus = PfaPlatformOnboardingStatus.Active;
         account.UpdatedAtUtc = now;
-    }
-
-    private void ForceVehicle(PfaRegistration registration, DateTime now)
-    {
-        PfaVehicle? vehicle = registration.Vehicles
-            .OrderByDescending(v => v.CreatedAtUtc)
-            .FirstOrDefault();
-
-        if (vehicle is null)
-        {
-            vehicle = new PfaVehicle
-            {
-                Id = Guid.NewGuid(),
-                PfaRegistrationId = registration.Id,
-                PlateNumber = "B00TEST",
-                Status = PfaVehicleStatus.Active,
-                CreatedAtUtc = now,
-            };
-            context.PfaVehicles.Add(vehicle);
-            registration.Vehicles.Add(vehicle);
-        }
-
-        VehicleCopyRequest copy = vehicle.CopyRequest ?? new VehicleCopyRequest
-        {
-            Id = Guid.NewGuid(),
-            PfaVehicleId = vehicle.Id,
-            Years = 1,
-            CreatedAtUtc = now,
-        };
-
-        if (vehicle.CopyRequest is null)
-        {
-            context.VehicleCopyRequests.Add(copy);
-            vehicle.CopyRequest = copy;
-        }
-
-        copy.Status = VehicleCopyRequestStatus.Issued;
-        copy.UpdatedAtUtc = now;
     }
 
     private PfaFiscalProfile AddFiscal(PfaRegistration registration)
@@ -285,18 +259,5 @@ internal sealed class SkipOnboardingStepCommandHandler(IApplicationDbContext con
         context.OnboardingSignaturePackets.Add(packet);
         registration.SignaturePacket = packet;
         return packet;
-    }
-
-    private ArrAuthorizationRequest AddArr(PfaRegistration registration, DateTime now)
-    {
-        var arr = new ArrAuthorizationRequest
-        {
-            Id = Guid.NewGuid(),
-            PfaRegistrationId = registration.Id,
-            CreatedAtUtc = now,
-        };
-        context.ArrAuthorizationRequests.Add(arr);
-        registration.ArrAuthorizationRequest = arr;
-        return arr;
     }
 }

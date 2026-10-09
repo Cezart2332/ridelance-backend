@@ -1,5 +1,5 @@
+using Application.PfaRegistrations.Onboarding.ArrFleet;
 using Domain.Documents;
-using Domain.PfaRegistrations;
 
 namespace Application.PfaRegistrations.Onboarding;
 
@@ -13,53 +13,49 @@ namespace Application.PfaRegistrations.Onboarding;
 /// </summary>
 internal static class OnboardingChecklistBuilder
 {
-    /// <summary>Secțiunile de documente pe care le acoperă fiecare pas.</summary>
-    private static readonly Dictionary<OnboardingStepKey, OnboardingSectionKey[]> StepSections = new()
+    /// <summary>
+    /// Actele cerute de fiecare pas. Doar „ARR &amp; Cont Flotă” are o listă; contractul mașinii
+    /// atârnă de modul de deținere, deci nu intră aici.
+    /// </summary>
+    private static readonly Dictionary<OnboardingStepKey, ArrFleetRules.Requirement[]> StepRequirements = new()
     {
-        [OnboardingStepKey.Arr] = [OnboardingSectionKey.AutorizatieTransport],
-        [OnboardingStepKey.Vehicle] = [OnboardingSectionKey.CopieConforma, OnboardingSectionKey.Vehicul],
+        [OnboardingStepKey.ArrFleet] =
+        [
+            .. ArrFleetRules.PersonalDocuments,
+            ArrFleetRules.PaymentProof,
+            .. ArrFleetRules.VehicleDocuments,
+        ],
     };
 
     public static List<OnboardingChecklistItemDto> Build(
         OnboardingStepKey step,
         IReadOnlyList<Document> documents)
     {
-        if (!StepSections.TryGetValue(step, out OnboardingSectionKey[]? sections))
+        if (!StepRequirements.TryGetValue(step, out ArrFleetRules.Requirement[]? requirements))
         {
             return [];
         }
 
         var items = new List<OnboardingChecklistItemDto>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (OnboardingSectionKey section in sections)
+        foreach (ArrFleetRules.Requirement requirement in requirements)
         {
-            foreach (OnboardingSectionCatalog.DocumentRequirement requirement in
-                     OnboardingSectionCatalog.RequirementsFor(section))
-            {
-                // Aceeași cerință poate apărea în două secțiuni ale aceluiași pas (talon, contract).
-                if (!seen.Add(requirement.Label))
-                {
-                    continue;
-                }
+            Document? newest = documents
+                .Where(d => d.Origin == DocumentOrigin.UserUpload
+                    && d.Category == requirement.Category
+                    && !d.IsSuperseded)
+                .OrderByDescending(d => d.UploadedAtUtc)
+                .FirstOrDefault();
 
-                Document? newest = documents
-                    .Where(d => d.Origin == DocumentOrigin.UserUpload
-                        && requirement.AcceptedCategories.Contains(d.Category))
-                    .OrderByDescending(d => d.UploadedAtUtc)
-                    .FirstOrDefault();
-
-                items.Add(new OnboardingChecklistItemDto(
-                    requirement.AcceptedCategories[0].ToString(),
-                    requirement.Label,
-                    StateOf(newest),
-                    // Motivul respingerii se afișează pe rând, nu într-un tooltip. Cel scris de om
-                    // bate verdictul automat; iar fără niciunul, rândul tot spune ce e de făcut —
-                    // un „Respins" gol lăsa șoferul să ghicească.
-                    newest?.Status == DocumentStatus.Rejected
-                        ? newest.ReviewNote ?? newest.AiSummary ?? "Respins de echipa RIDElance. Încarcă o variantă nouă."
-                        : null));
-            }
+            items.Add(new OnboardingChecklistItemDto(
+                requirement.Category.ToString(),
+                requirement.Label,
+                StateOf(newest),
+                // Motivul respingerii se afișează pe rând, nu într-un tooltip. Cel scris de om
+                // bate verdictul automat; iar fără niciunul, rândul tot spune ce e de făcut.
+                newest?.Status == DocumentStatus.Rejected
+                    ? newest.ReviewNote ?? newest.AiSummary ?? "Respins de echipa RIDElance. Încarcă o variantă nouă."
+                    : null));
         }
 
         return items;

@@ -31,4 +31,10 @@ public enum DocumentOrigin
     /// în documentele clientului.
     /// </summary>
     AccountingGenerated = 5,
+
+    /// <summary>
+    /// Document oficial obținut de agent și încărcat din admin (autorizație, copie conformă,
+    /// ecusoane). E al clientului: apare în documentele lui.
+    /// </summary>
+    AdminUpload = 6,
 }

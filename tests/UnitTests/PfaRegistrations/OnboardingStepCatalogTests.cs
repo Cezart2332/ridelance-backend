@@ -1,6 +1,7 @@
 using Application.PfaRegistrations.Onboarding;
 using Domain.Documents;
 using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.ArrFleet;
 using Shouldly;
 using Xunit;
 
@@ -21,7 +22,7 @@ public class OnboardingStepCatalogTests
     {
         List<OnboardingStepDto> steps = Build(registration: null, eligibility: null);
 
-        steps.Count.ShouldBe(6);
+        steps.Count.ShouldBe(4);
         steps[0].Status.ShouldBe(InProgress);
         steps[0].State.ShouldBe(OnboardingStepCatalog.States.Available);
         steps.Skip(1).ShouldAllBe(s => s.Status == Locked);
@@ -50,9 +51,7 @@ public class OnboardingStepCatalogTests
         steps[0].Status.ShouldBe(Completed);
         steps[1].Status.ShouldBe(Completed);
         steps[2].Status.ShouldBe(InProgress);   // fiscal
-        steps[3].Status.ShouldBe(Locked);       // arr
-        steps[4].Status.ShouldBe(Locked);       // platforms
-        steps[5].Status.ShouldBe(Locked);       // vehicle
+        steps[3].Status.ShouldBe(Locked);       // arr_fleet
     }
 
     /// <summary>
@@ -110,46 +109,6 @@ public class OnboardingStepCatalogTests
 
         steps[2].UserPartDone.ShouldBeTrue();
         steps[3].Status.ShouldBe(Locked);
-    }
-
-    /// <summary>
-    /// Credențialele complete termină partea șoferului la pasul 5, dar vehiculul se deschide abia
-    /// după ce adminul activează conturile.
-    /// </summary>
-    [Fact]
-    public void BuildSteps_PlatformsWithCredentials_OpenVehicleOnlyOnceActivated()
-    {
-        PfaRegistration registration = ReadyForPlatforms();
-        PfaPlatformAccount account = CompletePlatformAccount(PfaPlatformProvider.Bolt);
-        registration.PlatformAccounts.Add(account);
-
-        List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
-
-        steps[4].UserPartDone.ShouldBeTrue();
-        steps[5].Status.ShouldBe(Locked);
-
-        account.OnboardingStatus = PfaPlatformOnboardingStatus.Active;
-
-        Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated)[5]
-            .Status.ShouldNotBe(Locked);
-    }
-
-    [Fact]
-    public void BuildSteps_PlatformChosenButNotFilledIn_KeepsVehicleLocked()
-    {
-        PfaRegistration registration = ReadyForPlatforms();
-        registration.PlatformAccounts.Add(new PfaPlatformAccount
-        {
-            Id = Guid.NewGuid(),
-            Provider = PfaPlatformProvider.Bolt,
-            Kind = PfaPlatformAccountKind.Driver,
-            IsSelectedByUser = true,
-        });
-
-        List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
-
-        steps[4].UserPartDone.ShouldBeFalse();
-        steps[5].Status.ShouldBe(Locked);
     }
 
     /// <summary>
@@ -227,8 +186,7 @@ public class OnboardingStepCatalogTests
         OnboardingStepCatalog.IsWritableByUser(steps, OnboardingStepKey.Eligibility).ShouldBeFalse();
         OnboardingStepCatalog.IsWritableByUser(steps, OnboardingStepKey.Pfa).ShouldBeFalse();
         // Pași încă blocați — asta e cazul care întorcea 200 înainte de RL-01.
-        OnboardingStepCatalog.IsWritableByUser(steps, OnboardingStepKey.Arr).ShouldBeFalse();
-        OnboardingStepCatalog.IsWritableByUser(steps, OnboardingStepKey.Vehicle).ShouldBeFalse();
+        OnboardingStepCatalog.IsWritableByUser(steps, OnboardingStepKey.ArrFleet).ShouldBeFalse();
     }
 
     [Fact]
@@ -286,7 +244,7 @@ public class OnboardingStepCatalogTests
     }
 
     [Fact]
-    public void Fiscal_AfterAdminCompletesPacket_UnlocksArr()
+    public void Fiscal_AfterAdminCompletesPacket_UnlocksArrFleet()
     {
         PfaRegistration registration = FiscalRegistration();
         registration.SignaturePacket = new OnboardingSignaturePacket
@@ -395,8 +353,8 @@ public class OnboardingStepCatalogTests
         OnboardingStepCatalog.FiscalUserPartComplete(withoutBank).ShouldBeTrue();
     }
 
-    /// <summary>Dosar ajuns la pasul 5: fiscal închis de admin, dosarul ARR depus și autorizația emisă.</summary>
-    private static PfaRegistration ReadyForPlatforms()
+    /// <summary>Dosar ajuns la „ARR &amp; Cont Flotă”: pasul fiscal închis de admin.</summary>
+    private static PfaRegistration ReadyForArrFleet()
     {
         PfaRegistration registration = FiscalRegistration();
         registration.SignaturePacket = new OnboardingSignaturePacket
@@ -405,29 +363,8 @@ public class OnboardingStepCatalogTests
             Status = SignaturePacketStatus.Completed,
             SignedAtUtc = DateTime.UtcNow,
         };
-        registration.ArrAuthorizationRequest = new ArrAuthorizationRequest
-        {
-            Id = Guid.NewGuid(),
-            Status = ArrAuthorizationStatus.Issued,
-            SubmittedAtUtc = DateTime.UtcNow,
-        };
         return registration;
     }
-
-    /// <summary>Un cont de platformă cu tot ce cere <c>UserPartComplete</c>.</summary>
-    private static PfaPlatformAccount CompletePlatformAccount(PfaPlatformProvider provider) => new()
-    {
-        Id = Guid.NewGuid(),
-        Provider = provider,
-        Kind = PfaPlatformAccountKind.Driver,
-        IsSelectedByUser = true,
-        Email = "flota@ridelance.ro",
-        Phone = "+40712345678",
-        PasswordProtected = "protejata",
-        ExistingAccountAnswer = "None",
-        DriverEmail = "sofer@example.com",
-        DriverPhone = "+40712345679",
-    };
 
     /// <summary>Dosar cu partea de fiscal a șoferului completă și contul bancar verificat.</summary>
     private static PfaRegistration FiscalRegistration()
@@ -561,181 +498,66 @@ public class OnboardingStepCatalogTests
         reuploaded[0].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
     }
 
-    /// <summary>
-    /// Bugul raportat: „am validat secțiunea din admin și îmi scrie că nu e validată". Pasul ARR se
-    /// închidea doar pe autorizația emisă, pe care n-o înregistra nimeni.
-    /// </summary>
+    /* ── ARR & Cont Flotă ── */
+
     [Fact]
-    public void Arr_SectionValidatedByAdmin_CompletesTheStep()
+    public void ArrFleet_OpensAfterFiscalAndIsTheLastStep()
     {
-        PfaRegistration registration = ReadyForPlatforms();
-        registration.ArrAuthorizationRequest!.Status = ArrAuthorizationStatus.Submitted;
-        registration.OnboardingSections.Add(new OnboardingSectionApproval
-        {
-            Id = Guid.NewGuid(),
-            SectionKey = OnboardingSectionKey.AutorizatieTransport,
-            Status = OnboardingSectionStatus.Validated,
-        });
+        List<OnboardingStepDto> steps = Build(ReadyForArrFleet(), EligibleProfile(), OnboardingSectionStatus.Validated);
 
-        List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
-
-        steps[3].Status.ShouldBe(Completed);
+        steps.Count.ShouldBe(4);
+        steps[3].Key.ShouldBe("arr_fleet");
+        steps[3].Status.ShouldBe(InProgress);
+        steps[3].State.ShouldBe(OnboardingStepCatalog.States.Available);
     }
 
     [Fact]
-    public void Arr_DossierSubmitted_IsPendingAdmin()
+    public void ArrFleet_Submitted_IsPendingAdmin()
     {
-        PfaRegistration registration = ReadyForPlatforms();
-        registration.ArrAuthorizationRequest!.Status = ArrAuthorizationStatus.Submitted;
+        PfaRegistration registration = ReadyForArrFleet();
+        registration.ArrFleetApplication = new ArrFleetApplication
+        {
+            Id = Guid.NewGuid(),
+            SubmittedAtUtc = DateTime.UtcNow,
+            Status = ArrFleetStatus.DocumentsSubmitted,
+        };
 
         List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
 
         steps[3].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
-        steps[4].Status.ShouldBe(Locked);
-    }
-
-    /// <summary>Credențialele complete pun pasul în verificare — nu-l mai bifează singure.</summary>
-    [Fact]
-    public void Platforms_WithCredentials_IsPendingAdminUntilActivated()
-    {
-        PfaRegistration registration = ReadyForPlatforms();
-        PfaPlatformAccount account = CompletePlatformAccount(PfaPlatformProvider.Bolt);
-        registration.PlatformAccounts.Add(account);
-
-        Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated)[4]
-            .State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
-
-        account.OnboardingStatus = PfaPlatformOnboardingStatus.Active;
-
-        Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated)[4]
-            .Status.ShouldBe(Completed);
-    }
-
-    /// <summary>
-    /// Dosarul depus pune ultimul pas în verificare, dar NU încheie partea șoferului: copia conformă
-    /// și ecusoanele vin după depunere, iar ecranele lor apar abia atunci.
-    ///
-    /// Regresia raportată: partea șoferului se considera terminată la depunere, deci în secunda în
-    /// care ecranele copiei conforme și ecusoanelor deveneau vizibile, pasul curent devenea
-    /// „niciunul" și șoferul era trimis la „Ai terminat onboardingul". Nu le mai vedea deloc.
-    /// </summary>
-    [Fact]
-    public void Vehicle_DossierSubmitted_KeepsTheDriverOnTheStepForCopyAndBadges()
-    {
-        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
-
-        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
-            registration, OnboardingSectionStatus.Validated, EligibleProfile(), []);
-
-        steps[5].State.ShouldBe(OnboardingStepCatalog.States.PendingAdmin);
-        steps[5].UserPartDone.ShouldBeFalse();
-    }
-
-    /// <summary>Cu copia conformă și ecusonul platformei alese încărcate, partea șoferului e gata.</summary>
-    [Fact]
-    public void Vehicle_CopyAndChosenBadgesUploaded_EndsTheDriversPart()
-    {
-        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
-
-        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
-            registration,
-            OnboardingSectionStatus.Validated,
-            EligibleProfile(),
-            [Uploaded(DocumentCategory.CopieConforma), Uploaded(DocumentCategory.EcusonBolt)]);
-
-        steps[5].UserPartDone.ShouldBeTrue();
-        // Partea șoferului e gata, dar pasul rămâne al lui până îl validează adminul.
-        OnboardingStepCatalog.CurrentStepKey(steps).ShouldBe("vehicle");
+        steps[3].UserPartDone.ShouldBeTrue();
         OnboardingStepCatalog.AllCompleted(steps).ShouldBeFalse();
     }
 
-    /// <summary>Ecusonul unei platforme nealese nu se cere: la cine lucrează doar pe Bolt, Uber nu contează.</summary>
     [Fact]
-    public void Vehicle_BadgeOfAnUnchosenPlatform_IsNotRequired()
+    public void ArrFleet_ReopenedByAdmin_ReturnsToTheClientAsRejected()
     {
-        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
-
-        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
-            registration,
-            OnboardingSectionStatus.Validated,
-            EligibleProfile(),
-            [Uploaded(DocumentCategory.CopieConforma), Uploaded(DocumentCategory.EcusonBolt)]);
-
-        steps[5].UserPartDone.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void Vehicle_WithoutTheChosenPlatformsBadge_IsNotDone()
-    {
-        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
-
-        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
-            registration,
-            OnboardingSectionStatus.Validated,
-            EligibleProfile(),
-            [Uploaded(DocumentCategory.CopieConforma)]);
-
-        steps[5].UserPartDone.ShouldBeFalse();
-    }
-
-    /// <summary>O copie conformă respinsă nu închide pasul: trebuie reîncărcată.</summary>
-    [Fact]
-    public void Vehicle_RejectedCopy_IsNotDone()
-    {
-        PfaRegistration registration = SubmittedVehicleDossier(PfaPlatformProvider.Bolt);
-
-        List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(
-            registration,
-            OnboardingSectionStatus.Validated,
-            EligibleProfile(),
-            [Uploaded(DocumentCategory.CopieConforma, DocumentStatus.Rejected), Uploaded(DocumentCategory.EcusonBolt)]);
-
-        steps[5].UserPartDone.ShouldBeFalse();
-    }
-
-    private static PfaRegistration SubmittedVehicleDossier(PfaPlatformProvider chosenPlatform)
-    {
-        PfaRegistration registration = ReadyForPlatforms();
-        // Conturile activate: altfel pasul 5 nu e validat și vehiculul e închis.
-        PfaPlatformAccount account = CompletePlatformAccount(chosenPlatform);
-        account.OnboardingStatus = PfaPlatformOnboardingStatus.Active;
-        registration.PlatformAccounts.Add(account);
-        registration.Vehicles.Add(new PfaVehicle
+        PfaRegistration registration = ReadyForArrFleet();
+        registration.ArrFleetApplication = new ArrFleetApplication
         {
             Id = Guid.NewGuid(),
-            CreatedAtUtc = DateTime.UtcNow,
-            CopyRequest = new VehicleCopyRequest
-            {
-                Id = Guid.NewGuid(),
-                Status = VehicleCopyRequestStatus.Submitted,
-                SubmittedAtUtc = DateTime.UtcNow,
-            },
-        });
-        return registration;
+            ReopenedReason = "Cazierul nu se vede.",
+        };
+
+        List<OnboardingStepDto> steps = Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated);
+
+        steps[3].State.ShouldBe(OnboardingStepCatalog.States.Rejected);
+        OnboardingStepCatalog.IsWritableByUser(steps, OnboardingStepKey.ArrFleet).ShouldBeTrue();
     }
 
     [Fact]
-    public void Vehicle_BothSectionsValidated_CompletesTheStep()
+    public void ArrFleet_CompletedByAdmin_CompletesTheOnboarding()
     {
-        PfaRegistration registration = ReadyForPlatforms();
-        registration.PlatformAccounts.Add(CompletePlatformAccount(PfaPlatformProvider.Bolt));
-        registration.Vehicles.Add(new PfaVehicle
+        PfaRegistration registration = ReadyForArrFleet();
+        registration.ArrFleetApplication = new ArrFleetApplication
         {
             Id = Guid.NewGuid(),
-            CreatedAtUtc = DateTime.UtcNow,
-            CopyRequest = new VehicleCopyRequest { Id = Guid.NewGuid(), SubmittedAtUtc = DateTime.UtcNow },
-        });
-        foreach (OnboardingSectionKey key in new[] { OnboardingSectionKey.CopieConforma, OnboardingSectionKey.Vehicul })
-        {
-            registration.OnboardingSections.Add(new OnboardingSectionApproval
-            {
-                Id = Guid.NewGuid(),
-                SectionKey = key,
-                Status = OnboardingSectionStatus.Validated,
-            });
-        }
+            SubmittedAtUtc = DateTime.UtcNow,
+            Status = ArrFleetStatus.Completed,
+        };
 
-        Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated)[5].Status.ShouldBe(Completed);
+        OnboardingStepCatalog.AllCompleted(Build(registration, EligibleProfile(), OnboardingSectionStatus.Validated))
+            .ShouldBeTrue();
     }
 
     /* ── Partea șoferului la pasul 2, pe ramura „am deja PFA" ── */

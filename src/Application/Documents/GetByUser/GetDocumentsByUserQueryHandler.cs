@@ -32,10 +32,12 @@ internal sealed class GetDocumentsByUserQueryHandler(IApplicationDbContext conte
                 d.AiExtractedExpiresAtUtc,
                 d.AiRequiresManualReview,
                 d.Origin.ToString(),
-                d.Origin == DocumentOrigin.UserUpload,
+                d.Origin == DocumentOrigin.UserUpload || d.Origin == DocumentOrigin.AdminUpload,
                 d.ReviewNote,
                 // Ultima proiecție: EF o evaluează în proces, deci împărțirea pe rânduri e permisă.
-                AiVerification.ReviewReasons.Split(d.AiSuspicionReasons)))
+                AiVerification.ReviewReasons.Split(d.AiSuspicionReasons),
+                d.IsSuperseded,
+                d.DocumentNumber))
             .ToListAsync(cancellationToken);
 
         return documents;

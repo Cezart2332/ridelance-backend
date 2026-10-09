@@ -107,9 +107,8 @@ public sealed class OnboardingStateService(IApplicationDbContext context)
                 .Include(r => r.OblioAccount)
                 // Pasul fiscal se închide pe pachetul de semnături alocat de admin (RL-02).
                 .Include(r => r.SignaturePacket)
-                .Include(r => r.ArrAuthorizationRequest)
+                .Include(r => r.ArrFleetApplication)
                 .Include(r => r.PlatformAccounts)
-                .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
                 // Ramura „Nu am PFA”: pasul PFA se închide pe dosarul semnat, nu pe plată.
                 .Include(r => r.CompanyFormationRequest))
             .FirstOrDefaultAsync(cancellationToken);

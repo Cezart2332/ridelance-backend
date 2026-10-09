@@ -73,11 +73,9 @@ public interface IApplicationDbContext
     DbSet<OnboardingSignatureDocument> OnboardingSignatureDocuments { get; }
     DbSet<PfaBankAccountDeclaration> PfaBankAccountDeclarations { get; }
     DbSet<PfaOblioAccount> PfaOblioAccounts { get; }
-    DbSet<ArrAuthorizationRequest> ArrAuthorizationRequests { get; }
-    DbSet<ArrAccount> ArrAccounts { get; }
+    DbSet<Domain.PfaRegistrations.ArrFleet.ArrFleetApplication> ArrFleetApplications { get; }
+    DbSet<Domain.PfaRegistrations.ArrFleet.ArrFleetStatusLog> ArrFleetStatusLogs { get; }
     DbSet<PfaVehicle> PfaVehicles { get; }
-    DbSet<VehicleCopyRequest> VehicleCopyRequests { get; }
-    DbSet<VehicleBadge> VehicleBadges { get; }
     DbSet<Document> Documents { get; }
     DbSet<ExtractedField> ExtractedFields { get; }
     DbSet<AppSetting> AppSettings { get; }

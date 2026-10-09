@@ -107,10 +107,12 @@ internal sealed class ExtractedFieldApplier(
                 await ApplyIbanAsync(document, normalizedValue, cancellationToken);
                 break;
 
-            // Pasul 3 — autorizația ARR
+            // Documentele oficiale (autorizația, copia conformă): numărul și expirarea stau pe document.
             case "AUTHORIZATION_NUMBER":
             case "AUTHORIZATION_EXPIRES_ON":
-                await ApplyToArrAsync(document, fieldKey, normalizedValue, cancellationToken);
+            case "COPY_CONFORMA_NUMBER":
+            case "COPY_CONFORMA_EXPIRES_ON":
+                ApplyToOfficialDocument(document, fieldKey, normalizedValue);
                 break;
 
             // Pasul 5 — vehiculul și copia conformă
@@ -119,10 +121,6 @@ internal sealed class ExtractedFieldApplier(
             case "MAKE":
             case "MODEL":
                 await ApplyToVehicleAsync(document, fieldKey, normalizedValue, cancellationToken);
-                break;
-            case "COPY_CONFORMA_NUMBER":
-            case "COPY_CONFORMA_EXPIRES_ON":
-                await ApplyToCopyRequestAsync(document, fieldKey, normalizedValue, cancellationToken);
                 break;
 
             default:
@@ -433,37 +431,20 @@ internal sealed class ExtractedFieldApplier(
         declaration.UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    private async Task ApplyToArrAsync(
-        Document document, string key, string value, CancellationToken cancellationToken)
+    /// <summary>
+    /// Numărul și expirarea citite de pe un document oficial. Ce a scris adminul la încărcare bate
+    /// OCR-ul, deci se completează doar golurile.
+    /// </summary>
+    private static void ApplyToOfficialDocument(Document document, string key, string value)
     {
-        PfaRegistration? registration = await FindRegistrationAsync(document, cancellationToken);
-        if (registration is null)
+        if (key.EndsWith("_NUMBER", StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            document.DocumentNumber ??= value;
         }
-
-        ArrAuthorizationRequest? arr = await context.ArrAuthorizationRequests
-            .FirstOrDefaultAsync(a => a.PfaRegistrationId == registration.Id, cancellationToken);
-
-        if (arr is null)
+        else if (ParseDate(value) is DateOnly expires)
         {
-            return;
+            document.ExpiresAtUtc ??= expires.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         }
-
-        switch (key.Trim().ToUpperInvariant())
-        {
-            case "AUTHORIZATION_NUMBER":
-                arr.AuthorizationNumber = value;
-                arr.AuthorizationDocumentId = document.Id;
-                break;
-            case "AUTHORIZATION_EXPIRES_ON":
-                arr.AuthorizationExpiresOn = ParseDate(value) ?? arr.AuthorizationExpiresOn;
-                break;
-            default:
-                break;
-        }
-
-        arr.UpdatedAtUtc = DateTime.UtcNow;
     }
 
     private async Task ApplyToVehicleAsync(
@@ -535,39 +516,6 @@ internal sealed class ExtractedFieldApplier(
         }
 
         car.UpdatedAtUtc = DateTime.UtcNow;
-    }
-
-    private async Task ApplyToCopyRequestAsync(
-        Document document, string key, string value, CancellationToken cancellationToken)
-    {
-        PfaVehicle? vehicle = await FindVehicleAsync(document, cancellationToken);
-        if (vehicle is null)
-        {
-            return;
-        }
-
-        VehicleCopyRequest? copy = await context.VehicleCopyRequests
-            .FirstOrDefaultAsync(c => c.PfaVehicleId == vehicle.Id, cancellationToken);
-
-        if (copy is null)
-        {
-            return;
-        }
-
-        switch (key.Trim().ToUpperInvariant())
-        {
-            case "COPY_CONFORMA_NUMBER":
-                copy.CopyConformaNumber = value;
-                copy.CopyConformaDocumentId = document.Id;
-                break;
-            case "COPY_CONFORMA_EXPIRES_ON":
-                copy.ExpiresOn = ParseDate(value) ?? copy.ExpiresOn;
-                break;
-            default:
-                break;
-        }
-
-        copy.UpdatedAtUtc = DateTime.UtcNow;
     }
 
     private Task<PfaRegistration?> FindRegistrationAsync(Document document, CancellationToken cancellationToken)

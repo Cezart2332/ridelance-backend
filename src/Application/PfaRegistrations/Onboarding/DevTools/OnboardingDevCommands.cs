@@ -197,30 +197,14 @@ internal sealed class ResetOnboardingCommandHandler(IApplicationDbContext contex
                 }
                 break;
 
-            case OnboardingStepKey.Arr:
-                if (registration.ArrAuthorizationRequest is { } arr)
+            case OnboardingStepKey.ArrFleet:
+                if (registration.ArrFleetApplication is { } application)
                 {
-                    context.ArrAuthorizationRequests.Remove(arr);
-                    registration.ArrAuthorizationRequest = null;
+                    context.ArrFleetApplications.Remove(application);
+                    registration.ArrFleetApplication = null;
                 }
-                break;
-
-            case OnboardingStepKey.Platforms:
                 context.PfaPlatformAccounts.RemoveRange(registration.PlatformAccounts);
                 registration.PlatformAccounts.Clear();
-                break;
-
-            case OnboardingStepKey.Vehicle:
-                foreach (PfaVehicle vehicle in registration.Vehicles)
-                {
-                    if (vehicle.CopyRequest is { } copy)
-                    {
-                        context.VehicleCopyRequests.Remove(copy);
-                        vehicle.CopyRequest = null;
-                    }
-                }
-                context.PfaVehicles.RemoveRange(registration.Vehicles);
-                registration.Vehicles.Clear();
                 break;
 
             case OnboardingStepKey.Eligibility:
@@ -257,9 +241,8 @@ internal static class DevToolsQueries
             .Include(r => r.OblioAccount)
             .Include(r => r.SignaturePacket)
             .Include(r => r.CompanyFormationRequest)
-            .Include(r => r.ArrAuthorizationRequest)
+            .Include(r => r.ArrFleetApplication)
             .Include(r => r.PlatformAccounts)
-            .Include(r => r.Vehicles).ThenInclude(v => v.CopyRequest)
             .FirstOrDefaultAsync(r => r.Id == registrationId, cancellationToken);
 
     public static void Audit(

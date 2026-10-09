@@ -65,6 +65,9 @@ public static class DependencyInjection
         // Împuternicirea ANAF, generată la trimiterea pasului fiscal.
         services.AddScoped<PfaRegistrations.Onboarding.AnafMandate.AnafMandateService>();
 
+        // Pasul „ARR & Cont Flotă”: citirea și maparea comune clientului și adminului.
+        services.AddScoped<PfaRegistrations.Onboarding.ArrFleet.ArrFleetService>();
+
         // Anunțurile interne: dosar generat, plată încasată.
         services.AddScoped<PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier>();
         services.AddScoped<PfaRegistrations.Onboarding.CompanyFormation.ConsultoDossierSender>();

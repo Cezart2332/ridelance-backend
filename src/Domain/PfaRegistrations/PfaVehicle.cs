@@ -58,6 +58,4 @@ public sealed class PfaVehicle : Entity
 
     // Navigation
     public PfaRegistration PfaRegistration { get; set; } = null!;
-    public VehicleCopyRequest? CopyRequest { get; set; }
-    public List<VehicleBadge> Badges { get; set; } = [];
 }

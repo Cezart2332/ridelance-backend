@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Application.PfaRegistrations.Onboarding.Platforms;
+namespace Application.PfaRegistrations.Onboarding.ArrFleet;
 
 /// <summary>
 /// Regulile de formă pentru datele de contact ale conturilor de platformă.

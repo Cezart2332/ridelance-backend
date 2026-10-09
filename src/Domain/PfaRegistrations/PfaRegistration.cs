@@ -101,7 +101,7 @@ public sealed class PfaRegistration : Entity
     public OnboardingSignaturePacket? SignaturePacket { get; set; }
     public PfaBankAccountDeclaration? BankAccountDeclaration { get; set; }
     public PfaOblioAccount? OblioAccount { get; set; }
-    public ArrAuthorizationRequest? ArrAuthorizationRequest { get; set; }
+    public ArrFleet.ArrFleetApplication? ArrFleetApplication { get; set; }
     public List<PfaVehicle> Vehicles { get; set; } = [];
     public List<PfaPlatformAccount> PlatformAccounts { get; set; } = [];
     public List<Document> Documents { get; set; } = [];

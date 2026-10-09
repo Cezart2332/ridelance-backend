@@ -106,13 +106,6 @@ public static class OnboardingStateBuilder
         return full.Length > 0 ? full : null;
     }
 
-    private static readonly OnboardingSectionKey[] DocumentSections =
-    [
-        OnboardingSectionKey.AutorizatieTransport,
-        OnboardingSectionKey.CopieConforma,
-        OnboardingSectionKey.Vehicul,
-    ];
-
     /// <summary>
     /// Plata avansului se cere între eligibilitate și pasul PFA, ÎNAINTEA oricărei alegeri.
     ///
@@ -176,24 +169,9 @@ public static class OnboardingStateBuilder
                 registration?.ReviewedAtUtc),
         };
 
-        foreach (OnboardingSectionKey key in DocumentSections)
-        {
-            OnboardingSectionApproval? row = registration?.OnboardingSections
-                .SingleOrDefault(s => s.SectionKey == key);
-
-            OnboardingSectionStatus status = row?.Status ?? OnboardingSectionStatus.Locked;
-
-            sections.Add(new OnboardingSectionDto(
-                key.ToString(),
-                status.ToString(),
-                row?.Note,
-                row?.SubmittedAtUtc,
-                row?.ValidatedAtUtc));
-        }
-
         List<OnboardingStepDto> steps = OnboardingStepCatalog.BuildSteps(registration, pfaStatus, eligibility, documents);
 
-        // „Onboarding complet" = toți cei 6 pași finalizați (nu doar cele 3 secțiuni de documente).
+        // „Onboarding complet" = toți pașii finalizați.
         // Asta gateuiește redirectul spre plata abonamentului.
         bool allStepsCompleted = OnboardingStepCatalog.AllCompleted(steps);
 

@@ -77,7 +77,7 @@ internal sealed class GetDocumentsOverviewQueryHandler(
         // Cel mai recent document al tipului. Înlocuirile păstrează istoricul în bază, dar pe
         // ecran contează actul curent.
         Document? current = documents
-            .Where(d => def.Categories.Contains(d.Category))
+            .Where(d => def.Categories.Contains(d.Category) && !d.IsSuperseded)
             .OrderByDescending(d => d.UploadedAtUtc)
             .FirstOrDefault();
 

@@ -110,6 +110,7 @@ public sealed class DocumentExpiryPolicyTests
     {
         DocumentRegistry.ForGroup(DocumentGroup.Personal).Count.ShouldBe(6);
         DocumentRegistry.ForGroup(DocumentGroup.Pfa).Count.ShouldBe(3);
-        DocumentRegistry.ForGroup(DocumentGroup.Vehicle).Count.ShouldBe(8);
+        DocumentRegistry.ForGroup(DocumentGroup.Vehicle).Count.ShouldBe(6);
+        DocumentRegistry.ForGroup(DocumentGroup.Transport).Count.ShouldBe(4);
     }
 }

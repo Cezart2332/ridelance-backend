@@ -1,12 +1,12 @@
-using Application.PfaRegistrations.Onboarding.Platforms;
 using Domain.Documents;
 using Domain.PfaRegistrations;
+using Domain.PfaRegistrations.ArrFleet;
 using Domain.PfaRegistrations.CompanyFormation;
 
 namespace Application.PfaRegistrations.Onboarding;
 
 /// <summary>
-/// Gruparea onboardingului în 6 pași și derivarea statusului fiecărui pas din frunzele/semnalele
+/// Gruparea onboardingului în 4 pași și derivarea statusului fiecărui pas din frunzele/semnalele
 /// lui (secțiuni de documente + entitățile ghidate). Statusul unui pas NU se stochează — se derivă
 /// mereu aici, la citire. Ordinea și deblocarea (fiecare blocare explică motivul) trăiesc tot aici.
 ///
@@ -56,7 +56,7 @@ public static class OnboardingStepCatalog
         string Path,
         string OwnedBy);
 
-    // eligibility ──> pfa ──> fiscal ──> arr ──> platforms ──> vehicle
+    // eligibility ──> pfa ──> fiscal ──> arr_fleet
     private static readonly StepDef[] Steps =
     [
         new(OnboardingStepKey.Eligibility, "eligibility", "Eligibilitate", "/onboarding/eligibility", Owners.User),
@@ -65,18 +65,12 @@ public static class OnboardingStepCatalog
         // Bancă, TVA și Oblio se leagă de CUI-ul PFA-ului, dar pachetul de semnături îl alocă
         // adminul — deci pasul nu poate fi închis de șofer (RL-02).
         new(OnboardingStepKey.Fiscal, "fiscal", "Fiscal, bancă & semnături", "/onboarding/step2", Owners.Admin),
-        // Autorizația o emite adminul, după ce șoferul depune dosarul.
-        new(OnboardingStepKey.Arr, "arr", "Autorizație transport", "/onboarding/arr", Owners.Admin),
-        // Conturile de operator se activează manual din admin. Eticheta e „Uber & Bolt", nu
-        // „Uber Fleet & Bolt Fleet": pasul cere DOUĂ conturi pe platformă — cel de flotă și cel de
-        // șofer — iar antetul cu „Fleet" stătea deasupra ecranelor de șofer și le contrazicea.
-        new(OnboardingStepKey.Platforms, "platforms", "Uber & Bolt", "/onboarding/platforms", Owners.Admin),
-        // Copia conformă se emite pe autorizația de transport.
-        new(OnboardingStepKey.Vehicle, "vehicle", "Vehicul, copie conformă & ecusoane", "/onboarding/vehicle",
-            Owners.Admin),
+        // Clientul încarcă, alege și plătește; contul ARR, conturile de flotă, autorizația, copia
+        // conformă și ecusoanele le obține agentul. Pasul se închide când adminul îl finalizează.
+        new(OnboardingStepKey.ArrFleet, "arr_fleet", "ARR & Cont Flotă", "/onboarding/arr-fleet", Owners.Admin),
     ];
 
-    /// <summary>Toți cei 6 pași sunt finalizați — condiția reală de înrolare.</summary>
+    /// <summary>Toți pașii sunt finalizați — condiția reală de înrolare.</summary>
     public static bool AllCompleted(IReadOnlyList<OnboardingStepDto> steps) =>
         steps.Count > 0 && steps.All(s => s.Status == StatusCompleted);
 
@@ -146,9 +140,7 @@ public static class OnboardingStepCatalog
             EligibilityStatusOf(eligibility, documents),
             PfaStatusOf(registration, pfaStatus),
             FiscalStatusOf(registration),
-            ArrStatusOf(registration),
-            PlatformsStatusOf(registration),
-            VehicleStatusOf(registration),
+            ArrFleetStatusOf(registration),
         ];
 
         // Semnale auxiliare, folosite doar pentru vocabularul fin (`State`).
@@ -157,9 +149,7 @@ public static class OnboardingStepCatalog
             eligibility is not null,
             HasStartedPfa(registration),
             HasStartedFiscal(registration),
-            registration?.ArrAuthorizationRequest is not null,
-            registration?.PlatformAccounts.Exists(p => p.IsSelectedByUser) == true,
-            registration?.Vehicles.Count > 0,
+            registration?.ArrFleetApplication is not null,
         ];
 
         bool[] rejected =
@@ -172,10 +162,8 @@ public static class OnboardingStepCatalog
                 || eligibility?.Status == EligibilityStatus.Ineligible && EligibilityDocumentsUploaded(documents),
             pfaStatus == OnboardingSectionStatus.Rejected,
             registration?.SignaturePacket?.Status == SignaturePacketStatus.Rejected,
-            SectionRejected(registration, OnboardingSectionKey.AutorizatieTransport),
-            false,
-            SectionRejected(registration, OnboardingSectionKey.CopieConforma)
-                || SectionRejected(registration, OnboardingSectionKey.Vehicul),
+            // Redeschis de admin și încă neretrimis: clientul are ceva de corectat, cu motiv.
+            registration?.ArrFleetApplication is { SubmittedAtUtc: null, ReopenedReason: not null },
         ];
 
         // Partea șoferului, separat de verdictul adminului. Asta deschide pasul următor.
@@ -198,14 +186,9 @@ public static class OnboardingStepCatalog
             // email, dar nu mai ține pe loc restul onboardingului: omul completează mai departe
             // cât îl pregătim, iar adminul validează pașii în paralel.
             own[2] is StatusAwaitingValidation or StatusCompleted,
-            // Dosarul ARR e depus; autorizația o emite ARR, nu șoferul.
-            own[3] == StatusCompleted
-                || registration?.ArrAuthorizationRequest?.SubmittedAtUtc is not null
-                    && !SectionRejected(registration, OnboardingSectionKey.AutorizatieTransport),
-            PlatformsUserPartDone(registration),
-            // Ultimul pas n-are succesor de deblocat, dar semnalul contează: fără el, șoferul
-            // n-ar ajunge niciodată la ecranul de final, ci ar fi trimis înapoi în pasul ăsta.
-            own[5] == StatusCompleted || VehicleUserPartDone(registration, documents),
+            // Ultimul pas: partea clientului e trimiterea. Fără semnalul ăsta n-ar ajunge la ecranul
+            // de final, ci ar fi trimis înapoi în pas.
+            own[3] == StatusCompleted || registration?.ArrFleetApplication?.SubmittedAtUtc is not null,
         ];
 
         // 2) Deblocare liniară, pe verdictul adminului: pasul N se deschide abia când adminul a
@@ -260,10 +243,6 @@ public static class OnboardingStepCatalog
         _ when started => States.InProgress,
         _ => States.Available,
     };
-
-    private static bool SectionRejected(PfaRegistration? registration, OnboardingSectionKey key) =>
-        registration?.OnboardingSections
-            .SingleOrDefault(s => s.SectionKey == key)?.Status == OnboardingSectionStatus.Rejected;
 
     private static bool HasStartedPfa(PfaRegistration? r) =>
         r is not null && (r.CompanyFormationRequest is not null || !string.IsNullOrWhiteSpace(r.Cui));
@@ -429,143 +408,18 @@ public static class OnboardingStepCatalog
     }
 
     /// <summary>
-    /// Pasul ARR se bifează când adminul validează secțiunea „Autorizație transport" — sau când
-    /// autorizația emisă e înregistrată. Înainte doar a doua variantă conta, iar „Validează" din
-    /// admin scria pe secțiune fără ca pasul să se schimbe: adminul vedea „validat", șoferul nu.
+    /// „ARR &amp; Cont Flotă” se bifează când adminul finalizează procedura. Trimis, stă la admin;
+    /// redeschis, se întoarce la client.
     /// </summary>
-    private static string ArrStatusOf(PfaRegistration? r)
+    private static string ArrFleetStatusOf(PfaRegistration? r)
     {
-        if (r?.ArrAuthorizationRequest?.Status == ArrAuthorizationStatus.Issued
-            || SectionValidated(r, OnboardingSectionKey.AutorizatieTransport))
+        ArrFleetApplication? application = r?.ArrFleetApplication;
+
+        if (application?.Status == ArrFleetStatus.Completed)
         {
             return StatusCompleted;
         }
 
-        if (SectionRejected(r, OnboardingSectionKey.AutorizatieTransport))
-        {
-            return StatusInProgress;
-        }
-
-        return r?.ArrAuthorizationRequest?.SubmittedAtUtc is not null ? StatusAwaitingValidation : StatusInProgress;
-    }
-
-    private static bool SectionValidated(PfaRegistration? registration, OnboardingSectionKey key) =>
-        registration?.OnboardingSections
-            .SingleOrDefault(s => s.SectionKey == key)?.Status == OnboardingSectionStatus.Validated;
-
-    /// <summary>
-    /// Partea șoferului la ultimul pas: dosarul depus, apoi copia conformă și ecusoanele primite,
-    /// încărcate înapoi.
-    ///
-    /// Regresia pe care o ține pe loc: se considera terminată de îndată ce dosarul era depus. Dar
-    /// copia conformă și ecusoanele vin DUPĂ depunere — ecranele lor apar abia atunci — iar în
-    /// secunda în care apăreau, pasul curent devenea „niciunul" și șoferul era trimis la ecranul „Ai
-    /// terminat onboardingul". Nu le mai vedea deloc.
-    ///
-    /// Ecusoanele se cer doar pentru platformele alese: un ecuson Bolt n-are ce căuta la cineva care
-    /// lucrează numai pe Uber. Fără lista de documente răspunsul e „nu", ca la pasul 1 — nu o
-    /// presupunere optimistă.
-    /// </summary>
-    public static bool VehicleUserPartDone(PfaRegistration? registration, IReadOnlyList<Document>? documents)
-    {
-        if (registration is null
-            || documents is null
-            || LatestCopyRequest(registration)?.SubmittedAtUtc is null
-            || SectionRejected(registration, OnboardingSectionKey.CopieConforma)
-            || SectionRejected(registration, OnboardingSectionKey.Vehicul))
-        {
-            return false;
-        }
-
-        if (!HasUsableDocument(documents, DocumentCategory.CopieConforma))
-        {
-            return false;
-        }
-
-        return registration.PlatformAccounts
-            .Where(p => p.IsSelectedByUser)
-            .Select(p => BadgeCategoryOf(p.Provider))
-            .OfType<DocumentCategory>()
-            .Distinct()
-            .All(category => HasUsableDocument(documents, category));
-    }
-
-    private static bool HasUsableDocument(IReadOnlyList<Document> documents, DocumentCategory category) =>
-        documents.Any(d => d.Category == category && d.Status != DocumentStatus.Rejected);
-
-    /// <summary>Ecusonul fiecărei platforme. Null pentru una fără ecuson, ca să nu ceară nimic în plus.</summary>
-    private static DocumentCategory? BadgeCategoryOf(PfaPlatformProvider provider) => provider switch
-    {
-        PfaPlatformProvider.Uber => DocumentCategory.EcusonUber,
-        PfaPlatformProvider.Bolt => DocumentCategory.EcusonBolt,
-        _ => null,
-    };
-
-    private static VehicleCopyRequest? LatestCopyRequest(PfaRegistration? r) =>
-        r?.Vehicles
-            .OrderByDescending(v => v.CreatedAtUtc)
-            .FirstOrDefault()?.CopyRequest;
-
-    /// <summary>
-    /// Șoferul a terminat partea lui de pas 5: a ales cel puțin o platformă și a completat
-    /// credențialele pentru toate cele alese. Activarea în Uber/Bolt rămâne a adminului.
-    /// </summary>
-    private static bool PlatformsUserPartDone(PfaRegistration? r)
-    {
-        if (r is null)
-        {
-            return false;
-        }
-
-        var selected = r.PlatformAccounts
-            .Where(p => p.IsSelectedByUser)
-            .ToList();
-
-        return selected.Count > 0 && selected.TrueForAll(PlatformShared.UserPartComplete);
-    }
-
-    /// <summary>
-    /// Pasul Uber &amp; Bolt se bifează când adminul activează conturile alese. Cu datele completate
-    /// de șofer, stă în verificare — înainte se bifa singur, fără ca cineva să se fi uitat.
-    /// </summary>
-    private static string PlatformsStatusOf(PfaRegistration? r)
-    {
-        if (r is null)
-        {
-            return StatusInProgress;
-        }
-
-        var selected = r.PlatformAccounts
-            .Where(p => p.IsSelectedByUser)
-            .ToList();
-
-        if (selected.Count > 0 && selected.TrueForAll(p => p.OnboardingStatus == PfaPlatformOnboardingStatus.Active))
-        {
-            return StatusCompleted;
-        }
-
-        return PlatformsUserPartDone(r) ? StatusAwaitingValidation : StatusInProgress;
-    }
-
-    /// <summary>
-    /// Ultimul pas se bifează când adminul validează ambele secțiuni (copia conformă și documentele
-    /// mașinii) — sau când copia conformă emisă e înregistrată. Dosarul depus îl pune în verificare.
-    /// </summary>
-    private static string VehicleStatusOf(PfaRegistration? r)
-    {
-        VehicleCopyRequest? copy = LatestCopyRequest(r);
-
-        if (copy?.Status == VehicleCopyRequestStatus.Issued
-            || SectionValidated(r, OnboardingSectionKey.CopieConforma) && SectionValidated(r, OnboardingSectionKey.Vehicul))
-        {
-            return StatusCompleted;
-        }
-
-        if (SectionRejected(r, OnboardingSectionKey.CopieConforma) || SectionRejected(r, OnboardingSectionKey.Vehicul))
-        {
-            return StatusInProgress;
-        }
-
-        return copy?.SubmittedAtUtc is not null ? StatusAwaitingValidation : StatusInProgress;
+        return application?.SubmittedAtUtc is not null ? StatusAwaitingValidation : StatusInProgress;
     }
 }

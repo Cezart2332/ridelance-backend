@@ -52,6 +52,8 @@ public static class DocumentExpiryPolicy
         DocumentCategory.Casco,
         DocumentCategory.AsigurareCalatori,
         DocumentCategory.CopieConforma,
+        // Autorizația de transport: 3 ani, cu reminder de reînnoire ca la copia conformă.
+        DocumentCategory.AutorizatieTransportAlternativ,
         DocumentCategory.EcusonUber,
         DocumentCategory.EcusonBolt,
         DocumentCategory.ContractVehicul,

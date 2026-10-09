@@ -1,4 +1,4 @@
-using Application.PfaRegistrations.Onboarding.Platforms;
+using Application.PfaRegistrations.Onboarding.ArrFleet;
 using Domain.PfaRegistrations;
 using Domain.PfaRegistrations.CompanyFormation;
 using Shouldly;
@@ -68,37 +68,6 @@ public sealed class OnboardingPfaFixesTests
         request.IsLocked.ShouldBeTrue();
     }
 
-    /* P0-3 — pasul nu e complet fără conturile de șofer. */
-
-    [Fact]
-    public void PlatformStep_IsIncompleteWithOnlyTheFleetAccount()
-    {
-        PfaPlatformAccount account = FleetOnly();
-
-        PlatformShared.UserPartComplete(account).ShouldBeFalse();
-    }
-
-    [Fact]
-    public void PlatformStep_IsCompleteWithBothAccounts()
-    {
-        PfaPlatformAccount account = FleetOnly();
-        account.DriverEmail = "sofer@example.com";
-        account.DriverPhone = "+40712345678";
-
-        PlatformShared.UserPartComplete(account).ShouldBeTrue();
-    }
-
-    [Fact]
-    public void DriverExternalId_StaysOptional()
-    {
-        PfaPlatformAccount account = FleetOnly();
-        account.DriverEmail = "sofer@example.com";
-        account.DriverPhone = "+40712345678";
-        account.DriverExternalId = null;
-
-        PlatformShared.UserPartComplete(account).ShouldBeTrue();
-    }
-
     /* P0-3 — telefonul se normalizează la E.164, nu doar se respinge. */
 
     [Theory]
@@ -132,15 +101,4 @@ public sealed class OnboardingPfaFixesTests
     [InlineData("a b@example.com")]
     public void Email_RejectsMalformedAddresses(string value) =>
         PlatformContactRules.IsValidEmail(value).ShouldBeFalse();
-
-    private static PfaPlatformAccount FleetOnly() => new()
-    {
-        Id = Guid.NewGuid(),
-        Provider = PfaPlatformProvider.Uber,
-        Kind = PfaPlatformAccountKind.Driver,
-        Email = "flota@example.com",
-        Phone = "+40712345678",
-        PasswordProtected = "protected",
-        ExistingAccountAnswer = "None",
-    };
 }

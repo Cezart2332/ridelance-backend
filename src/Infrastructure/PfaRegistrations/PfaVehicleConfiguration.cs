@@ -23,15 +23,5 @@ internal sealed class PfaVehicleConfiguration : IEntityTypeConfiguration<PfaVehi
             .WithMany(r => r.Vehicles)
             .HasForeignKey(v => v.PfaRegistrationId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        builder.HasOne(v => v.CopyRequest)
-            .WithOne(c => c.Vehicle)
-            .HasForeignKey<VehicleCopyRequest>(c => c.PfaVehicleId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        builder.HasMany(v => v.Badges)
-            .WithOne(b => b.Vehicle)
-            .HasForeignKey(b => b.PfaVehicleId)
-            .OnDelete(DeleteBehavior.Cascade);
     }
 }

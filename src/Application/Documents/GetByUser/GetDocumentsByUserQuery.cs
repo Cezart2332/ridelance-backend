@@ -36,4 +36,8 @@ public sealed record DocumentSummary(
     /// De ce merge documentul la admin, pe rânduri: fără ștampilă, PDF din Word, titular diferit
     /// de buletin. Omul vede primul rând; adminul pe toate.
     /// </summary>
-    IReadOnlyList<string>? AiSuspicionReasons = null);
+    IReadOnlyList<string>? AiSuspicionReasons = null,
+    /// <summary>Înlocuit (contractul unui mod de deținere părăsit, un act oficial reîncărcat): nu mai contează.</summary>
+    bool IsSuperseded = false,
+    /// <summary>Numărul documentului oficial, când îl are.</summary>
+    string? DocumentNumber = null);

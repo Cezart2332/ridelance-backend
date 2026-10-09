@@ -78,8 +78,11 @@ public static class DependencyInjection
 
         // Generarea dosarelor PDF (QuestPDF — licență Community, venit anual < 1M USD)
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
-        services.AddScoped<IDossierGenerator, ArrDossierGenerator>();
         services.AddScoped<ICompanyFormationPdfGenerator, CompanyFormationPdfGenerator>();
+
+        // Contul în care se plătește pasul „ARR & Cont Flotă”.
+        services.Configure<Application.PfaRegistrations.Onboarding.ArrFleet.ArrFleetOptions>(
+            configuration.GetSection(Application.PfaRegistrations.Onboarding.ArrFleet.ArrFleetOptions.SectionName));
 
         // Împuternicirea ANAF: mandatarul (CNP, CI) vine din configurare, numărul din secvență.
         services.Configure<Application.PfaRegistrations.Onboarding.AnafMandate.AnafMandatarOptions>(

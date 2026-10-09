@@ -61,5 +61,11 @@ public enum DocumentCategory
     /// Nesemnată: pleacă la semnat în pachetul de semnături.
     /// </summary>
     ImputernicireAnaf = 40,
+    /// <summary>Comodatul mașinii, autentificat la notariat (pasul „ARR &amp; Cont Flotă”).</summary>
+    ContractComodat = 41,
+    /// <summary>Contractul de închiriere a mașinii, semnat de ambele părți.</summary>
+    ContractInchiriere = 42,
+    /// <summary>Contractul de leasing al mașinii.</summary>
+    ContractLeasing = 43,
     Other = 99
 }

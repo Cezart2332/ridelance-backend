@@ -14,66 +14,6 @@ namespace UnitTests.PfaRegistrations;
 /// </summary>
 public sealed class OnboardingFixesTests
 {
-    /* §7 — avizul medical și cel psihologic sunt DOUĂ documente. */
-
-    [Fact]
-    public void ArrRequirements_TreatMedicalAndPsychologicalAsSeparateDocuments()
-    {
-        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements =
-            OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport);
-
-        requirements.ShouldContain(r => r.AcceptedCategories.Contains(DocumentCategory.AdeverintaMedicala));
-        requirements.ShouldContain(r => r.AcceptedCategories.Contains(DocumentCategory.AvizPsihologic));
-
-        // Și, mai important: nu în aceeași cerință. Altfel unul l-ar satisface pe celălalt.
-        requirements
-            .Count(r => r.AcceptedCategories.Contains(DocumentCategory.AdeverintaMedicala)
-                || r.AcceptedCategories.Contains(DocumentCategory.AvizPsihologic))
-            .ShouldBe(2);
-    }
-
-    [Fact]
-    public void ArrRequirements_LabelEachAvizDistinctly()
-    {
-        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements =
-            OnboardingSectionCatalog.RequirementsFor(OnboardingSectionKey.AutorizatieTransport);
-
-        requirements.ShouldContain(r => r.Label == "Aviz medical");
-        requirements.ShouldContain(r => r.Label == "Aviz psihologic");
-    }
-
-    /* §11.2 — leasingul cere doar acordul finanțatorului. */
-
-    [Fact]
-    public void LeasedVehicle_RequiresFinancierAgreementOnly()
-    {
-        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements =
-            OnboardingSectionCatalog.RequirementsForVehicle(VehicleOwnershipMode.Leased);
-
-        requirements.ShouldContain(r => r.Label == "Acord de leasing");
-        requirements.ShouldNotContain(r => r.Label == "Contract de leasing");
-        requirements.ShouldNotContain(r => r.AcceptedCategories.Contains(DocumentCategory.ContractVehicul));
-    }
-
-    [Fact]
-    public void OwnedVehicle_RequiresNoContract()
-    {
-        IReadOnlyList<OnboardingSectionCatalog.DocumentRequirement> requirements =
-            OnboardingSectionCatalog.RequirementsForVehicle(VehicleOwnershipMode.Owned);
-
-        requirements.ShouldNotContain(r => r.AcceptedCategories.Contains(DocumentCategory.ContractVehicul));
-        requirements.ShouldNotContain(r => r.AcceptedCategories.Contains(DocumentCategory.AcordLeasing));
-    }
-
-    [Theory]
-    [InlineData(VehicleOwnershipMode.Rented, "Contract de închiriere")]
-    [InlineData(VehicleOwnershipMode.Comodat, "Contract de comodat")]
-    public void ContractLabel_NamesTheOwnershipMode(VehicleOwnershipMode mode, string expected)
-    {
-        OnboardingSectionCatalog.RequirementsForVehicle(mode)
-            .ShouldContain(r => r.Label == expected);
-    }
-
     /* §3 — avansul e 399 lei și vine dintr-o singură constantă. */
 
     [Fact]

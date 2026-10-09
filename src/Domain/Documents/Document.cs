@@ -24,7 +24,7 @@ public sealed class Document : Entity
     /// Se arată în onboarding? Câmp calculat, ca frontendul să nu-și inventeze propria regulă —
     /// altfel două ecrane ar filtra diferit aceeași listă.
     /// </summary>
-    public bool IsUserFacing => Origin == DocumentOrigin.UserUpload;
+    public bool IsUserFacing => Origin is DocumentOrigin.UserUpload or DocumentOrigin.AdminUpload;
     public string EncryptedFilePath { get; set; } = string.Empty;
     public string EncryptionIv { get; set; } = string.Empty;
     public long FileSize { get; set; }
@@ -98,6 +98,15 @@ public sealed class Document : Entity
 
     /// <summary>Data emiterii documentului (pentru autorizații/contracte generate).</summary>
     public DateTime? IssuedAtUtc { get; set; }
+
+    /// <summary>Numărul documentului oficial (autorizație, copie conformă), pentru remindere.</summary>
+    public string? DocumentNumber { get; set; }
+
+    /// <summary>
+    /// Înlocuit fără să fie șters: contractul unui mod de deținere a mașinii pe care clientul nu-l
+    /// mai alege. Rămâne în dosar, dar nu mai satisface nicio cerință.
+    /// </summary>
+    public bool IsSuperseded { get; set; }
 
     /// <summary>Când un document e reîncărcat/regenerat, cel vechi pointează spre înlocuitor.</summary>
     public Guid? ReplacedByDocumentId { get; set; }
