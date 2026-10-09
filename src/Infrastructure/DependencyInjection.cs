@@ -124,6 +124,12 @@ public static class DependencyInjection
         services.AddHttpClient<ISmsService, Infrastructure.Sms.VonageSmsService>(client =>
             client.Timeout = TimeSpan.FromSeconds(15));
 
+        // Codurile de confirmare a telefonului prin Twilio Verify: Twilio le trimite de pe numerele
+        // lui și le verifică. Neconfigurat, confirmarea rămâne pe SMS-ul de mai sus.
+        services.Configure<Infrastructure.Sms.TwilioOptions>(configuration.GetSection(Infrastructure.Sms.TwilioOptions.SectionName));
+        services.AddHttpClient<IPhoneCodeVerifier, Infrastructure.Sms.TwilioVerifyService>(client =>
+            client.Timeout = TimeSpan.FromSeconds(15));
+
         // Eldrive: invitațiile în contul de partener RIDElance.
         services.Configure<Infrastructure.Eldrive.EldriveOptions>(configuration.GetSection(Infrastructure.Eldrive.EldriveOptions.SectionName));
         services.AddHttpClient<IEldriveService, Infrastructure.Eldrive.EldriveService>(client =>

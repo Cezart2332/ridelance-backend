@@ -22,7 +22,8 @@ public sealed record SendPhoneCodeCommand(string? PhoneNumber = null) : ICommand
 internal sealed class SendPhoneCodeCommandHandler(
     IApplicationDbContext context,
     IUserContext userContext,
-    ISmsService smsService) : ICommandHandler<SendPhoneCodeCommand>
+    ISmsService smsService,
+    IPhoneCodeVerifier codeVerifier) : ICommandHandler<SendPhoneCodeCommand>
 {
     public async Task<Result> Handle(SendPhoneCodeCommand command, CancellationToken cancellationToken)
     {
@@ -68,6 +69,18 @@ internal sealed class SendPhoneCodeCommandHandler(
         {
             // Deja confirmat: nu are rost un SMS plătit ca să afle ce știe.
             return Result.Success();
+        }
+
+        // Twilio Verify: codul îl generează, îl trimite și îl verifică Twilio. Noi ținem doar
+        // fereastra de valabilitate (pentru pauza dintre retrimiteri) și numărul de încercări.
+        if (codeVerifier.IsEnabled)
+        {
+            user.PhoneVerificationCode = null;
+            user.PhoneVerificationCodeExpiresAtUtc = DateTime.UtcNow.Add(Domain.Users.PhoneVerification.CodeLifetime);
+            user.PhoneVerificationAttempts = 0;
+            await context.SaveChangesAsync(cancellationToken);
+
+            return await codeVerifier.SendCodeAsync(international, cancellationToken);
         }
 
         string code = Issue(user);
