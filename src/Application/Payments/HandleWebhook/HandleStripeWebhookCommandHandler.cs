@@ -122,7 +122,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 // omul să fi ales ceva. Descrierea vine din `Pricing`, fiindcă tot pe ea se
                 // răspunde „a plătit?" cât timp rândul n-are încă dosar de care să se lege.
                 var s when s.Contains("infiintare_pfa", StringComparison.OrdinalIgnoreCase)
-                    => Pricing.RidelanceStart.OnboardingAdvanceDescription,
+                    => Pricing.OnboardingAdvance.OnboardingAdvanceDescription,
                 var s when s.Contains("sediu_social", StringComparison.OrdinalIgnoreCase) => "Găzduire Sediu Social",
                 var s when s.Contains("start_ride", StringComparison.OrdinalIgnoreCase) => "Start Ride",
                 _ => BuildDescriptionFromSession(session)
@@ -183,6 +183,9 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 fleetUser.FleetOnboarding.CheckoutClientSecret = null;
             }
             SubscriptionBillingCycle cycle = ParseCycle(planStr);
+            // Opțiunile plătite pe același abonament. Un checkout nou le rescrie: cine schimbă planul
+            // fără ele nu le mai plătește, deci nici nu le mai are.
+            (bool openBankingAddon, bool cashRegisterAddon) = ParseAddons(planStr);
 
             // Abonamentul se încasează la checkout, deci prima facturare e chiar acum. Nu mai
             // există ancora de luni 15:00: clientul plătește când cumpără, iar reînnoirea cade
@@ -209,6 +212,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 // 15:00 — nu mai are ce amâna, deci se golește pe orice checkout reușit.
                 existing.Plan = plan;
                 existing.PendingPlan = null;
+                existing.HasOpenBankingAddon = openBankingAddon;
+                existing.HasCashRegisterAddon = cashRegisterAddon;
                 existing.Status = SubscriptionStatus.Active;
                 existing.BillingCycle = cycle;
                 existing.StripeSubscriptionId = session.SubscriptionId;
@@ -238,6 +243,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
                     UserId = userId,
                     Plan = plan,
                     PendingPlan = null,
+                    HasOpenBankingAddon = openBankingAddon,
+                    HasCashRegisterAddon = cashRegisterAddon,
                     Status = SubscriptionStatus.Active,
                     BillingCycle = cycle,
                     StripeSubscriptionId = session.SubscriptionId,
@@ -351,7 +358,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
             // Send in-app and push notifications
             string descriptionForNotification = mode == "payment"
                 ? BuildOneTimeDescription(session)
-                : $"Plan {session.Metadata?.GetValueOrDefault("customMetadata") ?? "Start"}";
+                : $"Plan {session.Metadata?.GetValueOrDefault("customMetadata") ?? "RIDElance"}";
 
             await SendPaymentNotificationsAsync(userId, descriptionForNotification, amountLei, mode, ct);
         }
@@ -848,7 +855,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
         {
             return SubscriptionPlan.Fleet;
         }
-        // metadata format: "plan:solo|billingAnchor:1234567"
+        // metadata format: "plan:pfalone|cycle:Monthly|addons:open-banking"
         string planPart = metadata;
         int pipeIdx = metadata.IndexOf('|');
         if (pipeIdx > 0)
@@ -856,15 +863,32 @@ internal sealed class HandleStripeWebhookCommandHandler(
             planPart = metadata[..pipeIdx];
         }
 
-        if (planPart.Contains("solo", StringComparison.OrdinalIgnoreCase))
+        // Sesiunile deschise înainte de planurile noi: Solo era fără contabilitate, ca PFAlone;
+        // Start și Pro o includeau, ca PFA Full.
+        if (planPart.Contains("pfalone", StringComparison.OrdinalIgnoreCase)
+            || planPart.Contains("solo", StringComparison.OrdinalIgnoreCase))
         {
-            return SubscriptionPlan.Solo;
+            return SubscriptionPlan.PfaAlone;
         }
-        if (planPart.Contains("pro", StringComparison.OrdinalIgnoreCase))
+
+        return SubscriptionPlan.PfaFull;
+    }
+
+    /// <summary>Opțiunile plătite din metadata sesiunii („addons:open-banking,cash-register”).</summary>
+    private static (bool OpenBanking, bool CashRegister) ParseAddons(string metadata)
+    {
+        string? part = metadata.Split('|', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault(p => p.StartsWith("addons:", StringComparison.OrdinalIgnoreCase));
+
+        if (part is null)
         {
-            return SubscriptionPlan.Pro;
+            return (false, false);
         }
-        return SubscriptionPlan.Start; // default
+
+        string[] keys = part["addons:".Length..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return (
+            keys.Contains("open-banking", StringComparer.OrdinalIgnoreCase),
+            keys.Contains("cash-register", StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>

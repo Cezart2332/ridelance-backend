@@ -14,13 +14,15 @@ internal sealed class CreateCheckoutSession : IEndpoint
 {
     public sealed record Request(
         string Mode,          // "payment" or "subscription"
-        string Plan,          // e.g. "solo", "start", "pro", "infiintare_pfa"
+        string Plan,          // "pfalone", "pfa-full" sau un serviciu („infiintare_pfa”)
         // "Monthly" | "Annual". Absent sau nerecunoscut înseamnă lunar.
         string? Cycle,
         string? SuccessUrl = null,
         string? CancelUrl = null,
         bool IsPlanChange = false,
-        bool BcrDiscountRequested = false);
+        bool BcrDiscountRequested = false,
+        // Opțiunile PFAlone: „open-banking”, „cash-register”.
+        IReadOnlyList<string>? Addons = null);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -46,7 +48,8 @@ internal sealed class CreateCheckoutSession : IEndpoint
                 request.SuccessUrl,
                 request.CancelUrl,
                 request.IsPlanChange,
-                request.BcrDiscountRequested);
+                request.BcrDiscountRequested,
+                request.Addons);
 
             Result<string> result = await handler.Handle(command, cancellationToken);
 

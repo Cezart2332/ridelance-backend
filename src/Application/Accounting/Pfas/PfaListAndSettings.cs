@@ -30,8 +30,10 @@ internal sealed class ListPfasQueryHandler(IApplicationDbContext db) : IQueryHan
     {
         List<PfaAccountingEngagement> engagements = await db.PfaAccountingEngagements.AsNoTracking().ToListAsync(cancellationToken);
         List<Guid> engaged = [.. engagements.Select(e => e.PfaRegistrationId).Distinct()];
+        // PFAlone nu e al contabilului: își ține singur evidența.
         var rows = await db.PfaRegistrations.AsNoTracking()
             .Where(p => engaged.Contains(p.Id) || p.OnboardingCompletedAtUtc != null && p.User.DeletedAtUtc == null)
+            .Where(p => !Payments.PlanAccess.SelfManagedPfaIds(db).Contains(p.Id))
             .Select(p => new { p.Id, p.LegalName, p.HolderName, p.FullName, p.Cui, p.OnboardingCompletedAtUtc, p.CreatedAtUtc, p.User.FirstName, p.User.LastName, p.UserId, p.User.Email, p.User.PhoneNumber })
             .ToListAsync(cancellationToken);
 

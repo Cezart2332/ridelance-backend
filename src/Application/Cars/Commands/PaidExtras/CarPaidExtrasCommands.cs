@@ -117,7 +117,7 @@ internal sealed class CreateExtraListingCheckoutCommandHandler(
             // Un dublu-click nu deschide două abonamente pentru aceeași mașină în aceeași zi.
             $"extra-listing:{car.Id}:{DateTime.UtcNow:yyyyMMdd}",
             null,
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 }
 
@@ -162,7 +162,7 @@ internal sealed class CreateHiddenPlateCheckoutCommandHandler(
             },
             $"hidden-plate:{car.Id}:{DateTime.UtcNow:yyyyMMdd}",
             null,
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 }
 

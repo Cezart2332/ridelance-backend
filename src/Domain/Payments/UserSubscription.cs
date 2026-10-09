@@ -21,6 +21,18 @@ public sealed class UserSubscription : Entity
     /// </summary>
     public SubscriptionBillingCycle BillingCycle { get; set; } = SubscriptionBillingCycle.Monthly;
 
+    /// <summary>Opțiunea Open Banking, plătită pe abonament (PFAlone). La PFA Full e inclusă.</summary>
+    public bool HasOpenBankingAddon { get; set; }
+
+    /// <summary>Opțiunea de automatizare a casei de marcat, plătită pe abonament (PFAlone).</summary>
+    public bool HasCashRegisterAddon { get; set; }
+
+    /// <summary>Conectarea băncii e disponibilă: inclusă în PFA Full, plătită separat la PFAlone.</summary>
+    public bool IncludesOpenBanking => Plan == SubscriptionPlan.PfaFull || HasOpenBankingAddon;
+
+    /// <summary>Automatizarea casei de marcat e disponibilă: inclusă în PFA Full, plătită la PFAlone.</summary>
+    public bool IncludesCashRegister => Plan == SubscriptionPlan.PfaFull || HasCashRegisterAddon;
+
     /// <summary>Stripe subscription ID (sub_xxx)</summary>
     public string? StripeSubscriptionId { get; set; }
 

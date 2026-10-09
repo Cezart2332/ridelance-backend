@@ -40,7 +40,7 @@ internal sealed class SendCompanyFormationToConsultoCommandHandler(
         // Stripe din care venise, iar avansul e oricum fix.
         return await sender.SendAsync(
             pfaRegistrationId.Value,
-            Pricing.RidelanceStart.OnboardingAdvanceBani,
+            Pricing.OnboardingAdvance.OnboardingAdvanceBani,
             stripeEventId: null,
             cancellationToken);
     }

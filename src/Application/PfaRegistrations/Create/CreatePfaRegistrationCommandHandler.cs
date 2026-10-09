@@ -97,7 +97,8 @@ internal sealed class CreatePfaRegistrationCommandHandler(
                         r.PfaRegistrationId == null &&
                         r.PaymentType == PaymentType.OneTime &&
                         r.Status == PaymentStatus.Succeeded &&
-                        r.Description == Pricing.RidelanceStart.OnboardingAdvanceDescription)
+                        (r.Description == Pricing.OnboardingAdvance.OnboardingAdvanceDescription
+                            || r.Description == Pricing.OnboardingAdvance.LegacyStartDescription))
             .ToListAsync(cancellationToken);
 
         foreach (PaymentRecord advance in unlinkedAdvances)

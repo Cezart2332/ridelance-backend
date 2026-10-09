@@ -74,6 +74,7 @@ internal sealed class StripeService : IStripeService
         IReadOnlyDictionary<string, string>? sessionMetadata = null,
         string? idempotencyKey = null,
         string? couponId = null,
+        IReadOnlyList<string>? extraPriceIds = null,
         CancellationToken cancellationToken = default)
     {
         var meta = new Dictionary<string, string>
@@ -93,13 +94,16 @@ internal sealed class StripeService : IStripeService
         var options = new SessionCreateOptions
         {
             PaymentMethodTypes = ["card"],
+            // Planul, apoi opțiunile plătite: același abonament Stripe, deci aceeași facturare și
+            // aceeași anulare.
             LineItems =
             [
                 new SessionLineItemOptions
                 {
                     Price = priceId,
                     Quantity = 1,
-                }
+                },
+                .. (extraPriceIds ?? []).Select(extra => new SessionLineItemOptions { Price = extra, Quantity = 1 }),
             ],
             Mode = mode, // "payment" or "subscription"
             UiMode = "embedded_page",

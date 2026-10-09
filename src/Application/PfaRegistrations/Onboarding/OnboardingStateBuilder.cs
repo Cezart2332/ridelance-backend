@@ -206,8 +206,8 @@ public static class OnboardingStateBuilder
             ContactPhone: registration?.User?.PhoneNumber,
             ContactName: FullNameOf(registration?.User),
             PrimaryCounty: PrimaryCountyOf(registration, countyFromIdCard),
-            OnboardingAdvanceBani: Pricing.RidelanceStart.OnboardingAdvanceBani,
-            OnboardingAdvanceIsRefundable: Pricing.RidelanceStart.OnboardingAdvanceIsRefundable,
+            OnboardingAdvanceBani: Pricing.OnboardingAdvance.OnboardingAdvanceBani,
+            OnboardingAdvanceIsRefundable: Pricing.OnboardingAdvance.OnboardingAdvanceIsRefundable,
             RequiresManualIdentityReview: registration?.RequiresManualIdentityReview ?? false,
             IsDevSession: registration?.IsDevSession ?? false,
             DevSkippedSteps: devSkippedSteps);

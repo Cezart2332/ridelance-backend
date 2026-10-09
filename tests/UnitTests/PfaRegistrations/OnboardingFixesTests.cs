@@ -14,24 +14,25 @@ namespace UnitTests.PfaRegistrations;
 /// </summary>
 public sealed class OnboardingFixesTests
 {
-    /* §3 — avansul e 399 lei și vine dintr-o singură constantă. */
+    /* Avansul e prima lună de PFA Full (299 lei) și vine dintr-o singură constantă. */
 
     [Fact]
-    public void OnboardingAdvance_Is399Lei()
+    public void OnboardingAdvance_IsTheFirstMonthOfPfaFull()
     {
-        Pricing.RidelanceStart.OnboardingAdvanceBani.ShouldBe(39_900);
-        Pricing.RidelanceStart.OnboardingAdvanceIsRefundable.ShouldBeFalse();
+        Pricing.OnboardingAdvance.OnboardingAdvanceBani.ShouldBe(29_900);
+        Pricing.OnboardingAdvance.OnboardingAdvanceBani.ShouldBe(Pricing.Plans.PfaFullMonthlyBani);
+        Pricing.OnboardingAdvance.OnboardingAdvanceIsRefundable.ShouldBeFalse();
     }
 
     [Fact]
     public void StripeCatalog_ReadsTheAdvanceFromPricing()
     {
-        StripeCatalog.RidelanceStartAdvance.UnitAmountBani
-            .ShouldBe(Pricing.RidelanceStart.OnboardingAdvanceBani);
+        StripeCatalog.OnboardingAdvance.UnitAmountBani
+            .ShouldBe(Pricing.OnboardingAdvance.OnboardingAdvanceBani);
 
         // Un preț Stripe e imutabil: cheia trebuie să poarte suma, altfel se regăsește prețul
         // vechi și modificarea din `Pricing` n-are niciun efect.
-        StripeCatalog.RidelanceStartAdvance.LookupKey.ShouldContain("399");
+        StripeCatalog.OnboardingAdvance.LookupKey.ShouldContain("299");
     }
 
     /* §8.1 — județul ARR se precompletează, nu se cere de la utilizator. */

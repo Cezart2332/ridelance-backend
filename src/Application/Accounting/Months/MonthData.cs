@@ -22,6 +22,8 @@ internal sealed record MonthDocument(PlatformDocument Document, string FileName,
 /// <summary>
 /// Ce PFA-uri intră într-o lună fiscală. Cu o colaborare contabilă înregistrată, contează intervalul
 /// ei; fără, orice PFA cu onboardingul încheiat până la sfârșitul lunii și cont activ.
+///
+/// PFAlone nu intră niciodată: își ține singur registrele și își generează singur declarațiile.
 /// </summary>
 internal static class AccountingScope
 {
@@ -43,6 +45,7 @@ internal static class AccountingScope
         var rows = await db.PfaRegistrations
             .AsNoTracking()
             .Where(p => only == null || p.Id == only)
+            .Where(p => !Payments.PlanAccess.SelfManagedPfaIds(db).Contains(p.Id))
             .Where(p => covering.Contains(p.Id) ||
                         !engaged.Contains(p.Id) &&
                         p.OnboardingCompletedAtUtc != null &&

@@ -23,8 +23,8 @@ public sealed class CarPaidExtrasTests
     [Fact]
     public void Preturile_sunt_cele_stabilite()
     {
-        Pricing.PaidExtras.ExtraListingMonthlyBani.ShouldBe(4_000);
-        Pricing.PaidExtras.HiddenPlateBani.ShouldBe(1_500);
+        Pricing.PaidExtras.ExtraListingMonthlyBani.ShouldBe(3_990);
+        Pricing.PaidExtras.HiddenPlateBani.ShouldBe(1_490);
         StripeCatalog.ExtraListingMonthly.Interval.ShouldBe("month");
         StripeCatalog.HiddenPlate.Interval.ShouldBeNull();
         StripeCatalog.All.ShouldContain(StripeCatalog.ExtraListingMonthly);

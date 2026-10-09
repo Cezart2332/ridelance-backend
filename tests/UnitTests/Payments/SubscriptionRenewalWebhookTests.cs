@@ -128,7 +128,7 @@ public sealed class SubscriptionRenewalWebhookTests
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
-            Plan = SubscriptionPlan.Start,
+            Plan = SubscriptionPlan.PfaFull,
             Status = SubscriptionStatus.Active,
             BillingCycle = SubscriptionBillingCycle.Monthly,
             StripeSubscriptionId = stripeSubscriptionId,

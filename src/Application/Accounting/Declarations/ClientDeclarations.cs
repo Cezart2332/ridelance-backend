@@ -88,7 +88,7 @@ internal sealed class GetClientDeclarationsQueryHandler(IApplicationDbContext db
         _ => ClientDeclarationState.InPreparation,
     };
 
-    private static DateOnly? DueDate(TaxRuleSet rules, DeclarationType type, string period)
+    internal static DateOnly? DueDate(TaxRuleSet rules, DeclarationType type, string period)
     {
         DateOnly end = period.Length == 4
             ? new DateOnly(int.Parse(period, CultureInfo.InvariantCulture), 12, 31)

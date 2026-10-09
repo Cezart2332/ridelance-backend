@@ -39,6 +39,8 @@ public interface IStripeService
         /// întoarce ca reducere pe primele facturi ale abonamentului.
         /// </summary>
         string? couponId = null,
+        /// <summary>Prețuri adăugate pe aceeași sesiune: opțiunile plătite ale abonamentului.</summary>
+        IReadOnlyList<string>? extraPriceIds = null,
         CancellationToken cancellationToken = default);
 #pragma warning restore CA1054
 

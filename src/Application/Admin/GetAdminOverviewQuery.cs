@@ -97,7 +97,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
 
         long pfaMonthlyRecurringRevenue = latestSubscriptions.Values
             .Where(s => s.Status is SubscriptionStatus.Active or SubscriptionStatus.ActivePendingBilling)
-            .Sum(s => AdminBillingLabels.MonthlyEstimateBani(s.Plan, s.BillingCycle));
+            .Sum(AdminBillingLabels.MonthlyEstimateBani);
 
         var recentPayments = BuildPaymentRows(payments, serviceOrders, cars)
             .OrderByDescending(p => p.DateUtc)
@@ -247,7 +247,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
             Deleted: firms.Count(u => u.IsDeleted),
             InOnboarding: open.Count(u => !SrlEnrollment.IsEnrolled(u)),
             FailedPayment: latest.Values.Count(s => s.Status == SubscriptionStatus.PastDue),
-            SubscriptionMonthlyRevenueBani: activeSubscriptions.Sum(s => AdminBillingLabels.MonthlyEstimateBani(s.Plan, s.BillingCycle)),
+            SubscriptionMonthlyRevenueBani: activeSubscriptions.Sum(AdminBillingLabels.MonthlyEstimateBani),
             CarsTotal: firmCars.Count,
             CarsPublished: firmCars.Count(c => c.ListingStatus == ListingStatus.Published),
             PaidExtraListings: firmCars.Count(c => c.PaymentStatus == CarListingPaymentStatus.Paid && c.ListingStatus == ListingStatus.Published),
@@ -276,9 +276,8 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
 
         return
         [
-            new("Solo active", list.Count(s => s.Plan == SubscriptionPlan.Solo && IsActiveSubscription(s.Status))),
-            new("Start active", list.Count(s => s.Plan == SubscriptionPlan.Start && IsActiveSubscription(s.Status))),
-            new("Pro active", list.Count(s => s.Plan == SubscriptionPlan.Pro && IsActiveSubscription(s.Status))),
+            new("PFAlone active", list.Count(s => s.Plan == SubscriptionPlan.PfaAlone && IsActiveSubscription(s.Status))),
+            new("PFA Full active", list.Count(s => s.Plan == SubscriptionPlan.PfaFull && IsActiveSubscription(s.Status))),
             new("Trial", 0),
             new("Anulate", list.Count(s => s.Status == SubscriptionStatus.Cancelled)),
             new("Suspendate", list.Count(s => s.Status == SubscriptionStatus.Expired)),

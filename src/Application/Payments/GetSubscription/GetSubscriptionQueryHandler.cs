@@ -73,7 +73,12 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             hasPaidInfiintare,
             onboardingSectionsValidated,
             sub.BcrDiscountRequestedAtUtc is not null,
-            sub.BcrDiscountConfirmedAtUtc));
+            sub.BcrDiscountConfirmedAtUtc,
+            PlanKeys.Of(sub.Plan),
+            sub.IncludesOpenBanking,
+            sub.IncludesCashRegister,
+            CanManageRegisters: sub.Plan == SubscriptionPlan.PfaAlone,
+            CanGenerateDeclarations: sub.Plan == SubscriptionPlan.PfaAlone));
     }
 
 }

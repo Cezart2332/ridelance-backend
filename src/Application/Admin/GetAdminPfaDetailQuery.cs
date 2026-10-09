@@ -98,7 +98,7 @@ internal sealed class GetAdminPfaDetailQueryHandler(IApplicationDbContext contex
 
         long? priceBani = subscription is null
             ? null
-            : AdminBillingLabels.PriceBani(subscription.Plan, subscription.BillingCycle);
+            : AdminBillingLabels.PriceBani(subscription);
 
         var response = new AdminPfaDetailResponse(
             pfa.Id,

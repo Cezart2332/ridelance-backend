@@ -174,31 +174,49 @@ public static class AdminBillingLabels
     public static long PriceBani(SubscriptionPlan plan, SubscriptionBillingCycle cycle) =>
         (plan, cycle) switch
         {
-            (SubscriptionPlan.Solo, SubscriptionBillingCycle.Annual) => Pricing.Plans.SoloAnnualBani,
-            (SubscriptionPlan.Start, SubscriptionBillingCycle.Annual) => Pricing.Plans.StartAnnualBani,
-            (SubscriptionPlan.Pro, SubscriptionBillingCycle.Annual) => Pricing.Plans.ProAnnualBani,
+            (SubscriptionPlan.PfaAlone, SubscriptionBillingCycle.Annual) => Pricing.Plans.PfaAloneAnnualBani,
+            (SubscriptionPlan.PfaFull, SubscriptionBillingCycle.Annual) => Pricing.Plans.PfaFullAnnualBani,
             (SubscriptionPlan.Fleet, SubscriptionBillingCycle.Annual) => Domain.Companies.FleetPricing.AnnualBani,
             (SubscriptionPlan.Fleet, _) => Domain.Companies.FleetPricing.MonthlyBani,
-            (SubscriptionPlan.Solo, _) => Pricing.Plans.SoloMonthlyBani,
-            (SubscriptionPlan.Start, _) => Pricing.Plans.StartMonthlyBani,
-            (SubscriptionPlan.Pro, _) => Pricing.Plans.ProMonthlyBani,
+            (SubscriptionPlan.PfaAlone, _) => Pricing.Plans.PfaAloneMonthlyBani,
+            (SubscriptionPlan.PfaFull, _) => Pricing.Plans.PfaFullMonthlyBani,
             _ => 0
         };
+
+    /// <summary>Planul plus opțiunile plătite pe același abonament (doar PFAlone le are).</summary>
+    public static long PriceBani(UserSubscription subscription)
+    {
+        bool annual = subscription.BillingCycle == SubscriptionBillingCycle.Annual;
+        long openBanking = annual ? Pricing.Addons.OpenBankingAnnualBani : Pricing.Addons.OpenBankingMonthlyBani;
+        long cashRegister = annual ? Pricing.Addons.CashRegisterAnnualBani : Pricing.Addons.CashRegisterMonthlyBani;
+
+        long total = PriceBani(subscription.Plan, subscription.BillingCycle);
+        if (subscription.HasOpenBankingAddon)
+        {
+            total += openBanking;
+        }
+
+        if (subscription.HasCashRegisterAddon)
+        {
+            total += cashRegister;
+        }
+
+        return total;
+    }
 
     /// <summary>
     /// Contribuția lunară a unui abonament la venitul recurent. Un abonament anual se împarte la
     /// 12 — altfel o singură vânzare anuală ar umfla luna în care s-a făcut.
     /// </summary>
-    public static long MonthlyEstimateBani(SubscriptionPlan plan, SubscriptionBillingCycle cycle) =>
-        cycle == SubscriptionBillingCycle.Annual
-            ? PriceBani(plan, cycle) / 12
-            : PriceBani(plan, cycle);
+    public static long MonthlyEstimateBani(UserSubscription subscription) =>
+        subscription.BillingCycle == SubscriptionBillingCycle.Annual
+            ? PriceBani(subscription) / 12
+            : PriceBani(subscription);
 
     public static string PlanLabel(SubscriptionPlan? plan) => plan switch
     {
-        SubscriptionPlan.Solo => "Solo",
-        SubscriptionPlan.Start => "Start",
-        SubscriptionPlan.Pro => "Pro",
+        SubscriptionPlan.PfaAlone => "PFAlone",
+        SubscriptionPlan.PfaFull => "PFA Full",
         SubscriptionPlan.Fleet => "Fleet",
         _ => "Fără plan"
     };

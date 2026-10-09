@@ -27,13 +27,12 @@ public class InfiintarePaymentGateTests
     }
 
     /// <summary>
-    /// Avansul se întoarce integral la primul abonament, în forma promisă clientului: Solo două
-    /// luni gratis, Start una, Pro prima lună mai ieftină cu fix valoarea avansului.
+    /// Avansul se întoarce integral la primul abonament, în forma promisă clientului: PFA Full o
+    /// lună gratis, PFAlone două.
     /// </summary>
     [Theory]
-    [InlineData("solo", 19_900L, 2, 0L)]
-    [InlineData("start", 39_900L, 1, 0L)]
-    [InlineData("pro", 39_900L, 1, 20_000L)]
+    [InlineData("pfalone", 13_900L, 2, 0L)]
+    [InlineData("pfa-full", 29_900L, 1, 0L)]
     public void AdvanceCredit_ReturnsTheWholeAdvance(
         string plan,
         long expectedAmountOff,
@@ -47,19 +46,14 @@ public class InfiintarePaymentGateTests
         spec.Months.ShouldBe(expectedMonths);
 
         // Reducerea totală acoperă avansul, mai puțin restul care nu se poate împărți pe luni
-        // întregi: 399 nu se împarte la 199, deci Solo iese cu un leu sub. Peste o lună de plan
-        // ar însemna că dăm gratis mai mult decât s-a plătit.
+        // întregi: 299 nu se împarte la 139, deci PFAlone iese cu 21 de lei sub. Peste o lună de
+        // plan ar însemna că dăm gratis mai mult decât s-a plătit.
         long credited = spec.AmountOffBani * spec.Months;
         credited.ShouldBeInRange(
-            Pricing.RidelanceStart.OnboardingAdvanceBani - spec.AmountOffBani + 1,
-            Pricing.RidelanceStart.OnboardingAdvanceBani);
+            Pricing.OnboardingAdvance.OnboardingAdvanceBani - spec.AmountOffBani + 1,
+            Pricing.OnboardingAdvance.OnboardingAdvanceBani);
 
-        long monthly = plan switch
-        {
-            "solo" => Pricing.Plans.SoloMonthlyBani,
-            "start" => Pricing.Plans.StartMonthlyBani,
-            _ => Pricing.Plans.ProMonthlyBani,
-        };
+        long monthly = plan == "pfalone" ? Pricing.Plans.PfaAloneMonthlyBani : Pricing.Plans.PfaFullMonthlyBani;
         Math.Max(0, monthly - spec.AmountOffBani).ShouldBe(expectedFirstInvoice);
     }
 
@@ -78,8 +72,8 @@ public class InfiintarePaymentGateTests
     [Fact]
     public void AdvanceDescription_IsAConstantSharedByWriterAndReader()
     {
-        Pricing.RidelanceStart.OnboardingAdvanceDescription.ShouldNotBeNullOrWhiteSpace();
-        Pricing.RidelanceStart.OnboardingAdvanceDescription
-            .ShouldNotBe(Pricing.RidelanceStart.LegacyInfiintareDescription);
+        Pricing.OnboardingAdvance.OnboardingAdvanceDescription.ShouldNotBeNullOrWhiteSpace();
+        Pricing.OnboardingAdvance.OnboardingAdvanceDescription
+            .ShouldNotBe(Pricing.OnboardingAdvance.LegacyInfiintareDescription);
     }
 }

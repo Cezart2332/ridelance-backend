@@ -73,33 +73,58 @@ public static class StripeCatalog
                     ["billing_unit"] = "month",
                 });
 
-    public static StripeCatalogItem Solo { get; } =
-        Plan("solo", "RIDElance Solo", Pricing.Plans.SoloMonthlyBani, Pricing.Plans.SoloAnnualBani, annual: false);
+    public static StripeCatalogItem PfaAlone { get; } =
+        Plan("pfalone", "RIDElance PFAlone", Pricing.Plans.PfaAloneMonthlyBani, Pricing.Plans.PfaAloneAnnualBani, annual: false);
 
-    public static StripeCatalogItem SoloAnnual { get; } =
-        Plan("solo", "RIDElance Solo", Pricing.Plans.SoloMonthlyBani, Pricing.Plans.SoloAnnualBani, annual: true);
+    public static StripeCatalogItem PfaAloneAnnual { get; } =
+        Plan("pfalone", "RIDElance PFAlone", Pricing.Plans.PfaAloneMonthlyBani, Pricing.Plans.PfaAloneAnnualBani, annual: true);
 
-    public static StripeCatalogItem Start { get; } =
-        Plan("start", "RIDElance Start", Pricing.Plans.StartMonthlyBani, Pricing.Plans.StartAnnualBani, annual: false);
+    public static StripeCatalogItem PfaFull { get; } =
+        Plan("pfa-full", "RIDElance PFA Full", Pricing.Plans.PfaFullMonthlyBani, Pricing.Plans.PfaFullAnnualBani, annual: false);
 
-    public static StripeCatalogItem StartAnnual { get; } =
-        Plan("start", "RIDElance Start", Pricing.Plans.StartMonthlyBani, Pricing.Plans.StartAnnualBani, annual: true);
-
-    public static StripeCatalogItem Pro { get; } =
-        Plan("pro", "RIDElance Pro", Pricing.Plans.ProMonthlyBani, Pricing.Plans.ProAnnualBani, annual: false);
-
-    public static StripeCatalogItem ProAnnual { get; } =
-        Plan("pro", "RIDElance Pro", Pricing.Plans.ProMonthlyBani, Pricing.Plans.ProAnnualBani, annual: true);
+    public static StripeCatalogItem PfaFullAnnual { get; } =
+        Plan("pfa-full", "RIDElance PFA Full", Pricing.Plans.PfaFullMonthlyBani, Pricing.Plans.PfaFullAnnualBani, annual: true);
 
     /// <summary>
-    /// The RIDElance Start advance paid during onboarding, before the file reaches the accounting
-    /// partner. Amount lives in <see cref="Pricing.RidelanceStart.OnboardingAdvanceBani"/>; the
-    /// lookup key carries it because a Stripe price cannot be re-priced in place.
+    /// O opțiune a PFAlone, pe același ciclu ca planul: se adaugă ca linie separată pe abonamentul
+    /// Stripe, deci se facturează și se anulează odată cu el.
     /// </summary>
-    public static StripeCatalogItem RidelanceStartAdvance { get; } = new(
-        "ridelance_start_avans_399_ron",
-        "Abonament RIDElance Start - avans",
-        Pricing.RidelanceStart.OnboardingAdvanceBani,
+    private static StripeCatalogItem Addon(string key, string title, long monthlyBani, long annualBani, bool annual) =>
+        new(
+            $"ridelance_addon_{key}_{(annual ? "annual" : "monthly")}_{(annual ? annualBani : monthlyBani) / 100}_ron",
+            annual ? $"{title} - anual" : title,
+            annual ? annualBani : monthlyBani,
+            Ron,
+            annual ? "year" : "month",
+            new Dictionary<string, string>
+            {
+                ["app"] = "ridelance",
+                ["kind"] = "subscription_addon",
+                ["addon"] = key,
+                ["billing_unit"] = annual ? "year" : "month",
+            });
+
+    public static StripeCatalogItem OpenBanking { get; } =
+        Addon("open-banking", "RIDElance Open Banking", Pricing.Addons.OpenBankingMonthlyBani, Pricing.Addons.OpenBankingAnnualBani, annual: false);
+
+    public static StripeCatalogItem OpenBankingAnnual { get; } =
+        Addon("open-banking", "RIDElance Open Banking", Pricing.Addons.OpenBankingMonthlyBani, Pricing.Addons.OpenBankingAnnualBani, annual: true);
+
+    public static StripeCatalogItem CashRegister { get; } =
+        Addon("cash-register", "RIDElance Automatizare casa de marcat", Pricing.Addons.CashRegisterMonthlyBani, Pricing.Addons.CashRegisterAnnualBani, annual: false);
+
+    public static StripeCatalogItem CashRegisterAnnual { get; } =
+        Addon("cash-register", "RIDElance Automatizare casa de marcat", Pricing.Addons.CashRegisterMonthlyBani, Pricing.Addons.CashRegisterAnnualBani, annual: true);
+
+    /// <summary>
+    /// The advance paid during onboarding — the first month of PFA Full. Amount lives in
+    /// <see cref="Pricing.OnboardingAdvance.OnboardingAdvanceBani"/>; the lookup key carries it
+    /// because a Stripe price cannot be re-priced in place.
+    /// </summary>
+    public static StripeCatalogItem OnboardingAdvance { get; } = new(
+        $"ridelance_avans_onboarding_{Pricing.OnboardingAdvance.OnboardingAdvanceBani / 100}_ron",
+        "Abonament RIDElance - avans",
+        Pricing.OnboardingAdvance.OnboardingAdvanceBani,
         Ron,
         null,
         new Dictionary<string, string>
@@ -107,7 +132,7 @@ public static class StripeCatalog
             ["app"] = "ridelance",
             ["kind"] = "start_advance",
             ["billing_unit"] = "one_time",
-            ["refundable"] = Pricing.RidelanceStart.OnboardingAdvanceIsRefundable ? "yes" : "no",
+            ["refundable"] = Pricing.OnboardingAdvance.OnboardingAdvanceIsRefundable ? "yes" : "no",
         });
 
     /// <summary>Standalone PFA setup, bought from the public services page without a subscription.</summary>
@@ -167,7 +192,7 @@ public static class StripeCatalog
 
     /// <summary>Anunț de flotă peste cele incluse în abonament. Lunar, per mașină.</summary>
     public static StripeCatalogItem ExtraListingMonthly { get; } = new(
-        "ridelance_srl_extra_listing_monthly_4000_ron",
+        $"ridelance_srl_extra_listing_monthly_{Pricing.PaidExtras.ExtraListingMonthlyBani}_bani",
         "Anunt extra RIDElance",
         Pricing.PaidExtras.ExtraListingMonthlyBani,
         Ron,
@@ -182,7 +207,7 @@ public static class StripeCatalog
 
     /// <summary>Ascunderea numărului de înmatriculare în anunț. O singură dată, per mașină.</summary>
     public static StripeCatalogItem HiddenPlate { get; } = new(
-        "ridelance_srl_hidden_plate_1500_ron",
+        $"ridelance_srl_hidden_plate_{Pricing.PaidExtras.HiddenPlateBani}_bani",
         "Numar de inmatriculare ascuns",
         Pricing.PaidExtras.HiddenPlateBani,
         Ron,
@@ -198,13 +223,15 @@ public static class StripeCatalog
     /// <summary>Every item, for tooling that needs to walk the whole catalog.</summary>
     public static IReadOnlyList<StripeCatalogItem> All { get; } =
     [
-        Solo,
-        SoloAnnual,
-        Start,
-        StartAnnual,
-        Pro,
-        ProAnnual,
-        RidelanceStartAdvance,
+        PfaAlone,
+        PfaAloneAnnual,
+        PfaFull,
+        PfaFullAnnual,
+        OpenBanking,
+        OpenBankingAnnual,
+        CashRegister,
+        CashRegisterAnnual,
+        OnboardingAdvance,
         InfiintarePfaPublic,
         SediuSocial,
         StartRide,
@@ -216,23 +243,21 @@ public static class StripeCatalog
     private static readonly Dictionary<string, StripeCatalogItem> MonthlyPlans =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["solo"] = Solo,
-            ["start"] = Start,
-            ["pro"] = Pro,
+            ["pfalone"] = PfaAlone,
+            ["pfa-full"] = PfaFull,
         };
 
     private static readonly Dictionary<string, StripeCatalogItem> AnnualPlans =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["solo"] = SoloAnnual,
-            ["start"] = StartAnnual,
-            ["pro"] = ProAnnual,
+            ["pfalone"] = PfaAloneAnnual,
+            ["pfa-full"] = PfaFullAnnual,
         };
 
     private static readonly Dictionary<string, StripeCatalogItem> DashboardServices =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["infiintare_pfa"] = RidelanceStartAdvance,
+            ["infiintare_pfa"] = OnboardingAdvance,
             ["sediu_social"] = SediuSocial,
             ["start_ride"] = StartRide,
         };
@@ -265,6 +290,48 @@ public static class StripeCatalog
             cycle == SubscriptionBillingCycle.Annual ? AnnualPlans : MonthlyPlans;
 
         return source.TryGetValue(planKey ?? string.Empty, out item);
+    }
+
+    /// <summary>
+    /// Opțiunile cerute la checkout, pe ciclul planului. Doar PFAlone le cumpără: la PFA Full sunt
+    /// incluse. O cheie necunoscută face toată cererea invalidă — nu se ignoră tăcut.
+    /// </summary>
+    public static bool TryResolveAddons(
+        string planKey,
+        IReadOnlyCollection<string> addonKeys,
+        SubscriptionBillingCycle cycle,
+        out IReadOnlyList<(SubscriptionAddon Addon, StripeCatalogItem Item)> addons)
+    {
+        var resolved = new List<(SubscriptionAddon, StripeCatalogItem)>();
+        addons = resolved;
+
+        if (addonKeys.Count == 0)
+        {
+            return true;
+        }
+
+        if (!string.Equals(planKey, "pfalone", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        bool annual = cycle == SubscriptionBillingCycle.Annual;
+        foreach (string key in addonKeys.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            switch (key.ToUpperInvariant())
+            {
+                case "OPEN-BANKING":
+                    resolved.Add((SubscriptionAddon.OpenBanking, annual ? OpenBankingAnnual : OpenBanking));
+                    break;
+                case "CASH-REGISTER":
+                    resolved.Add((SubscriptionAddon.CashRegister, annual ? CashRegisterAnnual : CashRegister));
+                    break;
+                default:
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

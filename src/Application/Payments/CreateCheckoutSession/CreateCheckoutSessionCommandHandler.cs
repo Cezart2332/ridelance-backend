@@ -51,8 +51,22 @@ internal sealed class CreateCheckoutSessionCommandHandler(
         // înregistrată pentru o plată care nu s-a făcut ar cere reducere pentru un abonament
         // inexistent. Ajunge în abonament din webhook, adică după ce s-a plătit.
         string bcrMark = command.BcrDiscountRequested ? "|bcr:1" : string.Empty;
+
+        IReadOnlyList<string> addonKeys = command.Mode == "subscription" ? command.Addons ?? [] : [];
+        if (!StripeCatalog.TryResolveAddons(command.Plan, addonKeys, command.Cycle, out IReadOnlyList<(SubscriptionAddon Addon, StripeCatalogItem Item)> addons))
+        {
+            return Result.Failure<string>(Error.Problem(
+                "Checkout.UnknownAddon",
+                "Opțiunile se pot adăuga doar la PFAlone; la PFA Full sunt incluse."));
+        }
+
+        // Opțiunile călătoresc în metadata, ca planul: webhookul le trece pe abonament abia după plată.
+        string addonMark = addons.Count == 0
+            ? string.Empty
+            : $"|addons:{string.Join(',', addons.Select(a => a.Addon == SubscriptionAddon.OpenBanking ? "open-banking" : "cash-register"))}";
+
         string metadata = command.Mode == "subscription"
-            ? $"plan:{command.Plan}|cycle:{command.Cycle}{bcrMark}"
+            ? $"plan:{command.Plan}|cycle:{command.Cycle}{bcrMark}{addonMark}"
             : $"plan:{command.Plan}";
 
 
@@ -96,6 +110,12 @@ internal sealed class CreateCheckoutSessionCommandHandler(
 
         string priceId = await stripeService.ResolvePriceIdAsync(catalogItem, cancellationToken);
 
+        var addonPriceIds = new List<string>(addons.Count);
+        foreach ((SubscriptionAddon _, StripeCatalogItem item) in addons)
+        {
+            addonPriceIds.Add(await stripeService.ResolvePriceIdAsync(item, cancellationToken));
+        }
+
         // Avansul plătit în onboarding se întoarce aici, ca reducere pe primele facturi.
         string? couponId = await AdvanceCreditCouponAsync(command, cancellationToken);
 
@@ -112,6 +132,7 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             // timp dosarul și planul sunt aceleași, deci reîncercarea reia aceeași plată.
             pfaRegistrationId is null ? null : $"infiintare:{pfaRegistrationId}:{command.Plan}",
             couponId,
+            addonPriceIds,
             cancellationToken);
 
         return sessionUrl;

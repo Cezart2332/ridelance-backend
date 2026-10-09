@@ -26,8 +26,9 @@ public static class InfiintarePaymentCheck
                            r.PaymentType == PaymentType.OneTime &&
                            r.Status == PaymentStatus.Succeeded &&
                            (r.PfaRegistrationId != null ||
-                            r.Description == Pricing.RidelanceStart.OnboardingAdvanceDescription ||
-                            r.Description == Pricing.RidelanceStart.LegacyInfiintareDescription),
+                            r.Description == Pricing.OnboardingAdvance.OnboardingAdvanceDescription ||
+                            r.Description == Pricing.OnboardingAdvance.LegacyStartDescription ||
+                            r.Description == Pricing.OnboardingAdvance.LegacyInfiintareDescription),
                       cancellationToken);
 
         if (known)

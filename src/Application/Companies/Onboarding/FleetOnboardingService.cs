@@ -283,7 +283,7 @@ public sealed class FleetOnboardingService(
             $"{baseUrl}/onboarding-srl?payment=returned", $"{baseUrl}/onboarding-srl",
             user.Email, user.Id.ToString(), $"plan:fleet|cycle:{progress.Cycle}{(progress.BcrRequested ? "|bcr:1" : string.Empty)}",
             new Dictionary<string, string> { ["fleetOnboarding"] = "true", ["fleetBcrApplied"] = eligible ? "true" : "false" },
-            $"fleet:{user.Id}:{progress.CheckoutAttemptId}", coupon, ct);
+            $"fleet:{user.Id}:{progress.CheckoutAttemptId}", coupon, cancellationToken: ct);
         progress.CheckoutClientSecret = secret;
         await context.SaveChangesAsync(ct);
         return secret;

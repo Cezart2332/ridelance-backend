@@ -12,6 +12,10 @@ namespace Application.Payments.CreateCheckoutSession;
 /// unde nu există reînnoire. A luat locul ancorei de facturare — plata se face acum, la checkout,
 /// nu la următoarea zi de luni.
 /// </param>
+/// <param name="Addons">
+/// Opțiunile plătite ale PFAlone („open-banking”, „cash-register”), facturate pe același abonament.
+/// La PFA Full sunt incluse, deci acolo o cerere cu opțiuni e invalidă.
+/// </param>
 /// <param name="BcrDiscountRequested">
 /// Clientul a bifat că își deschide cont BCR. Nu schimbă suma încasată acum: reducerea se aplică
 /// abia după ce BCR confirmă contul, deci aici se înregistrează doar intenția.
@@ -20,7 +24,7 @@ public sealed record CreateCheckoutSessionCommand(
     Guid UserId,
     string UserEmail,
     string Mode,          // "payment" or "subscription"
-    string Plan,          // e.g. "solo", "start", "pro", "infiintare_pfa"
+    string Plan,          // "pfalone", "pfa-full" sau un serviciu („infiintare_pfa”)
     SubscriptionBillingCycle Cycle = SubscriptionBillingCycle.Monthly,
     [property: SuppressMessage("Design", "CA1054:Uri parameters should not be strings", Justification = "Strings are preferred for API DTOs")]
     [param: SuppressMessage("Design", "CA1054:Uri parameters should not be strings", Justification = "Strings are preferred for API DTOs")]
@@ -29,5 +33,6 @@ public sealed record CreateCheckoutSessionCommand(
     [param: SuppressMessage("Design", "CA1054:Uri parameters should not be strings", Justification = "Strings are preferred for API DTOs")]
     string? CancelUrl = null,
     bool IsPlanChange = false,
-    bool BcrDiscountRequested = false
+    bool BcrDiscountRequested = false,
+    IReadOnlyList<string>? Addons = null
 ) : ICommand<string>;

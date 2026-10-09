@@ -31,6 +31,12 @@ internal sealed class RunLedgerImportCommandHandler(
             return Result.Failure<IReadOnlyList<LedgerImportResult>>(AccountingErrors.PfaNotFound);
         }
 
+        // PFAlone își completează singur registrele: nimic nu intră automat în ele.
+        if (await Payments.PlanAccess.ManagesOwnBooksAsync(db, pfa.UserId, cancellationToken))
+        {
+            return Result.Success<IReadOnlyList<LedgerImportResult>>([]);
+        }
+
         // Doar o colaborare înregistrată limitează importul: de la începutul ei și, după inactivare,
         // până la data încheierii (B8). Fără rând, se importă tot istoricul disponibil.
         PfaAccountingEngagement? engagement = await Pfas.PfaEngagements.LatestAsync(db, pfa.Id, cancellationToken);

@@ -212,7 +212,7 @@ internal sealed class SignCompanyFormationCommandHandler(
         {
             await consultoDossierSender.SendAsync(
                 request.PfaRegistrationId,
-                Pricing.RidelanceStart.OnboardingAdvanceBani,
+                Pricing.OnboardingAdvance.OnboardingAdvanceBani,
                 stripeEventId: null,
                 cancellationToken);
         }
