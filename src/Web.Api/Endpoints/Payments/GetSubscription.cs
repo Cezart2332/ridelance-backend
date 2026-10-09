@@ -1,5 +1,6 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Messaging;
+using Application.Payments.DeclineOpenBanking;
 using Application.Payments.GetSubscription;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -21,6 +22,14 @@ internal sealed class GetSubscription : IEndpoint
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })
+        .RequireAuthorization()
+        .WithTags(Tags.Payments);
+
+        // PFAlone, la finalul lunii gratuite de Open Banking: nu-l plătește. Plata merge prin checkout.
+        app.MapPost("payments/subscription/open-banking/decline", async (
+            ICommandHandler<DeclineOpenBankingCommand> handler,
+            CancellationToken cancellationToken) =>
+            (await handler.Handle(new DeclineOpenBankingCommand(), cancellationToken)).Match(Results.NoContent, CustomResults.Problem))
         .RequireAuthorization()
         .WithTags(Tags.Payments);
     }

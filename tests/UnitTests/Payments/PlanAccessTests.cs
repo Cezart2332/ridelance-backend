@@ -1,6 +1,9 @@
 using Application.Abstractions.Authentication;
+using Application.Abstractions.Messaging;
 using Application.Accounting.Declarations;
+using Application.Banking.Commands;
 using Application.Payments;
+using Application.Payments.DeclineOpenBanking;
 using Domain.Payments;
 using Domain.PfaRegistrations;
 using Domain.Users;
@@ -61,6 +64,35 @@ public sealed class PlanAccessTests : IDisposable
             .Handle(new GetOwnDeclarationsQuery(2026), default);
         allowed.IsSuccess.ShouldBeTrue();
         allowed.Value.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DecliningOpenBanking_IsRecordedAndDisconnectsTheBank()
+    {
+        (Guid alone, Guid _) = Client(SubscriptionPlan.PfaAlone);
+        (Guid full, Guid _) = Client(SubscriptionPlan.PfaFull);
+        var disconnect = new CountingDisconnect();
+
+        Result declined = await new DeclineOpenBankingCommandHandler(_db, new FixedUser(alone), disconnect).Handle(new DeclineOpenBankingCommand(), default);
+        declined.IsSuccess.ShouldBeTrue();
+        (await _db.UserSubscriptions.SingleAsync(s => s.UserId == alone)).OpenBankingDeclinedAtUtc.ShouldNotBeNull();
+        disconnect.Calls.ShouldBe(1);
+
+        // La PFA Full e inclus: n-are ce refuza.
+        Result refused = await new DeclineOpenBankingCommandHandler(_db, new FixedUser(full), disconnect).Handle(new DeclineOpenBankingCommand(), default);
+        refused.Error.ShouldBe(DeclineOpenBankingCommandHandler.NotOffered);
+        disconnect.Calls.ShouldBe(1);
+    }
+
+    private sealed class CountingDisconnect : ICommandHandler<DisconnectBankConnectionCommand, bool>
+    {
+        public int Calls { get; private set; }
+
+        public Task<Result<bool>> Handle(DisconnectBankConnectionCommand command, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(Result.Success(true));
+        }
     }
 
     private sealed class FixedUser(Guid id) : IUserContext

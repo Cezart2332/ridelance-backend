@@ -34,7 +34,14 @@ public sealed record SubscriptionResponse(
     /// <summary>PFAlone: își ține singur registrele și le vede.</summary>
     bool CanManageRegisters = false,
     /// <summary>PFAlone: are generatorul de declarații.</summary>
-    bool CanGenerateDeclarations = false);
+    bool CanGenerateDeclarations = false,
+    /// <summary>PFAlone: până când Open Banking e gratuit.</summary>
+    DateTime? OpenBankingTrialEndsAtUtc = null,
+    /// <summary>PFAlone: luna gratuită s-a terminat; alege dacă plătește Open Banking sau renunță.</summary>
+    bool OpenBankingDecisionDue = false,
+    /// <summary>Opțiunile plătite pe abonament (nu cele incluse sau gratuite).</summary>
+    bool HasOpenBankingAddon = false,
+    bool HasCashRegisterAddon = false);
 
 /// <summary>Cheia unui plan, aceeași ca în oferta publică și la checkout.</summary>
 public static class PlanKeys

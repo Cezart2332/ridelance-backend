@@ -27,8 +27,45 @@ public sealed class UserSubscription : Entity
     /// <summary>Opțiunea de automatizare a casei de marcat, plătită pe abonament (PFAlone).</summary>
     public bool HasCashRegisterAddon { get; set; }
 
-    /// <summary>Conectarea băncii e disponibilă: inclusă în PFA Full, plătită separat la PFAlone.</summary>
-    public bool IncludesOpenBanking => Plan == SubscriptionPlan.PfaFull || HasOpenBankingAddon;
+    /// <summary>
+    /// PFAlone: până când Open Banking conectat în onboarding merge gratuit. După, clientul alege:
+    /// îl plătește (opțiunea pe abonament) sau renunță (banca se deconectează).
+    /// </summary>
+    public DateTime? OpenBankingTrialEndsAtUtc { get; set; }
+
+    /// <summary>PFAlone a refuzat Open Banking la finalul lunii gratuite.</summary>
+    public DateTime? OpenBankingDeclinedAtUtc { get; set; }
+
+    /// <summary>Luna gratuită de Open Banking.</summary>
+    public const int OpenBankingTrialMonths = 1;
+
+    /// <summary>
+    /// Conectarea băncii e disponibilă: inclusă în PFA Full, plătită la PFAlone sau, la PFAlone,
+    /// în luna gratuită.
+    /// </summary>
+    public bool IncludesOpenBankingAt(DateTime nowUtc) =>
+        Plan == SubscriptionPlan.PfaFull
+        || HasOpenBankingAddon
+        || Plan == SubscriptionPlan.PfaAlone && OpenBankingDeclinedAtUtc is null && OpenBankingTrialEndsAtUtc > nowUtc;
+
+    /// <summary>PFAlone, luna gratuită s-a terminat și n-a ales încă: îl întrebăm înainte de orice altceva.</summary>
+    public bool OpenBankingDecisionDueAt(DateTime nowUtc) =>
+        Plan == SubscriptionPlan.PfaAlone
+        && !HasOpenBankingAddon
+        && OpenBankingDeclinedAtUtc is null
+        && OpenBankingTrialEndsAtUtc <= nowUtc;
+
+    /// <summary>
+    /// Pornește luna gratuită la primul abonament PFAlone fără opțiunea plătită. O singură dată:
+    /// o schimbare de plan ulterioară nu mai dă încă o lună.
+    /// </summary>
+    public void StartOpenBankingTrial(DateTime nowUtc)
+    {
+        if (Plan == SubscriptionPlan.PfaAlone && !HasOpenBankingAddon && OpenBankingTrialEndsAtUtc is null)
+        {
+            OpenBankingTrialEndsAtUtc = nowUtc.AddMonths(OpenBankingTrialMonths);
+        }
+    }
 
     /// <summary>Automatizarea casei de marcat e disponibilă: inclusă în PFA Full, plătită la PFAlone.</summary>
     public bool IncludesCashRegister => Plan == SubscriptionPlan.PfaFull || HasCashRegisterAddon;

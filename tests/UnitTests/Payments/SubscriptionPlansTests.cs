@@ -47,12 +47,51 @@ public sealed class SubscriptionPlansTests
     [Fact]
     public void PfaFull_IncludesBothAddons_PfaAloneOnlyWhatItPaidFor()
     {
-        new UserSubscription { Plan = SubscriptionPlan.PfaFull }.IncludesOpenBanking.ShouldBeTrue();
+        new UserSubscription { Plan = SubscriptionPlan.PfaFull }.IncludesOpenBankingAt(DateTime.UtcNow).ShouldBeTrue();
         new UserSubscription { Plan = SubscriptionPlan.PfaFull }.IncludesCashRegister.ShouldBeTrue();
 
         var alone = new UserSubscription { Plan = SubscriptionPlan.PfaAlone, HasOpenBankingAddon = true };
-        alone.IncludesOpenBanking.ShouldBeTrue();
+        alone.IncludesOpenBankingAt(DateTime.UtcNow).ShouldBeTrue();
         alone.IncludesCashRegister.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void PfaAlone_GetsOneFreeMonthOfOpenBanking_ThenMustDecide()
+    {
+        var start = new DateTime(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc);
+        var alone = new UserSubscription { Plan = SubscriptionPlan.PfaAlone };
+        alone.StartOpenBankingTrial(start);
+
+        alone.OpenBankingTrialEndsAtUtc.ShouldBe(start.AddMonths(1));
+        alone.IncludesOpenBankingAt(start.AddDays(20)).ShouldBeTrue();
+        alone.OpenBankingDecisionDueAt(start.AddDays(20)).ShouldBeFalse();
+
+        DateTime after = start.AddMonths(1).AddMinutes(1);
+        alone.IncludesOpenBankingAt(after).ShouldBeFalse();
+        alone.OpenBankingDecisionDueAt(after).ShouldBeTrue();
+
+        // A doua pornire (schimbare de plan) nu mai dă încă o lună.
+        alone.StartOpenBankingTrial(after);
+        alone.OpenBankingTrialEndsAtUtc.ShouldBe(start.AddMonths(1));
+
+        // A plătit: inclus, fără întrebare. A refuzat: nici inclus, nici întrebat.
+        alone.HasOpenBankingAddon = true;
+        (alone.IncludesOpenBankingAt(after), alone.OpenBankingDecisionDueAt(after)).ShouldBe((true, false));
+        alone.HasOpenBankingAddon = false;
+        alone.OpenBankingDeclinedAtUtc = after;
+        (alone.IncludesOpenBankingAt(after), alone.OpenBankingDecisionDueAt(after)).ShouldBe((false, false));
+    }
+
+    [Fact]
+    public void PfaFull_AndPaidAddon_NeverStartATrial()
+    {
+        var full = new UserSubscription { Plan = SubscriptionPlan.PfaFull };
+        full.StartOpenBankingTrial(DateTime.UtcNow);
+        full.OpenBankingTrialEndsAtUtc.ShouldBeNull();
+
+        var paid = new UserSubscription { Plan = SubscriptionPlan.PfaAlone, HasOpenBankingAddon = true };
+        paid.StartOpenBankingTrial(DateTime.UtcNow);
+        paid.OpenBankingTrialEndsAtUtc.ShouldBeNull();
     }
 
     /// <summary><c>pending_plan</c> se salvează ca număr: valorile vechi trebuie să rămână ale lor.</summary>

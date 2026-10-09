@@ -214,6 +214,7 @@ internal sealed class HandleStripeWebhookCommandHandler(
                 existing.PendingPlan = null;
                 existing.HasOpenBankingAddon = openBankingAddon;
                 existing.HasCashRegisterAddon = cashRegisterAddon;
+                existing.StartOpenBankingTrial(DateTime.UtcNow);
                 existing.Status = SubscriptionStatus.Active;
                 existing.BillingCycle = cycle;
                 existing.StripeSubscriptionId = session.SubscriptionId;
@@ -257,6 +258,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
                     BcrDiscountRequestedAtUtc = ParseBcrRequested(planStr) ? DateTime.UtcNow : null,
                     BcrDiscountConfirmedAtUtc = plan == SubscriptionPlan.Fleet && session.Metadata?.GetValueOrDefault("fleetBcrApplied") == "true" ? DateTime.UtcNow : null,
                 };
+                // PFAlone: Open Banking conectat în onboarding merge gratuit o lună, apoi îl întrebăm.
+                sub.StartOpenBankingTrial(DateTime.UtcNow);
                 context.UserSubscriptions.Add(sub);
             }
 
