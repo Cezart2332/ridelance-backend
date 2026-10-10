@@ -81,8 +81,12 @@ ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 # RID publish flattens native .so files to /app; keep runtimes/ on PATH for the OpenCvSharpExtern symlink below
 ENV LD_LIBRARY_PATH=/app:/app/runtimes/linux-x64/native
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+# Health check. Proxy-ul (Traefik, în Coolify) nu trimite trafic spre un container „starting”, iar
+# prima verificare rulează abia după un `interval`: la 30s, fiecare redeploy ținea API-ul invizibil
+# cel puțin jumătate de minut după ce pornise — iar browserul arăta asta ca eroare de CORS. La 5s,
+# API-ul intră în rotație imediat ce răspunde. `start-period` acoperă migrațiile de la pornire:
+# eșecurile din intervalul ăsta nu se numără.
+HEALTHCHECK --interval=5s --timeout=5s --start-period=120s --retries=6 \
   CMD curl -f http://localhost:8080/health || exit 1
 
 # .NET 8+ images use port 8080 by default
