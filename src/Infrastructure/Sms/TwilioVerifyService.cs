@@ -27,6 +27,28 @@ public sealed class TwilioOptions
         !string.IsNullOrWhiteSpace(AccountSid)
         && !string.IsNullOrWhiteSpace(AuthToken)
         && !string.IsNullOrWhiteSpace(VerifyServiceSid);
+
+    /// <summary>Variabilele de mediu care lipsesc, pe numele lor din `.env`: pentru loguri, nu pentru utilizator.</summary>
+    public IReadOnlyList<string> MissingVariables()
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(AccountSid))
+        {
+            missing.Add("TWILIO_ACCOUNT_SID");
+        }
+
+        if (string.IsNullOrWhiteSpace(AuthToken))
+        {
+            missing.Add("TWILIO_AUTH_TOKEN");
+        }
+
+        if (string.IsNullOrWhiteSpace(VerifyServiceSid))
+        {
+            missing.Add("TWILIO_VERIFY_SERVICE_SID");
+        }
+
+        return missing;
+    }
 }
 
 /// <summary>
@@ -55,6 +77,10 @@ internal sealed class TwilioVerifyService(
     {
         if (!IsEnabled)
         {
+            // Omul vede doar „nu e configurată”; în loguri scriem care variabilă lipsește.
+            logger.LogWarning(
+                "SMS neconfigurat: lipsesc {Missing}. Fără toate trei, Twilio Verify nu trimite nimic.",
+                string.Join(", ", _options.MissingVariables()));
             return Result.Failure(SmsErrors.NotConfigured);
         }
 
