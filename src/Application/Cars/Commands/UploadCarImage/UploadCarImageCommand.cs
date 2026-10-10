@@ -61,10 +61,10 @@ internal sealed class UploadCarImageCommandHandler(
         string uploadsDir = Path.Combine("uploads", "cars");
         Directory.CreateDirectory(uploadsDir);
 
-        // Automatically detect and blur license plates
+        // Numărul se blurează doar cu opțiunea „număr ascuns” plătită. Pozele urcate înainte de
+        // plată le blurează jobul, după ce plata e confirmată.
         command.FileStream.Seek(0, SeekOrigin.Begin);
-        byte[] processedImage;
-        processedImage = await licensePlateDetectionService.ProcessImageAsync(command.FileStream, cancellationToken);
+        byte[] processedImage = await licensePlateDetectionService.ProcessImageAsync(command.FileStream, car.PlateHidden, cancellationToken);
 
         // Extensia după conținut, nu după numele trimis: blurarea scoate JPEG, iar telefoanele
         // trimit și WebP-uri numite „.jpg”. Serverul dă `Content-Type` după extensie.
@@ -84,7 +84,8 @@ internal sealed class UploadCarImageCommandHandler(
             FileName = safeFileName,
             Url = $"/uploads/cars/{safeFileName}",
             DisplayOrder = nextOrder,
-            UploadedAtUtc = DateTime.UtcNow
+            UploadedAtUtc = DateTime.UtcNow,
+            PlateBlurredAtUtc = car.PlateHidden ? DateTime.UtcNow : null,
         };
 
         context.CarImages.Add(image);

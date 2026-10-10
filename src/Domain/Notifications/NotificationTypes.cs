@@ -17,6 +17,9 @@ public static class NotificationTypes
     public const string DocumentExpiringSoon = "DocumentExpiringSoon";
     public const string MonthProcessed = "MonthProcessed";
     public const string FleetAccountConfigured = "FleetAccountConfigured";
+
+    /// <summary>O firmă a adăugat sau a modificat un anunț: adminul are o validare de făcut.</summary>
+    public const string CarListingReview = "CarListingReview";
     public const string BankConnection = "BankConnection";
 
     /// <summary>Profilul fiscal anual: reamintiri către PFA și anunțul de completare către contabil.</summary>

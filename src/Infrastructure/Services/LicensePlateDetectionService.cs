@@ -56,7 +56,7 @@ public sealed class LicensePlateDetectionService : ILicensePlateDetectionService
         }
     }
 
-    public async Task<byte[]> ProcessImageAsync(Stream imageStream, CancellationToken cancellationToken = default)
+    public async Task<byte[]> ProcessImageAsync(Stream imageStream, bool blurPlates, CancellationToken cancellationToken = default)
     {
         using var memoryStream = new MemoryStream();
         await imageStream.CopyToAsync(memoryStream, cancellationToken);
@@ -69,6 +69,12 @@ public sealed class LicensePlateDetectionService : ILicensePlateDetectionService
             {
                 _logger.LogWarning("Failed to decode image.");
                 return imageBytes;
+            }
+
+            // Fără opțiunea plătită, poza doar se micșorează: numărul rămâne cum l-a fotografiat proprietarul.
+            if (!blurPlates)
+            {
+                return CarPhotoEncoder.ToWebJpeg(src);
             }
 
             // 1. Preprocess: Contrast Enhancement (CLAHE)

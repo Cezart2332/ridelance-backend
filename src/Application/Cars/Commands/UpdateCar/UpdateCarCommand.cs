@@ -108,6 +108,7 @@ internal sealed class UpdateCarCommandHandler(
             // piață. Draft, nu Paused: pauza e o decizie a proprietarului, asta e o consecință.
             car.ApprovalStatus = CarApprovalStatus.Pending;
             car.ListingStatus = ListingStatus.Draft;
+            await CarReviewNotifications.AddAsync(context, car, edited: true, cancellationToken);
         }
 
         CarListingDetailsMapper.Apply(car, command.Details);

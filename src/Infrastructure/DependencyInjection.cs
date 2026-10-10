@@ -224,6 +224,7 @@ public static class DependencyInjection
         }
 
         services.AddHostedService<Infrastructure.Mailboxes.ClientMailboxJob>();
+        services.AddHostedService<CarPlateBlurJob>();
 
         // Background Jobs
         services.AddHostedService<IbanBackfillJob>();

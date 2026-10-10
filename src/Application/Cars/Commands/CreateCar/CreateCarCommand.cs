@@ -104,6 +104,11 @@ internal sealed class CreateCarCommandHandler(
         // sortării „Recomandate" până la primul job nocturn.
         await scoreService.RecalculateAsync(car, cancellationToken);
 
+        if (!isAdmin)
+        {
+            await CarReviewNotifications.AddAsync(context, car, edited: false, cancellationToken);
+        }
+
         await context.SaveChangesAsync(cancellationToken);
 
         return car.Id;
