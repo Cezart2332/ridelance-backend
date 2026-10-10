@@ -207,6 +207,24 @@ public static class DependencyInjection
                 return handler;
             });
 
+        // Emailul operațional per client. `Mailbox:Provider` alege furnizorul: Migadu sau Fake
+        // (în memorie, fără niciun apel în afară; implicit, ca dezvoltarea și testele să nu atingă Migadu).
+        services.Configure<Application.Mailboxes.MailboxOptions>(configuration.GetSection(Application.Mailboxes.MailboxOptions.SectionName));
+        services.AddSingleton<Application.Mailboxes.IMailboxCredentialProtector, Infrastructure.Mailboxes.MailboxCredentialProtector>();
+        if (string.Equals(
+                configuration[$"{Application.Mailboxes.MailboxOptions.SectionName}:{nameof(Application.Mailboxes.MailboxOptions.Provider)}"],
+                Application.Mailboxes.MailboxOptions.MigaduProvider,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddHttpClient<IMailboxProvider, Infrastructure.Mailboxes.MigaduMailboxProvider>();
+        }
+        else
+        {
+            services.AddSingleton<IMailboxProvider, Infrastructure.Mailboxes.FakeMailboxProvider>();
+        }
+
+        services.AddHostedService<Infrastructure.Mailboxes.ClientMailboxJob>();
+
         // Background Jobs
         services.AddHostedService<IbanBackfillJob>();
         services.AddHostedService<YearEndInventoryJob>();

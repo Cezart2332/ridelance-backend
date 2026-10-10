@@ -72,7 +72,7 @@ internal sealed class RunHandoverPackageCommandHandler(
     IQueryHandler<ExportInventoryQuery, RegisterFile> inventoryExport)
     : ICommandHandler<RunHandoverPackageCommand>
 {
-    private const int Steps = 7;
+    private const int Steps = 8;
 
     /// <summary>Căile deja scrise în arhivă: în modul de creare, ZipArchive nu le poate căuta.</summary>
     private readonly HashSet<string> _paths = new(StringComparer.OrdinalIgnoreCase);
@@ -130,6 +130,7 @@ internal sealed class RunHandoverPackageCommandHandler(
             await Step("Ledger (Excel)", () => AddLedgerAsync(zip, pfaId, summary, from, to, cui, cancellationToken));
             await Step("Documente originale", () => AddDocumentsAsync(zip, pfaId, year, cancellationToken));
             await Step("Declarații (XML + PDF) și recipise", () => AddDeclarationsAsync(zip, pfaId, year, cancellationToken));
+            await Step("Predare email", () => AddMailboxHandoverAsync(zip, pfaId, cancellationToken));
             DateOnly retention = summary.RetentionUntil ?? await RetentionService.MinimumRetentionUntilAsync(db, year, cancellationToken);
             await Step("Sumar_predare.pdf", () => AddSummaryAsync(zip, summary, year, from, to, refView, refAsOf, retention, counts));
         }
@@ -298,7 +299,7 @@ internal sealed class RunHandoverPackageCommandHandler(
             lines,
             [
                 "Structura: 01_Registre (RJIP, REF, Registru-inventar, PDF și Excel), 02_Ledger (Excel), 03_Documente (originale, pe tipuri), " +
-                "04_Declaratii (XML, PDF DUKIntegrator și recipise, pe luni și versiuni).",
+                "04_Declaratii (XML, PDF DUKIntegrator și recipise, pe luni și versiuni), 05_Email (predarea adresei operaționale, dacă a fost predată).",
                 "Documentele nu se șterg automat; termenul de păstrare de mai sus e cel minim.",
             ]);
         await AddAsync(zip, "Sumar_predare.pdf", exporter.ToPdf(document), CancellationToken.None);
@@ -331,6 +332,26 @@ internal sealed class RunHandoverPackageCommandHandler(
         }
 
         await AddAsync(zip, path, stored.Content, cancellationToken);
+        return 1;
+    }
+
+    /// <summary>
+    /// Documentul „Predare email” (adresa operațională, parola nouă, setările de server), generat la
+    /// predarea mailbox-ului. Lipsește cât timp emailul nu a fost predat.
+    /// </summary>
+    private async Task<int> AddMailboxHandoverAsync(ZipArchive zip, Guid pfaId, CancellationToken cancellationToken)
+    {
+        Guid? documentId = await db.ClientMailboxes.AsNoTracking()
+            .Where(m => m.PfaRegistrationId == pfaId || db.PfaRegistrations.Any(p => p.Id == pfaId && p.UserId == m.UserId))
+            .Select(m => m.HandoverDocumentId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (await files.ReadAsync(documentId, cancellationToken) is not { } file)
+        {
+            return 0;
+        }
+
+        await AddAsync(zip, $"05_Email/{Application.Mailboxes.MailboxHandoverDocument.FileName}", file.Content, cancellationToken);
         return 1;
     }
 

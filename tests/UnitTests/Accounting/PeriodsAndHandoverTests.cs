@@ -582,7 +582,7 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         (await Handover().Handle(new RunHandoverPackageCommand(job.JobId), CancellationToken.None)).IsSuccess.ShouldBeTrue();
 
         BackgroundJob done = await _db.BackgroundJobs.SingleAsync();
-        (done.Status, done.ProgressDone, done.ProgressTotal).ShouldBe((BackgroundJobStatus.Completed, 7, 7));
+        (done.Status, done.ProgressDone, done.ProgressTotal).ShouldBe((BackgroundJobStatus.Completed, 8, 8));
         RegisterFile file = (await new GetJobFileQueryHandler(_db, files).Handle(new GetJobFileQuery(job.JobId), CancellationToken.None)).Value;
         (file.FileName, file.ContentType).ShouldBe(("RIDElance_PFA_12345674_2026.zip", "application/zip"));
 
@@ -597,7 +597,7 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         entries.ShouldContain("03_Documente/Platforme/2026-08/Bolt/factura-bolt.pdf");
         entries.ShouldContain("04_Declaratii/2026-08/D301_v1/D301_12345674_2026-08_v1.xml");
         entries.ShouldContain("Sumar_predare.pdf");
-        JsonDocument.Parse(done.ResultJson).RootElement.GetProperty("results").GetArrayLength().ShouldBe(7);
+        JsonDocument.Parse(done.ResultJson).RootElement.GetProperty("results").GetArrayLength().ShouldBe(8);
     }
 
     // ─── Ajutoare ──────────────────────────────────────────────────────────────────────────────

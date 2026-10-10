@@ -69,6 +69,9 @@ public static class DependencyInjection
         services.AddScoped<PfaRegistrations.Onboarding.ArrFleet.ArrFleetService>();
         services.AddScoped<PfaRegistrations.Onboarding.ArrFleet.ArrAgencyResolver>();
 
+        // Emailul operațional al clientului (Migadu): crearea idempotentă a mailbox-ului și a identității.
+        services.AddScoped<Mailboxes.ClientMailboxProvisioner>();
+
         // Anunțurile interne: dosar generat, plată încasată.
         services.AddScoped<PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier>();
         services.AddScoped<PfaRegistrations.Onboarding.CompanyFormation.ConsultoDossierSender>();
