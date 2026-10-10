@@ -37,13 +37,14 @@ public static class CompanySlug
     {
         // Paginile publice
         "masini", "f", "intrebari-frecvente", "servicii", "despre-ridelance", "fiscal",
-        "calculator-taxe", "abonamente-preturi", "parteneri", "contact", "programare",
+        "calculator-taxe", "abonamente-preturi", "orase-ridesharing", "parteneri", "contact", "programare",
         "dashboard", "dashboard-demo", "termeni-si-conditii", "privacy-policy",
         "politica-cookies", "politica-plati-abonamente", "semneaza",
 
         // Zonele cu cont
-        "auth", "login", "inregistrare", "checkout", "app", "onboarding", "contabil",
-        "admin", "poster", "demo",
+        "auth", "login", "autentificare", "inregistrare", "confirmare-email", "parola-uitata",
+        "invitatie", "checkout", "banca", "app", "onboarding", "onboarding-srl", "contabil",
+        "admin", "poster", "demo", "dev",
 
         // Nume pe care le-ar cere orice pagină adăugată mâine
         "api", "assets", "static", "blog", "preturi", "firme", "ajutor", "cont", "setari",
