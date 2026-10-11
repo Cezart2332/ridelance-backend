@@ -50,7 +50,11 @@ public sealed class FleetOnboardingService(
     /// Emailul nu intră aici deloc: e adresa contului, confirmată la înregistrare.
     /// </summary>
     private bool ContactVerificationRequired =>
-        bool.TryParse(configuration["Onboarding:RequireContactVerification"], out bool required) && required;
+        IsOn("Onboarding:RequireContactVerification")
+        // Regula generală a mediului (`REQUIRE_PHONE_VERIFICATION`) o include și pe aceasta.
+        || IsOn("Verification:RequirePhone");
+
+    private bool IsOn(string key) => bool.TryParse(configuration[key], out bool required) && required;
 
     public async Task<Result<FleetOnboardingResponse>> CancelCheckoutAsync(CancellationToken ct)
     {
