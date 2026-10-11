@@ -10,8 +10,8 @@ namespace Application.PfaRegistrations.Onboarding.Notifications;
 /// Anunțuri interne despre onboarding, trimise pe adresa de operațiuni.
 ///
 /// Expeditorul e mereu <c>contact@ridelance.ro</c> — e fixat în <c>ResendEmailService</c>, deci
-/// nu se configurează aici. Destinatarul vine din <c>Notifications:OpsEmail</c>, ca să poată fi
-/// schimbat fără deploy.
+/// nu se configurează aici. Destinatarii vin din configurare, ca să poată fi schimbați fără deploy:
+/// <c>Notifications:OpsEmail</c> (noi) și <c>Notifications:ConsultoEmail</c> (dosarul PFA).
 ///
 /// Toate metodele înghit erorile: un email nelivrat nu are voie să pice generarea unui dosar sau
 /// procesarea unui webhook Stripe. Eșecul se logează, atât.
@@ -25,11 +25,25 @@ public sealed class OnboardingOpsNotifier(
     private static readonly CultureInfo Ro = CultureInfo.GetCultureInfo("ro-RO");
 
     private const string RecipientKey = "Notifications:OpsEmail";
-    private const string DefaultRecipient = "cezarturliu25@gmail.com";
+    private const string ConsultoRecipientKey = "Notifications:ConsultoEmail";
+    private const string DefaultRecipient = "contact@ridelance.ro";
 
+    /// <summary>Adresa noastră de operațiuni: plățile și comenzile de servicii.</summary>
     private string Recipient => configuration[RecipientKey] is { Length: > 0 } configured
         ? configured
         : DefaultRecipient;
+
+    /// <summary>
+    /// Adresa Consulto, unde pleacă dosarul de înființare PFA — și doar el.
+    /// </summary>
+    /// <remarks>
+    /// Fără valoare implicită în cod: dosarul are datele personale ale clientului, iar un mediu de
+    /// test care nu și-a setat adresa nu trebuie să le trimită unui partener. Nesetată, dosarul
+    /// vine la noi, pe adresa de operațiuni.
+    /// </remarks>
+    private string ConsultoRecipient => configuration[ConsultoRecipientKey] is { Length: > 0 } configured
+        ? configured
+        : Recipient;
 
     /// <summary>
     /// Dosarul de înființare PFA e complet — semnat ȘI plătit — iar arhiva pentru Consulto e
@@ -54,9 +68,9 @@ public sealed class OnboardingOpsNotifier(
                 ("Arhivă", archive.FileName),
             ],
             [archive],
-            // Marcat important: e singurul email din care rezultă o obligație — dosarul trebuie
-            // trimis mai departe la Consulto.
+            // Marcat important: e emailul din care rezultă o obligație — înființarea PFA-ului.
             highPriority: true,
+            ConsultoRecipient,
             cancellationToken);
 
     /// <summary>
@@ -85,6 +99,7 @@ public sealed class OnboardingOpsNotifier(
             ],
             [archive],
             highPriority: true,
+            Recipient,
             cancellationToken);
 
     /// <summary>O plată a fost încasată.</summary>
@@ -104,6 +119,7 @@ public sealed class OnboardingOpsNotifier(
             ],
             [],
             highPriority: false,
+            Recipient,
             cancellationToken);
 
     private async Task SendAsync(
@@ -112,13 +128,14 @@ public sealed class OnboardingOpsNotifier(
         IReadOnlyList<(string Label, string Value)> rows,
         IReadOnlyList<EmailAttachmentContent> attachments,
         bool highPriority,
+        string recipient,
         CancellationToken cancellationToken)
     {
         try
         {
             string html = mjmlRenderer.Render(BuildMjml(subject, headline, rows));
             await emailService.SendEmailWithAttachmentsAsync(
-                Recipient, subject, html, attachments, highPriority, cancellationToken);
+                recipient, subject, html, attachments, highPriority, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
