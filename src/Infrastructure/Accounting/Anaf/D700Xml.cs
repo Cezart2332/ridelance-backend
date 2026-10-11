@@ -17,7 +17,8 @@ namespace Infrastructure.Accounting.Anaf;
 /// pentru care beneficiarul datorează TVA în România (art. 307 alin. 2), adică exact comisioanele
 /// Uber (NL) și Bolt (EE).</item>
 /// </list>
-/// Fără reprezentant (secțiunea III) și fără atașament: declarantul e titularul, ca la D100.
+/// Cu <see cref="D700Content.Representative"/>, declarația e depusă de împuternicit (secțiunea III,
+/// <c>Repr1 = 2</c>) și are obligatoriu împuternicirea atașată; fără el, declarantul e titularul.
 /// <c>data_decl</c> apare în structură, dar validatorul îl respinge ca atribut necunoscut.
 /// </summary>
 internal sealed class D700Xml : IVatRegistrationXml
@@ -43,7 +44,7 @@ internal sealed class D700Xml : IVatRegistrationXml
             new XAttribute("cif", content.Cui),
             new XAttribute("den", Limit(AnafFormat.Text(content.Name), 200)),
             new XAttribute("dec_inreg", "070"),
-            Attribute("Bifa_III", 0),
+            Attribute("Bifa_III", content.Representative is null ? 0 : 1),
             Attribute("Bifa_A", 0),
             Attribute("Bifa_B", 1),
             Attribute("Bifa_C", 0),
@@ -63,6 +64,27 @@ internal sealed class D700Xml : IVatRegistrationXml
             Attribute("Bifa_6b_abc", 1),
             Attribute("Bifa1_6b", 1),
             Attribute("Bifa_6b_inreg", 3));
+
+        if (content.Representative is { } representative)
+        {
+            root.Add(
+                // 2 = împuternicit (1 reprezentant legal, 3 reprezentant fiscal).
+                Attribute("Repr1", 2),
+                new XAttribute("nr_actR", Limit(AnafFormat.Text(representative.ActNumber), 10)),
+                new XAttribute("data_actR", representative.ActDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)),
+                new XAttribute("denR", Limit(AnafFormat.Text(representative.Name), 200)),
+                new XAttribute("cifR", representative.Cif),
+                new XAttribute("adresaR", Limit(AnafFormat.Text(representative.Address), 200)));
+            if (!string.IsNullOrWhiteSpace(representative.Phone))
+            {
+                root.Add(new XAttribute("telR", representative.Phone));
+            }
+
+            if (!string.IsNullOrWhiteSpace(representative.Email))
+            {
+                root.Add(new XAttribute("emailR", Limit(representative.Email.Trim(), 200)));
+            }
+        }
 
         using var stream = new MemoryStream();
         using (var writer = XmlWriter.Create(stream, new XmlWriterSettings { Encoding = new UTF8Encoding(false), Indent = true }))

@@ -31,6 +31,18 @@ public interface IAnafValidatorClient
         string correlationId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// La fel, cu o arhivă ZIP atașată declarației: D700 depusă prin împuternicit cere împuternicirea
+    /// în PDF-ul rezultat.
+    /// </summary>
+    Task<Result<AnafValidatorResult>> ValidateWithAttachmentAsync(
+        string declarationType,
+        string validatorVersion,
+        byte[] xml,
+        byte[] attachmentZip,
+        string correlationId,
+        CancellationToken cancellationToken);
+
     /// <summary>Declarațiile lunare au tipul lor; D700 (cererea de cod TVA) nu e una dintre ele.</summary>
     Task<Result<AnafValidatorResult>> ValidateAsync(
         DeclarationType type,

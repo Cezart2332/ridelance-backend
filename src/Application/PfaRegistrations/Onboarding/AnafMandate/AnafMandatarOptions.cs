@@ -10,9 +10,19 @@ public sealed class AnafMandatarOptions
     public const string SectionName = "AnafMandatar";
 
     public string? FullName { get; set; }
+
+    /// <summary>
+    /// Numele și prenumele, separat: declarațiile ANAF le cer în câmpuri diferite, iar din
+    /// <see cref="FullName"/> nu se poate ști care e care.
+    /// </summary>
+    public string? LastName { get; set; }
+    public string? FirstName { get; set; }
     public string? Cnp { get; set; }
     public string? Domicile { get; set; }
     public string? IdSeries { get; set; }
     public string? IdNumber { get; set; }
     public string? Email { get; set; }
+
+    /// <summary>Telefonul de contact, zece cifre. Opțional.</summary>
+    public string? Phone { get; set; }
 }

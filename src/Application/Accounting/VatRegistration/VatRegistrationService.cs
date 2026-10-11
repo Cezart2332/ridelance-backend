@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text.Json;
 using Application.Abstractions.Anaf;
 using Application.Abstractions.Data;
@@ -7,16 +8,27 @@ using Application.Accounting.Contracts;
 using Application.Accounting.Declarations;
 using Application.Accounting.Months;
 using Application.Accounting.Pfas;
+using Application.PfaRegistrations.Onboarding.AnafMandate;
 using Domain.Accounting;
 using Domain.Documents;
 using Domain.PfaRegistrations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SharedKernel;
 
 namespace Application.Accounting.VatRegistration;
 
 /// <summary>Ce s-a scris în XML la generare; rămâne ca să se vadă ce a semnat clientul.</summary>
-internal sealed record D700Snapshot(string Cui, string Name, string DeclarantLastName, string DeclarantFirstName, string DeclarantFunction);
+/// <param name="Representative">Împuternicitul care depune cererea; lipsește la cererile vechi, depuse de titular.</param>
+/// <param name="MandateDocumentId">Împuternicirea semnată, care se atașează declarației.</param>
+internal sealed record D700Snapshot(
+    string Cui,
+    string Name,
+    string DeclarantLastName,
+    string DeclarantFirstName,
+    string DeclarantFunction,
+    D700Representative? Representative = null,
+    Guid? MandateDocumentId = null);
 
 /// <summary>Rezultatul validatorului ANAF, păstrat pe cerere.</summary>
 internal sealed record D700Validation(IReadOnlyList<string> Errors, IReadOnlyList<string> Warnings, DateTime ValidatedAt);
@@ -38,6 +50,10 @@ public static class VatRegistrationErrors
 
     public static readonly Error CertificateRequired = Error.Problem(
         "VatRegistration.CertificateRequired", "Codul se activează doar cu dovada ANAF din vectorul fiscal (certificatul de înregistrare în scopuri de TVA).");
+
+    public static readonly Error MandateMissing = Error.Problem(
+        "VatRegistration.MandateMissing",
+        "Lipsește fișierul împuternicirii ANAF care se atașează cererii; regenerează cererea.");
 
     public static readonly Error NoValidator = Error.Problem(
         "VatRegistration.NoValidator",
@@ -74,8 +90,12 @@ internal sealed class VatRegistrationService(
     DeclarationFiles files,
     IVatRegistrationXml xml,
     IAnafValidatorClient anaf,
-    ICommandHandler<UpdatePfaSettingsCommand, PfaAccountingSettingsDto> settings)
+    ICommandHandler<UpdatePfaSettingsCommand, PfaAccountingSettingsDto> settings,
+    IOptions<AnafMandatarOptions> mandatarOptions)
 {
+    /// <summary>Calitatea în care semnează omul RIDElance.</summary>
+    public const string RepresentativeFunction = "IMPUTERNICIT";
+
     /// <summary>Stările în care cererea încă se poate regenera din datele actuale.</summary>
     private static readonly VatRegistrationStatus[] Open =
     [
@@ -134,16 +154,21 @@ internal sealed class VatRegistrationService(
         request.RejectionReason = null;
         request.UpdatedAtUtc = now;
 
-        string? missing = Missing(taxpayer);
-        if (missing is not null)
+        // Cererea o depune împuternicitul RIDElance, în baza împuternicirii semnate de client.
+        (D700Representative? representative, Guid? mandateDocumentId, string? missingMandate) = await RepresentativeAsync(pfaId, cancellationToken);
+        string? missing = Missing(taxpayer) ?? missingMandate;
+        if (missing is not null || representative is null)
         {
             request.Status = VatRegistrationStatus.WaitingForData;
             request.MissingData = missing;
         }
         else
         {
-            var snapshot = new D700Snapshot(taxpayer.Cui, taxpayer.Name, taxpayer.DeclarantLastName, taxpayer.DeclarantFirstName, taxpayer.DeclarantFunction);
-            byte[] content = xml.Build(new D700Content(request.Period, snapshot.Cui, snapshot.Name, snapshot.DeclarantLastName, snapshot.DeclarantFirstName, snapshot.DeclarantFunction));
+            AnafMandatarOptions mandatar = mandatarOptions.Value;
+            var snapshot = new D700Snapshot(
+                taxpayer.Cui, taxpayer.Name, mandatar.LastName!.Trim(), mandatar.FirstName!.Trim(), RepresentativeFunction, representative, mandateDocumentId);
+            byte[] content = xml.Build(new D700Content(
+                request.Period, snapshot.Cui, snapshot.Name, snapshot.DeclarantLastName, snapshot.DeclarantFirstName, snapshot.DeclarantFunction, representative));
             Document document = await files.StoreAsync(pfaId, content, $"D700_{taxpayer.Cui}_{request.Period}.xml", "application/xml", cancellationToken);
             request.XmlDocumentId = document.Id;
             request.SnapshotJson = AccountingJson.Serialize(snapshot);
@@ -187,7 +212,23 @@ internal sealed class VatRegistrationService(
             return Result.Failure<VatRegistrationRequest>(AccountingErrors.DocumentNotFound);
         }
 
-        Result<AnafValidatorResult> called = await anaf.ValidateAsync(IVatRegistrationXml.DeclarationType, kit, stored.Value.Content, request.Id.ToString(), cancellationToken);
+        // O cerere depusă prin împuternicit are împuternicirea atașată; fără ea ANAF o respinge.
+        D700Snapshot? generated = AccountingJson.Deserialize<D700Snapshot?>(request.SnapshotJson, null);
+        byte[]? attachment = null;
+        if (generated?.Representative is not null)
+        {
+            (byte[] Content, Document Document)? mandate = await files.ReadAsync(generated.MandateDocumentId, cancellationToken);
+            if (mandate is null)
+            {
+                return Result.Failure<VatRegistrationRequest>(VatRegistrationErrors.MandateMissing);
+            }
+
+            attachment = Zip(mandate.Value.Document.OriginalFileName, mandate.Value.Content);
+        }
+
+        Result<AnafValidatorResult> called = attachment is null
+            ? await anaf.ValidateAsync(IVatRegistrationXml.DeclarationType, kit, stored.Value.Content, request.Id.ToString(), cancellationToken)
+            : await anaf.ValidateWithAttachmentAsync(IVatRegistrationXml.DeclarationType, kit, stored.Value.Content, attachment, request.Id.ToString(), cancellationToken);
         if (called.IsFailure)
         {
             return Result.Failure<VatRegistrationRequest>(called.Error);
@@ -354,6 +395,95 @@ internal sealed class VatRegistrationService(
             .Where(r => r.PfaRegistrationId == pfaId)
             .OrderByDescending(r => r.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
+
+    /// <summary>
+    /// Împuternicitul și actul lui: datele omului RIDElance vin din configurarea serverului
+    /// (<c>AnafMandatar</c>, aceleași ca pe împuternicire), iar numărul și data actului din
+    /// împuternicirea semnată de client la onboarding. Al treilea element spune ce lipsește.
+    /// </summary>
+    private async Task<(D700Representative? Representative, Guid? MandateDocumentId, string? Missing)> RepresentativeAsync(
+        Guid pfaId, CancellationToken cancellationToken)
+    {
+        AnafMandatarOptions mandatar = mandatarOptions.Value;
+        List<string> missing = [];
+        void Require(string? value, string what)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                missing.Add(what);
+            }
+        }
+
+        Require(mandatar.LastName, "numele împuternicitului (ANAF_MANDATAR_LAST_NAME)");
+        Require(mandatar.FirstName, "prenumele împuternicitului (ANAF_MANDATAR_FIRST_NAME)");
+        Require(mandatar.Cnp, "CNP-ul împuternicitului (ANAF_MANDATAR_CNP)");
+        Require(mandatar.Domicile, "domiciliul împuternicitului (ANAF_MANDATAR_DOMICILE)");
+        string? phone = string.IsNullOrWhiteSpace(mandatar.Phone) ? null : new string([.. mandatar.Phone.Where(char.IsDigit)]);
+        if (phone is { Length: not 10 })
+        {
+            missing.Add("telefonul împuternicitului trebuie să aibă 10 cifre (ANAF_MANDATAR_PHONE)");
+        }
+
+        var mandate = await db.OnboardingSignatureDocuments.AsNoTracking()
+            .Where(d => d.Packet.PfaRegistrationId == pfaId && d.Type == SignatureDocumentType.PowerOfAttorneyAnaf)
+            .Select(d => new { d.Label, d.DocumentId, d.IsSigned })
+            .FirstOrDefaultAsync(cancellationToken);
+        DateTime? issuedAt = mandate?.DocumentId is { } documentId
+            ? await db.Documents.AsNoTracking().Where(d => d.Id == documentId).Select(d => d.IssuedAtUtc ?? d.UploadedAtUtc).FirstOrDefaultAsync(cancellationToken)
+            : null;
+        if (mandate is null || string.IsNullOrWhiteSpace(mandate.Label) || mandate.DocumentId is null || issuedAt is null)
+        {
+            missing.Add("împuternicirea ANAF a clientului (nu a fost generată)");
+        }
+        else if (!mandate.IsSigned)
+        {
+            missing.Add("semnătura clientului pe împuternicirea ANAF");
+        }
+
+        if (missing.Count > 0)
+        {
+            return (null, null, $"Lipsesc: {string.Join("; ", missing)}.");
+        }
+
+        var representative = new D700Representative(
+            ActNumber(mandate!.Label!),
+            DateOnly.FromDateTime(AccountingPeriod.ToRomania(issuedAt!.Value)),
+            string.Join(' ', mandatar.LastName!.Trim(), mandatar.FirstName!.Trim()),
+            mandatar.Cnp!.Trim(),
+            mandatar.Domicile!.Trim(),
+            string.IsNullOrWhiteSpace(mandatar.Email) ? null : mandatar.Email.Trim(),
+            phone);
+        return (representative, mandate.DocumentId, null);
+    }
+
+    /// <summary>
+    /// Numărul actului are în declarație cel mult 10 caractere, iar împuternicirile sunt numerotate
+    /// „ANAF-000123”: rămâne partea care deosebește actul, numărul.
+    /// </summary>
+    internal static string ActNumber(string label)
+    {
+        string trimmed = label.Trim();
+        if (trimmed.Length <= 10)
+        {
+            return trimmed;
+        }
+
+        string digits = new([.. trimmed.Where(char.IsDigit)]);
+        return digits.Length is > 0 and <= 10 ? digits : trimmed[^10..];
+    }
+
+    /// <summary>Arhiva atașată declarației: un singur fișier, împuternicirea.</summary>
+    private static byte[] Zip(string fileName, byte[] content)
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using Stream entry = archive.CreateEntry(string.IsNullOrWhiteSpace(fileName) ? "Imputernicire.pdf" : fileName).Open();
+            entry.Write(content);
+        }
+
+        return stream.ToArray();
+    }
 
     /// <summary>Ce împiedică generarea; <c>null</c> = datele sunt complete.</summary>
     private static string? Missing(AnafTaxpayer taxpayer)

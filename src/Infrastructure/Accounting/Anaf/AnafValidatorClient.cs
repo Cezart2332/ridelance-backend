@@ -51,10 +51,28 @@ internal sealed class AnafValidatorClient(HttpClient http, IOptions<AnafValidato
         HttpStatusCode.TooManyRequests,
     ];
 
-    public async Task<Result<AnafValidatorResult>> ValidateAsync(
+    public Task<Result<AnafValidatorResult>> ValidateAsync(
         string declarationType,
         string validatorVersion,
         byte[] xml,
+        string correlationId,
+        CancellationToken cancellationToken) =>
+        SendAsync(declarationType, validatorVersion, xml, attachmentZip: null, correlationId, cancellationToken);
+
+    public Task<Result<AnafValidatorResult>> ValidateWithAttachmentAsync(
+        string declarationType,
+        string validatorVersion,
+        byte[] xml,
+        byte[] attachmentZip,
+        string correlationId,
+        CancellationToken cancellationToken) =>
+        SendAsync(declarationType, validatorVersion, xml, attachmentZip, correlationId, cancellationToken);
+
+    private async Task<Result<AnafValidatorResult>> SendAsync(
+        string declarationType,
+        string validatorVersion,
+        byte[] xml,
+        byte[]? attachmentZip,
         string correlationId,
         CancellationToken cancellationToken)
     {
@@ -79,7 +97,7 @@ internal sealed class AnafValidatorClient(HttpClient http, IOptions<AnafValidato
             timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, settings.TimeoutSeconds)));
             try
             {
-                using HttpRequestMessage request = Request(endpoint, settings.Token, declarationType, validatorVersion, xml, correlationId);
+                using HttpRequestMessage request = Request(endpoint, settings.Token, declarationType, validatorVersion, xml, attachmentZip, correlationId);
                 using HttpResponseMessage response = await http.SendAsync(request, timeout.Token);
                 if (response.IsSuccessStatusCode)
                 {
@@ -114,7 +132,7 @@ internal sealed class AnafValidatorClient(HttpClient http, IOptions<AnafValidato
 
     // Conținuturile trec în proprietatea formularului, iar formularul a cererii: le eliberează cererea.
 #pragma warning disable CA2000
-    private static HttpRequestMessage Request(Uri endpoint, string? token, string declarationType, string validatorVersion, byte[] xml, string correlationId)
+    private static HttpRequestMessage Request(Uri endpoint, string? token, string declarationType, string validatorVersion, byte[] xml, byte[]? attachmentZip, string correlationId)
     {
         var file = new ByteArrayContent(xml);
         file.Headers.ContentType = new MediaTypeHeaderValue("application/xml");
@@ -126,6 +144,12 @@ internal sealed class AnafValidatorClient(HttpClient http, IOptions<AnafValidato
             { new StringContent("VALIDATE_AND_PDF"), "mode" },
             { new StringContent(correlationId), "correlationId" },
         };
+        if (attachmentZip is not null)
+        {
+            var attachment = new ByteArrayContent(attachmentZip);
+            attachment.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
+            form.Add(attachment, "attachment", "atasament.zip");
+        }
 
         var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = form };
         if (!string.IsNullOrWhiteSpace(token))

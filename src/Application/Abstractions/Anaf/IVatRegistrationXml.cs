@@ -8,7 +8,23 @@ public sealed record D700Content(
     string Name,
     string DeclarantLastName,
     string DeclarantFirstName,
-    string DeclarantFunction);
+    string DeclarantFunction,
+    D700Representative? Representative = null);
+
+/// <summary>
+/// Secțiunea III din D700, „Reprezentare prin împuternicit”: cine depune declarația în numele
+/// PFA-ului și actul care îi dă dreptul.
+/// </summary>
+/// <param name="ActNumber">Numărul împuternicirii (cel mult 10 caractere în declarație).</param>
+/// <param name="Cif">CNP-ul împuternicitului.</param>
+public sealed record D700Representative(
+    string ActNumber,
+    DateOnly ActDate,
+    string Name,
+    string Cif,
+    string Address,
+    string? Email,
+    string? Phone);
 
 /// <summary>
 /// XML-ul D700 (<c>mfp:anaf:dgti:d700:declaratie:v4</c>) pentru un PFA care cere cod de TVA

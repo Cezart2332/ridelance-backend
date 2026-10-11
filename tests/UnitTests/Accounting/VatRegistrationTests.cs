@@ -40,6 +40,7 @@ public sealed class VatRegistrationTests : IDisposable
     private readonly FakeAnafValidator _anaf = new();
     private readonly Guid _accountant = Guid.NewGuid();
     private readonly Guid _pfa;
+    private readonly Guid _mandate;
 
     public VatRegistrationTests()
     {
@@ -74,9 +75,89 @@ public sealed class VatRegistrationTests : IDisposable
             ValidFrom = new DateOnly(2025, 1, 1),
         });
         _db.SaveChanges();
+        _mandate = AnafMandateTestData.SeedAsync(_db, _files, pfa.Id, user.Id).GetAwaiter().GetResult();
     }
 
     public void Dispose() => _db.Dispose();
+
+    /// <summary>Secțiunea III: împuternicitul RIDElance, cu actul lui, iar declarantul e tot el.</summary>
+    [Fact]
+    public async Task The_request_is_filed_by_the_ridelance_representative()
+    {
+        VatRegistrationRequest request = (await Service().EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value;
+
+        System.Xml.Linq.XElement root = System.Xml.Linq.XDocument.Parse(Xml(request)).Root!;
+        string? Value(string name) => (string?)root.Attribute(name);
+        (Value("Bifa_III"), Value("Repr1")).ShouldBe(("1", "2"));
+        (Value("nume_decl"), Value("pren_decl"), Value("func_decl")).ShouldBe(("Ionescu", "Maria", "IMPUTERNICIT"));
+        (Value("nr_actR"), Value("data_actR")).ShouldBe(("000123", "01.09.2026"));
+        (Value("denR"), Value("cifR")).ShouldBe(("Ionescu Maria", "2800101410015"));
+        Value("adresaR").ShouldBe("Str. Exemplu nr. 1, Bucuresti, sector 1");
+        (Value("telR"), Value("emailR")).ShouldBe(("0722123456", "maria@ridelance.ro"));
+        // PFA-ul rămâne contribuabilul.
+        (Value("cif"), Value("den")).ShouldBe(("12345674", "POPESCU ION PFA"));
+    }
+
+    /// <summary>Împuternicirea semnată pleacă la validator ca arhivă atașată declarației.</summary>
+    [Fact]
+    public async Task The_signed_mandate_is_attached_to_the_declaration()
+    {
+        VatRegistrationRequest request = (await Service().EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value;
+
+        (await Service().ValidateAsync(request.Id, _accountant, CancellationToken.None)).Value.Status.ShouldBe(VatRegistrationStatus.ReadyForReview);
+
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(_anaf.Attachments.ShouldHaveSingleItem()));
+        System.IO.Compression.ZipArchiveEntry entry = archive.Entries.ShouldHaveSingleItem();
+        entry.Name.ShouldBe(AnafMandateTestData.FileName);
+        using var content = new MemoryStream();
+        await using Stream opened = await entry.OpenAsync();
+        await opened.CopyToAsync(content);
+        content.ToArray().ShouldBe(AnafMandateTestData.Pdf);
+    }
+
+    /// <summary>Fără împuternicire semnată, cererea așteaptă și spune ce lipsește.</summary>
+    [Fact]
+    public async Task Without_the_signed_mandate_it_waits_and_says_what_is_missing()
+    {
+        OnboardingSignatureDocument slot = await _db.OnboardingSignatureDocuments.SingleAsync(d => d.DocumentId == _mandate);
+        slot.IsSigned = false;
+        await _db.SaveChangesAsync();
+
+        VatRegistrationRequest unsigned = (await Service().EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value;
+        (unsigned.Status, unsigned.MissingData).ShouldBe((VatRegistrationStatus.WaitingForData, "Lipsesc: semnătura clientului pe împuternicirea ANAF."));
+
+        _db.OnboardingSignatureDocuments.Remove(slot);
+        await _db.SaveChangesAsync();
+        (await Service().EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value.MissingData
+            .ShouldBe("Lipsesc: împuternicirea ANAF a clientului (nu a fost generată).");
+    }
+
+    /// <summary>Datele împuternicitului vin din configurarea serverului; cele lipsă sunt numite cu variabila lor.</summary>
+    [Fact]
+    public async Task Missing_representative_settings_are_named()
+    {
+        IOptions<Application.PfaRegistrations.Onboarding.AnafMandate.AnafMandatarOptions> options = AnafMandateTestData.Mandatar();
+        options.Value.LastName = null;
+        options.Value.Cnp = " ";
+        options.Value.Phone = "0722";
+        var files = new DeclarationFiles(_db, new AnafDeclarationXmlService(), _files, new PlainSecrets());
+        var settings = new UpdatePfaSettingsCommandHandler(_db, new FixedUser(_accountant), Options.Create(new AccountingOptions()));
+        var service = new VatRegistrationService(_db, files, new D700Xml(), _anaf, settings, options);
+
+        VatRegistrationRequest waiting = (await service.EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value;
+
+        waiting.Status.ShouldBe(VatRegistrationStatus.WaitingForData);
+        waiting.MissingData.ShouldBe(
+            "Lipsesc: numele împuternicitului (ANAF_MANDATAR_LAST_NAME); CNP-ul împuternicitului (ANAF_MANDATAR_CNP); " +
+            "telefonul împuternicitului trebuie să aibă 10 cifre (ANAF_MANDATAR_PHONE).");
+    }
+
+    [Theory]
+    [InlineData("ANAF-000123", "000123")]
+    [InlineData("12/2026", "12/2026")]
+    [InlineData("IMPUTERNICIRE-FARA-NUMAR", "FARA-NUMAR")]
+    public void The_act_number_fits_the_ten_characters_of_the_declaration(string label, string expected) =>
+        VatRegistrationService.ActNumber(label).ShouldBe(expected);
 
     [Fact]
     public void The_xml_is_the_one_accepted_by_the_ANAF_validator()
@@ -246,7 +327,7 @@ public sealed class VatRegistrationTests : IDisposable
     {
         var files = new DeclarationFiles(_db, new AnafDeclarationXmlService(), _files, new PlainSecrets());
         var settings = new UpdatePfaSettingsCommandHandler(_db, new FixedUser(_accountant), Options.Create(new AccountingOptions()));
-        return new VatRegistrationService(_db, files, new D700Xml(), _anaf, settings);
+        return new VatRegistrationService(_db, files, new D700Xml(), _anaf, settings, AnafMandateTestData.Mandatar());
     }
 
     private string Xml(VatRegistrationRequest request)

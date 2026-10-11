@@ -162,7 +162,10 @@ public sealed class AccountingE2ESeed
             new DeclarationFiles(db, new AnafDeclarationXmlService(), files, secrets),
             new D700Xml(),
             new FakeAnafValidator(),
-            new UpdatePfaSettingsCommandHandler(db, new SeedUser(Accountant), Options.Create(new AccountingOptions())));
+            new UpdatePfaSettingsCommandHandler(db, new SeedUser(Accountant), Options.Create(new AccountingOptions())),
+            AnafMandateTestData.Mandatar());
+        // Cererea o depune împuternicitul, deci clientul are împuternicirea ANAF semnată.
+        await AnafMandateTestData.SeedAsync(db, files, radu, (await db.PfaRegistrations.SingleAsync(p => p.Id == radu)).UserId);
         (await vat.EnsureRequestedAsync(radu, null, CancellationToken.None)).Value.Status.ShouldBe(VatRegistrationStatus.Generated);
     }
 

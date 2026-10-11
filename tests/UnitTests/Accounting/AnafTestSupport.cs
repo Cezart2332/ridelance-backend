@@ -74,6 +74,68 @@ internal sealed class PlainSecrets : ISecretProtector
     public string Unprotect(string protectedText) => protectedText;
 }
 
+/// <summary>Împuternicitul RIDElance și împuternicirea semnată a unui client, pentru testele D700.</summary>
+internal static class AnafMandateTestData
+{
+    public const string Number = "ANAF-000123";
+    public const string FileName = "Imputernicire_ANAF-000123.pdf";
+    public static readonly byte[] Pdf = "%PDF-1.4 imputernicire"u8.ToArray();
+    public static readonly DateTime IssuedAtUtc = new(2026, 9, 1, 9, 0, 0, DateTimeKind.Utc);
+
+    public static Microsoft.Extensions.Options.IOptions<Application.PfaRegistrations.Onboarding.AnafMandate.AnafMandatarOptions> Mandatar() =>
+        Microsoft.Extensions.Options.Options.Create(new Application.PfaRegistrations.Onboarding.AnafMandate.AnafMandatarOptions
+        {
+            FullName = "Maria Ionescu",
+            LastName = "Ionescu",
+            FirstName = "Maria",
+            Cnp = "2800101410015",
+            Domicile = "Str. Exemplu nr. 1, Bucuresti, sector 1",
+            IdSeries = "RX",
+            IdNumber = "123456",
+            Email = "maria@ridelance.ro",
+            Phone = "0722 123 456",
+        });
+
+    /// <summary>Pachetul de semnături cu împuternicirea ANAF generată și, implicit, semnată.</summary>
+    public static async Task<Guid> SeedAsync(
+        Infrastructure.Database.ApplicationDbContext db, IFileEncryptionService files, Guid pfaId, Guid userId, bool signed = true)
+    {
+        using var stream = new MemoryStream(Pdf);
+        EncryptedFileResult stored = await files.EncryptAndSaveAsync(stream, $"{Guid.NewGuid()}.pdf", CancellationToken.None);
+        var document = new Domain.Documents.Document
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PfaRegistrationId = pfaId,
+            OriginalFileName = FileName,
+            StoredFileName = stored.FilePath,
+            ContentType = "application/pdf",
+            Category = Domain.Documents.DocumentCategory.ImputernicireAnaf,
+            EncryptedFilePath = stored.FilePath,
+            EncryptionIv = stored.Iv,
+            FileSize = Pdf.Length,
+            UploadedAtUtc = IssuedAtUtc,
+            IssuedAtUtc = IssuedAtUtc,
+        };
+        var packet = new Domain.PfaRegistrations.OnboardingSignaturePacket { Id = Guid.NewGuid(), PfaRegistrationId = pfaId };
+        db.Documents.Add(document);
+        db.OnboardingSignaturePackets.Add(packet);
+        db.OnboardingSignatureDocuments.Add(new Domain.PfaRegistrations.OnboardingSignatureDocument
+        {
+            Id = Guid.NewGuid(),
+            PacketId = packet.Id,
+            Packet = packet,
+            Type = Domain.PfaRegistrations.SignatureDocumentType.PowerOfAttorneyAnaf,
+            Label = Number,
+            DocumentId = document.Id,
+            IsSigned = signed,
+            SignedAtUtc = signed ? IssuedAtUtc.AddHours(2) : null,
+        });
+        await db.SaveChangesAsync();
+        return document.Id;
+    }
+}
+
 /// <summary>Validatorul ANAF simulat: răspunsul se alege per test; cererile se păstrează.</summary>
 internal sealed class FakeAnafValidator : IAnafValidatorClient
 {
@@ -89,6 +151,16 @@ internal sealed class FakeAnafValidator : IAnafValidatorClient
         (_, _) => new AnafValidatorResult(true, [], [], "ok", Pdf, 1500, "test");
 
     public List<(string Type, string Version, byte[] Xml)> OtherCalls { get; } = [];
+
+    /// <summary>Arhivele atașate, în ordinea cererilor care au avut una.</summary>
+    public List<byte[]> Attachments { get; } = [];
+
+    public Task<Result<AnafValidatorResult>> ValidateWithAttachmentAsync(
+        string declarationType, string validatorVersion, byte[] xml, byte[] attachmentZip, string correlationId, CancellationToken cancellationToken)
+    {
+        Attachments.Add(attachmentZip);
+        return ValidateAsync(declarationType, validatorVersion, xml, correlationId, cancellationToken);
+    }
 
     public Task<Result<AnafValidatorResult>> ValidateAsync(
         string declarationType, string validatorVersion, byte[] xml, string correlationId, CancellationToken cancellationToken)
