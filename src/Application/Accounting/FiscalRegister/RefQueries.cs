@@ -67,7 +67,7 @@ internal sealed class GetRefQueryHandler(IApplicationDbContext db) : IQueryHandl
     {
         var lines = await db.DepreciationLines.AsNoTracking()
             .Where(l => l.PfaRegistrationId == pfaId && l.Year == year && l.Month <= end.Month)
-            .Join(db.PfaAssets, l => l.AssetId, a => a.Id, (l, a) => new { l.AssetId, l.Year, l.Month, l.Amount, a.InventoryNumber, a.Name })
+            .Join(db.PfaAssets, l => l.AssetId, a => a.Id, (l, a) => new { l.AssetId, l.Year, l.Month, Amount = l.DeductibleAmount, a.InventoryNumber, a.Name })
             .ToListAsync(cancellationToken);
         return [.. lines
             .OrderBy(l => l.Month).ThenBy(l => l.InventoryNumber, StringComparer.Ordinal)

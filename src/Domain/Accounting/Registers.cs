@@ -101,6 +101,23 @@ public sealed class PfaAsset : Entity, IAccountingRecord
     public string? DepreciationClassCode { get; set; }
     public int? NormalLifeMonths { get; set; }
     public string Method { get; set; } = "Linear";
+
+    /// <summary>
+    /// Autoturism (transport de persoane, cel mult 9 locuri). Durata normală e atunci între
+    /// <see cref="PassengerCarMinLifeMonths"/> și <see cref="PassengerCarMaxLifeMonths"/> luni.
+    /// </summary>
+    public bool IsPassengerCar { get; set; }
+
+    /// <summary>
+    /// Cât din amortizarea unei luni se deduce cel mult (lei). Gol = toată.
+    /// </summary>
+    /// <remarks>
+    /// Codul fiscal (art. 28 alin. 14) plafonează amortizarea autoturismelor la 1.500 lei pe lună,
+    /// dar exceptează vehiculele folosite pentru transport de persoane cu plată. Dacă mașina unui
+    /// șofer de ridesharing intră sub excepție o stabilește contabilul, per activ — de aceea e un
+    /// câmp, nu o regulă.
+    /// </remarks>
+    public decimal? MonthlyDeductionCap { get; set; }
     public DateOnly? DisposalDate { get; set; }
     public string? DisposalReason { get; set; }
 
@@ -108,6 +125,13 @@ public sealed class PfaAsset : Entity, IAccountingRecord
     public Guid? DocumentId { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Codul autoturismelor în Catalogul duratelor normale de funcționare (HG 2139/2004).</summary>
+    public const string PassengerCarClassCode = "2.3.2.1.1";
+
+    /// <summary>Autoturismele se amortizează în 4–6 ani.</summary>
+    public const int PassengerCarMinLifeMonths = 48;
+    public const int PassengerCarMaxLifeMonths = 72;
 
     /// <summary>Un mijloc fix e complet cu clasă, durată și punere în funcțiune; un obiect de inventar, cu punerea în funcțiune.</summary>
     public bool IsComplete => InServiceDate is not null &&
@@ -126,6 +150,9 @@ public sealed class DepreciationLine : Entity
     public int Year { get; set; }
     public int Month { get; set; }
     public decimal Amount { get; set; }
+
+    /// <summary>Partea din <see cref="Amount"/> care se deduce: toată, sau cel mult plafonul activului.</summary>
+    public decimal DeductibleAmount { get; set; }
     public decimal Accumulated { get; set; }
     public decimal Remaining { get; set; }
     public bool IsLocked { get; set; }

@@ -229,6 +229,98 @@ public sealed class AssetTests : IDisposable
         (await Classify(asset.Id, new DateOnly(2025, 3, 1), "2.2.9", 36)).Error.Code.ShouldBe("Accounting.YearClosed");
     }
 
+    /// <summary>Autoturismul: 4–6 ani, codul din catalog pus din oficiu, amortizare dedusă integral fără plafon.</summary>
+    [Fact]
+    public async Task Car_IsDepreciatedOverFourToSixYears_AndFullyDeductedWithoutACap()
+    {
+        AssetDto car = await ManualCar(120000m);
+
+        (await ClassifyCar(car.Id, life: 36, cap: null)).Error.ShouldBe(AssetErrors.CarLifeInvalid);
+        (await ClassifyCar(car.Id, life: 84, cap: null)).Error.ShouldBe(AssetErrors.CarLifeInvalid);
+
+        AssetDto active = (await ClassifyCar(car.Id, life: 60, cap: null)).Value;
+        (active.Status, active.IsPassengerCar, active.DepreciationClassCode).ShouldBe((AssetStatus.Active, true, (string?)"2.3.2.1.1"));
+        (active.MonthlyDepreciation, active.MonthlyDeductible, active.MonthlyDeductionCap).ShouldBe((2000m, 2000m, null));
+
+        (await _db.DepreciationLines.CountAsync()).ShouldBe(60);
+        _db.DepreciationLines.ShouldAllBe(l => l.DeductibleAmount == l.Amount);
+        // În funcțiune din ianuarie 2026 → februarie–decembrie: 11 luni.
+        (await DeductedIn(2026)).ShouldBe(22000m);
+    }
+
+    /// <summary>Cu plafon, fișa arată amortizarea întreagă, iar în REF intră doar partea deductibilă.</summary>
+    [Fact]
+    public async Task Car_WithAMonthlyCap_DeductsOnlyUpToIt()
+    {
+        AssetDto car = await ManualCar(120000m);
+
+        (await ClassifyCar(car.Id, life: 60, cap: 0m)).Error.ShouldBe(AssetErrors.CapInvalid);
+
+        AssetDto capped = (await ClassifyCar(car.Id, life: 60, cap: 1500m)).Value;
+        (capped.MonthlyDepreciation, capped.MonthlyDeductible, capped.MonthlyDeductionCap).ShouldBe((2000m, 1500m, 1500m));
+        _db.DepreciationLines.ShouldAllBe(l => l.Amount == 2000m && l.DeductibleAmount == 1500m);
+        (await DeductedIn(2026)).ShouldBe(16500m);
+        // Valoarea rămasă scade cu amortizarea întreagă: plafonul privește doar deducerea.
+        capped.Remaining.ShouldBe(120000m - Depreciation.AccumulatedAt(_db.DepreciationLines, AssetSupport.Today(null)));
+
+        AssetDetailDto detail = (await new GetAssetQueryHandler(_db).Handle(new GetAssetQuery(_pfa, car.Id), CancellationToken.None)).Value;
+        detail.Lines[0].DeductibleAmount.ShouldBe(1500m);
+
+        RegisterFile sheet = (await new ExportAssetSheetQueryHandler(_db, new Infrastructure.Accounting.RegisterExporter())
+            .Handle(new ExportAssetSheetQuery(_pfa, car.Id, RegisterFormat.Csv), CancellationToken.None)).Value;
+        string csv = System.Text.Encoding.UTF8.GetString(sheet.Content);
+        csv.ShouldContain("Din care deductibilă");
+        csv.ShouldContain("Amortizare deductibilă: cel mult");
+
+        // Scos plafonul, lunile deschise se deduc din nou integral.
+        (await ClassifyCar(car.Id, life: 60, cap: null)).Value.MonthlyDeductible.ShouldBe(2000m);
+        (await DeductedIn(2026)).ShouldBe(22000m);
+    }
+
+    /// <summary>O amortizare lunară sub plafon se deduce toată.</summary>
+    [Fact]
+    public async Task Car_BelowTheCap_IsNotReduced()
+    {
+        AssetDto car = await ManualCar(60000m);
+
+        AssetDto active = (await ClassifyCar(car.Id, life: 72, cap: 1500m)).Value;
+
+        (active.MonthlyDepreciation, active.MonthlyDeductible).ShouldBe((833.33m, 833.33m));
+    }
+
+    /// <summary>Plafonul e al mijloacelor fixe: un obiect de inventar s-a dedus la achiziție.</summary>
+    [Fact]
+    public async Task Cap_OnAnInventoryObject_IsRefused()
+    {
+        AssetDto chair = (await new CreateManualAssetCommandHandler(_db, new FixedUser(_admin)).Handle(
+            new CreateManualAssetCommand(_pfa, new ManualAssetRequest("Scaun", AssetKind.InventoryObject, new DateOnly(2026, 1, 5), 900m, "PV 1", null, "Aport")),
+            CancellationToken.None)).Value;
+
+        (await ClassifyCar(chair.Id, life: null, cap: 1500m)).Error.ShouldBe(AssetErrors.CapInvalid);
+    }
+
+    /// <summary>Pragul de mijloc fix e 5.000 lei pentru documentele din 2026 și rămâne 2.500 pentru cele dinainte.</summary>
+    [Fact]
+    public async Task Threshold_Is5000From2026_AndStays2500Before()
+    {
+        FixedAssetRule old = await _db.FixedAssetRules.SingleAsync();
+        old.ValidTo = new DateOnly(2025, 12, 31);
+        _db.FixedAssetRules.Add(new FixedAssetRule
+        {
+            Id = Guid.NewGuid(), Threshold = 5000m, DepreciationStart = old.DepreciationStart,
+            ExcludedCategories = old.ExcludedCategories, ValidFrom = new DateOnly(2026, 1, 1),
+        });
+        await _db.SaveChangesAsync();
+
+        LedgerEntry phone2025 = await Expense(-4000m, "IT", "Telefon", new DateOnly(2025, 11, 3));
+        LedgerEntry phone2026 = await Expense(-4000m, "IT", "Telefon", new DateOnly(2026, 2, 3));
+        LedgerEntry laptop2026 = await Expense(-5000m, "IT", "Laptop", new DateOnly(2026, 2, 3));
+
+        phone2025.FixedAssetReview.ShouldBe(FixedAssetReview.Pending);
+        (phone2026.FixedAssetReview, phone2026.DeductibleAmount).ShouldBe((FixedAssetReview.None, (decimal?)4000m));
+        laptop2026.FixedAssetReview.ShouldBe(FixedAssetReview.Pending);
+    }
+
     // ─── Ajutoare ──────────────────────────────────────────────────────────────────────────────
 
     private static decimal LedgerInvariants_Round(decimal value) => LedgerInvariants.Round(value);
@@ -254,6 +346,22 @@ public sealed class AssetTests : IDisposable
         await _db.SaveChangesAsync();
         return entry;
     }
+
+    private async Task<AssetDto> ManualCar(decimal value) =>
+        (await new CreateManualAssetCommandHandler(_db, new FixedUser(_admin)).Handle(
+            new CreateManualAssetCommand(_pfa, new ManualAssetRequest("Dacia Jogger", AssetKind.FixedAsset, new DateOnly(2026, 1, 5), value, "Factura AUTO-1 / 05.01.2026", "Dacia SRL", "Achiziție")),
+            CancellationToken.None)).Value;
+
+    private Task<Result<AssetDto>> ClassifyCar(Guid assetId, int? life, decimal? cap) =>
+        new ClassifyAssetCommandHandler(_db, new FixedUser(_admin)).Handle(
+            new ClassifyAssetCommand(_pfa, assetId, new AssetClassificationRequest(
+                "Dacia Jogger", "Factura AUTO-1 / 05.01.2026", "Dacia SRL", new DateOnly(2026, 1, 5), null, life, "Clasificare",
+                IsPassengerCar: life is not null, MonthlyDeductionCap: cap)),
+            CancellationToken.None);
+
+    /// <summary>Amortizarea care intră în cheltuielile deductibile ale anului, cum o vede REF.</summary>
+    private async Task<decimal> DeductedIn(int year) =>
+        (await GetRefQueryHandler.DepreciationAsync(_db, _pfa, year, new DateOnly(year, 12, 31), CancellationToken.None)).Sum(d => d.Amount);
 
     private Task<Result<AssetDto?>> Decide(Guid entryId, FixedAssetReview decision, string? name) =>
         new DecideFixedAssetCommandHandler(_db, new FixedUser(_admin))

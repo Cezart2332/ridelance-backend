@@ -15,7 +15,11 @@ internal static class Depreciation
     public static readonly Error YearClosed = Error.Conflict(
         "Accounting.YearClosed", "Amortizarea ar schimba un an închis; anul se redeschide întâi.");
 
-    public readonly record struct PlannedLine(int Year, int Month, decimal Amount, decimal Accumulated, decimal Remaining);
+    public readonly record struct PlannedLine(int Year, int Month, decimal Amount, decimal Accumulated, decimal Remaining, decimal Deductible);
+
+    /// <summary>Cât din amortizarea unei luni se deduce: toată, sau cel mult plafonul activului.</summary>
+    public static decimal DeductiblePart(PfaAsset asset, decimal amount) =>
+        asset.MonthlyDeductionCap is { } cap ? Math.Min(amount, cap) : amount;
 
     /// <summary>Planul lunilor deschise, în continuarea liniilor blocate (ordonate cronologic).</summary>
     public static List<PlannedLine> Plan(PfaAsset asset, DepreciationStart start, IReadOnlyList<DepreciationLine> locked)
@@ -62,7 +66,7 @@ internal static class Depreciation
 
             decimal amount = index == months - 1 ? left - monthly * (months - 1) : monthly;
             accumulated += amount;
-            plan.Add(new PlannedLine(month.Year, month.Month, amount, accumulated, asset.EntryValue - accumulated));
+            plan.Add(new PlannedLine(month.Year, month.Month, amount, accumulated, asset.EntryValue - accumulated, DeductiblePart(asset, amount)));
         }
 
         return plan;
@@ -114,6 +118,7 @@ internal static class Depreciation
                 Year = line.Year,
                 Month = line.Month,
                 Amount = line.Amount,
+                DeductibleAmount = line.Deductible,
                 Accumulated = line.Accumulated,
                 Remaining = line.Remaining,
                 IsLocked = closedPeriods.Contains($"{line.Year:0000}-{line.Month:00}"),

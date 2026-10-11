@@ -54,7 +54,7 @@ internal sealed class FinancialSnapshotProvider(IApplicationDbContext context) :
             .Select(g => new { Month = g.Key, Amount = g.Sum(e => LedgerSupport.RefDeductible(e) ?? 0m) }).ToList();
         var depreciation = await context.DepreciationLines.AsNoTracking()
             .Where(l => l.PfaRegistrationId == pfa.Id && l.Year == year && l.Month <= effectiveAsOf.Month)
-            .GroupBy(l => l.Month).Select(g => new { Month = g.Key, Amount = g.Sum(l => l.Amount) }).ToListAsync(cancellationToken);
+            .GroupBy(l => l.Month).Select(g => new { Month = g.Key, Amount = g.Sum(l => l.DeductibleAmount) }).ToListAsync(cancellationToken);
 
         Dictionary<int, PfaPriorPeriodMonth> prior = await context.PfaPriorPeriodMonths
             .AsNoTracking()

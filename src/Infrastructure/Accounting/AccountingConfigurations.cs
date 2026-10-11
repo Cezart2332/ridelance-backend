@@ -694,6 +694,7 @@ internal sealed class PfaAssetConfiguration : IEntityTypeConfiguration<PfaAsset>
         builder.Property(a => a.EntryValue).AsMoney();
         builder.Property(a => a.DepreciationClassCode).HasMaxLength(32);
         builder.Property(a => a.Method).HasMaxLength(32).IsRequired();
+        builder.Property(a => a.MonthlyDeductionCap).AsMoney();
         builder.Property(a => a.DisposalReason).HasMaxLength(500);
         builder.Ignore(a => a.IsComplete);
         builder.HasIndex(a => new { a.PfaRegistrationId, a.InventoryNumber }).IsUnique();
@@ -886,6 +887,7 @@ internal sealed class DepreciationLineConfiguration : IEntityTypeConfiguration<D
         builder.ToTable("depreciation_lines");
         builder.HasKey(l => l.Id);
         builder.Property(l => l.Amount).AsMoney();
+        builder.Property(l => l.DeductibleAmount).AsMoney();
         builder.Property(l => l.Accumulated).AsMoney();
         builder.Property(l => l.Remaining).AsMoney();
         builder.Ignore(l => l.Period);

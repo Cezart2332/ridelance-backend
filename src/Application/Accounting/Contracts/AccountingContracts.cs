@@ -477,9 +477,13 @@ public sealed record AssetDto(
     decimal? MonthlyDepreciation,
     DateOnly AsOf,
     decimal Accumulated,
-    decimal Remaining);
+    decimal Remaining,
+    bool IsPassengerCar = false,
+    decimal? MonthlyDeductionCap = null,
+    // Cât din amortizarea lunară se deduce; egal cu ea când activul n-are plafon.
+    decimal? MonthlyDeductible = null);
 
-public sealed record DepreciationLineDto(int Year, int Month, decimal Amount, decimal Accumulated, decimal Remaining, bool IsLocked);
+public sealed record DepreciationLineDto(int Year, int Month, decimal Amount, decimal Accumulated, decimal Remaining, bool IsLocked, decimal DeductibleAmount);
 
 public sealed record AssetDetailDto(AssetDto Asset, IReadOnlyList<DepreciationLineDto> Lines);
 
@@ -505,7 +509,9 @@ public sealed record AssetClassificationRequest(
     DateOnly? InServiceDate,
     string? DepreciationClassCode,
     int? NormalLifeMonths,
-    string? Reason);
+    string? Reason,
+    bool IsPassengerCar = false,
+    decimal? MonthlyDeductionCap = null);
 
 public sealed record AssetDisposalRequest(DateOnly Date, string? Reason);
 

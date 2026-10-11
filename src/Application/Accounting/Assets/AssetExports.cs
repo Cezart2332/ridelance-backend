@@ -46,9 +46,10 @@ internal sealed class ExportAssetSheetQueryHandler(IApplicationDbContext db, IRe
                 .OrderByDescending(r => r.ValidFrom)
                 .FirstOrDefaultAsync(cancellationToken);
             lines = [.. Depreciation.Plan(complete, rule?.DepreciationStart ?? DepreciationStart.NextMonth, [])
-                .Select(line => new DepreciationLine { Year = line.Year, Month = line.Month, Amount = line.Amount, Accumulated = line.Accumulated, Remaining = line.Remaining })];
+                .Select(line => new DepreciationLine { Year = line.Year, Month = line.Month, Amount = line.Amount, DeductibleAmount = line.Deductible, Accumulated = line.Accumulated, Remaining = line.Remaining })];
         }
 
+        bool capped = asset.MonthlyDeductionCap is not null;
         var document = new RegisterDocument(
             "FIȘA MIJLOCULUI FIX",
             "14-2-2",
@@ -58,18 +59,23 @@ internal sealed class ExportAssetSheetQueryHandler(IApplicationDbContext db, IRe
                 $"Document de achiziție: {asset.DocumentRef}{(asset.SupplierName is { Length: > 0 } supplier ? $", furnizor {supplier}" : string.Empty)}",
                 $"Data intrării: {RegisterData.Date(asset.EntryDate)}; punere în funcțiune: {(asset.InServiceDate is { } inService ? RegisterData.Date(inService) : "—")}",
                 $"Valoare de intrare: {RegisterData.Amount(asset.EntryValue)} lei; clasa {asset.DepreciationClassCode ?? "—"}; durata normală {asset.NormalLifeMonths?.ToString(CultureInfo.InvariantCulture) ?? "—"} luni; metoda liniară",
+                .. asset.MonthlyDeductionCap is { } cap
+                    ? new[] { $"Amortizare deductibilă: cel mult {RegisterData.Amount(cap)} lei pe lună (Codul fiscal, art. 28 alin. 14)" }
+                    : [],
                 State(asset),
             ],
             [
                 new("Nr. crt.", Width: 0.5f),
                 new("Luna", Width: 1.2f),
                 new("Amortizare lunară", Numeric: true),
+                .. capped ? new RegisterColumn[] { new("Din care deductibilă", Numeric: true) } : [],
                 new("Amortizare cumulată", Numeric: true),
                 new("Valoare rămasă", Numeric: true),
             ],
             null,
-            [.. lines.Select((line, index) => new RegisterLine(
-                [index + 1, $"{line.Month:00}.{line.Year}", line.Amount, line.Accumulated, line.Remaining]))],
+            [.. lines.Select((line, index) => new RegisterLine(capped
+                ? [index + 1, $"{line.Month:00}.{line.Year}", line.Amount, line.DeductibleAmount, line.Accumulated, line.Remaining]
+                : [index + 1, $"{line.Month:00}.{line.Year}", line.Amount, line.Accumulated, line.Remaining]))],
             ["Model conform OMFP nr. 2634/2015. Amortizarea începe în luna următoare punerii în funcțiune; diferența de rotunjire e în ultima lună."]);
         return RegisterFiles.Export(exporter, document, query.Format, $"Fisa_MF_{asset.InventoryNumber}_{pfa.Cui}");
     }

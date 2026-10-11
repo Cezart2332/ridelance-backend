@@ -29,6 +29,12 @@ internal static class AssetErrors
     public static readonly Error LifeInvalid = Error.Problem(
         "Accounting.AssetInvalid", "Durata normală de funcționare e în luni, între 12 și 600.");
 
+    public static readonly Error CarLifeInvalid = Error.Problem(
+        "Accounting.AssetInvalid", "Un autoturism se amortizează în 48–72 de luni (4–6 ani, HG 2139/2004).");
+
+    public static readonly Error CapInvalid = Error.Problem(
+        "Accounting.AssetInvalid", "Plafonul deductibil lunar e o sumă pozitivă și se pune doar la un mijloc fix.");
+
     public static readonly Error InServiceBeforeEntry = Error.Problem(
         "Accounting.AssetInvalid", "Punerea în funcțiune nu poate fi înainte de data intrării.");
 
@@ -73,10 +79,12 @@ internal static class AssetSupport
         }
 
         decimal? monthly = lines.Count == 0 ? null : lines.OrderBy(l => l.Year).ThenBy(l => l.Month).First().Amount;
+        decimal? monthlyDeductible = monthly is { } amount ? Depreciation.DeductiblePart(asset, amount) : null;
         return new AssetDto(
             asset.Id, asset.PfaRegistrationId, asset.InventoryNumber, CleanName(asset.Name), asset.Kind, status, asset.AcquisitionEntryId,
             asset.DocumentRef, asset.SupplierName, asset.EntryDate, asset.InServiceDate, asset.EntryValue, asset.DepreciationClassCode,
-            asset.NormalLifeMonths, asset.Method, asset.DisposalDate, asset.DisposalReason, document, monthly, asOf, accumulated, remaining);
+            asset.NormalLifeMonths, asset.Method, asset.DisposalDate, asset.DisposalReason, document, monthly, asOf, accumulated, remaining,
+            asset.IsPassengerCar, asset.MonthlyDeductionCap, monthlyDeductible);
     }
 
     public static async Task<AssetDto> DtoAsync(IApplicationDbContext db, Guid assetId, DateOnly asOf, CancellationToken cancellationToken) =>
@@ -156,7 +164,7 @@ internal sealed class GetAssetQueryHandler(IApplicationDbContext db, IDateTimePr
         List<DepreciationLineDto> lines = await db.DepreciationLines.AsNoTracking()
             .Where(l => l.AssetId == query.AssetId)
             .OrderBy(l => l.Year).ThenBy(l => l.Month)
-            .Select(l => new DepreciationLineDto(l.Year, l.Month, l.Amount, l.Accumulated, l.Remaining, l.IsLocked))
+            .Select(l => new DepreciationLineDto(l.Year, l.Month, l.Amount, l.Accumulated, l.Remaining, l.IsLocked, l.DeductibleAmount))
             .ToListAsync(cancellationToken);
         return new AssetDetailDto(assets[0], lines);
     }
@@ -352,6 +360,18 @@ internal sealed class ClassifyAssetCommandHandler(IApplicationDbContext db, IUse
             return Result.Failure<AssetDto>(AssetErrors.LifeInvalid);
         }
 
+        bool isCar = asset.Kind == AssetKind.FixedAsset && request.IsPassengerCar;
+        if (isCar && request.NormalLifeMonths is { } carLife &&
+            carLife is < PfaAsset.PassengerCarMinLifeMonths or > PfaAsset.PassengerCarMaxLifeMonths)
+        {
+            return Result.Failure<AssetDto>(AssetErrors.CarLifeInvalid);
+        }
+
+        if (request.MonthlyDeductionCap is { } cap && (cap <= 0 || asset.Kind != AssetKind.FixedAsset))
+        {
+            return Result.Failure<AssetDto>(AssetErrors.CapInvalid);
+        }
+
         if (request.InServiceDate < asset.EntryDate)
         {
             return Result.Failure<AssetDto>(AssetErrors.InServiceBeforeEntry);
@@ -363,13 +383,22 @@ internal sealed class ClassifyAssetCommandHandler(IApplicationDbContext db, IUse
             return Result.Failure<AssetDto>(writable.Error);
         }
 
-        var before = new { asset.Name, asset.DocumentRef, asset.SupplierName, asset.InServiceDate, asset.DepreciationClassCode, asset.NormalLifeMonths, asset.Status };
+        var before = new { asset.Name, asset.DocumentRef, asset.SupplierName, asset.InServiceDate, asset.DepreciationClassCode, asset.NormalLifeMonths, asset.IsPassengerCar, asset.MonthlyDeductionCap, asset.Status };
         asset.Name = AssetSupport.CleanName(request.Name);
         asset.DocumentRef = request.DocumentRef.Trim();
         asset.SupplierName = request.SupplierName?.Trim();
         asset.InServiceDate = request.InServiceDate;
         asset.DepreciationClassCode = string.IsNullOrWhiteSpace(request.DepreciationClassCode) ? null : request.DepreciationClassCode.Trim();
         asset.NormalLifeMonths = asset.Kind == AssetKind.FixedAsset ? request.NormalLifeMonths : null;
+        asset.IsPassengerCar = isCar;
+        asset.MonthlyDeductionCap = request.MonthlyDeductionCap is { } newCap ? LedgerInvariants.Round(newCap) : null;
+
+        // Autoturismele au un singur cod în catalog; nu-l mai caută nimeni de mână.
+        if (isCar && asset.DepreciationClassCode is null)
+        {
+            asset.DepreciationClassCode = PfaAsset.PassengerCarClassCode;
+        }
+
         AssetSupport.RefreshStatus(asset);
 
         Result rebuilt = await Depreciation.RebuildAsync(db, asset, cancellationToken);
@@ -379,7 +408,7 @@ internal sealed class ClassifyAssetCommandHandler(IApplicationDbContext db, IUse
         }
 
         AccountingAudit.Record(db, command.PfaId, nameof(PfaAsset), asset.Id, "CLASSIFY", before,
-            new { asset.Name, asset.DocumentRef, asset.SupplierName, asset.InServiceDate, asset.DepreciationClassCode, asset.NormalLifeMonths, asset.Status },
+            new { asset.Name, asset.DocumentRef, asset.SupplierName, asset.InServiceDate, asset.DepreciationClassCode, asset.NormalLifeMonths, asset.IsPassengerCar, asset.MonthlyDeductionCap, asset.Status },
             request.Reason, userContext.UserId);
         await db.SaveChangesAsync(cancellationToken);
         return await AssetSupport.DtoAsync(db, asset.Id, AssetSupport.Today(clock), cancellationToken);
