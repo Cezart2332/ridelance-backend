@@ -154,10 +154,13 @@ internal sealed class VatRegistrationService(
         request.RejectionReason = null;
         request.UpdatedAtUtc = now;
 
-        // Cererea o depune împuternicitul RIDElance, în baza împuternicirii semnate de client.
+        // Cererea o depune împuternicitul RIDElance, în baza împuternicirii clientului. Dacă datele
+        // împuternicitului sau împuternicirea lipsesc, cererea NU așteaptă după ele: se generează pe
+        // titular, ca înainte, iar ce lipsește rămâne scris pe cerere. Fluxul clientului nu se
+        // oprește pentru ceva ce ține de noi.
         (D700Representative? representative, Guid? mandateDocumentId, string? missingMandate) = await RepresentativeAsync(pfaId, cancellationToken);
-        string? missing = Missing(taxpayer) ?? missingMandate;
-        if (missing is not null || representative is null)
+        string? missing = Missing(taxpayer);
+        if (missing is not null)
         {
             request.Status = VatRegistrationStatus.WaitingForData;
             request.MissingData = missing;
@@ -165,14 +168,18 @@ internal sealed class VatRegistrationService(
         else
         {
             AnafMandatarOptions mandatar = mandatarOptions.Value;
-            var snapshot = new D700Snapshot(
-                taxpayer.Cui, taxpayer.Name, mandatar.LastName!.Trim(), mandatar.FirstName!.Trim(), RepresentativeFunction, representative, mandateDocumentId);
+            D700Snapshot snapshot = representative is null
+                ? new D700Snapshot(taxpayer.Cui, taxpayer.Name, taxpayer.DeclarantLastName, taxpayer.DeclarantFirstName, taxpayer.DeclarantFunction)
+                : new D700Snapshot(
+                    taxpayer.Cui, taxpayer.Name, mandatar.LastName!.Trim(), mandatar.FirstName!.Trim(), RepresentativeFunction, representative, mandateDocumentId);
             byte[] content = xml.Build(new D700Content(
                 request.Period, snapshot.Cui, snapshot.Name, snapshot.DeclarantLastName, snapshot.DeclarantFirstName, snapshot.DeclarantFunction, representative));
             Document document = await files.StoreAsync(pfaId, content, $"D700_{taxpayer.Cui}_{request.Period}.xml", "application/xml", cancellationToken);
             request.XmlDocumentId = document.Id;
             request.SnapshotJson = AccountingJson.Serialize(snapshot);
-            request.MissingData = null;
+            request.MissingData = representative is null && missingMandate is not null
+                ? $"Generată pe titular. Pentru depunerea prin împuternicit: {missingMandate}"
+                : null;
             request.Status = VatRegistrationStatus.Generated;
         }
 
@@ -399,8 +406,13 @@ internal sealed class VatRegistrationService(
     /// <summary>
     /// Împuternicitul și actul lui: datele omului RIDElance vin din configurarea serverului
     /// (<c>AnafMandatar</c>, aceleași ca pe împuternicire), iar numărul și data actului din
-    /// împuternicirea semnată de client la onboarding. Al treilea element spune ce lipsește.
+    /// împuternicirea generată la onboarding. Al treilea element spune ce lipsește.
     /// </summary>
+    /// <remarks>
+    /// Semnătura clientului pe împuternicire NU e o condiție aici: semnarea e alt pas al
+    /// onboardingului, cu ritmul lui, iar cererea de cod TVA nu are de ce să aștepte după el. Se
+    /// atașează documentul din pachet, în starea în care e.
+    /// </remarks>
     private async Task<(D700Representative? Representative, Guid? MandateDocumentId, string? Missing)> RepresentativeAsync(
         Guid pfaId, CancellationToken cancellationToken)
     {
@@ -426,7 +438,7 @@ internal sealed class VatRegistrationService(
 
         var mandate = await db.OnboardingSignatureDocuments.AsNoTracking()
             .Where(d => d.Packet.PfaRegistrationId == pfaId && d.Type == SignatureDocumentType.PowerOfAttorneyAnaf)
-            .Select(d => new { d.Label, d.DocumentId, d.IsSigned })
+            .Select(d => new { d.Label, d.DocumentId })
             .FirstOrDefaultAsync(cancellationToken);
         DateTime? issuedAt = mandate?.DocumentId is { } documentId
             ? await db.Documents.AsNoTracking().Where(d => d.Id == documentId).Select(d => d.IssuedAtUtc ?? d.UploadedAtUtc).FirstOrDefaultAsync(cancellationToken)
@@ -435,14 +447,10 @@ internal sealed class VatRegistrationService(
         {
             missing.Add("împuternicirea ANAF a clientului (nu a fost generată)");
         }
-        else if (!mandate.IsSigned)
-        {
-            missing.Add("semnătura clientului pe împuternicirea ANAF");
-        }
 
         if (missing.Count > 0)
         {
-            return (null, null, $"Lipsesc: {string.Join("; ", missing)}.");
+            return (null, null, $"lipsesc {string.Join("; ", missing)}.");
         }
 
         var representative = new D700Representative(

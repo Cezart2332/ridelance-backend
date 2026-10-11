@@ -115,21 +115,29 @@ public sealed class VatRegistrationTests : IDisposable
         content.ToArray().ShouldBe(AnafMandateTestData.Pdf);
     }
 
-    /// <summary>Fără împuternicire semnată, cererea așteaptă și spune ce lipsește.</summary>
+    /// <summary>Semnătura clientului nu ține cererea pe loc; doar lipsa împuternicirii o oprește.</summary>
     [Fact]
-    public async Task Without_the_signed_mandate_it_waits_and_says_what_is_missing()
+    public async Task An_unsigned_mandate_does_not_block_the_request_but_a_missing_one_does()
     {
         OnboardingSignatureDocument slot = await _db.OnboardingSignatureDocuments.SingleAsync(d => d.DocumentId == _mandate);
         slot.IsSigned = false;
+        slot.SignedAtUtc = null;
         await _db.SaveChangesAsync();
 
         VatRegistrationRequest unsigned = (await Service().EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value;
-        (unsigned.Status, unsigned.MissingData).ShouldBe((VatRegistrationStatus.WaitingForData, "Lipsesc: semnătura clientului pe împuternicirea ANAF."));
+        (unsigned.Status, unsigned.MissingData).ShouldBe((VatRegistrationStatus.Generated, (string?)null));
+        Xml(unsigned).ShouldContain("nr_actR=\"123\"");
 
         _db.OnboardingSignatureDocuments.Remove(slot);
         await _db.SaveChangesAsync();
-        (await Service().EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value.MissingData
-            .ShouldBe("Lipsesc: împuternicirea ANAF a clientului (nu a fost generată).");
+        // Fără împuternicire deloc, cererea tot se generează: pe titular, cu nota despre ce lipsește.
+        VatRegistrationRequest missing = (await Service().GenerateAsync(_pfa, null, CancellationToken.None)).Value;
+        (missing.Status, missing.MissingData).ShouldBe((VatRegistrationStatus.Generated,
+            (string?)"Generată pe titular. Pentru depunerea prin împuternicit: lipsesc împuternicirea ANAF a clientului (nu a fost generată)."));
+        string onHolder = Xml(missing);
+        onHolder.ShouldContain("Bifa_III=\"0\"");
+        onHolder.ShouldContain("func_decl=\"TITULAR\"");
+        onHolder.ShouldNotContain("Repr1");
     }
 
     /// <summary>Datele împuternicitului vin din configurarea serverului; cele lipsă sunt numite cu variabila lor.</summary>
@@ -146,10 +154,11 @@ public sealed class VatRegistrationTests : IDisposable
 
         VatRegistrationRequest waiting = (await service.EnsureRequestedAsync(_pfa, null, CancellationToken.None)).Value;
 
-        waiting.Status.ShouldBe(VatRegistrationStatus.WaitingForData);
+        // Nu oprește nimic: cererea iese pe titular și spune ce variabile lipsesc.
+        waiting.Status.ShouldBe(VatRegistrationStatus.Generated);
         waiting.MissingData.ShouldBe(
-            "Lipsesc: numele împuternicitului (ANAF_MANDATAR_LAST_NAME); CNP-ul împuternicitului (ANAF_MANDATAR_CNP); " +
-            "telefonul împuternicitului trebuie să aibă 10 cifre (ANAF_MANDATAR_PHONE).");
+            "Generată pe titular. Pentru depunerea prin împuternicit: lipsesc numele împuternicitului (ANAF_MANDATAR_LAST_NAME); " +
+            "CNP-ul împuternicitului (ANAF_MANDATAR_CNP); telefonul împuternicitului trebuie să aibă 10 cifre (ANAF_MANDATAR_PHONE).");
     }
 
     [Theory]
