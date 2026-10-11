@@ -90,7 +90,7 @@ public sealed class VatRegistrationTests : IDisposable
         string? Value(string name) => (string?)root.Attribute(name);
         (Value("Bifa_III"), Value("Repr1")).ShouldBe(("1", "2"));
         (Value("nume_decl"), Value("pren_decl"), Value("func_decl")).ShouldBe(("Ionescu", "Maria", "IMPUTERNICIT"));
-        (Value("nr_actR"), Value("data_actR")).ShouldBe(("000123", "01.09.2026"));
+        (Value("nr_actR"), Value("data_actR")).ShouldBe(("123", "01.09.2026"));
         (Value("denR"), Value("cifR")).ShouldBe(("Ionescu Maria", "2800101410015"));
         Value("adresaR").ShouldBe("Str. Exemplu nr. 1, Bucuresti, sector 1");
         (Value("telR"), Value("emailR")).ShouldBe(("0722123456", "maria@ridelance.ro"));
@@ -153,10 +153,11 @@ public sealed class VatRegistrationTests : IDisposable
     }
 
     [Theory]
-    [InlineData("ANAF-000123", "000123")]
+    [InlineData("ANAF-000123", "123")]
+    [InlineData("ANAF-000001", "1")]
     [InlineData("12/2026", "12/2026")]
     [InlineData("IMPUTERNICIRE-FARA-NUMAR", "FARA-NUMAR")]
-    public void The_act_number_fits_the_ten_characters_of_the_declaration(string label, string expected) =>
+    public void The_act_number_is_the_plain_number_of_the_mandate(string label, string expected) =>
         VatRegistrationService.ActNumber(label).ShouldBe(expected);
 
     [Fact]

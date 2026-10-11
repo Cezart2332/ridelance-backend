@@ -457,19 +457,25 @@ internal sealed class VatRegistrationService(
     }
 
     /// <summary>
-    /// Numărul actului are în declarație cel mult 10 caractere, iar împuternicirile sunt numerotate
-    /// „ANAF-000123”: rămâne partea care deosebește actul, numărul.
+    /// Numărul actului, cum intră în declarație: doar numărul, fără prefix și fără zerouri în față
+    /// („ANAF-000123” → „123”). Câmpul are cel mult 10 caractere.
     /// </summary>
     internal static string ActNumber(string label)
     {
         string trimmed = label.Trim();
-        if (trimmed.Length <= 10)
+
+        // Împuternicirile generate aici sunt „ANAF-” urmat de număr; un act numerotat altfel rămâne cum e.
+        const string prefix = "ANAF-";
+        if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && trimmed[prefix.Length..].All(char.IsDigit))
         {
-            return trimmed;
+            string number = trimmed[prefix.Length..].TrimStart('0');
+            if (number.Length is > 0 and <= 10)
+            {
+                return number;
+            }
         }
 
-        string digits = new([.. trimmed.Where(char.IsDigit)]);
-        return digits.Length is > 0 and <= 10 ? digits : trimmed[^10..];
+        return trimmed.Length <= 10 ? trimmed : trimmed[^10..];
     }
 
     /// <summary>Arhiva atașată declarației: un singur fișier, împuternicirea.</summary>
