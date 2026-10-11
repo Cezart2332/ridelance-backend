@@ -88,7 +88,8 @@ public sealed class VatRegistrationTests : IDisposable
 
         System.Xml.Linq.XElement root = System.Xml.Linq.XDocument.Parse(Xml(request)).Root!;
         string? Value(string name) => (string?)root.Attribute(name);
-        (Value("Bifa_III"), Value("Repr1")).ShouldBe(("1", "2"));
+        // Repr1 = 1 e „împuternicit” în PDF-ul ANAF (2 bifează „reprezentant legal”).
+        (Value("Bifa_III"), Value("Repr1")).ShouldBe(("1", "1"));
         (Value("nume_decl"), Value("pren_decl"), Value("func_decl")).ShouldBe(("Ionescu", "Maria", "IMPUTERNICIT"));
         (Value("nr_actR"), Value("data_actR")).ShouldBe(("123", "01.09.2026"));
         (Value("denR"), Value("cifR")).ShouldBe(("Ionescu Maria", "2800101410015"));

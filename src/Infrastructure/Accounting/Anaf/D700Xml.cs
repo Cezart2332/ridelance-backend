@@ -18,7 +18,7 @@ namespace Infrastructure.Accounting.Anaf;
 /// Uber (NL) și Bolt (EE).</item>
 /// </list>
 /// Cu <see cref="D700Content.Representative"/>, declarația e depusă de împuternicit (secțiunea III,
-/// <c>Repr1 = 2</c>) și are obligatoriu împuternicirea atașată; fără el, declarantul e titularul.
+/// <c>Repr1 = 1</c>) și are obligatoriu împuternicirea atașată; fără el, declarantul e titularul.
 /// <c>data_decl</c> apare în structură, dar validatorul îl respinge ca atribut necunoscut.
 /// </summary>
 internal sealed class D700Xml : IVatRegistrationXml
@@ -68,8 +68,10 @@ internal sealed class D700Xml : IVatRegistrationXml
         if (content.Representative is { } representative)
         {
             root.Add(
-                // 2 = împuternicit (1 reprezentant legal, 3 reprezentant fiscal).
-                Attribute("Repr1", 2),
+                // 1 = împuternicit. Structura XML publicată de ANAF scrie invers („1 reprezentant
+                // legal, 2 împuternicit”), dar PDF-ul oficial bifează după ordinea din rubrică:
+                // cu 2 ieșea bifat „reprezentant legal”. Verificat pe PDF-ul generat de DUKIntegrator.
+                Attribute("Repr1", 1),
                 new XAttribute("nr_actR", Limit(AnafFormat.Text(representative.ActNumber), 10)),
                 new XAttribute("data_actR", representative.ActDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)),
                 new XAttribute("denR", Limit(AnafFormat.Text(representative.Name), 200)),
