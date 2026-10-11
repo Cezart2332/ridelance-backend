@@ -117,12 +117,16 @@ public sealed class FiscalLinkAccountingTests
     private static FiscalLinkAccountingService Reader(HttpClient http, string? commandKey = "fsk_test_commands") => new(http, new Registers(),
         Options.Create(new FiscalLinkOptions { ManagementKey = "fsk_test_management", CommandKey = commandKey }), NullLogger<FiscalLinkAccountingService>.Instance);
 
+    // Activarea casei e o dată fixă, înaintea documentelor din test: cu „acum”, documentele deveneau
+    // „mai vechi decât activarea” a doua zi și testele picau singure.
+    private static readonly DateTime Activated = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
     private sealed class Registers : IFiscalLinkService
     {
         public Task<Result<Guid>> CreateClientAsync(FiscalLinkNewClient client, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Result<FiscalLinkActivation>> GetActivationAsync(Guid clientId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Result<IReadOnlyList<FiscalLinkRegister>>> ListRegistersAsync(Guid clientId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Result.Success<IReadOnlyList<FiscalLinkRegister>>([new FiscalLinkRegister(Guid.NewGuid(), "DT123456", "Active", true, false, DateTime.UtcNow)]));
+            Task.FromResult(Result.Success<IReadOnlyList<FiscalLinkRegister>>([new FiscalLinkRegister(Guid.NewGuid(), "DT123456", "Active", true, false, Activated)]));
     }
 
     private sealed class Responses(params string[] bodies) : HttpMessageHandler
