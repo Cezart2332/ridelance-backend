@@ -27,13 +27,18 @@ internal sealed class ExportCompanyFormationQueryHandler(
 {
     private static readonly CultureInfo Ro = CultureInfo.GetCultureInfo("ro-RO");
 
-    /// <summary>Documentele din Pasul 0 care însoțesc dosarul.</summary>
+    /// <summary>
+    /// Documentele din Pasul 0 care însoțesc dosarul. Atestatul de transport alternativ apare sub
+    /// ambele categorii: onboardingul îl încarcă drept <c>AtestatSofer</c>, pagina de documente
+    /// drept <c>AtestatTransport</c>.
+    /// </summary>
     private static readonly DocumentCategory[] AttachedCategories =
     [
         DocumentCategory.CarteIdentitate,
         DocumentCategory.Buletin,
         DocumentCategory.CeiReaderPdf,
         DocumentCategory.PermisConducere,
+        DocumentCategory.AtestatSofer,
         DocumentCategory.AtestatTransport,
     ];
 
