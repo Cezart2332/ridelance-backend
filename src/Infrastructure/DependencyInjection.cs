@@ -137,6 +137,12 @@ public static class DependencyInjection
         services.AddHttpClient<IFiscalLinkAccountingService, Infrastructure.FiscalLink.FiscalLinkAccountingService>(client =>
             client.Timeout = TimeSpan.FromSeconds(30));
 
+        // localitati.dev: codul poștal din județ și localitate, în formularele de adresă.
+        services.Configure<Infrastructure.Localities.LocalitatiOptions>(
+            configuration.GetSection(Infrastructure.Localities.LocalitatiOptions.SectionName));
+        services.AddHttpClient<IPostalCodeLookup, Infrastructure.Localities.LocalitatiPostalCodeLookup>(client =>
+            client.Timeout = TimeSpan.FromSeconds(5));
+
         // Bolt
         services.AddHttpClient();
         services.AddScoped<IBoltService, BoltService>();

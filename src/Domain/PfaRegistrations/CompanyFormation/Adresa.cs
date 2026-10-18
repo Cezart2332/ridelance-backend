@@ -25,25 +25,25 @@ public sealed class Adresa
     public string? Apartament { get; set; }
 
     /// <summary>
-    /// Codul poștal, șase cifre. Obligatoriu pentru sediul social (dosarul ONRC îl cere),
-    /// opțional pentru domiciliu — de aceea nu intră în <see cref="IsComplete"/>.
+    /// Codul poștal, șase cifre. Obligatoriu peste tot: formularul îl completează singur din
+    /// județ și localitate (localitati.dev), iar omul îl corectează dacă strada lui are altul.
     /// </summary>
     public string? CodPostal { get; set; }
 
-    /// <summary>Adresa are completate toate câmpurile obligatorii.</summary>
-    public bool IsComplete =>
+    /// <summary>Județul, localitatea, strada și numărul — adresa fără codul poștal.</summary>
+    public bool HasStreetAddress =>
         !string.IsNullOrWhiteSpace(Judet)
         && !string.IsNullOrWhiteSpace(Localitate)
         && !string.IsNullOrWhiteSpace(Strada)
         && !string.IsNullOrWhiteSpace(Numar);
 
+    /// <summary>Adresa are completate toate câmpurile obligatorii, inclusiv codul poștal.</summary>
+    public bool IsComplete => HasStreetAddress && HasValidPostalCode;
+
     /// <summary>Codul poștal e prezent și are exact șase cifre.</summary>
     public bool HasValidPostalCode =>
         CodPostal is { Length: 6 } code && code.All(char.IsAsciiDigit);
 
-    /// <summary>
-    /// Ce cere sediul social peste o adresă obișnuită: codul poștal. Fără el dosarul nu poate
-    /// fi depus la ONRC, deci pasul nu are voie să se închidă.
-    /// </summary>
-    public bool IsCompleteForRegisteredOffice => IsComplete && HasValidPostalCode;
+    /// <summary>Sediul social cere aceleași câmpuri ca orice adresă, cod poștal inclus.</summary>
+    public bool IsCompleteForRegisteredOffice => IsComplete;
 }

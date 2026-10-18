@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Services;
 using Application.PfaRegistrations.Onboarding.CompanyFormation;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -104,6 +105,22 @@ internal sealed class OnboardingCompanyFormation : IEndpoint
                 await handler.Handle(new GetConsultoOfficesQuery(), cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);
+        })
+        .WithTags(Tags.PfaRegistrations);
+
+        // Codul poștal pentru formularele de adresă. Fără cont: îl folosește și formularul serviciilor
+        // de pe site. Un cod negăsit vine `null`, iar omul îl scrie de mână.
+        app.MapGet("onboarding/cod-postal", async (
+            string? judet,
+            string? localitate,
+            IPostalCodeLookup lookup,
+            CancellationToken cancellationToken) =>
+        {
+            string? codPostal = string.IsNullOrWhiteSpace(judet) || string.IsNullOrWhiteSpace(localitate)
+                ? null
+                : await lookup.FindAsync(judet, localitate, cancellationToken);
+
+            return Results.Ok(new { codPostal });
         })
         .WithTags(Tags.PfaRegistrations);
     }

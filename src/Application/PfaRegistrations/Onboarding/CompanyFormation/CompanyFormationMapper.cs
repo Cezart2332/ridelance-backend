@@ -21,7 +21,7 @@ internal static class CompanyFormationMapper
             return;
         }
 
-        target.Judet = Trim(payload.Judet);
+        target.Judet = County(payload.Judet);
         target.Localitate = Trim(payload.Localitate);
         target.Strada = Trim(payload.Strada);
         target.Numar = Trim(payload.Numar);
@@ -118,7 +118,10 @@ internal static class CompanyFormationMapper
             return;
         }
 
-        Set("JUDET", target.Judet, Trim(payload.Judet), v => target.Judet = v);
+        // Valoarea veche se aduce întâi la forma din listă: un „CJ" citit de OCR și „Cluj" trimis
+        // de formular sunt același județ, nu o editare manuală.
+        target.Judet = Judete.Canonical(target.Judet) ?? target.Judet;
+        Set("JUDET", target.Judet, County(payload.Judet), v => target.Judet = v);
         Set("LOCALITATE", target.Localitate, Trim(payload.Localitate), v => target.Localitate = v);
         Set("STRADA", target.Strada, Trim(payload.Strada), v => target.Strada = v);
         Set("NUMAR", target.Numar, Trim(payload.Numar), v => target.Numar = v);
@@ -194,6 +197,9 @@ internal static class CompanyFormationMapper
             false,
             false,
             null);
+
+    /// <summary>Județul în forma din listă, ca selectul din formular să-l afișeze.</summary>
+    private static string? County(string? value) => Judete.Canonical(value) ?? Trim(value);
 
     private static string? Trim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

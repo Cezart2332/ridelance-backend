@@ -290,7 +290,8 @@ internal sealed class ExtractedFieldApplier(
                 p.DataExpirarii = ParseDate(value) ?? p.DataExpirarii;
                 break;
             case "DOMICILIU_JUDET":
-                p.Domiciliu.Judet = value;
+                // Buletinul scrie județul prescurtat („Jud.CJ") sau fără diacritice.
+                p.Domiciliu.Judet = Judete.Canonical(value) ?? value;
                 break;
             case "DOMICILIU_LOCALITATE":
                 p.Domiciliu.Localitate = value;
@@ -324,7 +325,7 @@ internal sealed class ExtractedFieldApplier(
         // citit domiciliul și sediul e încă gol, îl oglindim: bifa „sediul social este la adresa
         // din buletin" apare atunci bifată singură, iar cine face excepție o debifează.
         // Doar peste gol — o adresă de sediu deja completată nu se rescrie (spec fix-uri §2).
-        if (fieldName.StartsWith("DOMICILIU_", StringComparison.Ordinal) && !request.OfficeAddress.IsComplete)
+        if (fieldName.StartsWith("DOMICILIU_", StringComparison.Ordinal) && !request.OfficeAddress.HasStreetAddress)
         {
             MirrorHomeAddressToOffice(request);
         }

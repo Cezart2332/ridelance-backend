@@ -109,7 +109,7 @@ internal sealed class StripeService : IStripeService
             UiMode = "embedded_page",
             // Stripe refuză o sesiune care are și cupon, și câmp de cod promoțional. Când avem un
             // cupon de aplicat, ăla e reducerea — nu-i cerem clientului să mai tasteze ceva.
-            AllowPromotionCodes = couponId is null && sessionMetadata?.GetValueOrDefault("fleetOnboarding") != "true" ? true : null,
+            AllowPromotionCodes = couponId is null ? true : null,
             Discounts = couponId is null
                 ? null
                 : [new SessionDiscountOptions { Coupon = couponId }],
