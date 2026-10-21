@@ -41,8 +41,19 @@ public interface IStripeService
         string? couponId = null,
         /// <summary>Prețuri adăugate pe aceeași sesiune: opțiunile plătite ale abonamentului.</summary>
         IReadOnlyList<string>? extraPriceIds = null,
+        /// <summary>
+        /// Codul de reducere scris de client în pagina noastră, deja găsit în Stripe
+        /// (<see cref="FindPromotionCodeIdAsync"/>). Se aplică direct pe sesiune.
+        /// </summary>
+        string? promotionCodeId = null,
         CancellationToken cancellationToken = default);
 #pragma warning restore CA1054
+
+    /// <summary>
+    /// ID-ul Stripe al unui cod de reducere activ, după textul scris de client. Null dacă nu
+    /// există, a expirat sau e oprit.
+    /// </summary>
+    Task<string?> FindPromotionCodeIdAsync(string code, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the status and customer details of an existing Stripe Checkout Session.

@@ -13,10 +13,11 @@ internal sealed class PaidExtras : IEndpoint
     {
         app.MapPost("cars/{id:guid}/extra-listing/checkout", async (
             Guid id,
+            CarCheckoutRequest? request,
             ICommandHandler<CreateExtraListingCheckoutCommand, string> handler,
             CancellationToken cancellationToken) =>
         {
-            Result<string> result = await handler.Handle(new CreateExtraListingCheckoutCommand(id), cancellationToken);
+            Result<string> result = await handler.Handle(new CreateExtraListingCheckoutCommand(id, request?.DiscountCode), cancellationToken);
             return result.Match(secret => Results.Ok(new { clientSecret = secret }), CustomResults.Problem);
         })
         .RequireAuthorization()
@@ -35,13 +36,17 @@ internal sealed class PaidExtras : IEndpoint
 
         app.MapPost("cars/{id:guid}/hidden-plate/checkout", async (
             Guid id,
+            CarCheckoutRequest? request,
             ICommandHandler<CreateHiddenPlateCheckoutCommand, string> handler,
             CancellationToken cancellationToken) =>
         {
-            Result<string> result = await handler.Handle(new CreateHiddenPlateCheckoutCommand(id), cancellationToken);
+            Result<string> result = await handler.Handle(new CreateHiddenPlateCheckoutCommand(id, request?.DiscountCode), cancellationToken);
             return result.Match(secret => Results.Ok(new { clientSecret = secret }), CustomResults.Problem);
         })
         .RequireAuthorization()
         .WithTags(Tags.Cars);
     }
 }
+
+/// <summary>Corpul opțional al unui checkout per mașină: codul de reducere scris în dialog.</summary>
+internal sealed record CarCheckoutRequest(string? DiscountCode);

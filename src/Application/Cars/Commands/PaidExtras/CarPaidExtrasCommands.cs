@@ -15,13 +15,13 @@ namespace Application.Cars.Commands.PaidExtras;
 /// Plata unui anunț extra, peste cele incluse în abonamentul flotei: <see cref="Pricing.PaidExtras.ExtraListingMonthlyBani" />
 /// pe lună, per mașină. Întoarce secretul pentru checkout-ul Stripe integrat în pagină.
 /// </summary>
-public sealed record CreateExtraListingCheckoutCommand(Guid CarId) : ICommand<string>;
+public sealed record CreateExtraListingCheckoutCommand(Guid CarId, string? DiscountCode = null) : ICommand<string>;
 
 /// <summary>
 /// Ascunderea numărului de înmatriculare în anunț: <see cref="Pricing.PaidExtras.HiddenPlateBani" /> o
 /// singură dată, per mașină. Rămâne plătită la orice republicare a aceleiași mașini.
 /// </summary>
-public sealed record CreateHiddenPlateCheckoutCommand(Guid CarId) : ICommand<string>;
+public sealed record CreateHiddenPlateCheckoutCommand(Guid CarId, string? DiscountCode = null) : ICommand<string>;
 
 /// <summary>Oprește abonamentul unui anunț extra. Anunțul iese din piață dacă nu mai are loc inclus.</summary>
 public sealed record CancelExtraListingCommand(Guid CarId) : ICommand;
@@ -61,6 +61,30 @@ internal static class CarPaidExtras
         return (owner, car);
     }
 
+    /// <summary>
+    /// Codul de reducere scris în dialog, căutat în Stripe. Fără cod: succes cu <c>null</c>. Un cod
+    /// scris dar negăsit e o eroare — clientul trebuie să afle înainte să plătească prețul întreg.
+    /// </summary>
+    public static async Task<Result<string?>> ResolveDiscountAsync(
+        IStripeService stripe,
+        string? code,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return Result.Success<string?>(null);
+        }
+
+        string? id = await stripe.FindPromotionCodeIdAsync(code, cancellationToken);
+        return id is null
+            ? Result.Failure<string?>(Error.Problem("Car.DiscountCodeInvalid", "Codul de reducere nu e valid sau a expirat."))
+            : Result.Success<string?>(id);
+    }
+
+    /// <summary>Cheia de idempotență include codul: aceeași cheie cu alți parametri e respinsă de Stripe.</summary>
+    public static string IdempotencySuffix(string? code) =>
+        string.IsNullOrWhiteSpace(code) ? string.Empty : $":{code.Trim().ToUpperInvariant()}";
+
     public static string ReturnUrl(IConfiguration configuration, Guid carId, string kind)
     {
 #pragma warning disable S1075 // URIs should not be hardcoded
@@ -97,6 +121,12 @@ internal sealed class CreateExtraListingCheckoutCommandHandler(
             return Result.Failure<string>(Error.Conflict("Car.ExtraListingActive", "Mașina are deja un anunț extra activ."));
         }
 
+        Result<string?> discount = await CarPaidExtras.ResolveDiscountAsync(stripe, command.DiscountCode, cancellationToken);
+        if (discount.IsFailure)
+        {
+            return Result.Failure<string>(discount.Error);
+        }
+
         string priceId = await stripe.ResolvePriceIdAsync(StripeCatalog.ExtraListingMonthly, cancellationToken);
         string url = CarPaidExtras.ReturnUrl(configuration, car.Id, "anunt-extra");
 
@@ -115,9 +145,10 @@ internal sealed class CreateExtraListingCheckoutCommandHandler(
                 ["stayOnPage"] = "true",
             },
             // Un dublu-click nu deschide două abonamente pentru aceeași mașină în aceeași zi.
-            $"extra-listing:{car.Id}:{DateTime.UtcNow:yyyyMMdd}",
+            $"extra-listing:{car.Id}:{DateTime.UtcNow:yyyyMMdd}{CarPaidExtras.IdempotencySuffix(command.DiscountCode)}",
             null,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            promotionCodeId: discount.Value);
     }
 }
 
@@ -143,6 +174,12 @@ internal sealed class CreateHiddenPlateCheckoutCommandHandler(
             return Result.Failure<string>(Error.Conflict("Car.PlateAlreadyHidden", "Numărul de înmatriculare e deja ascuns pentru mașina asta."));
         }
 
+        Result<string?> discount = await CarPaidExtras.ResolveDiscountAsync(stripe, command.DiscountCode, cancellationToken);
+        if (discount.IsFailure)
+        {
+            return Result.Failure<string>(discount.Error);
+        }
+
         string priceId = await stripe.ResolvePriceIdAsync(StripeCatalog.HiddenPlate, cancellationToken);
         string url = CarPaidExtras.ReturnUrl(configuration, car.Id, "numar-ascuns");
 
@@ -160,9 +197,10 @@ internal sealed class CreateHiddenPlateCheckoutCommandHandler(
                 ["carId"] = car.Id.ToString(),
                 ["stayOnPage"] = "true",
             },
-            $"hidden-plate:{car.Id}:{DateTime.UtcNow:yyyyMMdd}",
+            $"hidden-plate:{car.Id}:{DateTime.UtcNow:yyyyMMdd}{CarPaidExtras.IdempotencySuffix(command.DiscountCode)}",
             null,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            promotionCodeId: discount.Value);
     }
 }
 

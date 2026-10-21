@@ -75,6 +75,7 @@ internal sealed class StripeService : IStripeService
         string? idempotencyKey = null,
         string? couponId = null,
         IReadOnlyList<string>? extraPriceIds = null,
+        string? promotionCodeId = null,
         CancellationToken cancellationToken = default)
     {
         var meta = new Dictionary<string, string>
@@ -107,12 +108,10 @@ internal sealed class StripeService : IStripeService
             ],
             Mode = mode, // "payment" or "subscription"
             UiMode = "embedded_page",
-            // Stripe refuză o sesiune care are și cupon, și câmp de cod promoțional. Când avem un
-            // cupon de aplicat, ăla e reducerea — nu-i cerem clientului să mai tasteze ceva.
-            AllowPromotionCodes = couponId is null ? true : null,
-            Discounts = couponId is null
-                ? null
-                : [new SessionDiscountOptions { Coupon = couponId }],
+            // Stripe refuză o sesiune care are și o reducere aplicată, și câmp de cod promoțional.
+            // Cuponul nostru sau codul scris deja în pagină e reducerea — nu mai cerem altul.
+            AllowPromotionCodes = couponId is null && promotionCodeId is null ? true : null,
+            Discounts = SessionDiscounts(couponId, promotionCodeId),
             ReturnUrl = successUrl.Replace("{{CHECKOUT_SESSION_ID}}", "{CHECKOUT_SESSION_ID}"),
             // Onboardingul flotei și opțiunile plătite ale unui anunț rămân în pagină: plata se încheie
             // într-un dialog, care reîncarcă singur starea, fără o redirecționare care ar pierde contextul.
@@ -415,6 +414,31 @@ internal sealed class StripeService : IStripeService
             .CreateAsync(promotionOptions, cancellationToken: cancellationToken);
 
         return ToDiscountCode(promotionCode, coupon);
+    }
+
+    private static List<SessionDiscountOptions>? SessionDiscounts(string? couponId, string? promotionCodeId)
+    {
+        if (couponId is not null)
+        {
+            return [new SessionDiscountOptions { Coupon = couponId }];
+        }
+
+        return promotionCodeId is null ? null : [new SessionDiscountOptions { PromotionCode = promotionCodeId }];
+    }
+
+    public async Task<string?> FindPromotionCodeIdAsync(string code, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return null;
+        }
+
+        StripeList<PromotionCode> codes = await new PromotionCodeService().ListAsync(
+            new PromotionCodeListOptions { Code = code.Trim(), Active = true, Limit = 1 },
+            cancellationToken: cancellationToken);
+
+        PromotionCode? found = codes.Data.FirstOrDefault();
+        return found is null || found.ExpiresAt is DateTime expires && expires <= DateTime.UtcNow ? null : found.Id;
     }
 
     public async Task<IReadOnlyList<DiscountCode>> ListDiscountCodesAsync(

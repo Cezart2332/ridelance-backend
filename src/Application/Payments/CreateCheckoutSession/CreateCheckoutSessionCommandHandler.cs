@@ -133,7 +133,7 @@ internal sealed class CreateCheckoutSessionCommandHandler(
             pfaRegistrationId is null ? null : $"infiintare:{pfaRegistrationId}:{command.Plan}",
             couponId,
             addonPriceIds,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         return sessionUrl;
     }
