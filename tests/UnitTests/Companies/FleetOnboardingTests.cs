@@ -173,7 +173,7 @@ public sealed class FleetOnboardingTests
         User user = await AddUser(db);
         FleetOnboardingService service = Service(db, user);
         (await service.SaveAsync(new(6, Cycle: "Annual"), default)).IsFailure.ShouldBeTrue();
-        (await service.CheckoutAsync(default)).IsFailure.ShouldBeTrue();
+        (await service.CheckoutAsync(null, default)).IsFailure.ShouldBeTrue();
     }
 
     [Fact]
@@ -255,12 +255,46 @@ public sealed class FleetOnboardingTests
         FleetOnboardingService service = Service(db, user, stripe);
         (await service.SaveAsync(new(7, TermsAccepted: true), default)).IsFailure.ShouldBeTrue();
         (await service.SaveAsync(new(7, TermsAccepted: true, PrivacyAccepted: true), default)).IsSuccess.ShouldBeTrue();
-        (await service.CheckoutAsync(default)).Value.ShouldBe("cs_test_123_secret_456");
-        (await service.CheckoutAsync(default)).Value.ShouldBe("cs_test_123_secret_456");
+        (await service.CheckoutAsync(null, default)).Value.ShouldBe("cs_test_123_secret_456");
+        (await service.CheckoutAsync(null, default)).Value.ShouldBe("cs_test_123_secret_456");
         ((StripeProxy)(object)stripe).CreateCalls.ShouldBe(1);
         (await service.SaveAsync(new(6, Cycle: "Annual"), default)).IsFailure.ShouldBeTrue();
         user.FleetOnboarding.CompletedAtUtc.ShouldBeNull();
         user.FleetOnboarding.LegalVersion.ShouldBe(FleetPricing.LegalVersion);
+    }
+
+    [Fact]
+    public async Task DiscountCodeReplacesTheOpenCheckout()
+    {
+        await using ApplicationDbContext db = Database();
+        User user = await AddUser(db, 6);
+        IStripeService stripe = DispatchProxy.Create<IStripeService, StripeProxy>();
+        var proxy = (StripeProxy)(object)stripe;
+        FleetOnboardingService service = Service(db, user, stripe);
+        (await service.SaveAsync(new(7, TermsAccepted: true, PrivacyAccepted: true), default)).IsSuccess.ShouldBeTrue();
+        (await service.CheckoutAsync(null, default)).IsSuccess.ShouldBeTrue();
+        Guid? firstAttempt = user.FleetOnboarding.CheckoutAttemptId;
+
+        (await service.CheckoutAsync("NUEXISTA", default)).IsFailure.ShouldBeTrue();
+        proxy.CreateCalls.ShouldBe(1);
+
+        (await service.CheckoutAsync("RIDE10", default)).IsSuccess.ShouldBeTrue();
+        proxy.ExpireCalls.ShouldBe(1);
+        proxy.CreateCalls.ShouldBe(2);
+        proxy.LastPromotionCodeId.ShouldBe("promo_RIDE10");
+        user.FleetOnboarding.CheckoutAttemptId.ShouldNotBe(firstAttempt);
+    }
+
+    [Fact]
+    public async Task DiscountCodeDoesNotStackWithBcr()
+    {
+        await using ApplicationDbContext db = Database();
+        User user = await AddUser(db, 6);
+        user.FleetOnboarding.BcrEligibleAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        FleetOnboardingService service = Service(db, user);
+        (await service.SaveAsync(new(7, TermsAccepted: true, PrivacyAccepted: true), default)).IsSuccess.ShouldBeTrue();
+        (await service.CheckoutAsync("RIDE10", default)).Error.Code.ShouldBe("Fleet.DiscountWithBcr");
     }
 
     private static ApplicationDbContext Database() => new(
@@ -302,12 +336,25 @@ public sealed class FleetOnboardingTests
     {
         public Stripe.Event? Webhook { get; set; }
         public int CreateCalls { get; private set; }
+        public int ExpireCalls { get; private set; }
+        public string? LastPromotionCodeId { get; private set; }
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
             if (targetMethod?.Name == nameof(IStripeService.CreateCheckoutSessionAsync))
             {
                 CreateCalls++;
+                LastPromotionCodeId = args?[11] as string;
                 return Task.FromResult("cs_test_123_secret_456");
+            }
+            if (targetMethod?.Name == nameof(IStripeService.ExpireCheckoutAsync))
+            {
+                ExpireCalls++;
+                return Task.CompletedTask;
+            }
+            if (targetMethod?.Name == nameof(IStripeService.FindPromotionCodeIdAsync))
+            {
+                string code = (string)args![0]!;
+                return Task.FromResult<string?>(code == "RIDE10" ? "promo_RIDE10" : null);
             }
             return targetMethod?.Name switch
             {

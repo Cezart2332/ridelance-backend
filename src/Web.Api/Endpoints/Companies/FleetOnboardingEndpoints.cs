@@ -20,9 +20,12 @@ internal sealed class FleetOnboardingEndpoints : IEndpoint
             (await service.GetAsync(ct)).Match(Results.Ok, CustomResults.Problem));
         group.MapPut("", async (FleetOnboardingInput input, FleetOnboardingService service, CancellationToken ct) =>
             (await service.SaveAsync(input, ct)).Match(Results.Ok, CustomResults.Problem));
-        group.MapPost("checkout", async (FleetOnboardingService service, CancellationToken ct) =>
-            (await service.CheckoutAsync(ct)).Match(secret => Results.Ok(new { clientSecret = secret }), CustomResults.Problem));
+        group.MapPost("checkout", async (FleetCheckoutRequest? request, FleetOnboardingService service, CancellationToken ct) =>
+            (await service.CheckoutAsync(request?.DiscountCode, ct)).Match(secret => Results.Ok(new { clientSecret = secret }), CustomResults.Problem));
         group.MapDelete("checkout", async (FleetOnboardingService service, CancellationToken ct) =>
             (await service.CancelCheckoutAsync(ct)).Match(Results.Ok, CustomResults.Problem));
     }
 }
+
+/// <summary>Corpul opțional al plății abonamentului: codul de reducere scris în pagină.</summary>
+internal sealed record FleetCheckoutRequest(string? DiscountCode);

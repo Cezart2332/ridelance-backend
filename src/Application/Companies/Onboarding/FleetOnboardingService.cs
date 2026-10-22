@@ -242,7 +242,11 @@ public sealed class FleetOnboardingService(
         return await ResponseAsync(user, ct);
     }
 
-    public async Task<Result<string>> CheckoutAsync(CancellationToken ct)
+    /// <summary>
+    /// Deschide (sau reia) plata abonamentului. Cu <paramref name="discountCode"/>, sesiunea deschisă se
+    /// închide și se face una nouă, cu reducerea pe ea: Stripe nu schimbă reducerea unei sesiuni existente.
+    /// </summary>
+    public async Task<Result<string>> CheckoutAsync(string? discountCode, CancellationToken ct)
     {
         User? user = await UserAsync(ct);
         if (user is null || user.FleetOnboarding.CompletedStep != 7
@@ -259,13 +263,37 @@ public sealed class FleetOnboardingService(
         }
 
         FleetOnboarding progress = user.FleetOnboarding;
+        bool eligible = progress.BcrEligibleAtUtc is not null && progress.CompletedAtUtc is null;
+        string? promotionCodeId = null;
+        if (!string.IsNullOrWhiteSpace(discountCode))
+        {
+            // Stripe acceptă o singură reducere pe sesiune, iar beneficiul BCR e deja una.
+            if (eligible)
+            {
+                return Result.Failure<string>(Error.Problem("Fleet.DiscountWithBcr", "Beneficiul BCR nu se cumulează cu un cod de reducere."));
+            }
+
+            promotionCodeId = await stripe.FindPromotionCodeIdAsync(discountCode, ct);
+            if (promotionCodeId is null)
+            {
+                return Result.Failure<string>(Error.Problem("Fleet.DiscountCodeInvalid", "Codul de reducere nu e valid sau a expirat."));
+            }
+        }
+
         if (progress.CheckoutClientSecret is not null)
         {
             string sessionId = progress.CheckoutClientSecret.Split("_secret_", StringSplitOptions.None)[0];
             (string status, _) = await stripe.GetSessionStatusAsync(sessionId, ct);
-            if (status == "open")
+            if (status == "open" && promotionCodeId is null)
             {
                 return progress.CheckoutClientSecret;
+            }
+
+            if (status == "open")
+            {
+                // Sesiunea veche nu mai are voie să poată fi plătită la prețul întreg.
+                await stripe.ExpireCheckoutAsync(sessionId, ct);
+                status = "expired";
             }
 
             if (status == "complete")
@@ -276,9 +304,9 @@ public sealed class FleetOnboardingService(
             progress.CheckoutClientSecret = null;
             progress.CheckoutAttemptId = null;
         }
-        progress.CheckoutAttemptId ??= Guid.NewGuid();
+        // O sesiune cu cod are alți parametri: aceeași cheie de idempotență ar fi respinsă de Stripe.
+        progress.CheckoutAttemptId = promotionCodeId is null ? progress.CheckoutAttemptId ?? Guid.NewGuid() : Guid.NewGuid();
         await context.SaveChangesAsync(ct);
-        bool eligible = progress.BcrEligibleAtUtc is not null && progress.CompletedAtUtc is null;
         StripeCatalogItem item = progress.Cycle == SubscriptionBillingCycle.Annual ? StripeCatalog.FleetAnnual : StripeCatalog.Fleet;
         string price = await stripe.ResolvePriceIdAsync(item, ct);
         string? coupon = eligible ? await stripe.EnsureAdvanceCreditCouponAsync(FleetPricing.BcrCoupon(progress.Cycle), ct) : null;
@@ -287,7 +315,7 @@ public sealed class FleetOnboardingService(
             $"{baseUrl}/onboarding-srl?payment=returned", $"{baseUrl}/onboarding-srl",
             user.Email, user.Id.ToString(), $"plan:fleet|cycle:{progress.Cycle}{(progress.BcrRequested ? "|bcr:1" : string.Empty)}",
             new Dictionary<string, string> { ["fleetOnboarding"] = "true", ["fleetBcrApplied"] = eligible ? "true" : "false" },
-            $"fleet:{user.Id}:{progress.CheckoutAttemptId}", coupon, cancellationToken: ct);
+            $"fleet:{user.Id}:{progress.CheckoutAttemptId}", coupon, promotionCodeId: promotionCodeId, cancellationToken: ct);
         progress.CheckoutClientSecret = secret;
         await context.SaveChangesAsync(ct);
         return secret;
