@@ -6,6 +6,9 @@
   <ItemGroup>
     <!-- Static code analysis -->
     <PackageVersion Include="ClosedXML" Version="0.105.1" />
+    <!-- Venea indirect în 8.0.1 și 9.0.0, cu CVE-2026-84008 și CVE-2026-70162 (NU1902/NU1903):
+         referit direct din Infrastructure și Web.Api ca să urce la versiunea reparată. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageVersion Include="DotNetEnv" Version="3.2.0" />
     <PackageVersion Include="Mjml.Net" Version="4.11.0" />
     <PackageVersion Include="Resend" Version="0.5.0" />
