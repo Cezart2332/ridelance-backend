@@ -88,7 +88,11 @@ internal sealed class UploadCompanyCoverCommandHandler(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        CompanyUploads.DeleteIfOurs(previous);
+        // Nu și când e poza de pe pagina publică: aceea rămâne live până la aprobarea celei noi.
+        if (previous != profile.PublishedPage.CoverImageUrl)
+        {
+            CompanyUploads.DeleteIfOurs(previous);
+        }
 
         return Result.Success(profile.CoverImageUrl);
     }
@@ -121,7 +125,10 @@ internal sealed class DeleteCompanyCoverCommandHandler(
         CompanyPageReview.SubmitForReview(profile);
         await context.SaveChangesAsync(cancellationToken);
 
-        CompanyUploads.DeleteIfOurs(previous);
+        if (previous != profile.PublishedPage.CoverImageUrl)
+        {
+            CompanyUploads.DeleteIfOurs(previous);
+        }
 
         return Result.Success();
     }

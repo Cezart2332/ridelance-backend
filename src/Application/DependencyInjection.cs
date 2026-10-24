@@ -38,6 +38,8 @@ public static class DependencyInjection
         services.AddScoped<Documents.ExtractedFields.IExtractedFieldApplier,
             Documents.ExtractedFields.ExtractedFieldApplier>();
         services.AddScoped<Documents.AiVerification.DocumentIdentityService>();
+        // Confirmarea emailului și a telefonului, impusă pe server (vezi AccountVerificationMiddleware).
+        services.AddSingleton<Users.AccountVerification.AccountVerificationGate>();
 
         services.AddScoped<Accounting.Tax.IExchangeRateProvider, Accounting.Tax.ExchangeRateProvider>();
         services.AddScoped<Accounting.Declarations.DeclarationFiles>();

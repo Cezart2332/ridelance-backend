@@ -60,6 +60,14 @@ public sealed class User : Entity
 
     public bool IsEmailVerified => EmailVerifiedAtUtc.HasValue;
 
+    /// <summary>Hash-ul codului de resetare a parolei. Se șterge la folosire. Vezi <see cref="PasswordReset" />.</summary>
+    public string? PasswordResetCodeHash { get; set; }
+
+    public DateTime? PasswordResetCodeExpiresAtUtc { get; set; }
+
+    /// <summary>Câte coduri greșite s-au încercat de la ultima trimitere.</summary>
+    public int PasswordResetAttempts { get; set; }
+
     /// <summary>
     /// Când a fost confirmat numărul de telefon. <see langword="null" /> înseamnă neconfirmat.
     /// </summary>
