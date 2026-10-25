@@ -41,6 +41,103 @@ internal static class ClientAccounts
     public static async Task<bool> IsAdminAsync(IApplicationDbContext context, Guid userId, CancellationToken cancellationToken) =>
         await context.Users.AsNoTracking().AnyAsync(u => u.Id == userId && u.Role == UserRole.Admin, cancellationToken);
 
+    private static readonly SubscriptionStatus[] Billable =
+    [
+        SubscriptionStatus.Active,
+        SubscriptionStatus.ActivePendingBilling,
+        SubscriptionStatus.PaidPendingAccess,
+        SubscriptionStatus.PastDue,
+    ];
+
+    /// <summary>
+    /// Închiderea propriu-zisă, comună adminului și clientului care își șterge singur contul.
+    /// Nu salvează: apelantul face SaveChanges.
+    /// </summary>
+    public static async Task<Result> CloseAsync(
+        IApplicationDbContext context,
+        IStripeService stripe,
+        User user,
+        Guid closedByUserId,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        DateTime now = DateTime.UtcNow;
+
+        // Întâi Stripe: dacă oprirea eșuează, contul rămâne deschis. Invers am avea un cont închis
+        // care se taxează în continuare.
+        List<UserSubscription> billable = await context.UserSubscriptions
+            .Where(s => s.UserId == user.Id && Billable.Contains(s.Status))
+            .ToListAsync(cancellationToken);
+
+        foreach (UserSubscription subscription in billable)
+        {
+            if (!string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
+            {
+                try
+                {
+                    await stripe.CancelSubscriptionAsync(subscription.StripeSubscriptionId, cancellationToken);
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    return Result.Failure(StripeCancelFailed);
+                }
+            }
+
+            subscription.Status = SubscriptionStatus.Cancelled;
+            subscription.CancelledAtUtc = now;
+        }
+
+        // Și anunțurile extra au abonament propriu, per mașină: se opresc la fel.
+        List<Car> paidCars = await context.Cars
+            .Where(c => c.PostedByUserId == user.Id
+                && c.StripeSubscriptionId != null
+                && (c.PaymentStatus == CarListingPaymentStatus.Paid || c.PaymentStatus == CarListingPaymentStatus.PastDue))
+            .ToListAsync(cancellationToken);
+
+        foreach (Car car in paidCars)
+        {
+            try
+            {
+                await stripe.CancelSubscriptionAsync(car.StripeSubscriptionId!, cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                return Result.Failure(StripeCancelFailed);
+            }
+
+            car.PaymentStatus = CarListingPaymentStatus.Cancelled;
+        }
+
+        // Anunțurile unei firme închise nu mai au ce căuta în marketplace. Pauză, nu arhivare:
+        // la redeschidere firma le republică dintr-un click, cu tot istoricul lor.
+        List<Car> published = await context.Cars
+            .Where(c => c.PostedByUserId == user.Id && c.ListingStatus == ListingStatus.Published)
+            .ToListAsync(cancellationToken);
+        foreach (Car car in published)
+        {
+            car.ListingStatus = ListingStatus.Paused;
+            car.UpdatedAtUtc = now;
+        }
+
+        reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        user.DeletedAtUtc = now;
+        user.DeletedByUserId = closedByUserId;
+        user.DeletionReason = reason;
+        // Sesiunea deschisă se stinge la următoarea reînnoire.
+        user.RefreshToken = null;
+        user.RefreshTokenExpiryUtc = null;
+
+        await LogOnPfaAsync(
+            context,
+            user.Id,
+            closedByUserId,
+            "AccountClosed",
+            reason is null ? "Cont închis. Datele rămân păstrate." : $"Cont închis. Motiv: {reason}",
+            cancellationToken);
+
+        return Result.Success();
+    }
+
     /// <summary>Urma în jurnalul dosarului PFA, acolo unde adminul citește istoricul clientului.</summary>
     public static async Task LogOnPfaAsync(
         IApplicationDbContext context,
@@ -76,14 +173,6 @@ internal sealed class CloseClientAccountCommandHandler(
     IStripeService stripe)
     : ICommandHandler<CloseClientAccountCommand, ClientAccountStatusResponse>
 {
-    private static readonly SubscriptionStatus[] Billable =
-    [
-        SubscriptionStatus.Active,
-        SubscriptionStatus.ActivePendingBilling,
-        SubscriptionStatus.PaidPendingAccess,
-        SubscriptionStatus.PastDue,
-    ];
-
     public async Task<Result<ClientAccountStatusResponse>> Handle(
         CloseClientAccountCommand command,
         CancellationToken cancellationToken)
@@ -109,79 +198,11 @@ internal sealed class CloseClientAccountCommandHandler(
             return new ClientAccountStatusResponse(user.Id, user.DeletedAtUtc, user.DeletionReason);
         }
 
-        DateTime now = DateTime.UtcNow;
-
-        // Întâi Stripe: dacă oprirea eșuează, contul rămâne deschis. Invers am avea un cont închis
-        // care se taxează în continuare.
-        List<UserSubscription> billable = await context.UserSubscriptions
-            .Where(s => s.UserId == user.Id && Billable.Contains(s.Status))
-            .ToListAsync(cancellationToken);
-
-        foreach (UserSubscription subscription in billable)
+        Result closed = await ClientAccounts.CloseAsync(context, stripe, user, userContext.UserId, command.Reason, cancellationToken);
+        if (closed.IsFailure)
         {
-            if (!string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
-            {
-                try
-                {
-                    await stripe.CancelSubscriptionAsync(subscription.StripeSubscriptionId, cancellationToken);
-                }
-                catch (Exception) when (!cancellationToken.IsCancellationRequested)
-                {
-                    return Result.Failure<ClientAccountStatusResponse>(ClientAccounts.StripeCancelFailed);
-                }
-            }
-
-            subscription.Status = SubscriptionStatus.Cancelled;
-            subscription.CancelledAtUtc = now;
+            return Result.Failure<ClientAccountStatusResponse>(closed.Error);
         }
-
-        // Și anunțurile extra au abonament propriu, per mașină: se opresc la fel.
-        List<Car> paidCars = await context.Cars
-            .Where(c => c.PostedByUserId == user.Id
-                && c.StripeSubscriptionId != null
-                && (c.PaymentStatus == CarListingPaymentStatus.Paid || c.PaymentStatus == CarListingPaymentStatus.PastDue))
-            .ToListAsync(cancellationToken);
-
-        foreach (Car car in paidCars)
-        {
-            try
-            {
-                await stripe.CancelSubscriptionAsync(car.StripeSubscriptionId!, cancellationToken);
-            }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                return Result.Failure<ClientAccountStatusResponse>(ClientAccounts.StripeCancelFailed);
-            }
-
-            car.PaymentStatus = CarListingPaymentStatus.Cancelled;
-        }
-
-        // Anunțurile unei firme închise nu mai au ce căuta în marketplace. Pauză, nu arhivare:
-        // la redeschidere firma le republică dintr-un click, cu tot istoricul lor.
-        List<Car> published = await context.Cars
-            .Where(c => c.PostedByUserId == user.Id && c.ListingStatus == ListingStatus.Published)
-            .ToListAsync(cancellationToken);
-        foreach (Car car in published)
-        {
-            car.ListingStatus = ListingStatus.Paused;
-            car.UpdatedAtUtc = now;
-        }
-
-        string? reason = string.IsNullOrWhiteSpace(command.Reason) ? null : command.Reason.Trim();
-        user.DeletedAtUtc = now;
-        user.DeletedByUserId = userContext.UserId;
-        user.DeletionReason = reason;
-        // Sesiunea deschisă se stinge la următoarea reînnoire.
-        user.RefreshToken = null;
-        user.RefreshTokenExpiryUtc = null;
-
-        await ClientAccounts.LogOnPfaAsync(
-            context,
-            user.Id,
-            userContext.UserId,
-            "AccountClosed",
-            reason is null ? "Cont închis. Datele rămân păstrate." : $"Cont închis. Motiv: {reason}",
-            cancellationToken);
 
         await context.SaveChangesAsync(cancellationToken);
         return new ClientAccountStatusResponse(user.Id, user.DeletedAtUtc, user.DeletionReason);
