@@ -190,7 +190,7 @@ internal sealed class GetPfaDashboardRidesQueryHandler(
             order.RideDistance > 0 ? Math.Round(order.RideDistance / 1000.0, 1) : null,
             durationMin,
             IsCash(order) ? "cash" : "card",
-            order.NetEarnings);
+            order.RidePrice);
     }
 
     /// <summary>

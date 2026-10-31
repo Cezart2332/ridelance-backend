@@ -70,9 +70,9 @@ internal sealed class BoltSyncJob(
             {
                 logger.LogInformation("Syncing Bolt orders for user: {UserId}, company: {CompanyId}", integration.UserId, integration.CompanyId);
 
-                // Sync orders for the last 2 days to capture new/updated orders
                 var end = DateTime.UtcNow;
-                var start = end.AddDays(-2); // Fetch orders from the last 2 days to account for late/delayed entries
+                // Fleet API 2.0 filtrează după data cursei, nu după revizia de preț: 7 zile prind și corecturile întârziate.
+                var start = end.AddDays(-7);
 
                 List<BoltOrder> orders = await boltService.FetchOrdersAsync(integration, start, end, ct);
 

@@ -33,7 +33,8 @@ internal sealed class SyncBoltOrdersCommandHandler(
         try
         {
             DateTime end = DateTime.UtcNow;
-            DateTime start = end.AddDays(-2); // Fetch orders from the last 2 days to account for late/delayed entries
+            // Fleet API 2.0 filtrează după data cursei, nu după revizia de preț: 7 zile prind și corecturile întârziate.
+            DateTime start = end.AddDays(-7);
 
             List<BoltOrder> orders = await boltService.FetchOrdersAsync(integration, start, end, cancellationToken);
 

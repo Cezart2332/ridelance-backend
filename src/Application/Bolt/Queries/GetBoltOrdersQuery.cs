@@ -19,9 +19,9 @@ public sealed record BoltOrderResponse(
     string DestinationAddress,
     double RideDistance,
     decimal RidePrice,
-    decimal NetEarnings,
+    decimal? NetEarnings,
     decimal Tip,
-    decimal Commission,
+    decimal? Commission,
     string VehicleModel,
     string VehicleLicensePlate,
     DateTime? OrderFinishedTime);
@@ -29,8 +29,8 @@ public sealed record BoltOrderResponse(
 public sealed record BoltOrdersResponse(
     List<BoltOrderResponse> Orders,
     int TotalOrdersCount,
-    decimal TotalNetEarnings,
-    decimal TotalCommissions,
+    decimal TotalEarnings,
+    decimal? TotalCommissions,
     decimal TotalTips);
 
 public sealed record GetBoltOrdersQuery(int? Limit = null, int? Offset = null) : IQuery<BoltOrdersResponse>;
@@ -51,8 +51,11 @@ internal sealed class GetBoltOrdersQueryHandler(
 
         // Compute aggregates efficiently on the database side
         int totalOrdersCount = await queryable.CountAsync(cancellationToken);
-        decimal totalNetEarnings = totalOrdersCount > 0 ? await queryable.SumAsync(o => o.NetEarnings, cancellationToken) : 0;
-        decimal totalCommissions = totalOrdersCount > 0 ? await queryable.SumAsync(o => o.Commission, cancellationToken) : 0;
+        // Încasările sunt brutul cursei; comisionul e cunoscut doar pe cursele aduse prin Fleet API V1.
+        decimal totalEarnings = totalOrdersCount > 0 ? await queryable.SumAsync(o => o.RidePrice, cancellationToken) : 0;
+        decimal? totalCommissions = await queryable.AnyAsync(o => o.Commission != null, cancellationToken)
+            ? await queryable.SumAsync(o => o.Commission, cancellationToken)
+            : null;
         decimal totalTips = totalOrdersCount > 0 ? await queryable.SumAsync(o => o.Tip, cancellationToken) : 0;
 
         // Fetch paginated subset of orders sorted by newest first
@@ -92,7 +95,7 @@ internal sealed class GetBoltOrdersQueryHandler(
         return new BoltOrdersResponse(
             ordersList,
             totalOrdersCount,
-            totalNetEarnings,
+            totalEarnings,
             totalCommissions,
             totalTips);
     }

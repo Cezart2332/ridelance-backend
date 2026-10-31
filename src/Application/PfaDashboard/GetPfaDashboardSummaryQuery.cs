@@ -532,17 +532,19 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
             .Where(o => MatchesPayment(o, ctx.Payment))
             .ToList();
 
+        // Venitul Bolt e brutul cursei, ca în PfaMonthlyIncomeRecalculator; comisionul e cunoscut
+        // doar pentru cursele aduse prin V1 (Fleet API 2.0 nu-l mai trimite pe cursă).
         foreach (BoltOrder order in orders)
         {
-            bolt.Net += order.NetEarnings;
-            bolt.Fees += order.Commission;
+            bolt.Net += order.RidePrice;
+            bolt.Fees += order.Commission ?? 0m;
             if (IsCash(order))
             {
-                bolt.Cash += order.NetEarnings;
+                bolt.Cash += order.RidePrice;
             }
             else
             {
-                bolt.Card += order.NetEarnings;
+                bolt.Card += order.RidePrice;
             }
 
             bolt.Km += order.RideDistance / 1000.0;

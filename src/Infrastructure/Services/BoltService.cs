@@ -1,6 +1,8 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Application.Abstractions.Services;
 using Domain.Bolt;
 using Microsoft.Extensions.Logging;
@@ -9,16 +11,37 @@ using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Services;
 
+/// <summary>
+/// Bolt Fleet API 2.0 (developer.bolt.eu/fleet-integration). Toate apelurile sunt POST, răspunsul vine
+/// în plicul <c>{code, message, data}</c>, iar erorile vin cu HTTP 200 și <c>code ≠ 0</c> (doar 1005 vine ca 429).
+/// </summary>
 internal sealed class BoltService(
     IHttpClientFactory httpClientFactory,
     ILogger<BoltService> logger) : IBoltService
 {
+    private const string BaseUrl = "https://node.bolt.eu/fleet-integration-gateway-v2/fleetIntegration/v2";
+    private const int PageSize = 1000;
+    private const int MaxRateLimitRetries = 3;
+
+    // Bolt refuză intervale mai lungi de 31 de zile la istoricul de curse (25810 DATE_RANGE_TOO_BIG).
+    internal static readonly TimeSpan MaxRideHistoryRange = TimeSpan.FromDays(31);
+
+    private const string FinishedStatus = "finished";
+    private const int NotAuthorizedCode = 503;
+    private const int TooManyRequestsCode = 1005;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        NumberHandling = JsonNumberHandling.AllowReadingFromString
+    };
+
     public async Task<string> GetAccessTokenAsync(BoltIntegration integration, CancellationToken cancellationToken)
     {
-        // Cache token if valid for at least 5 minutes
+        // Tokenul Bolt trăiește doar 10 minute: îl refolosim cât mai are cel puțin un minut.
         if (!string.IsNullOrEmpty(integration.AccessToken) &&
             integration.TokenExpiresAtUtc.HasValue &&
-            integration.TokenExpiresAtUtc.Value > DateTime.UtcNow.AddMinutes(5))
+            integration.TokenExpiresAtUtc.Value > DateTime.UtcNow.AddMinutes(1))
         {
             return integration.AccessToken;
         }
@@ -27,7 +50,7 @@ internal sealed class BoltService(
 
         using var client = httpClientFactory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://oidc.bolt.eu/token");
-        
+
         var content = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["client_id"] = integration.ClientId,
@@ -63,313 +86,296 @@ internal sealed class BoltService(
     {
         logger.LogInformation("Fetching associated companies from Bolt API...");
 
-        using var client = httpClientFactory.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Get, "https://node.bolt.eu/fleet-integration-gateway/fleetIntegration/v1/getCompanies");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        BoltCompaniesData data = await PostAsync<BoltCompaniesData>(accessToken, "getCompanies", null, cancellationToken);
 
-        HttpResponseMessage response = await client.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            string err = await response.Content.ReadAsStringAsync(cancellationToken);
-            logger.LogError("Failed to fetch Bolt companies. Status: {Status}, Response: {Response}", response.StatusCode, err);
-            throw new Exception($"Eroare încărcare detalii companie de la Bolt: {response.StatusCode}");
-        }
+        List<BoltCompanyDto> companies = data.Companies ?? [];
+        BoltCompanyDto company = companies.FirstOrDefault(c => string.Equals(c.StatusCode, "active", StringComparison.OrdinalIgnoreCase))
+            ?? companies.FirstOrDefault()
+            ?? throw new Exception("Nu s-a găsit nicio companie de tip fleet asociată cu acest cont Bolt.");
 
-        string json = await response.Content.ReadAsStringAsync(cancellationToken);
-        logger.LogWarning("DEBUG: getCompanies JSON: {Json}", json);
-        Console.WriteLine($"DEBUG: getCompanies JSON: {json}");
-        using JsonDocument doc = JsonDocument.Parse(json);
-        JsonElement root = doc.RootElement;
-
-        // Try extracting from data.company_ids (returned format: {"code":0,"message":"OK","data":{"company_ids":[178106]}})
-        if (root.TryGetProperty("data", out JsonElement dataProp))
-        {
-            if (dataProp.ValueKind == JsonValueKind.Object && dataProp.TryGetProperty("company_ids", out JsonElement idsProp))
-            {
-                if (idsProp.ValueKind == JsonValueKind.Array && idsProp.GetArrayLength() > 0)
-                {
-                    int compId = 0;
-                    JsonElement firstId = idsProp[0];
-                    if (firstId.ValueKind == JsonValueKind.Number)
-                    {
-                        compId = firstId.GetInt32();
-                    }
-                    else if (firstId.ValueKind == JsonValueKind.String && int.TryParse(firstId.GetString(), out int idParsed))
-                    {
-                        compId = idParsed;
-                    }
-
-                    if (compId != 0)
-                    {
-                        return (compId, $"Bolt Fleet {compId}");
-                    }
-                }
-            }
-        }
-
-        // Try extracting from root company_ids
-        if (root.TryGetProperty("company_ids", out JsonElement rootIdsProp))
-        {
-            if (rootIdsProp.ValueKind == JsonValueKind.Array && rootIdsProp.GetArrayLength() > 0)
-            {
-                int compId = 0;
-                JsonElement firstId = rootIdsProp[0];
-                if (firstId.ValueKind == JsonValueKind.Number)
-                {
-                    compId = firstId.GetInt32();
-                }
-                else if (firstId.ValueKind == JsonValueKind.String && int.TryParse(firstId.GetString(), out int idParsed))
-                {
-                    compId = idParsed;
-                }
-
-                if (compId != 0)
-                {
-                    return (compId, $"Bolt Fleet {compId}");
-                }
-            }
-        }
-
-        // Original fallback logic for array of objects:
-        JsonElement companiesElement = default;
-        bool found = false;
-
-        if (root.TryGetProperty("data", out JsonElement dProp))
-        {
-            if (dProp.TryGetProperty("companies", out JsonElement cos))
-            {
-                companiesElement = cos;
-                found = true;
-            }
-            else if (dProp.ValueKind == JsonValueKind.Array)
-            {
-                companiesElement = dProp;
-                found = true;
-            }
-        }
-
-        if (!found && root.TryGetProperty("companies", out JsonElement cosRoot))
-        {
-            companiesElement = cosRoot;
-            found = true;
-        }
-
-        if (!found && root.ValueKind == JsonValueKind.Array)
-        {
-            companiesElement = root;
-            found = true;
-        }
-
-        if (found && companiesElement.ValueKind == JsonValueKind.Array && companiesElement.GetArrayLength() > 0)
-        {
-            // If the array contains integers directly, not objects
-            if (companiesElement[0].ValueKind == JsonValueKind.Number)
-            {
-                int directId = companiesElement[0].GetInt32();
-                return (directId, $"Bolt Fleet {directId}");
-            }
-            else if (companiesElement[0].ValueKind == JsonValueKind.String && int.TryParse(companiesElement[0].GetString(), out int parsedId))
-            {
-                return (parsedId, $"Bolt Fleet {parsedId}");
-            }
-
-            JsonElement firstComp = companiesElement[0];
-            int compId = 0;
-            string compName = "Bolt Fleet Company";
-
-            if (firstComp.TryGetProperty("company_id", out JsonElement cidVal) ||
-                firstComp.TryGetProperty("companyId", out cidVal) ||
-                firstComp.TryGetProperty("id", out cidVal))
-            {
-                if (cidVal.ValueKind == JsonValueKind.Number)
-                    compId = cidVal.GetInt32();
-                else if (cidVal.ValueKind == JsonValueKind.String && int.TryParse(cidVal.GetString(), out int idParsed))
-                    compId = idParsed;
-            }
-
-            if (firstComp.TryGetProperty("company_name", out JsonElement nameVal) ||
-                firstComp.TryGetProperty("companyName", out nameVal) ||
-                firstComp.TryGetProperty("name", out nameVal))
-            {
-                compName = nameVal.GetString() ?? compName;
-            }
-
-            if (compId != 0)
-            {
-                return (compId, compName);
-            }
-        }
-
-        throw new Exception("Nu s-a găsit nicio companie de tip fleet asociată cu acest cont Bolt.");
+        string name = string.IsNullOrWhiteSpace(company.LegalName) ? $"Bolt Fleet {company.CompanyId}" : company.LegalName;
+        return (company.CompanyId, name);
     }
 
     public async Task<List<BoltOrder>> FetchOrdersAsync(BoltIntegration integration, DateTime start, DateTime end, CancellationToken cancellationToken)
     {
-        string token = await GetAccessTokenAsync(integration, cancellationToken);
-
         logger.LogInformation("Fetching orders for company {CompanyId} from {Start} to {End}", integration.CompanyId, start, end);
 
-        using var client = httpClientFactory.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Post, "https://node.bolt.eu/fleet-integration-gateway/fleetIntegration/v1/getFleetOrders");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-        long startTs = new DateTimeOffset(start.ToUniversalTime()).ToUnixTimeSeconds();
-        long endTs = new DateTimeOffset(end.ToUniversalTime()).ToUnixTimeSeconds();
-
-        var body = new
-        {
-            offset = 0,
-            limit = 1000,
-            company_ids = new[] { integration.CompanyId },
-            company_id = integration.CompanyId,
-            start_ts = startTs,
-            end_ts = endTs,
-            time_range_filter_type = "price_review"
-        };
-
-        request.Content = JsonContent.Create(body);
-
-        HttpResponseMessage response = await client.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            string err = await response.Content.ReadAsStringAsync(cancellationToken);
-            logger.LogError("Failed to fetch Bolt orders. Status: {Status}, Response: {Response}", response.StatusCode, err);
-            throw new Exception($"Eroare descărcare comenzi Bolt: {response.StatusCode}");
-        }
-
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
-        };
-
-        var boltResponse = await response.Content.ReadFromJsonAsync<BoltOrdersResponse>(options, cancellationToken);
-        if (boltResponse?.Data?.Orders == null)
-        {
-            return [];
-        }
-
         var orders = new List<BoltOrder>();
-        foreach (var o in boltResponse.Data.Orders)
+        foreach ((DateTime chunkStart, DateTime chunkEnd) in SplitRange(start, end))
         {
-            // Only fetch and store fully completed orders
-            if (o.OrderStatus == null || !o.OrderStatus.Equals("finished", StringComparison.OrdinalIgnoreCase))
+            int offset = 0;
+            while (true)
             {
+                var body = new
+                {
+                    company_id = integration.CompanyId,
+                    limit = PageSize,
+                    offset,
+                    order_states = new[] { FinishedStatus },
+                    start_datetime = ToIso(chunkStart),
+                    end_datetime = ToIso(chunkEnd)
+                };
+
+                BoltRideHistoryData page = await PostAsync<BoltRideHistoryData>(integration, "getRideHistory", body, cancellationToken);
+                List<BoltRideDto> rides = page.Orders ?? [];
+
+                orders.AddRange(rides
+                    .Where(r => string.Equals(r.Status, FinishedStatus, StringComparison.OrdinalIgnoreCase))
+                    .Select(r => MapRide(r, integration.UserId)));
+
+                offset += rides.Count;
+                if (rides.Count == 0 || offset >= page.Total)
+                {
+                    break;
+                }
+            }
+        }
+
+        // Paginarea pe offset poate dubla o cursă dacă între pagini apare una nouă.
+        return orders
+            .GroupBy(o => o.OrderReference)
+            .Select(g => g.First())
+            .ToList();
+    }
+
+    /// <summary>Taie intervalul în bucăți de cel mult 31 de zile, cât acceptă getRideHistory.</summary>
+    internal static IEnumerable<(DateTime Start, DateTime End)> SplitRange(DateTime start, DateTime end)
+    {
+        DateTime cursor = start;
+        while (cursor < end)
+        {
+            DateTime next = end - cursor > MaxRideHistoryRange ? cursor + MaxRideHistoryRange : end;
+            yield return (cursor, next);
+            cursor = next;
+        }
+    }
+
+    /// <summary>
+    /// O cursă V2 în forma salvată la noi. V2 nu mai trimite netul și comisionul pe cursă: venitul Bolt
+    /// e brutul (<c>price.total</c>), comisionul vine din factura lunară Bolt.
+    /// </summary>
+    internal static BoltOrder MapRide(BoltRideDto ride, Guid userId)
+    {
+        BoltRideDriverDto? driver = ride.Driver;
+        string? driverName = !string.IsNullOrWhiteSpace(driver?.DisplayName)
+            ? driver.DisplayName
+            : JoinNonEmpty(driver?.FirstName, driver?.LastName);
+
+        List<BoltRideStopDto> stops = ride.Stops ?? [];
+        string? pickup = stops.FirstOrDefault(s => s.Type == "pickup")?.Address;
+        string? dropoff = stops.LastOrDefault(s => s.Type == "dropoff")?.Address;
+
+        return new BoltOrder
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            OrderReference = ride.OrderReference ?? string.Empty,
+            DriverName = driverName ?? "Șofer Bolt",
+            DriverUuid = driver?.Uuid ?? string.Empty,
+            DriverPhone = driver?.Phone,
+            PaymentMethod = ride.PaymentMethod ?? "card",
+            OrderCreatedTime = ride.RequestCreatedDatetime?.UtcDateTime ?? DateTime.UtcNow,
+            OrderStatus = FinishedStatus,
+            PickupAddress = pickup ?? "Unknown",
+            DestinationAddress = dropoff ?? "Unknown",
+            // Coloana a rămas în metri, cum o trimitea V1.
+            RideDistance = (ride.TotalRideDistanceKm ?? 0) * 1000.0,
+            RidePrice = ride.Price?.Total ?? 0m,
+            NetEarnings = null,
+            Tip = ride.Price?.Tip ?? 0m,
+            Commission = null,
+            VehicleModel = JoinNonEmpty(ride.Vehicle?.Make, ride.Vehicle?.Model) ?? "Necunoscut",
+            VehicleLicensePlate = ride.Vehicle?.RegistrationNumber ?? "Necunoscut",
+            OrderFinishedTime = ride.FinishedDatetime?.UtcDateTime
+        };
+    }
+
+    private async Task<T> PostAsync<T>(BoltIntegration integration, string path, object? body, CancellationToken cancellationToken)
+    {
+        string token = await GetAccessTokenAsync(integration, cancellationToken);
+        try
+        {
+            return await PostAsync<T>(token, path, body, cancellationToken);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            // Tokenul a expirat între timp: cerem altul o singură dată.
+            integration.AccessToken = null;
+            integration.TokenExpiresAtUtc = null;
+            token = await GetAccessTokenAsync(integration, cancellationToken);
+            return await PostAsync<T>(token, path, body, cancellationToken);
+        }
+    }
+
+    private async Task<T> PostAsync<T>(string accessToken, string path, object? body, CancellationToken cancellationToken)
+    {
+        int attempt = 0;
+        while (true)
+        {
+            using var client = httpClientFactory.CreateClient();
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/{path}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            if (body is not null)
+            {
+                request.Content = JsonContent.Create(body);
+            }
+
+            HttpResponseMessage response = await client.SendAsync(request, cancellationToken);
+            string json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            BoltEnvelope<T>? envelope = null;
+            try
+            {
+                envelope = JsonSerializer.Deserialize<BoltEnvelope<T>>(json, JsonOptions);
+            }
+            catch (JsonException)
+            {
+                // Corpul nu e plicul Bolt (de ex. o pagină de eroare a gateway-ului): tratat mai jos după status.
+            }
+
+            bool rateLimited = response.StatusCode == HttpStatusCode.TooManyRequests || envelope?.Code == TooManyRequestsCode;
+            if (rateLimited && attempt < MaxRateLimitRetries)
+            {
+                TimeSpan delay = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(Math.Pow(2, attempt + 1));
+                logger.LogWarning("Bolt {Path} rate limited, retrying in {Delay}", path, delay);
+                await Task.Delay(delay, cancellationToken);
+                attempt++;
                 continue;
             }
 
-            orders.Add(new BoltOrder
+            if (envelope is null || !response.IsSuccessStatusCode && envelope.Code == 0)
             {
-                Id = Guid.NewGuid(),
-                UserId = integration.UserId,
-                OrderReference = o.OrderReference ?? string.Empty,
-                DriverName = o.DriverName ?? "Șofer Bolt",
-                DriverUuid = o.DriverUuid ?? string.Empty,
-                DriverPhone = o.DriverPhone,
-                PaymentMethod = o.PaymentMethod ?? "Card",
-                OrderCreatedTime = DateTimeOffset.FromUnixTimeSeconds(o.OrderCreatedTimestamp ?? 0).UtcDateTime,
-                OrderStatus = o.OrderStatus,
-                PickupAddress = o.PickupAddress ?? "Unknown",
-                DestinationAddress = o.DestinationAddress ?? "Unknown",
-                RideDistance = o.RideDistance ?? 0.0,
-                RidePrice = o.OrderPrice?.RidePrice ?? 0m,
-                NetEarnings = o.OrderPrice?.NetEarnings ?? 0m,
-                Tip = o.OrderPrice?.Tip ?? 0m,
-                Commission = o.OrderPrice?.Commission ?? 0m,
-                VehicleModel = o.VehicleModel ?? "Necunoscut",
-                VehicleLicensePlate = o.VehicleLicensePlate ?? "Necunoscut",
-                OrderFinishedTime = (o.OrderFinishedTimestamp ?? 0) > 0
-                    ? DateTimeOffset.FromUnixTimeSeconds(o.OrderFinishedTimestamp!.Value).UtcDateTime
-                    : null
-            });
-        }
+                logger.LogError("Bolt {Path} failed. Status: {Status}, Response: {Response}", path, response.StatusCode, json);
+                throw new HttpRequestException($"Eroare Bolt API ({path}): {response.StatusCode}", null, response.StatusCode);
+            }
 
-        return orders;
+            if (envelope.Code != 0 || envelope.Data is null)
+            {
+                logger.LogError("Bolt {Path} returned {Code} {Message} ({Hint})", path, envelope.Code, envelope.Message, envelope.ErrorHint);
+                string hint = string.IsNullOrEmpty(envelope.ErrorHint) ? string.Empty : $" ({envelope.ErrorHint})";
+                // 503 NOT_AUTHORIZED: tokenul a expirat sau a fost revocat; apelantul cere altul.
+                HttpStatusCode? status = envelope.Code == NotAuthorizedCode ? HttpStatusCode.Unauthorized : null;
+                throw new HttpRequestException($"Eroare Bolt API ({path}): {envelope.Message}{hint}", null, status);
+            }
+
+            return envelope.Data;
+        }
+    }
+
+    private static string ToIso(DateTime value) =>
+        new DateTimeOffset(DateTime.SpecifyKind(value.ToUniversalTime(), DateTimeKind.Utc)).ToString("yyyy-MM-ddTHH:mm:ssK", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string? JoinNonEmpty(string? first, string? second)
+    {
+        string joined = string.Join(' ', new[] { first, second }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        return joined.Length == 0 ? null : joined;
     }
 
     private sealed class BoltTokenResponse
     {
-        [System.Text.Json.Serialization.JsonPropertyName("access_token")]
+        [JsonPropertyName("access_token")]
         public string AccessToken { get; set; } = string.Empty;
 
-        [System.Text.Json.Serialization.JsonPropertyName("expires_in")]
+        [JsonPropertyName("expires_in")]
         public int ExpiresIn { get; set; }
     }
 
-    private sealed class BoltOrdersResponse
+    private sealed class BoltEnvelope<T>
     {
         public int Code { get; set; }
         public string? Message { get; set; }
-        public BoltOrdersData? Data { get; set; }
+
+        [JsonPropertyName("error_hint")]
+        public string? ErrorHint { get; set; }
+
+        public T? Data { get; set; }
     }
 
-    private sealed class BoltOrdersData
+    private sealed class BoltCompaniesData
     {
+        public List<BoltCompanyDto>? Companies { get; set; }
+    }
+
+    private sealed class BoltCompanyDto
+    {
+        [JsonPropertyName("company_id")]
         public int CompanyId { get; set; }
-        public string? CompanyName { get; set; }
-        public int TotalOrders { get; set; }
-        public List<BoltOrderDto>? Orders { get; set; }
+
+        [JsonPropertyName("legal_name")]
+        public string? LegalName { get; set; }
+
+        [JsonPropertyName("status_code")]
+        public string? StatusCode { get; set; }
     }
 
-    private sealed class BoltOrderDto
+    private sealed class BoltRideHistoryData
     {
-        [System.Text.Json.Serialization.JsonPropertyName("order_reference")]
+        public List<BoltRideDto>? Orders { get; set; }
+        public int Total { get; set; }
+    }
+
+    internal sealed class BoltRideDto
+    {
+        [JsonPropertyName("order_reference")]
         public string? OrderReference { get; set; }
 
-        [System.Text.Json.Serialization.JsonPropertyName("driver_name")]
-        public string? DriverName { get; set; }
+        public string? Status { get; set; }
 
-        [System.Text.Json.Serialization.JsonPropertyName("driver_uuid")]
-        public string? DriverUuid { get; set; }
-
-        [System.Text.Json.Serialization.JsonPropertyName("driver_phone")]
-        public string? DriverPhone { get; set; }
-
-        [System.Text.Json.Serialization.JsonPropertyName("payment_method")]
+        [JsonPropertyName("payment_method")]
         public string? PaymentMethod { get; set; }
 
-        [System.Text.Json.Serialization.JsonPropertyName("order_created_timestamp")]
-        public long? OrderCreatedTimestamp { get; set; }
+        [JsonPropertyName("request_created_datetime")]
+        public DateTimeOffset? RequestCreatedDatetime { get; set; }
 
-        [System.Text.Json.Serialization.JsonPropertyName("order_status")]
-        public string? OrderStatus { get; set; }
+        [JsonPropertyName("finished_datetime")]
+        public DateTimeOffset? FinishedDatetime { get; set; }
 
-        [System.Text.Json.Serialization.JsonPropertyName("pickup_address")]
-        public string? PickupAddress { get; set; }
+        public List<BoltRideStopDto>? Stops { get; set; }
 
-        [System.Text.Json.Serialization.JsonPropertyName("destination_address")]
-        public string? DestinationAddress { get; set; }
+        [JsonPropertyName("total_ride_distance_km")]
+        public double? TotalRideDistanceKm { get; set; }
 
-        [System.Text.Json.Serialization.JsonPropertyName("ride_distance")]
-        public double? RideDistance { get; set; }
-
-        [System.Text.Json.Serialization.JsonPropertyName("vehicle_model")]
-        public string? VehicleModel { get; set; }
-
-        [System.Text.Json.Serialization.JsonPropertyName("vehicle_license_plate")]
-        public string? VehicleLicensePlate { get; set; }
-
-        [System.Text.Json.Serialization.JsonPropertyName("order_finished_timestamp")]
-        public long? OrderFinishedTimestamp { get; set; }
-
-        [System.Text.Json.Serialization.JsonPropertyName("order_price")]
-        public BoltOrderPriceDto? OrderPrice { get; set; }
+        public BoltRidePriceDto? Price { get; set; }
+        public BoltRideDriverDto? Driver { get; set; }
+        public BoltRideVehicleDto? Vehicle { get; set; }
     }
 
-    private sealed class BoltOrderPriceDto
+    internal sealed class BoltRideStopDto
     {
-        [System.Text.Json.Serialization.JsonPropertyName("ride_price")]
-        public decimal? RidePrice { get; set; }
+        public string? Type { get; set; }
+        public string? Address { get; set; }
+    }
 
-        [System.Text.Json.Serialization.JsonPropertyName("net_earnings")]
-        public decimal? NetEarnings { get; set; }
-
-        [System.Text.Json.Serialization.JsonPropertyName("tip")]
+    internal sealed class BoltRidePriceDto
+    {
+        public decimal? Total { get; set; }
         public decimal? Tip { get; set; }
+    }
 
-        [System.Text.Json.Serialization.JsonPropertyName("commission")]
-        public decimal? Commission { get; set; }
+    internal sealed class BoltRideDriverDto
+    {
+        public string? Uuid { get; set; }
+
+        [JsonPropertyName("first_name")]
+        public string? FirstName { get; set; }
+
+        [JsonPropertyName("last_name")]
+        public string? LastName { get; set; }
+
+        [JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+
+        public string? Phone { get; set; }
+    }
+
+    internal sealed class BoltRideVehicleDto
+    {
+        public string? Make { get; set; }
+        public string? Model { get; set; }
+
+        [JsonPropertyName("registration_number")]
+        public string? RegistrationNumber { get; set; }
     }
 }

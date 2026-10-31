@@ -10,10 +10,10 @@ namespace Application.Bolt.Queries;
 
 public sealed record BoltDashboardPointResponse(
     string Label,
-    decimal NetEarnings,
+    decimal Earnings,
     int OrdersCount,
     decimal Tips,
-    decimal Commissions,
+    decimal? Commissions,
     double RideHours);
 
 public sealed record BoltDashboardRideResponse(
@@ -24,9 +24,9 @@ public sealed record BoltDashboardRideResponse(
     string DestinationAddress,
     double RideDistanceKm,
     decimal RidePrice,
-    decimal NetEarnings,
+    decimal? NetEarnings,
     decimal Tip,
-    decimal Commission,
+    decimal? Commission,
     string PaymentMethod,
     string VehicleModel,
     string VehicleLicensePlate,
@@ -41,16 +41,16 @@ public sealed record BoltDashboardResponse(
     int? Year,
     int? Month,
     int TotalOrdersCount,
-    decimal TotalNetEarnings,
+    decimal TotalEarnings,
     decimal TotalCashEarnings,
     decimal TotalCardEarnings,
     decimal TotalBusinessEarnings,
     decimal TotalTips,
-    decimal TotalCommissions,
+    decimal? TotalCommissions,
     double TotalRideDistanceKm,
     double TotalRideHours,
-    decimal AverageNetPerRide,
-    decimal AverageNetPerRideHour,
+    decimal AveragePerRide,
+    decimal AveragePerRideHour,
     List<BoltDashboardPointResponse> Series,
     List<BoltDashboardRideResponse> RecentRides);
 
@@ -126,17 +126,19 @@ internal sealed class GetBoltDashboardQueryHandler(
             .ToListAsync(cancellationToken);
 
         int totalOrders = orders.Count;
-        decimal totalNet = orders.Sum(o => o.NetEarnings);
-        decimal totalCash = orders.Where(IsCash).Sum(o => o.NetEarnings);
-        decimal totalBusiness = orders.Where(IsBusiness).Sum(o => o.NetEarnings);
-        decimal totalCard = orders.Where(o => !IsCash(o)).Sum(o => o.NetEarnings);
+        // Încasările Bolt sunt brutul cursei (RidePrice): Fleet API 2.0 nu mai trimite netul
+        // și comisionul pe cursă, deci comisionul există doar pentru cursele aduse prin V1.
+        decimal totalEarnings = orders.Sum(o => o.RidePrice);
+        decimal totalCash = orders.Where(IsCash).Sum(o => o.RidePrice);
+        decimal totalBusiness = orders.Where(IsBusiness).Sum(o => o.RidePrice);
+        decimal totalCard = orders.Where(o => !IsCash(o)).Sum(o => o.RidePrice);
         decimal totalTips = orders.Sum(o => o.Tip);
-        decimal totalCommissions = orders.Sum(o => o.Commission);
+        decimal? totalCommissions = KnownSum(orders.Select(o => o.Commission));
         double totalDistanceKm = orders.Sum(o => o.RideDistance) / 1000.0;
         double totalRideHours = orders.Sum(GetRideHours);
-        decimal averageNetPerRide = totalOrders > 0 ? totalNet / totalOrders : 0m;
-        decimal averageNetPerRideHour = totalRideHours > 0
-            ? totalNet / (decimal)totalRideHours
+        decimal averagePerRide = totalOrders > 0 ? totalEarnings / totalOrders : 0m;
+        decimal averagePerRideHour = totalRideHours > 0
+            ? totalEarnings / (decimal)totalRideHours
             : 0m;
 
         List<BoltDashboardPointResponse> series = BuildSeries(orders, period, selectedYear, selectedMonth, romaniaTimeZone);
@@ -168,7 +170,7 @@ internal sealed class GetBoltDashboardQueryHandler(
             selectedYear,
             selectedMonth,
             totalOrders,
-            totalNet,
+            totalEarnings,
             totalCash,
             totalCard,
             totalBusiness,
@@ -176,8 +178,8 @@ internal sealed class GetBoltDashboardQueryHandler(
             totalCommissions,
             Math.Round(totalDistanceKm, 1),
             Math.Round(totalRideHours, 2),
-            averageNetPerRide,
-            averageNetPerRideHour,
+            averagePerRide,
+            averagePerRideHour,
             series,
             recentRides);
     }
@@ -204,7 +206,7 @@ internal sealed class GetBoltDashboardQueryHandler(
             0m,
             0m,
             0m,
-            0m,
+            null,
             0,
             0,
             0m,
@@ -301,11 +303,18 @@ internal sealed class GetBoltDashboardQueryHandler(
         var list = orders.ToList();
         return new BoltDashboardPointResponse(
             string.Empty,
-            list.Sum(o => o.NetEarnings),
+            list.Sum(o => o.RidePrice),
             list.Count,
             list.Sum(o => o.Tip),
-            list.Sum(o => o.Commission),
+            KnownSum(list.Select(o => o.Commission)),
             Math.Round(list.Sum(GetRideHours), 2));
+    }
+
+    /// <summary>Suma valorilor cunoscute; <c>null</c> când nicio cursă nu are valoarea.</summary>
+    private static decimal? KnownSum(IEnumerable<decimal?> values)
+    {
+        var known = values.Where(v => v.HasValue).ToList();
+        return known.Count == 0 ? null : known.Sum();
     }
 
     private static bool IsCash(BoltOrder order) =>

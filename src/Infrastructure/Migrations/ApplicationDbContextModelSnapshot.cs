@@ -94,7 +94,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<decimal>("Commission")
+                    b.Property<decimal?>("Commission")
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("commission");
 
@@ -121,7 +121,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("driver_uuid");
 
-                    b.Property<decimal>("NetEarnings")
+                    b.Property<decimal?>("NetEarnings")
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("net_earnings");
 

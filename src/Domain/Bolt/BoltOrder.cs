@@ -18,9 +18,9 @@ public sealed class BoltOrder : Entity
     public string DestinationAddress { get; set; } = string.Empty;
     public double RideDistance { get; set; }
     public decimal RidePrice { get; set; }
-    public decimal NetEarnings { get; set; }
+    public decimal? NetEarnings { get; set; }
     public decimal Tip { get; set; }
-    public decimal Commission { get; set; }
+    public decimal? Commission { get; set; }
     public string VehicleModel { get; set; } = string.Empty;
     public string VehicleLicensePlate { get; set; } = string.Empty;
     public DateTime? OrderFinishedTime { get; set; }

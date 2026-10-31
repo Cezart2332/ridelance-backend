@@ -12,13 +12,15 @@ namespace Application.PfaRegistrations.MonthlyIncome;
 /// Bolt orders synced from the API and Uber CSV imports.
 /// <para>
 /// Cash and card are not separate income — they are how the platform money was collected.
-/// Bolt tells us per order (payment methods look like "cash-cash", "card-card", "business-card");
+/// Bolt tells us per order (V1 sent "cash-cash", "card-card", "business-card"; V2 sends "cash", "card_terminal", "business", "in_app");
 /// Uber reports the cash collected from riders, so the rest of the payout is card.
 /// </para>
 /// </summary>
 public static class PfaMonthlyIncomeRecalculator
 {
-    private sealed record BoltOrderEarning(string PaymentMethod, decimal NetEarnings);
+    // Bolt income is the gross fare (RidePrice), the same rule as the monthly Bolt summary:
+    // Fleet API 2.0 no longer sends the net or the commission per ride.
+    private sealed record BoltOrderEarning(string PaymentMethod, decimal Gross);
 
     /// <summary>
     /// Recalculates Bolt, Uber, cash, card and the estimated tax for one month.
@@ -43,11 +45,11 @@ public static class PfaMonthlyIncomeRecalculator
                 && o.OrderStatus == "finished"
                 && o.OrderCreatedTime >= startUtc
                 && o.OrderCreatedTime < endUtc)
-            .Select(o => new BoltOrderEarning(o.PaymentMethod, o.NetEarnings))
+            .Select(o => new BoltOrderEarning(o.PaymentMethod, o.RidePrice))
             .ToListAsync(cancellationToken);
 
-        decimal boltCash = boltOrders.Where(IsCash).Sum(o => o.NetEarnings);
-        decimal boltTotal = boltOrders.Sum(o => o.NetEarnings);
+        decimal boltCash = boltOrders.Where(IsCash).Sum(o => o.Gross);
+        decimal boltTotal = boltOrders.Sum(o => o.Gross);
         decimal boltCard = boltTotal - boltCash;
 
         List<UberEarningsTotals> uberEarnings = await context.UberCsvImports
@@ -120,7 +122,7 @@ public static class PfaMonthlyIncomeRecalculator
         await FiscalEstimateInvalidation.MarkStaleAsync(context, pfaRegistrationId, year, DateTime.UtcNow, cancellationToken);
     }
 
-    /// <summary>Bolt payment methods are dash-separated, e.g. "cash-cash", "card-card", "business-card".</summary>
+    /// <summary>Any Bolt payment method mentioning cash: "cash-cash" (V1) or "cash" (V2).</summary>
     private static bool IsCash(BoltOrderEarning order) =>
         order.PaymentMethod.Contains("cash", StringComparison.OrdinalIgnoreCase);
 
