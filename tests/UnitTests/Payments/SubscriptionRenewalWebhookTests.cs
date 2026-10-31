@@ -22,7 +22,9 @@ namespace UnitTests.Payments;
 /// </summary>
 public sealed class SubscriptionRenewalWebhookTests
 {
-    private static readonly DateTime PeriodEnd = new(2026, 10, 27, 12, 0, 0, DateTimeKind.Utc);
+    // Mereu în viitor: handlerul ignoră un sfârșit de perioadă deja trecut și calculează din ziua de azi,
+    // așa că o dată fixă făcea testul să pice imediat ce trecea.
+    private static readonly DateTime PeriodEnd = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddMonths(1).AddHours(12), DateTimeKind.Utc);
 
     [Fact]
     public async Task RenewalInvoiceIsRecordedOnceAndMovesTheNextBillingDate()
