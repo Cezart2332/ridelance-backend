@@ -21,6 +21,10 @@ public sealed class AnafMandatarOptions
     public string? Domicile { get; set; }
     public string? IdSeries { get; set; }
     public string? IdNumber { get; set; }
+
+    /// <summary>Cine a eliberat CI-ul și când („S.P.C.E.P. Sector 3”, 2022-06-10): apar pe împuternicire.</summary>
+    public string? IdIssuer { get; set; }
+    public DateOnly? IdIssuedOn { get; set; }
     public string? Email { get; set; }
 
     /// <summary>Telefonul de contact, zece cifre. Opțional.</summary>

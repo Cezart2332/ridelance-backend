@@ -16,7 +16,7 @@ public sealed class AnafMandateTests
 
     private static readonly AnafMandatar Mandatar = new(
         "IONESCU ANDREI-VICTOR", "5010519420017", "București, Strada Constantin Brâncuși nr. 9, Bloc D15, scara A",
-        "RK", "956806", "victor.ionescu@ridelance.ro");
+        "RK", "956806", "S.P.C.E.P. Sector 3", new DateOnly(2022, 6, 10), "victor.ionescu@ridelance.ro");
 
     private static Dictionary<string, string> OcrIdentity() => new(StringComparer.OrdinalIgnoreCase)
     {
@@ -108,14 +108,15 @@ public sealed class AnafMandateTests
             new AnafMandateData("ANAF-000001", new DateOnly(2026, 10, 8), mandant, Mandatar)));
 
         text.ShouldContain("ÎMPUTERNICIRE");
-        text.ShouldContain("Nr. ANAF-000001 / 08.10.2026");
-        text.ShouldContain("Subsemnatul/Subsemnata POPESCU ION-ANDREI, CNP 1900101123456");
-        text.ShouldContain("CI seria CJ nr. 123456, eliberată de SPCLEP Cluj-Napoca la data de 15.03.2021");
-        text.ShouldContain("CUI 45123456, înregistrat la ONRC sub nr. F12/345/2024, denumit(ă) în continuare Mandant");
-        text.ShouldContain("IONESCU ANDREI-VICTOR, CNP 5010519420017");
-        text.ShouldContain("8. să acceseze, transmită și descarce documente prin serviciile RO e-Factura");
-        text.ShouldContain("Titular POPESCU ION-ANDREI PFA");
-        text.ShouldContain("Data: 08.10.2026");
+        text.ShouldContain("NR ANAF-000001/08.10.2026");
+        text.ShouldContain("Subsemnatul POPESCU ION-ANDREI, cetățean român, domiciliat în Cluj-Napoca, jud. Cluj");
+        text.ShouldContain("CI seria CJ nr. 123456, eliberată de SPCLEP Cluj-Napoca la data de 15.03.2021, CNP 1900101123456");
+        text.ShouldContain("CUI 45123456, înregistrată la ONRC sub nr. F12/345/2024, prin prezenta împuternicesc cu puteri depline pe:");
+        text.ShouldContain("- IONESCU ANDREI-VICTOR, cetățean român");
+        text.ShouldContain("eliberată de S.P.C.E.P. Sector 3 la data de 10.06.2022, CNP 5010519420017");
+        text.ShouldContain("evidențele fiscale ale subsemnatului POPESCU ION-ANDREI sau ale POPESCU ION-ANDREI PFA");
+        text.ShouldContain("Prezentul înscris a fost întocmit astăzi, 08.10.2026, într-un singur exemplar.");
+        text.ShouldContain("Mandant, POPESCU ION-ANDREI în nume propriu și în calitate de titular al POPESCU ION-ANDREI PFA Semnătura");
         text.ShouldNotContain("{{");
         text.ShouldNotContain("—");
     }
@@ -126,11 +127,11 @@ public sealed class AnafMandateTests
         AnafMandant mandant = AnafMandateContent.Mandant(OcrIdentity(), "POPESCU ION-ANDREI PFA", "Cluj", "45123456", null);
 
         string text = TextOf(new AnafMandatePdfGenerator().Generate(
-            new AnafMandateData("ANAF-000002", new DateOnly(2026, 10, 8), mandant, Mandatar with { Email = null })));
+            new AnafMandateData("ANAF-000002", new DateOnly(2026, 10, 8), mandant, Mandatar with { IdIssuedOn = null })));
 
-        text.ShouldContain("CUI 45123456, denumit(ă) în continuare Mandant");
+        text.ShouldContain("CUI 45123456, prin prezenta împuternicesc");
         text.ShouldNotContain("ONRC");
-        text.ShouldContain("e-mail —");
+        text.ShouldContain("eliberată de S.P.C.E.P. Sector 3 la data de —");
     }
 
     private static string TextOf(byte[] pdf)

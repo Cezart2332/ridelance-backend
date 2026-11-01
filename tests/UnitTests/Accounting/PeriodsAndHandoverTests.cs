@@ -139,7 +139,8 @@ public sealed class PeriodsAndHandoverTests : IDisposable
 
         AccountingPeriodDto august = periods.Single(p => p.Period == "2026-08");
         august.CanClose.ShouldBe((await Reconciliation("2026-08")).CanClose);
-        periods.Single(p => p.Period == "2026-10").Blockers.ShouldBe(["Luna nu s-a încheiat."]);
+        string current = AccountingPeriod.ToRomania(DateTime.UtcNow).ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
+        periods.Single(p => p.Period == current).Blockers.ShouldBe(["Luna nu s-a încheiat."]);
     }
 
     /// <summary>O încasare neidentificată sau o plată neclasificată blochează „Închide luna”.</summary>

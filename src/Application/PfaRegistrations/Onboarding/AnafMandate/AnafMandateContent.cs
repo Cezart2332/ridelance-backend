@@ -139,6 +139,8 @@ public static class AnafMandateContent
             string.IsNullOrWhiteSpace(mandatar.Domicile) ||
             string.IsNullOrWhiteSpace(mandatar.IdSeries) ||
             string.IsNullOrWhiteSpace(mandatar.IdNumber) ||
+            string.IsNullOrWhiteSpace(mandatar.IdIssuer) ||
+            mandatar.IdIssuedOn is null ||
             string.IsNullOrWhiteSpace(mandatar.Email);
 
         if (mandatarIncomplete)

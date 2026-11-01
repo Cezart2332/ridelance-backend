@@ -31,6 +31,8 @@ public sealed record AnafMandatar(
     string? Domicile,
     string? IdSeries,
     string? IdNumber,
+    string? IdIssuer,
+    DateOnly? IdIssuedOn,
     string? Email);
 
 /// <summary>Împuternicirea ANAF, cu textul din modelul RIDElance.</summary>

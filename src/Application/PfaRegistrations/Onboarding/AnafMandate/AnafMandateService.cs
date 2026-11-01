@@ -51,7 +51,8 @@ internal sealed class AnafMandateService(
 
         AnafMandant mandant = await MandantAsync(registration, cancellationToken);
         AnafMandatarOptions o = mandatarOptions.Value;
-        var mandatar = new AnafMandatar(o.FullName, o.Cnp, o.Domicile, o.IdSeries, o.IdNumber, o.Email);
+        var mandatar = new AnafMandatar(
+            o.FullName, o.Cnp, o.Domicile, o.IdSeries, o.IdNumber, o.IdIssuer, o.IdIssuedOn, o.Email);
         IReadOnlyList<string> missing = AnafMandateContent.Missing(mandant, mandatar);
 
         // Rândul din pachetul de semnături ține numărul mandatului și documentul de semnat.

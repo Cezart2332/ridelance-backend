@@ -7,7 +7,7 @@ using QuestPDF.Infrastructure;
 namespace Infrastructure.Dossiers;
 
 /// <summary>
-/// Împuternicirea ANAF. Textul e cel din modelul RIDElance („Imputernicire_ANAF_RIDElance”),
+/// Împuternicirea ANAF. Textul e cel din modelul RIDElance („RIDElance_Model_Imputernicire_PFA”),
 /// cuvânt cu cuvânt; se schimbă doar datele dintre acolade. Un câmp lipsă iese „—”, ca adminul să-l
 /// vadă pe hârtie, nu doar în listă.
 /// </summary>
@@ -16,104 +16,103 @@ internal sealed class AnafMandatePdfGenerator : IAnafMandatePdfGenerator
     private const string Missing = "—";
     private static readonly CultureInfo Ro = CultureInfo.GetCultureInfo("ro-RO");
 
-    private static readonly string[] Powers =
-    [
-        "să completeze, semneze electronic cu propriul certificat digital calificat și să depună, în numele Mandantului, " +
-        "declarații fiscale, declarații de înregistrare sau de mențiuni, cereri, formulare, declarații rectificative și alte " +
-        "documente fiscale;",
-        "să efectueze formalitățile necesare înregistrării și utilizării certificatului digital calificat pentru serviciile " +
-        "electronice ANAF și pentru depunerea online a declarațiilor, inclusiv formalitățile aferente formularului 150;",
-        "să efectueze formalitățile privind înregistrarea, modificarea și actualizarea vectorului fiscal, inclusiv " +
-        "depunerea formularului D700 și înregistrarea specială în scopuri de TVA potrivit art. 317 din Codul fiscal, atunci " +
-        "când este aplicabilă;",
-        "să depună declarațiile fiscale aplicabile activității Mandantului, inclusiv D100, D301, D390, D212, precum și " +
-        "formularele care le înlocuiesc sau devin aplicabile ulterior;",
-        "să acceseze și să utilizeze serviciile electronice ANAF și Spațiul Privat Virtual, în limitele drepturilor acordate " +
-        "de ANAF, inclusiv pentru consultarea dosarului fiscal și a informațiilor aferente Mandantului;",
-        "să primească, consulte și descarce recipise, decizii, notificări, somații, comunicări, răspunsuri, obligații de " +
-        "plată, situații sintetice, vectorul fiscal, istoricul declarațiilor și orice alte documente ori informații fiscale " +
-        "aferente Mandantului;",
-        "să formuleze și să transmită solicitări, răspunsuri și documente către ANAF și să îndeplinească actele " +
-        "administrative necesare executării prezentului mandat;",
-        "să acceseze, transmită și descarce documente prin serviciile RO e-Factura, în măsura în care acest drept este " +
-        "disponibil și necesar pentru îndeplinirea obligațiilor fiscale ale Mandantului.",
-    ];
-
-    private static readonly string[] Closing =
-    [
-        "Prezenta împuternicire nu conferă Mandatarului dreptul de a dispune de conturile bancare, numerarul ori " +
-        "bunurile Mandantului și nici de a încheia contracte în numele acestuia, în afara actelor strict necesare " +
-        "reprezentării fiscale în relația cu ANAF.",
-        "Prezenta împuternicire este valabilă timp de 10 ani de la data semnării, dacă nu este revocată anterior de " +
-        "Mandant sau dacă nu intervine o altă cauză legală de încetare. Mandantul o poate revoca în orice moment, în " +
-        "condițiile legii.",
-        "Prezenta împuternicire poate fi utilizată în format electronic ca document justificativ pentru înregistrarea și " +
-        "exercitarea drepturilor de reprezentare fiscală acordate Mandatarului.",
-    ];
-
     public byte[] Generate(AnafMandateData data)
     {
         AnafMandant m = data.Mandant;
         AnafMandatar r = data.Mandatar;
         string date = data.Date.ToString("dd.MM.yyyy", Ro);
+        string name = V(m.FullName);
+        string pfa = V(m.PfaName);
 
         string onrc = string.IsNullOrWhiteSpace(m.RegistryNumber)
             ? string.Empty
-            : $", înregistrat la ONRC sub nr. {m.RegistryNumber.Trim()}";
+            : $", înregistrată la ONRC sub nr. {m.RegistryNumber.Trim()}";
 
-        string mandant =
-            $"Subsemnatul/Subsemnata {V(m.FullName)}, CNP {V(m.Cnp)}, domiciliat(ă) în {V(m.Domicile)}, " +
-            $"identificat(ă) cu CI seria {V(m.IdSeries)} nr. {V(m.IdNumber)}, eliberată de {V(m.IdIssuer)} " +
-            $"la data de {(m.IdIssuedOn is { } issued ? issued.ToString("dd.MM.yyyy", Ro) : Missing)}, " +
-            $"în calitate de titular al {V(m.PfaName)}, cu sediul profesional în {V(m.ProfessionalOffice)}, " +
-            $"CUI {V(m.Cui)}{onrc}, denumit(ă) în continuare Mandant, îl împuternicesc prin prezenta pe:";
+        string[] paragraphs =
+        [
+            $"Subsemnatul {name}, cetățean român, domiciliat în {V(m.Domicile)}, posesor al CI seria {V(m.IdSeries)} " +
+            $"nr. {V(m.IdNumber)}, eliberată de {V(m.IdIssuer)} la data de {D(m.IdIssuedOn)}, CNP {V(m.Cnp)}, " +
+            $"în nume propriu și în calitate de titular al {pfa}, cu sediul profesional în {V(m.ProfessionalOffice)}, " +
+            $"CUI {V(m.Cui)}{onrc}, prin prezenta împuternicesc cu puteri depline pe:",
 
-        string mandatar =
-            $"{V(r.FullName)}, CNP {V(r.Cnp)}, domiciliat în {V(r.Domicile)}, identificat cu CI seria {V(r.IdSeries)} " +
-            $"nr. {V(r.IdNumber)}, e-mail {V(r.Email)}, denumit în continuare Mandatar,";
+            $"- {V(r.FullName)}, cetățean român, domiciliat în {V(r.Domicile)}, posesor al CI seria {V(r.IdSeries)} " +
+            $"nr. {V(r.IdNumber)}, eliberată de {V(r.IdIssuer)} la data de {D(r.IdIssuedOn)}, CNP {V(r.Cnp)}, " +
+            "pentru ca să mă reprezinte atât în nume propriu, cât și în calitate de titular al PFA-ului mai sus menționat:",
+
+            "În relația cu Agenția Națională de Administrare Fiscală, pentru semnarea și depunerea tuturor declarațiilor " +
+            "fiscale prin mijloace electronice de transmitere la distanță, prin intermediul certificatului digital calificat " +
+            "al mandatarului, în conformitate cu prevederile Ordinului Președintelui ANAF nr. 2213/2025, inclusiv pentru " +
+            "formalitățile de înregistrare și utilizare a certificatului calificat. Menționez în mod expres că mandatarul are " +
+            "dreptul de utilizare a serviciului de acces controlat la informațiile cuprinse în dosarul fiscal și dreptul de " +
+            "înregistrare și acces în Spațiul Privat Virtual al ANAF, în conformitate cu Ordinul Președintelui ANAF " +
+            "nr. 1090/2022, inclusiv dreptul de a semna declarații pe suport de hârtie și de a efectua toate operațiunile " +
+            "din SPV aferente subsemnatului în nume propriu și în calitate de titular al PFA-ului. Mandatarul are dreptul " +
+            "de a accesa informațiile referitoare la istoricul acțiunilor anterioare din SPV, cu mențiunea expresă că " +
+            "accept termenii și condițiile de utilizare a SPV.",
+
+            "De asemenea, mandatarul este împuternicit să mă reprezinte, atât în nume propriu, cât și în calitate de " +
+            "titular al PFA-ului, în fața autorităților fiscale competente, în vederea accesării dosarului fiscal al " +
+            "subsemnatului și al PFA-ului mai sus menționat, precum și a oricăror baze de date online gestionate de " +
+            "autoritățile competente cu privire la evidențele fiscale ale subsemnatului " +
+            $"{name} sau ale {pfa}, fiind îndeplinite cumulativ următoarele condiții:\n" +
+            "a) Prezenta împuternicire este generală și privește toate operațiunile din SPV.\n" +
+            "b) Împuternicirea conține acordul meu expres cu privire la accesul la informațiile referitoare la istoricul " +
+            "acțiunilor anterioare din SPV al subsemnatului și al PFA-ului mai sus menționat.\n" +
+            "c) Accept termenii și condițiile de utilizare a SPV.",
+
+            "În acest scop, mandatarul este împuternicit să efectueze formalitățile legale necesare, să se prezinte în " +
+            "fața tuturor organelor abilitate, să depună, să prezinte și să obțină actele necesare, să achite taxele " +
+            "aferente prezentului mandat, să înregistreze cererile necesare și să facă declarații, cu respectarea " +
+            "limitărilor și cerințelor legislației române în vigoare, să îndeplinească orice act sau fapt necesar și să " +
+            "semneze în numele subsemnatului oriunde va fi necesar, în limitele prezentului mandat, semnătura acestuia " +
+            "fiindu-mi opozabilă.",
+
+            $"Subsemnatul {name}, în nume propriu și în calitate de titular al {pfa}, am luat act de faptul că, potrivit " +
+            "art. 2016 alin. (3) din Codul civil, prezentul mandat se va întinde și asupra tuturor actelor necesare " +
+            "executării lui, chiar dacă nu sunt precizate în mod expres.",
+
+            "Prezentul mandat este gratuit, netransmisibil și valabil până la îndeplinire sau până la intervenția oricărei " +
+            "cauze de încetare, conform legislației în vigoare, dar nu mai mult de 10 (zece) ani, începând de astăzi.",
+
+            $"Prezentul înscris a fost întocmit astăzi, {date}, într-un singur exemplar.",
+        ];
 
         return Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(1.8f, Unit.Centimetre);
-                page.DefaultTextStyle(x => x.FontSize(10).LineHeight(1.2f).FontColor(Colors.Black));
+                page.Margin(2f, Unit.Centimetre);
+                page.DefaultTextStyle(x => x.FontSize(10.5f).LineHeight(1.15f).FontColor(Colors.Black));
 
                 page.Content().Column(col =>
                 {
-                    col.Spacing(7);
+                    col.Spacing(8);
 
-                    col.Item().AlignCenter().Text("ÎMPUTERNICIRE").Bold().FontSize(14);
-                    col.Item().AlignCenter().Text($"Nr. {data.Number} / {date}");
-                    col.Item().Height(6);
-
-                    Paragraph(col, mandant);
-                    Paragraph(col, mandatar);
-                    Paragraph(col,
-                        "să mă reprezinte în relația cu Agenția Națională de Administrare Fiscală (ANAF) și cu organele fiscale " +
-                        "competente, în nume propriu și în calitate de titular al PFA-ului menționat mai sus, în limitele prezentei " +
-                        "împuterniciri.");
-                    Paragraph(col, "În acest scop, Mandatarul este împuternicit:");
-
-                    for (int i = 0; i < Powers.Length; i++)
+                    col.Item().AlignCenter().Column(title =>
                     {
-                        Paragraph(col, $"{(i + 1).ToString(CultureInfo.InvariantCulture)}. {Powers[i]}");
-                    }
+                        title.Item().AlignCenter().Text("ÎMPUTERNICIRE").Bold().FontSize(12);
+                        title.Item().AlignCenter().Text($"NR {data.Number}/{date}").Bold();
+                    });
+                    col.Item().Height(4);
 
-                    foreach (string paragraph in Closing)
+                    foreach (string paragraph in paragraphs)
                     {
-                        Paragraph(col, paragraph);
+                        col.Item().Text(t =>
+                        {
+                            t.Justify();
+                            t.Span(paragraph);
+                        });
                     }
 
                     col.Item().PaddingTop(14).ShowEntire().Column(sign =>
                     {
-                        sign.Spacing(2);
-                        sign.Item().Text("MANDANT").Bold();
-                        sign.Item().Text(V(m.FullName));
-                        sign.Item().Text($"Titular {V(m.PfaName)}");
-                        sign.Item().Text("Semnătură electronică calificată");
-                        sign.Item().Text($"Data: {date}");
+                        sign.Spacing(1);
+                        sign.Item().Text("Mandant,");
+                        sign.Item().Text(name);
+                        sign.Item().Text("în nume propriu și în calitate de titular al");
+                        sign.Item().Text(pfa);
+                        sign.Item().PaddingTop(12).Text("Semnătura");
                     });
                 });
             });
@@ -123,10 +122,6 @@ internal sealed class AnafMandatePdfGenerator : IAnafMandatePdfGenerator
     private static string V(string? value) =>
         string.IsNullOrWhiteSpace(value) ? Missing : value.Trim();
 
-    private static void Paragraph(ColumnDescriptor col, string text) =>
-        col.Item().Text(t =>
-        {
-            t.Justify();
-            t.Span(text);
-        });
+    private static string D(DateOnly? value) =>
+        value is { } d ? d.ToString("dd.MM.yyyy", Ro) : Missing;
 }
