@@ -64,6 +64,10 @@ public static class UserErrors
         "Users.AccountClosed",
         "Contul a fost închis. Pentru detalii, scrie-ne la contact@ridelance.ro.");
 
+    public static readonly Error AccountSuspended = Error.Failure(
+        "Users.AccountSuspended",
+        "Contul este suspendat. Pentru detalii, scrie-ne la contact@ridelance.ro.");
+
     public static readonly Error CannotCloseStaffAccount = Error.Problem(
         "Users.CannotCloseStaffAccount",
         "Se pot închide doar conturile clienților (PFA și SRL), nu cele ale echipei.");

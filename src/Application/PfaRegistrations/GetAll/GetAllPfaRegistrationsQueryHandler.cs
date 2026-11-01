@@ -45,6 +45,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
         DateTime? UserLastActivityAtUtc,
         DateTime? ChatActivityAtUtc,
         DateTime? DeletedAtUtc,
+        DateTime? SuspendedAtUtc,
         PfaTaxProfileStatus? FiscalProfileStatus = null,
         string? FiscalAnswersJson = null);
 
@@ -109,6 +110,7 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                     .Select(cr => (DateTime?)cr.LastMessageAtUtc)
                     .FirstOrDefault(),
                 r.User.DeletedAtUtc,
+                r.User.SuspendedAtUtc,
                 context.PfaTaxProfiles
                     .Where(t => t.PfaRegistrationId == r.Id && t.TaxYear == taxYear)
                     .Select(t => (PfaTaxProfileStatus?)t.Status)
@@ -165,7 +167,8 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
                         .OrderByDescending(cr => cr.LastMessageAtUtc)
                         .Select(cr => (DateTime?)cr.LastMessageAtUtc)
                         .FirstOrDefault(),
-                    u.DeletedAtUtc))
+                    u.DeletedAtUtc,
+                    u.SuspendedAtUtc))
                 .ToListAsync(cancellationToken);
 
             rows.AddRange(accountsWithoutRegistration);
@@ -247,6 +250,11 @@ internal sealed class GetAllPfaRegistrationsQueryHandler(
         if (row.DeletedAtUtc is not null)
         {
             return "Închis";
+        }
+
+        if (row.SuspendedAtUtc is not null)
+        {
+            return "Suspendat";
         }
 
         if (row.Status is not PfaRegistrationStatus status)

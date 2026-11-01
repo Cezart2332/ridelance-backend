@@ -1810,6 +1810,15 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("role");
 
+                    b.Property<DateTime?>("SuspendedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("suspended_at_utc");
+
+                    b.Property<string>("SuspensionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("suspension_reason");
+
                     b.HasKey("Id")
                         .HasName("pk_users");
 

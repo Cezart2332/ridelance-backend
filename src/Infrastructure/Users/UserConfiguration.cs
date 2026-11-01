@@ -32,6 +32,8 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(u => u.DeletionReason).HasMaxLength(500);
         builder.Ignore(u => u.IsDeleted);
+        builder.Property(u => u.SuspensionReason).HasMaxLength(500);
+        builder.Ignore(u => u.IsSuspended);
 
         builder.Property(u => u.FleetOnboarding).HasColumnType("jsonb")
             .HasConversion(

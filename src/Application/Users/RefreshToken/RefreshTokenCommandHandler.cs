@@ -18,9 +18,9 @@ internal sealed class RefreshTokenCommandHandler(
         User? user = await context.Users
             .SingleOrDefaultAsync(u => u.RefreshToken == command.RefreshToken, cancellationToken);
 
-        // Un cont închis nu-și mai reînnoiește sesiunea, chiar dacă avea un token valid la închidere.
+        // Un cont închis sau suspendat nu-și mai reînnoiește sesiunea, chiar dacă avea un token valid.
         // Un cont de echipă fără 2FA nu-și prelungește sesiunea: trebuie să treacă prin login și să-l configureze.
-        if (user is null || user.RefreshTokenExpiryUtc < DateTime.UtcNow || user.IsDeleted || user.IsStaff && !user.IsTwoFactorEnabled)
+        if (user is null || user.RefreshTokenExpiryUtc < DateTime.UtcNow || user.IsDeleted || user.IsSuspended || user.IsStaff && !user.IsTwoFactorEnabled)
         {
             return Result.Failure<RefreshTokenResponse>(UserErrors.InvalidRefreshToken);
         }

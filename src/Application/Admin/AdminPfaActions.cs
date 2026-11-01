@@ -155,19 +155,21 @@ internal sealed class SuspendAdminPfaCommandHandler(
         SuspendAdminPfaCommand command,
         CancellationToken cancellationToken)
     {
-        Result<PfaRegistration> pfaResult = await AdminPfaActionHelpers.GetPfaForAdminAsync(
+        Result<AdminPfaActionHelpers.ClientAccount> clientResult = await AdminPfaActionHelpers.GetClientForAdminAsync(
             context,
             userContext.UserId,
             command.PfaRegistrationId,
             cancellationToken);
 
-        if (pfaResult.IsFailure)
+        if (clientResult.IsFailure)
         {
-            return Result.Failure<AdminPfaDetailResponse>(pfaResult.Error);
+            return Result.Failure<AdminPfaDetailResponse>(clientResult.Error);
         }
 
+        (User client, PfaRegistration? pfa) = clientResult.Value;
+
         UserSubscription? subscription = await context.UserSubscriptions
-            .Where(s => s.UserId == pfaResult.Value.UserId)
+            .Where(s => s.UserId == client.Id)
             .OrderByDescending(s => s.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -176,18 +178,26 @@ internal sealed class SuspendAdminPfaCommandHandler(
             existingSubscription.Status = SubscriptionStatus.Expired;
         }
 
-        await AdminPfaActionHelpers.AddLogAsync(
-            context,
-            pfaResult.Value.Id,
-            userContext.UserId,
-            "AccountSuspended",
-            string.IsNullOrWhiteSpace(command.Reason)
-                ? "Cont suspendat."
-                : $"Cont suspendat. Motiv: {command.Reason.Trim()}",
-            cancellationToken);
+        string? reason = string.IsNullOrWhiteSpace(command.Reason) ? null : command.Reason.Trim();
+        client.SuspendedAtUtc = DateTime.UtcNow;
+        client.SuspensionReason = reason;
+        // Sesiunea deschisă se stinge la următoarea reînnoire.
+        client.RefreshToken = null;
+        client.RefreshTokenExpiryUtc = null;
+
+        if (pfa is not null)
+        {
+            await AdminPfaActionHelpers.AddLogAsync(
+                context,
+                pfa.Id,
+                userContext.UserId,
+                "AccountSuspended",
+                reason is null ? "Cont suspendat." : $"Cont suspendat. Motiv: {reason}",
+                cancellationToken);
+        }
 
         await context.SaveChangesAsync(cancellationToken);
-        return await AdminPfaActionHelpers.LoadDetailAsync(context, pfaResult.Value.Id, cancellationToken);
+        return await AdminPfaActionHelpers.LoadDetailAsync(context, command.PfaRegistrationId, cancellationToken);
     }
 }
 
@@ -200,19 +210,21 @@ internal sealed class ReactivateAdminPfaCommandHandler(
         ReactivateAdminPfaCommand command,
         CancellationToken cancellationToken)
     {
-        Result<PfaRegistration> pfaResult = await AdminPfaActionHelpers.GetPfaForAdminAsync(
+        Result<AdminPfaActionHelpers.ClientAccount> clientResult = await AdminPfaActionHelpers.GetClientForAdminAsync(
             context,
             userContext.UserId,
             command.PfaRegistrationId,
             cancellationToken);
 
-        if (pfaResult.IsFailure)
+        if (clientResult.IsFailure)
         {
-            return Result.Failure<AdminPfaDetailResponse>(pfaResult.Error);
+            return Result.Failure<AdminPfaDetailResponse>(clientResult.Error);
         }
 
+        (User client, PfaRegistration? pfa) = clientResult.Value;
+
         UserSubscription? subscription = await context.UserSubscriptions
-            .Where(s => s.UserId == pfaResult.Value.UserId)
+            .Where(s => s.UserId == client.Id)
             .OrderByDescending(s => s.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -221,18 +233,24 @@ internal sealed class ReactivateAdminPfaCommandHandler(
             existingSubscription.Status = SubscriptionStatus.Active;
         }
 
-        await AdminPfaActionHelpers.AddLogAsync(
-            context,
-            pfaResult.Value.Id,
-            userContext.UserId,
-            "AccountReactivated",
-            string.IsNullOrWhiteSpace(command.Note)
-                ? "Cont reactivat."
-                : $"Cont reactivat. {command.Note.Trim()}",
-            cancellationToken);
+        client.SuspendedAtUtc = null;
+        client.SuspensionReason = null;
+
+        if (pfa is not null)
+        {
+            await AdminPfaActionHelpers.AddLogAsync(
+                context,
+                pfa.Id,
+                userContext.UserId,
+                "AccountReactivated",
+                string.IsNullOrWhiteSpace(command.Note)
+                    ? "Cont reactivat."
+                    : $"Cont reactivat. {command.Note.Trim()}",
+                cancellationToken);
+        }
 
         await context.SaveChangesAsync(cancellationToken);
-        return await AdminPfaActionHelpers.LoadDetailAsync(context, pfaResult.Value.Id, cancellationToken);
+        return await AdminPfaActionHelpers.LoadDetailAsync(context, command.PfaRegistrationId, cancellationToken);
     }
 }
 
@@ -432,6 +450,39 @@ internal static class AdminPfaActionHelpers
         return pfa is null
             ? Result.Failure<PfaRegistration>(Error.NotFound("Pfa.NotFound", "Înregistrarea PFA nu a fost găsită."))
             : pfa;
+    }
+
+    /// <summary>Clientul unei acțiuni de cont, cu dosarul PFA dacă are deja unul.</summary>
+    public sealed record ClientAccount(User Client, PfaRegistration? Pfa);
+
+    /// <summary>
+    /// Clientul după id-ul din lista de admin: id-ul dosarului PFA sau, pentru un client din
+    /// onboarding care n-a ajuns la pasul 2, id-ul contului (vezi <c>PfaRegistrationSummary.HasRegistration</c>).
+    /// </summary>
+    public static async Task<Result<ClientAccount>> GetClientForAdminAsync(
+        IApplicationDbContext context,
+        Guid userId,
+        Guid pfaRegistrationOrUserId,
+        CancellationToken cancellationToken)
+    {
+        Result<PfaRegistration> pfaResult = await GetPfaForAdminAsync(context, userId, pfaRegistrationOrUserId, cancellationToken);
+
+        if (pfaResult.IsSuccess)
+        {
+            return new ClientAccount(pfaResult.Value.User, pfaResult.Value);
+        }
+
+        if (pfaResult.Error.Type != ErrorType.NotFound)
+        {
+            return Result.Failure<ClientAccount>(pfaResult.Error);
+        }
+
+        User? client = await context.Users
+            .SingleOrDefaultAsync(u => u.Id == pfaRegistrationOrUserId && u.Role == UserRole.Client, cancellationToken);
+
+        return client is null
+            ? Result.Failure<ClientAccount>(pfaResult.Error)
+            : new ClientAccount(client, null);
     }
 
     public static Task AddLogAsync(

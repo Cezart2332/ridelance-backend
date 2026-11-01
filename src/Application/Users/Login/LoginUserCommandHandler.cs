@@ -36,6 +36,11 @@ internal sealed class LoginUserCommandHandler(
             return Result.Failure<LoginResponse>(UserErrors.AccountClosed);
         }
 
+        if (user.IsSuspended)
+        {
+            return Result.Failure<LoginResponse>(UserErrors.AccountSuspended);
+        }
+
         // Echipa (Admin, Contabil): parola deschide doar pasul 2FA — verificare sau, prima dată, configurare.
         if (user.IsStaff)
         {

@@ -38,6 +38,21 @@ public sealed class User : Entity
     public bool IsDeleted => DeletedAtUtc is not null;
 
     /// <summary>
+    /// Când a suspendat adminul contul. <see langword="null" /> = cont nesuspendat.
+    /// </summary>
+    /// <remarks>
+    /// Spre deosebire de închidere, suspendarea e o pauză: abonamentul expiră, autentificarea și
+    /// reînnoirea sesiunii sunt refuzate, dar nimic nu se oprește în Stripe. Merge și pentru un
+    /// client din onboarding, care n-are încă abonament de expirat.
+    /// </remarks>
+    public DateTime? SuspendedAtUtc { get; set; }
+
+    /// <summary>Motivul notat de admin la suspendare.</summary>
+    public string? SuspensionReason { get; set; }
+
+    public bool IsSuspended => SuspendedAtUtc is not null;
+
+    /// <summary>
     /// Când a fost confirmat emailul. <see langword="null" /> înseamnă neconfirmat.
     /// </summary>
     /// <remarks>
