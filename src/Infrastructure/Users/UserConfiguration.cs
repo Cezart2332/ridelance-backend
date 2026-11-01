@@ -34,6 +34,9 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Ignore(u => u.IsDeleted);
         builder.Property(u => u.SuspensionReason).HasMaxLength(500);
         builder.Ignore(u => u.IsSuspended);
+        builder.Property(u => u.ReferralCode).HasMaxLength(16);
+        builder.HasIndex(u => u.ReferralCode).IsUnique().HasFilter("referral_code IS NOT NULL");
+        builder.HasIndex(u => u.ReferredByUserId);
 
         builder.Property(u => u.FleetOnboarding).HasColumnType("jsonb")
             .HasConversion(

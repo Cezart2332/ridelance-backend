@@ -1742,6 +1742,44 @@ namespace Infrastructure.Migrations
                     b.ToTable("push_subscriptions", "public");
                 });
 
+            modelBuilder.Entity("Domain.Referrals.ReferralInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("email");
+
+                    b.Property<Guid>("InviterUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inviter_user_id");
+
+                    b.Property<DateTime>("LastSentAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_sent_at_utc");
+
+                    b.HasKey("Id")
+                        .HasName("pk_referral_invitations");
+
+                    b.HasIndex("Email")
+                        .HasDatabaseName("ix_referral_invitations_email");
+
+                    b.HasIndex("InviterUserId", "Email")
+                        .IsUnique()
+                        .HasDatabaseName("ix_referral_invitations_inviter_user_id_email");
+
+                    b.ToTable("referral_invitations", "public");
+                });
+
             modelBuilder.Entity("Domain.Users.User", b =>
                 {
                     b.Property<bool>("FleetOnboardingRequired")
@@ -1810,6 +1848,15 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("role");
 
+                    b.Property<string>("ReferralCode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("referral_code");
+
+                    b.Property<Guid?>("ReferredByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("referred_by_user_id");
+
                     b.Property<DateTime?>("SuspendedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("suspended_at_utc");
@@ -1825,6 +1872,14 @@ namespace Infrastructure.Migrations
                     b.HasIndex("Email")
                         .IsUnique()
                         .HasDatabaseName("ix_users_email");
+
+                    b.HasIndex("ReferralCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_users_referral_code")
+                        .HasFilter("referral_code IS NOT NULL");
+
+                    b.HasIndex("ReferredByUserId")
+                        .HasDatabaseName("ix_users_referred_by_user_id");
 
                     b.ToTable("users", "public");
                 });

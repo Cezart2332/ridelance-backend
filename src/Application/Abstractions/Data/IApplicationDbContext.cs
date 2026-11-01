@@ -144,6 +144,7 @@ public interface IApplicationDbContext
     DbSet<UberCsvImport> UberCsvImports { get; }
     DbSet<UberTrip> UberTrips { get; }
     DbSet<Domain.Eldrive.EldriveInvite> EldriveInvites { get; }
+    DbSet<Domain.Referrals.ReferralInvitation> ReferralInvitations { get; }
     DbSet<Domain.Accounting.LedgerMatchProposal> LedgerMatchProposals { get; }
     DbSet<Domain.Accounting.FiscalReceipt> FiscalReceipts { get; }
     DbSet<Domain.Accounting.AccountingPeriodSnapshot> AccountingPeriodSnapshots { get; }

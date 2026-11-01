@@ -150,6 +150,7 @@ public sealed class ApplicationDbContext(
     public DbSet<UberCsvImport> UberCsvImports { get; set; }
     public DbSet<UberTrip> UberTrips { get; set; }
     public DbSet<Domain.Eldrive.EldriveInvite> EldriveInvites { get; set; }
+    public DbSet<Domain.Referrals.ReferralInvitation> ReferralInvitations { get; set; }
     public DbSet<Domain.Accounting.LedgerMatchProposal> LedgerMatchProposals { get; set; }
     public DbSet<Domain.Accounting.FiscalReceipt> FiscalReceipts { get; set; }
     public DbSet<Domain.Accounting.AccountingPeriodSnapshot> AccountingPeriodSnapshots { get; set; }

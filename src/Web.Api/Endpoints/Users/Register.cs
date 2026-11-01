@@ -19,7 +19,8 @@ internal sealed class Register : IEndpoint
         string? FirstName = null,
         string? LastName = null,
         string? PhoneNumber = null,
-        string Role = "Client");
+        string Role = "Client",
+        string? ReferralCode = null);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -40,7 +41,8 @@ internal sealed class Register : IEndpoint
                 request.FirstName,
                 request.LastName,
                 role,
-                request.PhoneNumber);
+                request.PhoneNumber,
+                request.ReferralCode);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
 

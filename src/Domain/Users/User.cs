@@ -53,6 +53,15 @@ public sealed class User : Entity
     public bool IsSuspended => SuspendedAtUtc is not null;
 
     /// <summary>
+    /// Codul de recomandare al clientului, unic. Se generează la prima cerere (conturile vechi nu-l
+    /// au), apoi nu se mai schimbă: a plecat deja în linkurile trimise.
+    /// </summary>
+    public string? ReferralCode { get; set; }
+
+    /// <summary>Clientul al cărui cod a fost folosit la înregistrare.</summary>
+    public Guid? ReferredByUserId { get; set; }
+
+    /// <summary>
     /// Când a fost confirmat emailul. <see langword="null" /> înseamnă neconfirmat.
     /// </summary>
     /// <remarks>

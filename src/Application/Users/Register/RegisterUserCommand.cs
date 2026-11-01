@@ -13,4 +13,5 @@ public sealed record RegisterUserCommand(
     string? FirstName = null,
     string? LastName = null,
     UserRole Role = UserRole.Client,
-    string? PhoneNumber = null) : ICommand<Guid>;
+    string? PhoneNumber = null,
+    string? ReferralCode = null) : ICommand<Guid>;

@@ -30,6 +30,18 @@ internal sealed class RegisterUserCommandHandler(IApplicationDbContext context, 
             CreatedAtUtc = DateTime.UtcNow
         };
 
+        // Codul de recomandare al altui client: greșit sau necunoscut, înregistrarea merge mai departe fără el.
+        string? referralCode = Referrals.ReferralCodes.Normalize(command.ReferralCode);
+        if (referralCode is not null)
+        {
+            user.ReferredByUserId = await context.Users
+                .Where(u => u.ReferralCode == referralCode && u.DeletedAtUtc == null)
+                .Select(u => (Guid?)u.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        user.ReferralCode = await Referrals.ReferralCodes.EnsureAsync(context, user, cancellationToken);
+
         // Codul se scrie odată cu contul, într-o singură salvare. Emailul pleacă din
         // `UserRegisteredDomainEventHandler`, care rulează după `SaveChangesAsync`, deci codul e
         // deja în baza de date când ajunge mesajul — nu invers.
