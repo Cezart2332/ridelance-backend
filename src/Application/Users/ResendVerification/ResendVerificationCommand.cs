@@ -18,7 +18,7 @@ internal sealed class ResendVerificationCommandHandler(
 {
     public async Task<Result> Handle(ResendVerificationCommand command, CancellationToken cancellationToken)
     {
-        string email = command.Email.Trim();
+        string email = EmailAddress.Normalize(command.Email);
 
         User? user = await context.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
 

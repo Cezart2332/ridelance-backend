@@ -55,7 +55,7 @@ internal static class StaffSupport
         return $"{baseUrl}/invitatie/{token}";
     }
 
-    public static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
+    public static string NormalizeEmail(string email) => EmailAddress.Normalize(email);
 
     /// <summary>O invitație nouă pentru adresă; cele deschise înainte pentru aceeași adresă se revocă.</summary>
     public static async Task<(StaffInvitation Invitation, string Token)> CreateAsync(

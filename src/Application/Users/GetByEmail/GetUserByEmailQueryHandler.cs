@@ -12,8 +12,9 @@ internal sealed class GetUserByEmailQueryHandler(IApplicationDbContext context, 
 {
     public async Task<Result<UserResponse>> Handle(GetUserByEmailQuery query, CancellationToken cancellationToken)
     {
+        string email = EmailAddress.Normalize(query.Email);
         UserResponse? user = await context.Users
-            .Where(u => u.Email == query.Email)
+            .Where(u => u.Email == email)
             .Select(u => new UserResponse
             {
                 Id = u.Id,

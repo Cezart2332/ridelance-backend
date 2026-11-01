@@ -36,7 +36,7 @@ internal sealed class RequestPasswordResetCommandHandler(
 {
     public async Task<Result> Handle(RequestPasswordResetCommand command, CancellationToken cancellationToken)
     {
-        string email = command.Email.Trim();
+        string email = EmailAddress.Normalize(command.Email);
         User? user = await context.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
 
         // Succes și pentru o adresă fără cont (sau un cont închis): un răspuns diferit ar spune
@@ -72,7 +72,7 @@ internal sealed class ResetPasswordCommandHandler(
 {
     public async Task<Result> Handle(ResetPasswordCommand command, CancellationToken cancellationToken)
     {
-        string email = command.Email.Trim();
+        string email = EmailAddress.Normalize(command.Email);
         User? user = await context.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
 
         // Aceeași eroare pentru cont inexistent și cod greșit.

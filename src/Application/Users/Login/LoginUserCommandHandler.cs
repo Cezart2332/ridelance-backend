@@ -15,8 +15,9 @@ internal sealed class LoginUserCommandHandler(
 {
     public async Task<Result<LoginResponse>> Handle(LoginUserCommand command, CancellationToken cancellationToken)
     {
+        string email = EmailAddress.Normalize(command.Email);
         User? user = await context.Users
-            .SingleOrDefaultAsync(u => u.Email == command.Email, cancellationToken);
+            .SingleOrDefaultAsync(u => u.Email == email, cancellationToken);
 
         if (user is null)
         {
