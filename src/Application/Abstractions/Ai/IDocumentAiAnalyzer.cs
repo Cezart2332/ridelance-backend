@@ -12,36 +12,16 @@ public sealed record DocumentAiAnalysisRequest(
     string ExpectedDocumentLabel,
     string ExpectationDetails,
     bool ExpectsExpiryDate,
-    IReadOnlyList<AiFieldRequest> Fields,
-    string? AuthenticityHints = null);
-
-/// <summary>
-/// Ce a văzut modelul pe document în afară de text: elementele care fac un act oficial. Fiecare
-/// valoare e <c>null</c> când modelul n-a răspuns la ea — necunoscut, nu „lipsește”.
-/// </summary>
-/// <param name="IsBlankTemplate">Formular sau șablon necompletat: rubricile de date sunt goale.</param>
-/// <param name="AppearsSelfMade">
-/// Arată scris acasă — într-un editor de text, de mână pe o foaie albă, decupat dintr-un alt act —
-/// nu emis de o instituție.
-/// </param>
-/// <param name="SuspicionReasons">Ce anume i s-a părut în neregulă, în română, pe scurt.</param>
-public sealed record DocumentAuthenticityReport(
-    bool? Letterhead,
-    bool? Stamp,
-    bool? Signature,
-    bool? RegistrationNumber,
-    string? IssuerName,
-    bool? IsBlankTemplate,
-    bool? AppearsSelfMade,
-    bool? IsScanOrPhotoOfPaper,
-    IReadOnlyList<string> SuspicionReasons);
+    IReadOnlyList<AiFieldRequest> Fields);
 
 /// <summary>Valoarea extrasă pentru un câmp + încrederea auto-raportată de model (0..1).</summary>
 public sealed record AiFieldResult(string Key, string? Value, double Confidence);
 
 /// <summary>
 /// Ce a citit modelul din document. <b>Doar extragere</b>: modelul nu decide dacă documentul e
-/// valid și nu compară date cu prezentul.
+/// valid sau autentic și nu compară date cu prezentul. <c>MatchesExpectedType</c> și
+/// <c>IsReadable</c> le folosesc doar scanările care precompletează un formular, ca să spună de ce
+/// n-au găsit nimic; verificarea documentelor încărcate nu ține cont de ele.
 ///
 /// Motivul e concret: modelul nu are un ceas. Îi injectam data curentă în prompt și îl puneam să
 /// judece expirarea, iar el respingea acte perfect valabile pentru că „data eliberării e în
@@ -72,8 +52,7 @@ public sealed record DocumentAiAnalysisResult(
     string Reason,
     IReadOnlyList<AiFieldResult> Fields,
     double OverallConfidence,
-    int RotationDegrees = 0,
-    DocumentAuthenticityReport? Authenticity = null);
+    int RotationDegrees = 0);
 
 public interface IDocumentAiAnalyzer
 {

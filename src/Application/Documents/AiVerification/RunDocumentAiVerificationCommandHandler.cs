@@ -1,34 +1,29 @@
 using System.Text.Json;
-using Application.Abstractions;
 using Application.Abstractions.Ai;
 using Application.Documents.ExtractedFields;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
-using Application.Abstractions.Notifications;
 using Application.Abstractions.Security;
 using Application.Abstractions.Services;
-using Application.Notifications;
 using Domain.Documents;
-using Domain.Notifications;
-using Domain.Users;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using SharedKernel;
 
 namespace Application.Documents.AiVerification;
 
+/// <summary>
+/// Citirea automată (OCR) a unui document încărcat: câmpurile, datele și rotația. Nu dă niciun
+/// verdict — nu respinge, nu aprobă și nu anunță clientul. Ce pare în neregulă (act expirat, titular
+/// diferit de buletin, PDF scris în Word) ajunge la admin ca motiv; documentul îl judecă un om.
+/// </summary>
 internal sealed class RunDocumentAiVerificationCommandHandler(
     IApplicationDbContext context,
     IDocumentAiAnalyzer analyzer,
     IFileEncryptionService fileEncryptionService,
-    IWebPushService webPushService,
-    IEmailService emailService,
-    IMjmlRenderer mjmlRenderer,
     IExtractedFieldApplier fieldApplier,
     ISecretProtector secretProtector,
     IDocumentForensics documentForensics,
-    DocumentIdentityService identityService,
-    IConfiguration configuration)
+    DocumentIdentityService identityService)
     : ICommandHandler<RunDocumentAiVerificationCommand>
 {
     private const int MaxAttempts = 3;
@@ -36,14 +31,11 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
     /// <summary>Prag sub care câmpul intră în verificarea manuală a adminului (nu blochează fluxul).</summary>
     private const double ManualReviewThreshold = 0.75;
 
-    private const string BlankTemplateReason = "Formularul e necompletat.";
-
     public async Task<Result> Handle(
         RunDocumentAiVerificationCommand command,
         CancellationToken cancellationToken)
     {
         Document? document = await context.Documents
-            .Include(d => d.User)
             .SingleOrDefaultAsync(d => d.Id == command.DocumentId, cancellationToken);
 
         if (document is null)
@@ -78,7 +70,7 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             document.AiStatus = DocumentAiStatus.Error;
-            document.AiSummary = "Fișierul nu a putut fi citit pentru verificarea automată.";
+            document.AiSummary = "Fișierul nu a putut fi citit automat.";
             document.AiProcessedAtUtc = DateTime.UtcNow;
             await context.SaveChangesAsync(cancellationToken);
             return Result.Failure(Error.Failure(
@@ -98,8 +90,7 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
                 expectation.Label,
                 expectation.Details,
                 expectation.ExpectsExpiryDate,
-                fieldRequests,
-                expectation.AuthenticityHints),
+                fieldRequests),
             cancellationToken);
 
         if (analysis.IsFailure)
@@ -115,10 +106,9 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         DocumentAiAnalysisResult result = analysis.Value;
 
         document.AiDetectedType = Truncate(result.DetectedType, 256);
-        document.AiSummary = Truncate(result.Reason, 1024);
+        // AI-ul doar citește: nu scrie un verdict sau o explicație a lui.
+        document.AiSummary = null;
         document.AiProcessedAtUtc = DateTime.UtcNow;
-        // Se reține chiar dacă documentul pică verificarea: dosarul se generează și din acte pe
-        // care noi le-am respins, iar orientarea rămâne corectă indiferent de verdict.
         document.AiRotationDegrees = result.RotationDegrees;
         // O verificare nouă pornește de la zero: motivele vechi erau ale citirii de atunci.
         document.AiSuspicionReasons = null;
@@ -138,14 +128,10 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
 
         AddFieldRuleReasons(document.Category, values, reviewReasons);
 
-        // Autenticitatea: ce a văzut modelul (antet, ștampilă, „pare făcut acasă”) plus ce spune
-        // fișierul despre el (PDF exportat din Word). Suspectul merge la admin; doar formularul
-        // gol se respinge, ca un act lipsă.
-        AuthenticityVerdict authenticity = DocumentAuthenticityEvaluator.Evaluate(
+        // Ce spune fișierul despre el (PDF exportat din Word): motiv pentru admin, nu respingere.
+        reviewReasons.AddRange(DocumentAuthenticityEvaluator.Reasons(
             expectation,
-            result.Authenticity,
-            documentForensics.Inspect(fileBytes, document.ContentType));
-        reviewReasons.AddRange(authenticity.Reasons);
+            documentForensics.Inspect(fileBytes, document.ContentType)));
 
         if (DocumentIdentityService.IsIdentityDocument(document.Category))
         {
@@ -166,14 +152,8 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             await values.ApplyPendingAsync(fieldApplier, document, cancellationToken);
         }
 
-        if (reviewReasons.Count > 0)
-        {
-            document.AiRequiresManualReview = true;
-            document.AiSuspicionReasons = ReviewReasons.Merge(document.AiSuspicionReasons, reviewReasons);
-        }
-
-        // Verificarea temporală se face aici, pe ceasul serverului. Modelul doar citește datele:
-        // nu are ceas, iar când îl lăsam să judece respingea acte bune ca „eliberate în viitor".
+        // Datele de pe act se compară cu ziua de azi aici, pe ceasul serverului — modelul n-are
+        // ceas. Un act expirat sau o dată necitită nu respinge nimic: e un motiv pentru admin.
         DocumentDateVerdict dates = DocumentDateValidator.Evaluate(
             result.IssuedOn,
             expiresAt,
@@ -182,102 +162,21 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
             today,
             expectation.ValidMonthsFromIssue);
 
-        if (dates.NeedsManualReview)
+        if (dates.Outcome != DocumentDateOutcome.Accepted)
+        {
+            reviewReasons.Add(dates.Reason);
+        }
+
+        if (reviewReasons.Count > 0)
         {
             document.AiRequiresManualReview = true;
+            document.AiSuspicionReasons = ReviewReasons.Merge(document.AiSuspicionReasons, reviewReasons);
         }
 
-        bool isValid = result.MatchesExpectedType && result.IsReadable && !dates.IsRejected && !authenticity.IsBlankTemplate;
-
-        if (isValid)
-        {
-            document.AiStatus = DocumentAiStatus.Passed;
-            await context.SaveChangesAsync(cancellationToken);
-            await AfterPassAsync(document, cancellationToken);
-            return Result.Success();
-        }
-
-        document.AiStatus = DocumentAiStatus.Failed;
-
-        // Motivul temporal e mai precis decât explicația modelului, care nu mai judecă asta.
-        if (dates.IsRejected)
-        {
-            document.AiSummary = Truncate(dates.Reason, 1024);
-        }
-        else if (authenticity.IsBlankTemplate)
-        {
-            document.AiSummary = BlankTemplateReason;
-        }
-
-        /*
-         * Comutatorul de testare (`Onboarding:AutoApproveDocuments`).
-         *
-         * Verificarea a rulat întreagă până aici — tip, lizibilitate, date, câmpuri extrase — și
-         * tot ce a citit rămâne scris. Doar verdictul nu mai are consecințe: documentul nu se
-         * respinge și nu rămâne `Failed`, fiindcă ecranele de înrolare tratează `Failed` ca pe un
-         * document lipsă și pasul s-ar bloca acolo, nu unde vrem noi să vedem că se blochează.
-         *
-         * Motivul real nu se pierde: intră în rezumat, cu prefix, iar dosarul ajunge oricum sub
-         * ochii adminului prin `AiRequiresManualReview`.
-         */
-        if (bool.TryParse(configuration["Onboarding:AutoApproveDocuments"], out bool auto) && auto)
-        {
-            document.AiStatus = DocumentAiStatus.Passed;
-            document.AiRequiresManualReview = true;
-            document.AiSummary = Truncate(
-                $"[Mod de testare — verdictul nu blochează] {document.AiSummary}",
-                1024);
-
-            await context.SaveChangesAsync(cancellationToken);
-            await AfterPassAsync(document, cancellationToken);
-            return Result.Success();
-        }
-
-        // Auto-respingerea e opțională per categorie: OCR-ul nu trebuie să blocheze fluxul.
-        // Când e dezactivată, documentul rămâne în coada adminului (AiRequiresManualReview).
-        if (!expectation.AutoRejectOnFailure)
-        {
-            document.AiRequiresManualReview = true;
-            await context.SaveChangesAsync(cancellationToken);
-            return Result.Success();
-        }
-
-        if (document.Status == DocumentStatus.Pending)
-        {
-            document.Status = DocumentStatus.Rejected;
-        }
-
-        string modelReason = string.IsNullOrWhiteSpace(result.Reason)
-            ? "Documentul nu a trecut verificarea automată."
-            : result.Reason.Trim();
-
-        string reason = modelReason;
-        if (dates.IsRejected)
-        {
-            reason = dates.Reason;
-        }
-        else if (authenticity.IsBlankTemplate)
-        {
-            reason = BlankTemplateReason;
-        }
-        string text =
-            $"Documentul „{expectation.Label}” a fost respins la verificarea automată: {reason} Încarcă o variantă corectă.";
-
-        context.Notifications.Add(new Notification
-        {
-            Id = Guid.NewGuid(),
-            UserId = document.UserId,
-            Text = text,
-            Type = NotificationTypes.DocumentAiCheck,
-                SectionKey = document.Category.ToString(),
-            IsRead = false,
-            CreatedAtUtc = DateTime.UtcNow,
-        });
-
+        // Fără verdict: documentul e citit, iar statusul lui (acceptat / respins) îl pune echipa.
+        document.AiStatus = DocumentAiStatus.Read;
         await context.SaveChangesAsync(cancellationToken);
-
-        await NotifyUserAsync(document.User, expectation.Label, reason, cancellationToken);
-
+        await AfterReadAsync(document, cancellationToken);
         return Result.Success();
     }
 
@@ -350,10 +249,10 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
     }
 
     /// <summary>
-    /// După un buletin trecut, refacem comparația pe celelalte acte ale omului; după orice act,
+    /// După un buletin citit, refacem comparația pe celelalte acte ale omului; după orice act,
     /// eligibilitatea nu rămâne „Eligibil” cât timp unul pare al altcuiva.
     /// </summary>
-    private async Task AfterPassAsync(Document document, CancellationToken cancellationToken)
+    private async Task AfterReadAsync(Document document, CancellationToken cancellationToken)
     {
         if (DocumentIdentityService.IsIdentityDocument(document.Category) && !document.AiIdentityMismatch)
         {
@@ -543,61 +442,6 @@ internal sealed class RunDocumentAiVerificationCommandHandler(
         {
             found.RequiresManualIdentityReview = true;
         }
-    }
-
-    private async Task NotifyUserAsync(
-        User user,
-        string documentLabel,
-        string reason,
-        CancellationToken cancellationToken)
-    {
-        Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase)
-            ? parsedBase
-            : null;
-        Uri deepLinkUri = appBaseUri is null
-            ? new Uri("/onboarding", UriKind.Relative)
-            : new Uri(appBaseUri, "/onboarding");
-        string deepLink = deepLinkUri.ToString();
-
-        List<PushSubscription> subscriptions = await context.PushSubscriptions
-            .Where(s => s.UserId == user.Id)
-            .ToListAsync(cancellationToken);
-
-        foreach (PushSubscription sub in subscriptions)
-        {
-            try
-            {
-                await webPushService.SendPushNotificationAsync(
-                    sub,
-                    "Document respins",
-                    $"„{documentLabel}” nu a trecut verificarea automată.",
-                    deepLink,
-                    cancellationToken);
-            }
-            catch
-            {
-                // Ignore push sending failures
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(user.Email))
-        {
-            return;
-        }
-
-        string subject = $"Document respins la verificarea automată — {documentLabel}";
-        string mjml = EmailTemplates.Notice(
-            "Document de reîncărcat",
-            $"{user.FirstName} {user.LastName}".Trim(),
-            [
-                $"Documentul „{documentLabel}” încărcat în contul tău RIDElance a fost respins la verificarea automată.",
-                "Un membru al echipei va verifica documentele tale în continuare, dar te rugăm să încarci o variantă corectă pentru a nu întârzia validarea.",
-            ],
-            reason,
-            "Încarcă documentul din nou",
-            deepLinkUri);
-
-        await emailService.SendEmailAsync(user.Email, subject, mjmlRenderer.Render(mjml), cancellationToken);
     }
 
     private static string? Truncate(string? value, int maxLength)

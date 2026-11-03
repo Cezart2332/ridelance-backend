@@ -75,9 +75,6 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
                                 $"Descriere: {request.ExpectationDetails}\n" +
                                 $"{expiryInstruction}\n" +
                                 $"{fieldsInstruction}\n" +
-                                (string.IsNullOrWhiteSpace(request.AuthenticityHints)
-                                    ? string.Empty
-                                    : $"Cum arată actul emis oficial: {request.AuthenticityHints}\n") +
                                 $"Nume fișier încărcat: {request.FileName}",
                         },
                         filePart,
@@ -95,10 +92,10 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
     }
 
     /// <summary>
-    /// Promptul cere <b>doar extragere</b>. Modelul nu primește data curentă și nu decide dacă
-    /// documentul e valabil sau expirat: nu are ceas, iar când îl puneam să judece respingea acte
-    /// bune pentru că „data eliberării e în viitor". Comparațiile temporale se fac în C#
-    /// (<c>DocumentDateValidator</c>), unde sunt deterministe și testabile.
+    /// Promptul cere <b>doar extragere</b> (OCR). Modelul nu dă niciun verdict: nu spune dacă actul
+    /// e autentic, valabil sau expirat. Data curentă nici nu o primește — nu are ceas, iar când îl
+    /// puneam să judece respingea acte bune pentru că „data eliberării e în viitor". Documentul îl
+    /// verifică un om din echipă.
     ///
     /// Câmpurile sensibile (CNP, seria și numărul buletinului) se cer ca oricare altele. Promptul le
     /// interzicea odinioară, în contradicție cu lista de câmpuri: 2.5 Flash trecea peste, 3.8 Flash
@@ -130,25 +127,13 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         "\"reason\": \"explicație scurtă în română, max 200 de caractere, pe înțelesul clientului\", " +
         "\"overall_confidence\": number între 0 și 1, " +
         "\"rotation\": 0, 90, 180 sau 270, " +
-        "\"fields\": { \"cheie_camp\": {\"value\": \"text sau null\", \"confidence\": number între 0 și 1}, ... }, " +
-        "\"authenticity\": { ... }}. " +
+        "\"fields\": { \"cheie_camp\": {\"value\": \"text sau null\", \"confidence\": number între 0 și 1}, ... }}. " +
         "Extrage în \"fields\" DOAR câmpurile cerute în mesajul utilizatorului; dacă nu sunt cerute câmpuri, întoarce \"fields\": {}. " +
         "Extrage TOATE câmpurile cerute, inclusiv CNP-ul, seria și numărul actului de identitate, exact cum apar pe document: " +
         "RIDElance le folosește pentru dosarele clientului și le stochează criptat. " +
         "Nu repeta însă CNP-ul, seria sau numărul în \"reason\" — acela ajunge la client ca mesaj. " +
         "Pentru tip și lizibilitate fii tolerant: marchează documentul ca alt tip doar când e clar altceva. " +
-        "Separat, în \"authenticity\", spune ONEST ce vezi, fără să fii îngăduitor: o instituție emite acte cu " +
-        "antet, număr de înregistrare, ștampilă sau parafă și semnătură (ori semnătură electronică); un text " +
-        "simplu scris într-un editor pe o foaie albă, un formular necompletat sau un act cu date lipite peste " +
-        "altele nu e un act emis. Compară documentul cu descrierea actului oficial din mesajul utilizatorului. " +
-        "\"authenticity\" are forma: {\"letterhead\": boolean, \"stamp\": boolean, \"signature\": boolean, " +
-        "\"registration_number\": boolean, \"issuer_name\": \"text\" sau null, \"is_blank_template\": boolean, " +
-        "\"appears_self_made\": boolean, \"is_scan_or_photo_of_paper\": boolean, " +
-        "\"suspicion_reasons\": [\"motiv scurt în română\", ...]}. " +
-        "letterhead = antetul unității emitente e vizibil; stamp = ștampilă sau parafă; signature = semnătură " +
-        "olografă sau electronică; is_blank_template = rubricile de date sunt goale (șablon necompletat); " +
-        "appears_self_made = arată scris acasă sau editat, nu emis de o instituție; suspicion_reasons e gol " +
-        "dacă nu e nimic suspect. Verdictul final îl dă un om — tu doar raportezi ce vezi.";
+        "NU judeca dacă documentul este autentic, complet sau acceptabil — verdictul îl dă un om, tu doar citești.";
 
     private Result<DocumentAiAnalysisResult> ParseResponse(string body)
     {
@@ -179,8 +164,7 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
 
             return new DocumentAiAnalysisResult(
                 matches, readable, issuedOn, expiresAt, detectedType, reason, fields, overallConfidence,
-                ParseRotation(root),
-                ParseAuthenticity(root));
+                ParseRotation(root));
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
         {
@@ -201,39 +185,6 @@ internal sealed class OpenRouterDocumentAiAnalyzer(
         int degrees = value is null ? 0 : (int)Math.Round(value.Value);
 
         return degrees is 90 or 180 or 270 ? degrees : 0;
-    }
-
-    /// <summary>
-    /// Ce a văzut modelul în afară de text. Lipsa blocului sau a unei chei înseamnă „necunoscut”
-    /// (<c>null</c>), nu „lipsește”: un răspuns incomplet nu trimite documentul la admin.
-    /// </summary>
-    internal static DocumentAuthenticityReport? ParseAuthenticity(JsonElement root)
-    {
-        if (!root.TryGetProperty("authenticity", out JsonElement block) || block.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
-
-        List<string> reasons = [];
-        if (block.TryGetProperty("suspicion_reasons", out JsonElement list) && list.ValueKind == JsonValueKind.Array)
-        {
-            reasons.AddRange(list.EnumerateArray()
-                .Where(r => r.ValueKind == JsonValueKind.String)
-                .Select(r => r.GetString())
-                .OfType<string>()
-                .Where(r => !string.IsNullOrWhiteSpace(r)));
-        }
-
-        return new DocumentAuthenticityReport(
-            GetBool(block, "letterhead"),
-            GetBool(block, "stamp"),
-            GetBool(block, "signature"),
-            GetBool(block, "registration_number"),
-            GetString(block, "issuer_name"),
-            GetBool(block, "is_blank_template"),
-            GetBool(block, "appears_self_made"),
-            GetBool(block, "is_scan_or_photo_of_paper"),
-            reasons);
     }
 
     private static List<AiFieldResult> ParseFields(JsonElement root)

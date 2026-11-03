@@ -72,7 +72,7 @@ internal sealed class DocumentIdentityService(
     }
 
     /// <summary>
-    /// După ce un buletin a trecut verificarea, refacem comparația pe celelalte acte personale ale
+    /// După ce un buletin a fost citit, refacem comparația pe celelalte acte personale ale
     /// omului: unele s-au putut încărca înaintea lui sau ale unui buletin vechi. Fără apel la model —
     /// doar pe câmpurile deja citite.
     /// </summary>
@@ -88,7 +88,7 @@ internal sealed class DocumentIdentityService(
             .Where(d => d.UserId == identityDocument.UserId &&
                         d.Id != identityDocument.Id &&
                         d.Status != DocumentStatus.Rejected &&
-                        d.AiStatus == DocumentAiStatus.Passed &&
+                        d.AiStatus == DocumentAiStatus.Read &&
                         !DocumentAiCatalog.IdentityCategories.Contains(d.Category))
             .ToListAsync(cancellationToken);
 
@@ -203,7 +203,7 @@ internal sealed class DocumentIdentityService(
                         DocumentAiCatalog.IdentityCategories.Contains(d.Category) &&
                         (excludeCategory == null || d.Category != excludeCategory) &&
                         d.Status != DocumentStatus.Rejected &&
-                        d.AiStatus == DocumentAiStatus.Passed &&
+                        d.AiStatus == DocumentAiStatus.Read &&
                         !d.AiIdentityMismatch)
             .OrderByDescending(d => d.UploadedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);

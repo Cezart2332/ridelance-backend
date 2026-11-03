@@ -22,31 +22,22 @@ public static class ArrFleetRules
     ];
 
     /// <summary>
-    /// Cele trei plăți separate, în cuantum exact, cerute de ARR. Fiecare are dovada ei; suma
-    /// ecusoanelor depinde de platformele alese.
+    /// O singură plată, suma întreagă (408 lei pentru o platformă, 416 pentru ambele), cu o singură
+    /// dovadă. Nu se mai cer plăți separate pentru autorizație, copie conformă și ecusoane.
     /// </summary>
-    public static readonly Requirement[] PaymentProofs =
-    [
-        new("Dovada plății autorizației de transport", DocumentCategory.ArrAuthorizationPaymentProof),
-        new("Dovada plății copiei conforme", DocumentCategory.ArrCertifiedCopyPaymentProof),
-        new("Dovada plății ecusoanelor", DocumentCategory.ArrBadgesPaymentProof),
-    ];
+    public static readonly Requirement PaymentProof = new("Dovada plății", DocumentCategory.DovadaPlataArr);
 
-    /// <summary>Plățile, cu suma, explicația și categoria dovezii, pentru platformele alese.</summary>
-    public static IReadOnlyList<ArrFleetPayment> Payments(ArrFleetPlatforms platforms)
+    /// <summary>„300 lei autorizația de transport, 100 lei copia conformă, 8 lei ecusoane Uber.”</summary>
+    public static string PaymentExplanation(ArrFleetPlatforms platforms)
     {
-        var badges = SelectedProviders(platforms).Select(p => $"{Lei(ArrFleetPricing.BadgePerPlatformBani)} lei {p}").ToList();
+        var lines = new List<string>
+        {
+            $"{Lei(ArrFleetPricing.TransportAuthorizationBani)} lei autorizația de transport",
+            $"{Lei(ArrFleetPricing.CertifiedCopyBani)} lei copia conformă",
+        };
+        lines.AddRange(SelectedProviders(platforms).Select(p => $"{Lei(ArrFleetPricing.BadgePerPlatformBani)} lei ecusoane {p}"));
 
-        return
-        [
-            new("Authorization", "Autorizația de transport", "Valabilă 3 ani.",
-                ArrFleetPricing.TransportAuthorizationBani, DocumentCategory.ArrAuthorizationPaymentProof),
-            new("CertifiedCopy", "Copia conformă", "Valabilă 1 an.",
-                ArrFleetPricing.CertifiedCopyBani, DocumentCategory.ArrCertifiedCopyPaymentProof),
-            new("Badges", "Ecusoanele",
-                badges.Count == 0 ? "Câte 8 lei pentru fiecare platformă aleasă." : $"Câte 8 lei pe platformă: {string.Join(", ", badges)}.",
-                ArrFleetPricing.BadgePerPlatformBani * badges.Count, DocumentCategory.ArrBadgesPaymentProof),
-        ];
+        return string.Join(", ", lines) + ".";
     }
 
     public static readonly Requirement[] VehicleDocuments =
@@ -146,12 +137,12 @@ public static class ArrFleetRules
             .FirstOrDefault();
 
     /// <summary>
-    /// Dovada plății ecusoanelor e pentru o sumă care între timp s-a schimbat: clientul a schimbat
-    /// platformele după ce a încărcat-o. Celelalte două plăți nu depind de platforme.
+    /// Dovada plății e pentru o sumă care între timp s-a schimbat: clientul a schimbat platformele
+    /// după ce a încărcat-o.
     /// </summary>
     public static bool PaymentProofOutdated(ArrFleetApplication application, IEnumerable<Document> documents)
     {
-        Document? proof = Latest(documents, DocumentCategory.ArrBadgesPaymentProof);
+        Document? proof = Latest(documents, PaymentProof.Category);
         return proof is not null
             && application.PaymentAmountChangedAtUtc is DateTime changedAt
             && proof.UploadedAtUtc < changedAt;
@@ -189,14 +180,10 @@ public static class ArrFleetRules
             }
         }
 
-        foreach (Requirement proof in PaymentProofs)
-        {
-            AddIfMissing(missing, documents, proof);
-        }
-
+        AddIfMissing(missing, documents, PaymentProof);
         if (PaymentProofOutdated(application, documents))
         {
-            missing.Add("dovada plății ecusoanelor pentru suma actuală");
+            missing.Add("dovada plății pentru suma actuală");
         }
 
         if (application.VehicleOwnership is null)
@@ -265,6 +252,3 @@ public static class ArrFleetRules
         }
     }
 }
-
-/// <summary>O plată separată către ARR: ce acoperă, cât și în ce categorie intră dovada.</summary>
-public sealed record ArrFleetPayment(string Kind, string Label, string Explanation, long AmountBani, DocumentCategory ProofCategory);

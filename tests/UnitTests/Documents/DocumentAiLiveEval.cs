@@ -13,7 +13,7 @@ namespace UnitTests.Documents;
 
 /// <summary>
 /// Evaluarea pe documente reale: trece un folder de acte adevărate și false prin modelul real și
-/// prin regulile din C#, și scrie un tabel cu verdictul fiecăruia. Cu el se calibrează promptul.
+/// prin regulile din C#, și scrie un tabel cu ce s-a citit din fiecare. Cu el se calibrează promptul.
 ///
 /// Nu rulează în CI: fără <c>DOC_AI_EVAL_DIR</c> și <c>OPENROUTER_API_KEY</c> iese imediat. Folderul
 /// are forma <c>{real,fake}/&lt;Categorie&gt;/fișier</c> (ex. <c>fake/AdeverintaMedicala/word.pdf</c>)
@@ -69,8 +69,7 @@ public sealed class DocumentAiLiveEval(ITestOutputHelper output)
                     expectation.Label,
                     expectation.Details,
                     expectation.ExpectsExpiryDate,
-                    expectation.FieldSpecs.Select(f => new AiFieldRequest(f.Key, f.Description, f.Type.ToString(), f.Required)).ToList(),
-                    expectation.AuthenticityHints),
+                    expectation.FieldSpecs.Select(f => new AiFieldRequest(f.Key, f.Description, f.Type.ToString(), f.Required)).ToList()),
                 CancellationToken.None);
 
             if (result.IsFailure)
@@ -80,7 +79,7 @@ public sealed class DocumentAiLiveEval(ITestOutputHelper output)
             }
 
             DocumentAiAnalysisResult r = result.Value;
-            AuthenticityVerdict verdict = DocumentAuthenticityEvaluator.Evaluate(expectation, r.Authenticity, forensics.Inspect(bytes, contentType));
+            IReadOnlyList<string> reasons = DocumentAuthenticityEvaluator.Reasons(expectation, forensics.Inspect(bytes, contentType));
             string? itp = expectation.ExpiryFromField is { } key
                 ? DocumentFieldRules.LatestItpDate(
                     r.Fields.FirstOrDefault(f => f.Key == key)?.Value,
@@ -88,13 +87,10 @@ public sealed class DocumentAiLiveEval(ITestOutputHelper output)
                     DocumentDateValidator.Parse(r.Fields.FirstOrDefault(f => f.Key == "data_inmatriculare")?.Value))?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
                 : null;
 
-            bool rejected = !r.MatchesExpectedType || !r.IsReadable || verdict.IsBlankTemplate;
-            string outcome = verdict.Reasons.Count > 0 ? "SUSPECT" : "OK";
-
             table.AppendLine(
                 Invariant,
-                $"{parts[0],-5} {category,-22} {parts[^1],-30} {(rejected ? "RESPINS" : outcome),-8} " +
-                $"{(itp is null ? string.Empty : $"ITP {itp} ")}{string.Join(" · ", verdict.Reasons)} {r.Reason}");
+                $"{parts[0],-5} {category,-22} {parts[^1],-30} {r.DetectedType,-24} " +
+                $"{(itp is null ? string.Empty : $"ITP {itp} ")}{string.Join(" · ", reasons)}");
         }
 
         output.WriteLine(table.ToString());

@@ -2,20 +2,23 @@ using System.Globalization;
 
 namespace Application.Documents.AiVerification;
 
-/// <summary>Ce se întâmplă cu documentul după verificarea datelor din el.</summary>
+/// <summary>
+/// Ce spun datele de pe document față de ziua de azi. Nimic de aici nu respinge automat: orice
+/// altceva decât <c>Accepted</c> ajunge la admin ca motiv, iar documentul îl judecă un om.
+/// </summary>
 public enum DocumentDateOutcome
 {
-    /// <summary>Datele sunt plauzibile — documentul trece mai departe.</summary>
+    /// <summary>Datele sunt plauzibile.</summary>
     Accepted = 0,
 
-    /// <summary>Datele contrazic realitatea (act eliberat în viitor, act expirat). Se respinge.</summary>
+    /// <summary>Datele contrazic realitatea (act eliberat în viitor, act expirat).</summary>
     Rejected = 1,
 
-    /// <summary>Datele lipsesc sau sunt implauzibile. Nu respingem — decide un om.</summary>
+    /// <summary>Datele lipsesc sau sunt implauzibile.</summary>
     NeedsManualReview = 2,
 }
 
-/// <param name="Reason">Explicație scurtă, în română, arătată clientului. Gol la <c>Accepted</c>.</param>
+/// <param name="Reason">Explicație scurtă, în română, pentru admin. Gol la <c>Accepted</c>.</param>
 public sealed record DocumentDateVerdict(DocumentDateOutcome Outcome, string Reason)
 {
     public static readonly DocumentDateVerdict Accepted = new(DocumentDateOutcome.Accepted, string.Empty);

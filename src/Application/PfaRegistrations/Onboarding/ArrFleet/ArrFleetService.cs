@@ -119,16 +119,6 @@ internal sealed class ArrFleetService(IApplicationDbContext context, ArrAgencyRe
 
         ArrAgencyResolution agency = await agencyResolver.ResolveAsync(registration, cancellationToken);
 
-        var payments = ArrFleetRules.Payments(application.Platforms)
-            .Select(p => new ArrFleetPaymentDto(
-                p.Kind,
-                p.Label,
-                p.Explanation,
-                p.AmountBani,
-                p.ProofCategory.ToString(),
-                ArrFleetRules.Latest(documents, p.ProofCategory) is not null))
-            .ToList();
-
         return new ArrFleetStateResponse(
             registration.Id,
             application.Status.ToString(),
@@ -137,7 +127,8 @@ internal sealed class ArrFleetService(IApplicationDbContext context, ArrAgencyRe
             driverAccounts,
             application.VehicleOwnership?.ToString(),
             application.PaymentAmountBani,
-            payments,
+            ArrFleetRules.PaymentExplanation(application.Platforms),
+            ArrFleetRules.Latest(documents, ArrFleetRules.PaymentProof.Category) is not null,
             agency.Account is ArrAccount account
                 ? new ArrAgencyDto(account.CountyCode, account.CountyName, account.BeneficiaryName, account.Treasury, account.FiscalCode, account.Iban)
                 : null,

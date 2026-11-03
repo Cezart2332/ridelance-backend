@@ -185,7 +185,7 @@ internal sealed class AnafMandateService(
     }
 
     /// <summary>
-    /// Câmpurile citite din actele de identitate trecute, cel mai nou primul. Pe cartea electronică
+    /// Câmpurile citite din actele de identitate, cel mai nou primul. Pe cartea electronică
     /// domiciliul stă doar în PDF-ul RO CEI Reader, iar seria și numărul pe poză, deci se combină.
     /// Un act marcat ca al altcuiva nu intră.
     /// </summary>
@@ -196,7 +196,7 @@ internal sealed class AnafMandateService(
             .Where(d => d.UserId == userId &&
                         DocumentAiCatalog.IdentityCategories.Contains(d.Category) &&
                         d.Status != DocumentStatus.Rejected &&
-                        d.AiStatus == DocumentAiStatus.Passed &&
+                        d.AiStatus == DocumentAiStatus.Read &&
                         !d.AiIdentityMismatch)
             .OrderByDescending(d => d.UploadedAtUtc)
             .Select(d => new { d.Id, d.Category })

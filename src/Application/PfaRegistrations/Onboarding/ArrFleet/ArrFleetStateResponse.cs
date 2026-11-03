@@ -12,7 +12,8 @@ public sealed record ArrFleetStateResponse(
     IReadOnlyList<ArrFleetDriverAccountDto> DriverAccounts,
     string? VehicleOwnership,
     long PaymentAmountBani,
-    IReadOnlyList<ArrFleetPaymentDto> Payments,
+    string PaymentExplanation,
+    bool PaymentProofUploaded,
     ArrAgencyDto? Agency,
     string? AgencyError,
     bool PaymentProofOutdated,
@@ -32,15 +33,6 @@ public sealed record ArrFleetDriverAccountDto(
     string? Phone,
     string? FullName,
     bool RequiresPhoneCall);
-
-/// <summary>O plată separată: suma, explicația și categoria în care se încarcă dovada ei.</summary>
-public sealed record ArrFleetPaymentDto(
-    string Kind,
-    string Label,
-    string Explanation,
-    long AmountBani,
-    string ProofCategory,
-    bool ProofUploaded);
 
 /// <summary>Agenția teritorială ARR din județul sediului social, cu contul ei de trezorerie.</summary>
 public sealed record ArrAgencyDto(

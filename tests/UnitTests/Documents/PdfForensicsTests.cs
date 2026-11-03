@@ -66,31 +66,4 @@ public sealed class PdfForensicsTests
         Forensics.Inspect([0xFF, 0xD8, 0xFF], "image/jpeg").ShouldBeNull();
         Forensics.Inspect([1, 2, 3], "application/pdf").ShouldBeNull();
     }
-
-    [Fact]
-    public void The_authenticity_block_is_parsed()
-    {
-        using var json = JsonDocument.Parse("""
-            {"authenticity": {"letterhead": false, "stamp": true, "signature": null,
-             "is_blank_template": false, "appears_self_made": true,
-             "suspicion_reasons": ["Text pe foaie albă", ""]}}
-            """);
-
-        DocumentAuthenticityReport? report = OpenRouterDocumentAiAnalyzer.ParseAuthenticity(json.RootElement);
-
-        report.ShouldNotBeNull();
-        report.Letterhead.ShouldBe(false);
-        report.Stamp.ShouldBe(true);
-        report.Signature.ShouldBeNull();
-        report.AppearsSelfMade.ShouldBe(true);
-        report.SuspicionReasons.ShouldHaveSingleItem().ShouldBe("Text pe foaie albă");
-    }
-
-    [Fact]
-    public void A_missing_authenticity_block_is_unknown()
-    {
-        using var json = JsonDocument.Parse("""{"matches_expected_type": true}""");
-
-        OpenRouterDocumentAiAnalyzer.ParseAuthenticity(json.RootElement).ShouldBeNull();
-    }
 }

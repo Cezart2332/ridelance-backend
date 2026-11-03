@@ -19,31 +19,23 @@ public sealed class ArrFleetRulesTests
         ArrFleetPricing.AmountBani(platforms).ShouldBe(expectedBani);
 
     [Fact]
-    public void Payments_AreThreeSeparateExactAmounts()
+    public void PaymentExplanation_ListsOnlyTheBadgesOfTheChosenPlatforms()
     {
-        IReadOnlyList<ArrFleetPayment> uber = ArrFleetRules.Payments(ArrFleetPlatforms.Uber);
-        uber.Select(p => p.AmountBani).ShouldBe([30_000, 10_000, 800]);
-        uber.Select(p => p.ProofCategory).ShouldBe(
-        [
-            DocumentCategory.ArrAuthorizationPaymentProof,
-            DocumentCategory.ArrCertifiedCopyPaymentProof,
-            DocumentCategory.ArrBadgesPaymentProof,
-        ]);
-        uber[2].Explanation.ShouldBe("Câte 8 lei pe platformă: 8 lei Uber.");
+        ArrFleetRules.PaymentExplanation(ArrFleetPlatforms.Uber)
+            .ShouldBe("300 lei autorizația de transport, 100 lei copia conformă, 8 lei ecusoane Uber.");
 
-        IReadOnlyList<ArrFleetPayment> both = ArrFleetRules.Payments(ArrFleetPlatforms.Uber | ArrFleetPlatforms.Bolt);
-        both[2].AmountBani.ShouldBe(1_600);
-        both.Sum(p => p.AmountBani).ShouldBe(ArrFleetPricing.AmountBani(ArrFleetPlatforms.Uber | ArrFleetPlatforms.Bolt));
+        ArrFleetRules.PaymentExplanation(ArrFleetPlatforms.Uber | ArrFleetPlatforms.Bolt)
+            .ShouldBe("300 lei autorizația de transport, 100 lei copia conformă, 8 lei ecusoane Uber, 8 lei ecusoane Bolt.");
     }
 
     [Fact]
-    public void Missing_AsksForEachPaymentProofSeparately()
+    public void Missing_AsksForASinglePaymentProof()
     {
         List<Document> documents = CompleteDocuments();
-        documents.RemoveAll(d => d.Category == DocumentCategory.ArrCertifiedCopyPaymentProof);
+        documents.RemoveAll(d => d.Category == DocumentCategory.DovadaPlataArr);
 
         ArrFleetRules.Missing(Application(ArrFleetVehicleOwnership.Ownership), [DriverAccount(hasAccount: false)], documents)
-            .ShouldBe(["Dovada plății copiei conforme"]);
+            .ShouldBe(["Dovada plății"]);
     }
 
     [Fact]
@@ -103,16 +95,16 @@ public sealed class ArrFleetRulesTests
     }
 
     [Fact]
-    public void BadgesProof_UploadedBeforeTheAmountChanged_IsOutdated()
+    public void PaymentProof_UploadedBeforeTheAmountChanged_IsOutdated()
     {
         ArrFleetApplication application = Application(ArrFleetVehicleOwnership.Ownership);
         List<Document> documents = CompleteDocuments();
-        application.PaymentAmountChangedAtUtc = documents.Single(d => d.Category == DocumentCategory.ArrBadgesPaymentProof)
+        application.PaymentAmountChangedAtUtc = documents.Single(d => d.Category == DocumentCategory.DovadaPlataArr)
             .UploadedAtUtc.AddMinutes(1);
 
         ArrFleetRules.PaymentProofOutdated(application, documents).ShouldBeTrue();
         ArrFleetRules.Missing(application, [DriverAccount(hasAccount: false)], documents)
-            .ShouldBe(["dovada plății ecusoanelor pentru suma actuală"]);
+            .ShouldBe(["dovada plății pentru suma actuală"]);
     }
 
     [Theory]
@@ -167,9 +159,7 @@ public sealed class ArrFleetRulesTests
         Doc(DocumentCategory.AdeverintaMedicala),
         Doc(DocumentCategory.AvizPsihologic),
         Doc(DocumentCategory.CazierJudiciar),
-        Doc(DocumentCategory.ArrAuthorizationPaymentProof),
-        Doc(DocumentCategory.ArrCertifiedCopyPaymentProof),
-        Doc(DocumentCategory.ArrBadgesPaymentProof),
+        Doc(DocumentCategory.DovadaPlataArr),
         Doc(DocumentCategory.Talon),
         Doc(DocumentCategory.RCA),
         Doc(DocumentCategory.AsigurareCalatori),

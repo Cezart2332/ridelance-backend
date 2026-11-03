@@ -20,6 +20,7 @@ public enum DocumentCategory
     Cheltuiala = 15,
     CertificatInregistrare = 16,
     CertificatConstatator = 17,
+    /// <summary>Dovada plății pasului „ARR &amp; Cont Flotă”: suma întreagă, 408 sau 416 lei.</summary>
     DovadaPlataArr = 18,
     AutorizatieTransportAlternativ = 19,
     Talon = 20,
@@ -68,9 +69,9 @@ public enum DocumentCategory
     /// <summary>Contractul de leasing al mașinii.</summary>
     ContractLeasing = 43,
     /// <summary>
-    /// Dovezile celor trei plăți separate cerute de ARR la pasul „ARR &amp; Cont Flotă”, toate în
-    /// contul de trezorerie al agenției din județul sediului social: autorizația, copia conformă și
-    /// ecusoanele.
+    /// Dovezile vechilor plăți separate (autorizație, copie conformă, ecusoane). Pasul „ARR &amp;
+    /// Cont Flotă” cere acum o singură plată, cu dovada în <see cref="DovadaPlataArr"/>; valorile
+    /// rămân pentru documentele deja încărcate.
     /// </summary>
     ArrAuthorizationPaymentProof = 44,
     ArrCertifiedCopyPaymentProof = 45,

@@ -22,7 +22,7 @@ internal static class OnboardingChecklistBuilder
         [OnboardingStepKey.ArrFleet] =
         [
             .. ArrFleetRules.PersonalDocuments,
-            .. ArrFleetRules.PaymentProofs,
+            ArrFleetRules.PaymentProof,
             .. ArrFleetRules.VehicleDocuments,
         ],
     };
@@ -51,10 +51,10 @@ internal static class OnboardingChecklistBuilder
                 requirement.Category.ToString(),
                 requirement.Label,
                 StateOf(newest),
-                // Motivul respingerii se afișează pe rând, nu într-un tooltip. Cel scris de om
-                // bate verdictul automat; iar fără niciunul, rândul tot spune ce e de făcut.
+                // Motivul respingerii se afișează pe rând, nu într-un tooltip. Respinge doar echipa;
+                // fără un motiv scris, rândul tot spune ce e de făcut.
                 newest?.Status == DocumentStatus.Rejected
-                    ? newest.ReviewNote ?? newest.AiSummary ?? "Respins de echipa RIDElance. Încarcă o variantă nouă."
+                    ? newest.ReviewNote ?? "Respins de echipa RIDElance. Încarcă o variantă nouă."
                     : null));
         }
 

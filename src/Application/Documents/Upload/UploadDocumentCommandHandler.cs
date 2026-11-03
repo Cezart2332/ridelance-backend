@@ -50,7 +50,7 @@ internal sealed class UploadDocumentCommandHandler(
             configuration["OpenRouter:ApiKey"] ?? Environment.GetEnvironmentVariable("OpenRouter__ApiKey"));
 
         // Comutator de testare: documentele intră validate, ca parcurgerea onboardingului să nu
-        // depindă de un om sau de verdictul modelului. Ce se blochează mai departe se blochează
+        // depindă de un om. Ce se blochează mai departe se blochează
         // dintr-un motiv structural — exact ce vrem să vedem. Implicit stins.
         bool autoApprove = bool.TryParse(configuration["Onboarding:AutoApproveDocuments"], out bool auto) && auto;
 
