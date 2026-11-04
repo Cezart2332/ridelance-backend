@@ -33,6 +33,12 @@ internal sealed class GetRentalDefaultsQueryHandler(
                 defaults.MileageLimit,
                 defaults.ExtraKmCostBani,
                 defaults.FuelRule,
-                defaults.DefaultConditions));
+                defaults.DefaultConditions,
+                defaults.PaymentDueDay?.ToString(),
+                defaults.PaymentMethod?.ToString(),
+                defaults.LatePenaltyPercentPerDay,
+                defaults.FranchiseBani,
+                defaults.NoticeDays,
+                defaults.UnavailabilityRule?.ToString()));
     }
 }

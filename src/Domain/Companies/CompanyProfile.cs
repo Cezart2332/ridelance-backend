@@ -28,6 +28,11 @@ public sealed class CompanyProfile : Entity
     public string? Cui { get; set; }
     public string? RegCom { get; set; }
     public string? LegalRepresentative { get; set; }
+
+    /// <summary>Calitatea reprezentantului: „administrator”, „asociat unic”, „titular”.</summary>
+    /// <remarks>Contractul o cere în clauza 1.1: „reprezentată prin …, în calitate de …”.</remarks>
+    public string? LegalRepresentativeRole { get; set; }
+
     public string? RegisteredOffice { get; set; }
 
     /// <summary>

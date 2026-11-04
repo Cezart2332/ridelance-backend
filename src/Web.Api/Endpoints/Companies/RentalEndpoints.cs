@@ -101,7 +101,20 @@ internal sealed class UpdateRental : IEndpoint
                     body.StartMileage,
                     body.Accessories,
                     body.AccessoriesOther,
-                    body.Notes),
+                    body.Notes,
+                    body.PaymentDueDay,
+                    body.PaymentMethod,
+                    body.LatePenaltyPercentPerDay,
+                    body.FranchiseBani,
+                    body.NoticeDays,
+                    body.UnavailabilityRule,
+                    body.AdditionalDriverName,
+                    body.AdditionalDriverCnp,
+                    body.AdditionalDriverLicense,
+                    body.KeysCount,
+                    body.HandoverDocuments,
+                    body.HandoverDocumentsOther,
+                    body.DamagesAtPickup),
                 cancellationToken);
 
             return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
@@ -124,7 +137,20 @@ internal sealed class UpdateRental : IEndpoint
         int? StartMileage,
         IReadOnlyList<string>? Accessories,
         string? AccessoriesOther,
-        string? Notes);
+        string? Notes,
+        string? PaymentDueDay = null,
+        string? PaymentMethod = null,
+        decimal? LatePenaltyPercentPerDay = null,
+        long? FranchiseBani = null,
+        int? NoticeDays = null,
+        string? UnavailabilityRule = null,
+        string? AdditionalDriverName = null,
+        string? AdditionalDriverCnp = null,
+        string? AdditionalDriverLicense = null,
+        int? KeysCount = null,
+        IReadOnlyList<string>? HandoverDocuments = null,
+        string? HandoverDocumentsOther = null,
+        string? DamagesAtPickup = null);
 }
 
 internal sealed class GetTenants : IEndpoint
@@ -321,7 +347,22 @@ internal sealed class FillRentalDocumentFields : IEndpoint
                     body.TenantIdSeries,
                     body.TenantIdNumber,
                     body.TenantCui,
-                    body.RentalStartMileage),
+                    body.RentalStartMileage,
+                    body.CompanyRegCom,
+                    body.CompanyIban,
+                    body.CompanyLegalRepresentativeRole,
+                    body.CarYear,
+                    body.TenantRegCom,
+                    body.TenantRepresentativeName,
+                    body.RentalFuelLevelAtPickup,
+                    body.RentalKeysCount,
+                    body.RentalPaymentDueDay,
+                    body.RentalPaymentMethod,
+                    body.RentalNoticeDays,
+                    body.RentalFranchiseBani,
+                    body.RentalUnavailabilityRule,
+                    body.RentalMileageLimit,
+                    body.RentalExtraKmCostBani),
                 cancellationToken);
 
             return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
@@ -345,4 +386,19 @@ internal sealed record FillDocumentFieldsRequest(
     string? TenantIdSeries,
     string? TenantIdNumber,
     string? TenantCui,
-    int? RentalStartMileage);
+    int? RentalStartMileage,
+    string? CompanyRegCom = null,
+    string? CompanyIban = null,
+    string? CompanyLegalRepresentativeRole = null,
+    int? CarYear = null,
+    string? TenantRegCom = null,
+    string? TenantRepresentativeName = null,
+    string? RentalFuelLevelAtPickup = null,
+    int? RentalKeysCount = null,
+    string? RentalPaymentDueDay = null,
+    string? RentalPaymentMethod = null,
+    int? RentalNoticeDays = null,
+    long? RentalFranchiseBani = null,
+    string? RentalUnavailabilityRule = null,
+    int? RentalMileageLimit = null,
+    long? RentalExtraKmCostBani = null);

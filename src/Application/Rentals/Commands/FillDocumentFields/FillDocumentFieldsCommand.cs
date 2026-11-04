@@ -43,7 +43,22 @@ public sealed record FillDocumentFieldsCommand(
     string? TenantIdSeries = null,
     string? TenantIdNumber = null,
     string? TenantCui = null,
-    int? RentalStartMileage = null) : ICommand;
+    int? RentalStartMileage = null,
+    string? CompanyRegCom = null,
+    string? CompanyIban = null,
+    string? CompanyLegalRepresentativeRole = null,
+    int? CarYear = null,
+    string? TenantRegCom = null,
+    string? TenantRepresentativeName = null,
+    string? RentalFuelLevelAtPickup = null,
+    int? RentalKeysCount = null,
+    string? RentalPaymentDueDay = null,
+    string? RentalPaymentMethod = null,
+    int? RentalNoticeDays = null,
+    long? RentalFranchiseBani = null,
+    string? RentalUnavailabilityRule = null,
+    int? RentalMileageLimit = null,
+    long? RentalExtraKmCostBani = null) : ICommand;
 
 internal sealed class FillDocumentFieldsCommandHandler(
     IApplicationDbContext context,
@@ -65,6 +80,25 @@ internal sealed class FillDocumentFieldsCommandHandler(
             return Result.Failure(Error.NotFound("Rental.NotFound", "Închirierea nu a fost găsită."));
         }
 
+        Result<RentalTerms> terms = RentalTerms.Parse(new RentalTermsInput(
+            command.RentalPaymentDueDay,
+            command.RentalPaymentMethod,
+            null,
+            command.RentalFranchiseBani,
+            command.RentalNoticeDays,
+            command.RentalUnavailabilityRule));
+
+        if (terms.IsFailure)
+        {
+            return Result.Failure(terms.Error);
+        }
+
+        if (command.RentalKeysCount is < 0 || command.RentalMileageLimit is <= 0 || command.RentalExtraKmCostBani is < 0
+            || command.CarYear is < 1950 or > 2100)
+        {
+            return Result.Failure(Error.Problem("RentalDocument.InvalidValue", "Una dintre valori nu e validă."));
+        }
+
         Tenant tenant = rental.Tenant;
         Set(command.TenantName, v => tenant.Name = v);
         Set(command.TenantAddress, v => tenant.Address = v);
@@ -72,13 +106,32 @@ internal sealed class FillDocumentFieldsCommandHandler(
         Set(command.TenantIdSeries, v => tenant.IdSeries = v);
         Set(command.TenantIdNumber, v => tenant.IdNumber = v);
         Set(command.TenantCui, v => tenant.Cui = v);
+        Set(command.TenantRegCom, v => tenant.RegCom = v);
+        Set(command.TenantRepresentativeName, v => tenant.RepresentativeName = v);
 
         if (command.RentalStartMileage.HasValue)
         {
             rental.StartMileage = command.RentalStartMileage;
         }
 
-        if (command.CarPlateNumber is not null || command.CarVin is not null)
+        Set(command.RentalFuelLevelAtPickup, v => rental.FuelLevelAtPickup = v);
+        rental.KeysCount = command.RentalKeysCount ?? rental.KeysCount;
+        rental.PaymentDueDay = terms.Value.PaymentDueDay ?? rental.PaymentDueDay;
+        rental.PaymentMethod = terms.Value.PaymentMethod ?? rental.PaymentMethod;
+        rental.NoticeDays = terms.Value.NoticeDays ?? rental.NoticeDays;
+        rental.FranchiseBani = terms.Value.FranchiseBani ?? rental.FranchiseBani;
+        rental.UnavailabilityRule = terms.Value.UnavailabilityRule ?? rental.UnavailabilityRule;
+
+        // Limita de km se cere doar când închirierea e „cu limită”; aici doar se completează.
+        if (rental.HasKmLimit)
+        {
+            rental.MileageLimit = command.RentalMileageLimit ?? rental.MileageLimit;
+            rental.ExtraKmCostBani = command.RentalExtraKmCostBani ?? rental.ExtraKmCostBani;
+        }
+
+        rental.UpdatedAtUtc = DateTime.UtcNow;
+
+        if (command.CarPlateNumber is not null || command.CarVin is not null || command.CarYear is not null)
         {
             Car? car = await context.Cars.FirstOrDefaultAsync(
                 c => c.Id == rental.CarId && c.PostedByUserId == userContext.UserId,
@@ -92,12 +145,19 @@ internal sealed class FillDocumentFieldsCommandHandler(
             // Numărul de înmatriculare se scrie cu majuscule oriunde altundeva în aplicație.
             Set(command.CarPlateNumber, v => car.PlateNumber = v.ToUpperInvariant());
             Set(command.CarVin, v => car.Vin = v.ToUpperInvariant());
+            if (command.CarYear is int year)
+            {
+                car.Year = year;
+            }
         }
 
         bool touchesCompany = command.CompanyLegalName is not null
             || command.CompanyCui is not null
             || command.CompanyRegisteredOffice is not null
-            || command.CompanyLegalRepresentative is not null;
+            || command.CompanyLegalRepresentative is not null
+            || command.CompanyRegCom is not null
+            || command.CompanyIban is not null
+            || command.CompanyLegalRepresentativeRole is not null;
 
         if (touchesCompany)
         {
@@ -118,6 +178,10 @@ internal sealed class FillDocumentFieldsCommandHandler(
             Set(command.CompanyCui, v => company.Cui = v);
             Set(command.CompanyRegisteredOffice, v => company.RegisteredOffice = v);
             Set(command.CompanyLegalRepresentative, v => company.LegalRepresentative = v);
+            Set(command.CompanyRegCom, v => company.RegCom = v);
+            Set(command.CompanyLegalRepresentativeRole, v => company.LegalRepresentativeRole = v);
+            // Ca în profilul firmei: compact și cu majuscule.
+            Set(command.CompanyIban, v => company.Iban = v.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant());
         }
 
         await context.SaveChangesAsync(cancellationToken);

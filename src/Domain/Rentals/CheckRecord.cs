@@ -54,6 +54,18 @@ public sealed class CheckRecord : Entity
 
     public string? Notes { get; set; }
 
+    /// <summary>Câte seturi de chei s-au predat sau primit.</summary>
+    public int? KeysCount { get; set; }
+
+    /// <summary>Documentele mașinii predate/primite, ca <see cref="HandoverDocumentCodes"/>.</summary>
+    public List<string> Documents { get; set; } = [];
+
+    /// <summary>Alte documente, în afara talonului și a RCA-ului.</summary>
+    public string? DocumentsOther { get; set; }
+
+    /// <summary>Starea mașinii: avariile existente sau constatate în momentul ăsta.</summary>
+    public string? Damages { get; set; }
+
     // --- Doar la primire ---
 
     public long? DepositReturnedBani { get; set; }

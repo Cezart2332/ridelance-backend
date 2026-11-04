@@ -21,7 +21,12 @@ public sealed record SaveCheckRecordCommand(
     long? DepositWithheldBani,
     string? WithholdingReason,
     long? ExtraMileageChargeBani,
-    long? OtherChargesBani) : ICommand<Guid>;
+    long? OtherChargesBani,
+    // Pentru procesul-verbal. `null` = netrimis, rămâne cum era.
+    int? KeysCount = null,
+    IReadOnlyList<string>? Documents = null,
+    string? DocumentsOther = null,
+    string? Damages = null) : ICommand<Guid>;
 
 internal sealed class SaveCheckRecordCommandHandler(
     IApplicationDbContext context,
@@ -41,6 +46,11 @@ internal sealed class SaveCheckRecordCommandHandler(
         if (rental is null)
         {
             return Result.Failure<Guid>(Error.NotFound("Rental.NotFound", "Închirierea nu a fost găsită."));
+        }
+
+        if (command.KeysCount is < 0)
+        {
+            return Result.Failure<Guid>(Error.Problem("Check.Invalid.keysCount", "Numărul de chei nu poate fi negativ."));
         }
 
         // O sumă reținută fără motiv scris e o dispută care așteaptă să se întâmple.
@@ -92,6 +102,14 @@ internal sealed class SaveCheckRecordCommandHandler(
         record.FuelLevel = command.FuelLevel?.Trim();
         record.Accessories = command.Accessories?.ToList() ?? [];
         record.Notes = command.Notes?.Trim();
+        record.KeysCount = command.KeysCount ?? record.KeysCount;
+        if (command.Documents is not null)
+        {
+            record.Documents = RentalInput.CleanList(command.Documents);
+        }
+
+        record.DocumentsOther = RentalInput.Patch(record.DocumentsOther, command.DocumentsOther);
+        record.Damages = RentalInput.Patch(record.Damages, command.Damages);
         record.UpdatedAtUtc = DateTime.UtcNow;
 
         if (command.Kind == CheckKind.CheckOut)

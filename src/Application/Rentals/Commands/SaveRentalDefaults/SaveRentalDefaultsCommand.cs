@@ -21,6 +21,19 @@ internal sealed class SaveRentalDefaultsCommandHandler(
         ArgumentNullException.ThrowIfNull(command);
         RentalDefaultsDto input = command.Defaults;
 
+        Result<RentalTerms> terms = RentalTerms.Parse(new RentalTermsInput(
+            input.PaymentDueDay,
+            input.PaymentMethod,
+            input.LatePenaltyPercentPerDay,
+            input.FranchiseBani,
+            input.NoticeDays,
+            input.UnavailabilityRule));
+
+        if (terms.IsFailure)
+        {
+            return Result.Failure<RentalDefaultsDto>(terms.Error);
+        }
+
         FleetRentalDefaults? defaults = await context.FleetRentalDefaults
             .FirstOrDefaultAsync(d => d.OwnerUserId == userContext.UserId, cancellationToken);
 
@@ -39,10 +52,23 @@ internal sealed class SaveRentalDefaultsCommandHandler(
         defaults.ExtraKmCostBani = input.ExtraKmCostBani;
         defaults.FuelRule = input.FuelRule?.Trim();
         defaults.DefaultConditions = input.DefaultConditions?.Trim();
+        defaults.PaymentDueDay = terms.Value.PaymentDueDay;
+        defaults.PaymentMethod = terms.Value.PaymentMethod;
+        defaults.LatePenaltyPercentPerDay = terms.Value.LatePenaltyPercentPerDay;
+        defaults.FranchiseBani = terms.Value.FranchiseBani;
+        defaults.NoticeDays = terms.Value.NoticeDays;
+        defaults.UnavailabilityRule = terms.Value.UnavailabilityRule;
         defaults.UpdatedAtUtc = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
 
-        return Result.Success(input with { MileageLimit = defaults.MileageLimit });
+        // Numele canonice înapoi („monday” → „Monday”), ca formularul să le poată compara.
+        return Result.Success(input with
+        {
+            MileageLimit = defaults.MileageLimit,
+            PaymentDueDay = defaults.PaymentDueDay?.ToString(),
+            PaymentMethod = defaults.PaymentMethod?.ToString(),
+            UnavailabilityRule = defaults.UnavailabilityRule?.ToString(),
+        });
     }
 }

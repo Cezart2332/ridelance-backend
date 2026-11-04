@@ -34,6 +34,26 @@ public sealed class FleetRentalDefaults : Entity
     public string? FuelRule { get; set; }
     public string? DefaultConditions { get; set; }
 
+    // Termenii contractuali ai flotei. Se propun în formular și se copiază pe închiriere.
+
+    /// <summary>Ziua săptămânii în care se plătește chiria (clauza 3.2).</summary>
+    public DayOfWeek? PaymentDueDay { get; set; }
+
+    /// <summary>Cum se plătește chiria (clauza 3.2).</summary>
+    public RentalPaymentMethod? PaymentMethod { get; set; }
+
+    /// <summary>Penalitatea de întârziere, în procente pe zi (clauza 3.5). Gol = nu s-au convenit.</summary>
+    public decimal? LatePenaltyPercentPerDay { get; set; }
+
+    /// <summary>Franșiza suportată de chiriaș la o daună din vina lui (clauza 6.2).</summary>
+    public long? FranchiseBani { get; set; }
+
+    /// <summary>Preavizul de denunțare, în zile (clauza 7.1).</summary>
+    public int? NoticeDays { get; set; }
+
+    /// <summary>Chiria cât mașina e indisponibilă fără vina chiriașului (clauza 5.4).</summary>
+    public RentalUnavailabilityRule? UnavailabilityRule { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 }

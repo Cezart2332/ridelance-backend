@@ -32,7 +32,22 @@ public sealed record UpdateRentalCommand(
     int? StartMileage,
     IReadOnlyList<string>? Accessories,
     string? AccessoriesOther,
-    string? Notes) : ICommand;
+    string? Notes,
+    // Câmpurile contractului adăugate după primul formular. `null` = netrimis, rămâne cum era;
+    // la text, șirul gol șterge valoarea.
+    string? PaymentDueDay = null,
+    string? PaymentMethod = null,
+    decimal? LatePenaltyPercentPerDay = null,
+    long? FranchiseBani = null,
+    int? NoticeDays = null,
+    string? UnavailabilityRule = null,
+    string? AdditionalDriverName = null,
+    string? AdditionalDriverCnp = null,
+    string? AdditionalDriverLicense = null,
+    int? KeysCount = null,
+    IReadOnlyList<string>? HandoverDocuments = null,
+    string? HandoverDocumentsOther = null,
+    string? DamagesAtPickup = null) : ICommand;
 
 internal sealed class UpdateRentalCommandHandler(
     IApplicationDbContext context,
@@ -47,6 +62,24 @@ internal sealed class UpdateRentalCommandHandler(
         {
             return Result.Failure(
                 Error.Problem("Rental.InvalidPeriod", "Data de predare trebuie să fie după cea de preluare."));
+        }
+
+        Result<RentalTerms> parsedTerms = RentalTerms.Parse(new RentalTermsInput(
+            command.PaymentDueDay,
+            command.PaymentMethod,
+            command.LatePenaltyPercentPerDay,
+            command.FranchiseBani,
+            command.NoticeDays,
+            command.UnavailabilityRule));
+
+        if (parsedTerms.IsFailure)
+        {
+            return Result.Failure(parsedTerms.Error);
+        }
+
+        if (command.KeysCount is < 0)
+        {
+            return Result.Failure(Error.Problem("Rental.Invalid.keysCount", "Numărul de chei nu poate fi negativ."));
         }
 
         Rental? rental = await context.Rentals
@@ -97,6 +130,25 @@ internal sealed class UpdateRentalCommandHandler(
         rental.Accessories = command.Accessories?.ToList() ?? [];
         rental.AccessoriesOther = command.AccessoriesOther?.Trim();
         rental.Notes = command.Notes?.Trim();
+
+        RentalTerms terms = parsedTerms.Value;
+        rental.PaymentDueDay = terms.PaymentDueDay ?? rental.PaymentDueDay;
+        rental.PaymentMethod = terms.PaymentMethod ?? rental.PaymentMethod;
+        rental.LatePenaltyPercentPerDay = terms.LatePenaltyPercentPerDay ?? rental.LatePenaltyPercentPerDay;
+        rental.FranchiseBani = terms.FranchiseBani ?? rental.FranchiseBani;
+        rental.NoticeDays = terms.NoticeDays ?? rental.NoticeDays;
+        rental.UnavailabilityRule = terms.UnavailabilityRule ?? rental.UnavailabilityRule;
+        rental.AdditionalDriverName = RentalInput.Patch(rental.AdditionalDriverName, command.AdditionalDriverName);
+        rental.AdditionalDriverCnp = RentalInput.Patch(rental.AdditionalDriverCnp, command.AdditionalDriverCnp);
+        rental.AdditionalDriverLicense = RentalInput.Patch(rental.AdditionalDriverLicense, command.AdditionalDriverLicense);
+        rental.KeysCount = command.KeysCount ?? rental.KeysCount;
+        if (command.HandoverDocuments is not null)
+        {
+            rental.HandoverDocuments = RentalInput.CleanList(command.HandoverDocuments);
+        }
+
+        rental.HandoverDocumentsOther = RentalInput.Patch(rental.HandoverDocumentsOther, command.HandoverDocumentsOther);
+        rental.DamagesAtPickup = RentalInput.Patch(rental.DamagesAtPickup, command.DamagesAtPickup);
         rental.UpdatedAtUtc = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);

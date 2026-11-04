@@ -20,8 +20,11 @@ public sealed class RentalDocumentRequirementsTests
     {
         LegalName = "Flota Test SRL",
         Cui = "RO12345678",
+        RegCom = "J40/123/2024",
+        Iban = "RO49AAAA1B31007593840000",
         RegisteredOffice = "București, Sector 1",
         LegalRepresentative = "Ion Popescu",
+        LegalRepresentativeRole = "administrator",
     };
 
     private static Car CompleteCar() => new()
@@ -43,11 +46,24 @@ public sealed class RentalDocumentRequirementsTests
         Address = "București, Str. Test 1",
     };
 
+    /// <summary>O închiriere cu toți termenii conveniți și predarea notată.</summary>
     private static Rental Rental(int? startMileage = 45_000) => new()
     {
         PublicCode = "RL-000001",
         StartMileage = startMileage,
+        FuelLevelAtPickup = "Plin",
+        KeysCount = 2,
+        PaymentDueDay = DayOfWeek.Monday,
+        PaymentMethod = RentalPaymentMethod.BankTransfer,
+        FranchiseBani = 150_000,
+        NoticeDays = 15,
+        UnavailabilityRule = RentalUnavailabilityRule.NotDue,
     };
+
+    private static IEnumerable<string> Fields(RentalDocumentType type, Rental rental, Tenant? tenant = null, CompanyProfile? company = null, CheckRecord? checkIn = null) =>
+        RentalDocumentRequirements
+            .For(type, rental, CompleteCar(), company ?? Company(), tenant ?? Individual(), checkIn)
+            .Select(m => m.Field);
 
     [Fact]
     public void A_complete_set_of_data_asks_for_nothing()
@@ -79,6 +95,8 @@ public sealed class RentalDocumentRequirementsTests
             Type = TenantType.Srl,
             Name = "Chiriaș SRL",
             Address = "Cluj, Str. Test 2",
+            RegCom = "J12/1/2020",
+            RepresentativeName = "Maria Ionescu",
         };
 
         IReadOnlyList<MissingField> missing = RentalDocumentRequirements
@@ -122,5 +140,107 @@ public sealed class RentalDocumentRequirementsTests
             .For(RentalDocumentType.RentalContract, Rental(), CompleteCar(), company: null, Individual());
 
         missing.Select(m => m.Field).ShouldBe(["company.profile"]);
+    }
+
+    [Fact]
+    public void The_contract_asks_for_every_agreed_term_it_prints()
+    {
+        var rental = new Rental { PublicCode = "RL-000001" };
+
+        IReadOnlyList<MissingField> missing = RentalDocumentRequirements
+            .For(RentalDocumentType.RentalContract, rental, CompleteCar(), Company(), Individual());
+
+        missing.Select(m => m.Field).ShouldBe([
+            "rental.paymentDueDay",
+            "rental.paymentMethod",
+            "rental.unavailabilityRule",
+            "rental.franchiseBani",
+            "rental.noticeDays",
+        ]);
+        missing.ShouldAllBe(m => m.Owner == "rental");
+    }
+
+    [Fact]
+    public void The_contract_asks_for_the_company_data_printed_in_clause_1_1()
+    {
+        CompanyProfile company = Company();
+        company.RegCom = null;
+        company.Iban = " ";
+        company.LegalRepresentativeRole = null;
+
+        Fields(RentalDocumentType.RentalContract, Rental(), company: company)
+            .ShouldBe(["company.legalRepresentativeRole", "company.regCom", "company.iban"]);
+
+        // Procesele-verbale nu tipăresc nimic din ele, deci nu le cer.
+        Fields(RentalDocumentType.HandoverProtocol, Rental(), company: company).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_km_limit_without_the_numbers_is_reported()
+    {
+        Rental rental = Rental();
+        rental.HasKmLimit = true;
+
+        Fields(RentalDocumentType.RentalContract, rental).ShouldBe(["rental.mileageLimit", "rental.extraKmCostBani"]);
+
+        rental.MileageLimit = 2_000;
+        rental.ExtraKmCostBani = 50;
+        Fields(RentalDocumentType.RentalContract, rental).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_penalty_and_an_additional_driver_are_never_required()
+    {
+        // Șablonul le are „dacă părțile au convenit”: lipsa lor e o alegere, nu un câmp uitat.
+        Rental rental = Rental();
+        rental.LatePenaltyPercentPerDay = null;
+        rental.AdditionalDriverName = null;
+
+        Fields(RentalDocumentType.RentalContract, rental).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void An_srl_tenant_needs_a_representative_a_pfa_does_not()
+    {
+        var srl = new Tenant { Type = TenantType.Srl, Name = "Chiriaș SRL", Address = "Cluj", Cui = "RO1" };
+        var pfa = new Tenant { Type = TenantType.Pfa, Name = "Pop Ion PFA", Address = "Cluj", Cui = "RO2" };
+
+        Fields(RentalDocumentType.RentalContract, Rental(), srl).ShouldBe(["tenant.regCom", "tenant.representativeName"]);
+        Fields(RentalDocumentType.RentalContract, Rental(), pfa).ShouldBe(["tenant.regCom"]);
+    }
+
+    [Fact]
+    public void A_car_without_a_year_is_reported_for_the_contract()
+    {
+        Car car = CompleteCar();
+        car.Year = 0;
+
+        RentalDocumentRequirements
+            .For(RentalDocumentType.RentalContract, Rental(), car, Company(), Individual())
+            .Select(m => m.Field)
+            .ShouldBe(["car.year"]);
+    }
+
+    [Fact]
+    public void The_handover_protocol_asks_for_fuel_and_keys()
+    {
+        Rental rental = Rental();
+        rental.FuelLevelAtPickup = null;
+        rental.KeysCount = null;
+
+        Fields(RentalDocumentType.HandoverProtocol, rental).ShouldBe(["rental.fuelLevelAtPickup", "rental.keysCount"]);
+
+        // „Chei” bifat în accesorii, ca înainte de câmpul dedicat, înseamnă cel puțin un set.
+        rental.Accessories = ["Chei"];
+        Fields(RentalDocumentType.HandoverProtocol, rental).ShouldBe(["rental.fuelLevelAtPickup"]);
+    }
+
+    [Fact]
+    public void A_recorded_check_in_stands_in_for_the_handover_fields()
+    {
+        var rental = new Rental { PublicCode = "RL-000001" };
+        var checkIn = new CheckRecord { Kind = CheckKind.CheckIn, Mileage = 45_000, FuelLevel = "3/4", KeysCount = 1 };
+
+        Fields(RentalDocumentType.HandoverProtocol, rental, checkIn: checkIn).ShouldBeEmpty();
     }
 }

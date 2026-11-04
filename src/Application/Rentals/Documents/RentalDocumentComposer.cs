@@ -27,7 +27,9 @@ internal static class RentalDocumentComposer
         Car car,
         CompanyProfile company,
         Tenant tenant,
-        string? conditions)
+        string? conditions,
+        CheckRecord? checkIn = null,
+        CheckRecord? checkOut = null)
     {
         List<RentalDocumentSection> sections =
         [
@@ -63,11 +65,11 @@ internal static class RentalDocumentComposer
         (string heading, string? kicker, IReadOnlyList<RentalDocumentArticle> articles) = type switch
         {
             RentalDocumentType.RentalContract =>
-                ("CONTRACT DE ÎNCHIRIERE AUTOVEHICUL", (string?)null, RentalContractText.Contract(rental, car, company, tenant)),
+                ("CONTRACT DE ÎNCHIRIERE AUTOVEHICUL", (string?)null, RentalContractText.Contract(rental, car, company, tenant, checkIn)),
             RentalDocumentType.HandoverProtocol =>
-                ("PROCES-VERBAL DE PREDARE-PRIMIRE AUTOVEHICUL", "ANEXA NR. 1", RentalContractText.Handover(rental, car, company, tenant, annex: false)),
+                ("PROCES-VERBAL DE PREDARE-PRIMIRE AUTOVEHICUL", "ANEXA NR. 1", RentalContractText.Handover(rental, car, company, tenant, annex: false, checkIn)),
             _ =>
-                ("PROCES-VERBAL DE RESTITUIRE AUTOVEHICUL", "ANEXA NR. 2", RentalContractText.Return(rental, car, company, tenant)),
+                ("PROCES-VERBAL DE RESTITUIRE AUTOVEHICUL", "ANEXA NR. 2", RentalContractText.Return(rental, car, company, tenant, checkOut)),
         };
 
         return new RentalDocumentData(heading, rental.PublicCode, sections, conditions, signatures, DateTime.UtcNow, articles, kicker);
@@ -120,7 +122,7 @@ internal static class RentalDocumentComposer
         new RentalDocumentField("Observații", rental.Notes),
     ];
 
-    private static string Date(DateTime value) => value.ToLocalTime().ToString("dd.MM.yyyy", PdfCulture);
+    private static string Date(DateTime value) => RomanianTime.Date(value);
 
     private static string Money(long bani) => (bani / 100m).ToString("N2", PdfCulture) + " lei";
 

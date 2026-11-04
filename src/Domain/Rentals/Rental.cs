@@ -80,6 +80,46 @@ public sealed class Rental : Entity
 
     public string? Notes { get; set; }
 
+    // --- Termenii contractului, copiați din setările flotei la creare ---
+
+    /// <summary>Ziua săptămânii în care se plătește chiria (clauza 3.2).</summary>
+    public DayOfWeek? PaymentDueDay { get; set; }
+
+    /// <summary>Cum se plătește chiria (clauza 3.2).</summary>
+    public RentalPaymentMethod? PaymentMethod { get; set; }
+
+    /// <summary>Penalitatea de întârziere, % pe zi (clauza 3.5). Gol = nu s-au convenit penalități.</summary>
+    public decimal? LatePenaltyPercentPerDay { get; set; }
+
+    /// <summary>Franșiza la daună (clauza 6.2). Zero e o valoare: „fără franșiză”.</summary>
+    public long? FranchiseBani { get; set; }
+
+    /// <summary>Preavizul de denunțare, în zile (clauza 7.1).</summary>
+    public int? NoticeDays { get; set; }
+
+    /// <summary>Chiria cât mașina e indisponibilă fără vina chiriașului (clauza 5.4).</summary>
+    public RentalUnavailabilityRule? UnavailabilityRule { get; set; }
+
+    // --- Conducătorul auto suplimentar (clauza 4.3). Fără nume, conduce doar chiriașul. ---
+
+    public string? AdditionalDriverName { get; set; }
+    public string? AdditionalDriverCnp { get; set; }
+    public string? AdditionalDriverLicense { get; set; }
+
+    // --- Predarea (Anexa nr. 1), când nu s-a făcut încă predarea propriu-zisă (CheckRecord) ---
+
+    /// <summary>Câte seturi de chei s-au predat.</summary>
+    public int? KeysCount { get; set; }
+
+    /// <summary>Documentele predate, ca <see cref="HandoverDocumentCodes"/>.</summary>
+    public List<string> HandoverDocuments { get; set; } = [];
+
+    /// <summary>Alte documente predate, în afara talonului și a RCA-ului.</summary>
+    public string? HandoverDocumentsOther { get; set; }
+
+    /// <summary>Avariile existente la predare. Gol = rămâne de completat de mână pe hârtie.</summary>
+    public string? DamagesAtPickup { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 }

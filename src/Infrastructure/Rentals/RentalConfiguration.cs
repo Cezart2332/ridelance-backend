@@ -21,6 +21,16 @@ internal sealed class RentalConfiguration : IEntityTypeConfiguration<Rental>
         builder.Property(r => r.AccessoriesOther).HasMaxLength(512);
         builder.Property(r => r.Notes).HasMaxLength(2048);
 
+        builder.Property(r => r.PaymentDueDay).HasConversion<string>().HasMaxLength(16);
+        builder.Property(r => r.PaymentMethod).HasConversion<string>().HasMaxLength(16);
+        builder.Property(r => r.UnavailabilityRule).HasConversion<string>().HasMaxLength(16);
+        builder.Property(r => r.LatePenaltyPercentPerDay).HasPrecision(5, 2);
+        builder.Property(r => r.AdditionalDriverName).HasMaxLength(256);
+        builder.Property(r => r.AdditionalDriverCnp).HasMaxLength(32);
+        builder.Property(r => r.AdditionalDriverLicense).HasMaxLength(32);
+        builder.Property(r => r.HandoverDocumentsOther).HasMaxLength(512);
+        builder.Property(r => r.DamagesAtPickup).HasMaxLength(2048);
+
         // Aceeași formă ca listele de pe `Car`: jsonb plus comparator, ca EF să vadă modificările
         // din interiorul listei, nu doar înlocuirea ei.
         var stringListComparer = new ValueComparer<List<string>>(
@@ -29,6 +39,13 @@ internal sealed class RentalConfiguration : IEntityTypeConfiguration<Rental>
             c => c.ToList());
 
         builder.Property(r => r.Accessories)
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
+            .Metadata.SetValueComparer(stringListComparer);
+
+        builder.Property(r => r.HandoverDocuments)
             .HasColumnType("jsonb")
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
@@ -60,6 +77,7 @@ internal sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(t => t.IdNumber).HasMaxLength(16);
         builder.Property(t => t.Cui).HasMaxLength(32);
         builder.Property(t => t.RegCom).HasMaxLength(32);
+        builder.Property(t => t.RepresentativeName).HasMaxLength(256);
         builder.Property(t => t.Address).HasMaxLength(512);
         builder.Property(t => t.Phone).HasMaxLength(32);
         builder.Property(t => t.Email).HasMaxLength(256);
@@ -77,6 +95,10 @@ internal sealed class FleetRentalDefaultsConfiguration : IEntityTypeConfiguratio
 
         builder.Property(d => d.FuelRule).HasMaxLength(128);
         builder.Property(d => d.DefaultConditions).HasMaxLength(2048);
+        builder.Property(d => d.PaymentDueDay).HasConversion<string>().HasMaxLength(16);
+        builder.Property(d => d.PaymentMethod).HasConversion<string>().HasMaxLength(16);
+        builder.Property(d => d.UnavailabilityRule).HasConversion<string>().HasMaxLength(16);
+        builder.Property(d => d.LatePenaltyPercentPerDay).HasPrecision(5, 2);
 
         // Unu-la-unu cu flota: un al doilea rând ar însemna două seturi de valori implicite, iar
         // formularul n-ar avea cum să aleagă între ele.
@@ -141,6 +163,8 @@ internal sealed class CheckRecordConfiguration : IEntityTypeConfiguration<CheckR
         builder.Property(c => c.FuelLevel).HasMaxLength(32);
         builder.Property(c => c.Notes).HasMaxLength(2048);
         builder.Property(c => c.WithholdingReason).HasMaxLength(1024);
+        builder.Property(c => c.DocumentsOther).HasMaxLength(512);
+        builder.Property(c => c.Damages).HasMaxLength(2048);
 
         var stringListComparer = new ValueComparer<List<string>>(
             (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
@@ -148,6 +172,13 @@ internal sealed class CheckRecordConfiguration : IEntityTypeConfiguration<CheckR
             c => c.ToList());
 
         builder.Property(c => c.Accessories)
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
+            .Metadata.SetValueComparer(stringListComparer);
+
+        builder.Property(c => c.Documents)
             .HasColumnType("jsonb")
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),

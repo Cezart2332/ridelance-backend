@@ -72,8 +72,18 @@ internal sealed class GenerateRentalDocumentCommandHandler(
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.UserId == userContext.UserId, cancellationToken);
 
+        // Predarea și primirea consemnate în aplicație: din ele se completează procesele-verbale.
+        List<CheckRecord> checks = await context.CheckRecords
+            .AsNoTracking()
+            .Include(c => c.Photos)
+            .Where(c => c.RentalId == rental.Id)
+            .ToListAsync(cancellationToken);
+
+        CheckRecord? checkIn = checks.Find(c => c.Kind == CheckKind.CheckIn);
+        CheckRecord? checkOut = checks.Find(c => c.Kind == CheckKind.CheckOut);
+
         IReadOnlyList<MissingField> missing =
-            RentalDocumentRequirements.For(command.Type, rental, car, company, rental.Tenant);
+            RentalDocumentRequirements.For(command.Type, rental, car, company, rental.Tenant, checkIn);
 
         if (missing.Count > 0)
         {
@@ -89,7 +99,7 @@ internal sealed class GenerateRentalDocumentCommandHandler(
             .FirstOrDefaultAsync(d => d.OwnerUserId == userContext.UserId, cancellationToken);
 
         RentalDocumentData data = RentalDocumentComposer.Compose(
-            command.Type, rental, car, company!, rental.Tenant, defaults?.DefaultConditions);
+            command.Type, rental, car, company!, rental.Tenant, defaults?.DefaultConditions, checkIn, checkOut);
 
         // Semnătura firmei se pune din prima tipărire: proprietarul a semnat-o o dată, la profil,
         // ca să nu semneze de mână fiecare document.

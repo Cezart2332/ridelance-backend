@@ -37,7 +37,9 @@ public sealed record CompanyProfileDto(
     bool IsVerified,
     VisibilityDto Visibility,
     /// <summary>Unde a ajuns pagina în verificare și ce secțiuni i-a oprit administrarea.</summary>
-    CompanyPageModerationDto PageModeration);
+    CompanyPageModerationDto PageModeration,
+    /// <summary>Calitatea reprezentantului legal: „administrator”, „asociat unic” (contract, 1.1).</summary>
+    string? LegalRepresentativeRole = null);
 #pragma warning restore CA1054
 
 /// <summary>
@@ -105,7 +107,8 @@ public static class CompanyProfileMapper
         profile.Slug,
         profile.IsVerified,
         new VisibilityDto(profile.ShowPhone, profile.ShowEmail, profile.ShowWhatsApp, profile.ShowLocation),
-        ToModerationDto(profile));
+        ToModerationDto(profile),
+        profile.LegalRepresentativeRole);
 
     public static CompanyPageModerationDto ToModerationDto(CompanyProfile profile) => new(
         profile.PageModeration.Status.ToString(),

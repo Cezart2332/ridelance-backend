@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Application.Abstractions.Dossiers;
+using Application.Rentals.Documents;
 
 namespace Infrastructure.Dossiers.Latex;
 
@@ -24,8 +25,6 @@ internal static class RentalDocumentLatex
     /// <remarks>Pe hârtie, un loc lăsat gol nu se poate deosebi de o greșeală de tipar.</remarks>
     private const string Empty = "---";
 
-    private static readonly CultureInfo Ro = CultureInfo.GetCultureInfo("ro-RO");
-
     public static string Build(RentalDocumentData data)
     {
         var tex = new StringBuilder(4096);
@@ -33,26 +32,36 @@ internal static class RentalDocumentLatex
         tex.AppendLine(Preamble);
         tex.AppendLine(@"\begin{document}");
 
-        string date = data.GeneratedAtUtc.ToLocalTime().ToString("dd.MM.yyyy", Ro);
+        // Ora României, nu a serverului: containerul e în UTC.
+        string date = RomanianTime.Date(data.GeneratedAtUtc);
 
         if (data.Articles is { Count: > 0 } articles)
         {
             // Textul șablonului de contract: capitole, paragrafe numerotate, valorile completate.
             Heading(tex, data.Kicker, data.Title, data.Kicker is null ? $"Nr. {data.PublicCode} / {date}" : null);
             bool signed = false;
-            foreach (RentalDocumentArticle article in articles)
+            bool clausesWritten = string.IsNullOrWhiteSpace(data.Clauses);
+
+            // Clauzele suplimentare țin de contract: stau înaintea capitolului care se semnează
+            // (Dispoziții finale), nu după anexă, unde ajungeau după semnăturile contractului.
+            // Un proces-verbal de sine stătător are un singur articol; acolo rămân la final.
+            int firstSigned = articles.Count > 1 ? IndexOfFirstSigned(articles) : -1;
+
+            for (int i = 0; i < articles.Count; i++)
             {
-                Article(tex, article);
-                signed |= article.Signatures is not null;
+                if (i == firstSigned && !clausesWritten)
+                {
+                    Clauses(tex, data.Clauses!);
+                    clausesWritten = true;
+                }
+
+                Article(tex, articles[i]);
+                signed |= articles[i].Signatures is not null;
             }
 
-            if (!string.IsNullOrWhiteSpace(data.Clauses))
+            if (!clausesWritten)
             {
-                Section(tex, "Clauze suplimentare");
-                foreach (string paragraph in LatexText.Paragraphs(data.Clauses))
-                {
-                    tex.Append(@"\alineat{").Append(paragraph).AppendLine("}");
-                }
+                Clauses(tex, data.Clauses!);
             }
 
             if (!signed)
@@ -103,6 +112,28 @@ internal static class RentalDocumentLatex
         tex.AppendLine(@"\end{document}");
 
         return tex.ToString();
+    }
+
+    private static int IndexOfFirstSigned(IReadOnlyList<RentalDocumentArticle> articles)
+    {
+        for (int i = 0; i < articles.Count; i++)
+        {
+            if (articles[i].Signatures is not null)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static void Clauses(StringBuilder tex, string clauses)
+    {
+        Section(tex, "Clauze suplimentare");
+        foreach (string paragraph in LatexText.Paragraphs(clauses))
+        {
+            tex.Append(@"\alineat{").Append(paragraph).AppendLine("}");
+        }
     }
 
     /// <summary>Numele sub care șablonul caută semnătura de pe linia <paramref name="slot"/>.</summary>
@@ -268,6 +299,7 @@ internal static class RentalDocumentLatex
         \setlength{\parindent}{0pt}
         \setlength{\parskip}{0pt}
         \linespread{1.05}
+        \setlength{\emergencystretch}{3em}
         \pagestyle{plain}
         \newenvironment{campuri}
           {\tabularx{\linewidth}{@{}>{\bfseries}p{5.2cm}X@{}}}

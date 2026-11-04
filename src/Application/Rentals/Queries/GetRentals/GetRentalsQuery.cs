@@ -95,7 +95,20 @@ internal sealed class GetRentalsQueryHandler(
             rental.AccessoriesOther,
             rental.Notes,
             RentalStatus.For(rental, nowUtc),
-            contractValue);
+            contractValue,
+            rental.PaymentDueDay?.ToString(),
+            rental.PaymentMethod?.ToString(),
+            rental.LatePenaltyPercentPerDay,
+            rental.FranchiseBani,
+            rental.NoticeDays,
+            rental.UnavailabilityRule?.ToString(),
+            rental.AdditionalDriverName,
+            rental.AdditionalDriverCnp,
+            rental.AdditionalDriverLicense,
+            rental.KeysCount,
+            rental.HandoverDocuments,
+            rental.HandoverDocumentsOther,
+            rental.DamagesAtPickup);
     }
 
     internal static TenantDto ToDto(Tenant tenant) => new(
@@ -110,5 +123,6 @@ internal sealed class GetRentalsQueryHandler(
         tenant.Address,
         tenant.Phone,
         tenant.Email,
-        tenant.DriverLicenseNumber);
+        tenant.DriverLicenseNumber,
+        tenant.RepresentativeName);
 }

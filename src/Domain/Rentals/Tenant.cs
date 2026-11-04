@@ -31,6 +31,9 @@ public sealed class Tenant : Entity
     public string? Cui { get; set; }
     public string? RegCom { get; set; }
 
+    /// <summary>Cine semnează pentru chiriașul-firmă (clauza 1.2: „reprezentat(ă) prin …”).</summary>
+    public string? RepresentativeName { get; set; }
+
     public string? Address { get; set; }
     public string? Phone { get; set; }
     public string? Email { get; set; }

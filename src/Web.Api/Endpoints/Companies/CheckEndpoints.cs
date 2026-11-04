@@ -49,7 +49,11 @@ internal sealed class Checks : IEndpoint
                     body.DepositWithheldBani,
                     body.WithholdingReason,
                     body.ExtraMileageChargeBani,
-                    body.OtherChargesBani),
+                    body.OtherChargesBani,
+                    body.KeysCount,
+                    body.Documents,
+                    body.DocumentsOther,
+                    body.Damages),
                 cancellationToken);
 
             return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(new { id = result.Value });
@@ -68,7 +72,11 @@ internal sealed class Checks : IEndpoint
         long? DepositWithheldBani,
         string? WithholdingReason,
         long? ExtraMileageChargeBani,
-        long? OtherChargesBani);
+        long? OtherChargesBani,
+        int? KeysCount = null,
+        IReadOnlyList<string>? Documents = null,
+        string? DocumentsOther = null,
+        string? Damages = null);
 }
 
 internal sealed class VehicleTimelineEndpoint : IEndpoint

@@ -30,7 +30,23 @@ public sealed record RentalDto(
     string? Notes,
     string Status,
     /// <summary>Valoarea contractuală a perioadei, derivată din chirie și durată.</summary>
-    long ContractValueBani);
+    long ContractValueBani,
+    // Termenii contractului (clauzele 3.2, 3.5, 5.4, 6.2, 7.1).
+    string? PaymentDueDay = null,
+    string? PaymentMethod = null,
+    decimal? LatePenaltyPercentPerDay = null,
+    long? FranchiseBani = null,
+    int? NoticeDays = null,
+    string? UnavailabilityRule = null,
+    // Conducătorul auto suplimentar (clauza 4.3).
+    string? AdditionalDriverName = null,
+    string? AdditionalDriverCnp = null,
+    string? AdditionalDriverLicense = null,
+    // Predarea (Anexa nr. 1).
+    int? KeysCount = null,
+    IReadOnlyList<string>? HandoverDocuments = null,
+    string? HandoverDocumentsOther = null,
+    string? DamagesAtPickup = null);
 
 public sealed record TenantDto(
     Guid Id,
@@ -44,7 +60,8 @@ public sealed record TenantDto(
     string? Address,
     string? Phone,
     string? Email,
-    string? DriverLicenseNumber);
+    string? DriverLicenseNumber,
+    string? RepresentativeName = null);
 
 public sealed record RentalSummaryDto(
     int ActiveCount,

@@ -31,7 +31,23 @@ public sealed record CreateRentalCommand(
     int? StartMileage,
     IReadOnlyList<string>? Accessories,
     string? AccessoriesOther,
-    string? Notes) : ICommand<Guid>;
+    string? Notes,
+    // Termenii contractului. Lipsă = se iau din setările flotei (`rentals/defaults`).
+    string? PaymentDueDay = null,
+    string? PaymentMethod = null,
+    decimal? LatePenaltyPercentPerDay = null,
+    long? FranchiseBani = null,
+    int? NoticeDays = null,
+    string? UnavailabilityRule = null,
+    // Conducătorul auto suplimentar (clauza 4.3). Fără nume, conduce doar chiriașul.
+    string? AdditionalDriverName = null,
+    string? AdditionalDriverCnp = null,
+    string? AdditionalDriverLicense = null,
+    // Predarea (Anexa nr. 1).
+    int? KeysCount = null,
+    IReadOnlyList<string>? HandoverDocuments = null,
+    string? HandoverDocumentsOther = null,
+    string? DamagesAtPickup = null) : ICommand<Guid>;
 
 /// <summary>Datele unui chiriaș nou, așa cum vin din formular.</summary>
 public sealed record NewTenantInput(
@@ -45,7 +61,9 @@ public sealed record NewTenantInput(
     string? Address,
     string? Phone,
     string? Email,
-    string? DriverLicenseNumber);
+    string? DriverLicenseNumber,
+    /// <summary>Doar PFA/SRL: cine semnează pentru firmă (clauza 1.2).</summary>
+    string? RepresentativeName = null);
 
 internal sealed class CreateRentalCommandHandler(
     IApplicationDbContext context,
@@ -100,6 +118,32 @@ internal sealed class CreateRentalCommandHandler(
                 "Mașina are deja o închiriere în perioada aleasă."));
         }
 
+        Result<RentalTerms> parsedTerms = RentalTerms.Parse(new RentalTermsInput(
+            command.PaymentDueDay,
+            command.PaymentMethod,
+            command.LatePenaltyPercentPerDay,
+            command.FranchiseBani,
+            command.NoticeDays,
+            command.UnavailabilityRule));
+
+        if (parsedTerms.IsFailure)
+        {
+            return Result.Failure<Guid>(parsedTerms.Error);
+        }
+
+        if (command.KeysCount is < 0)
+        {
+            return Result.Failure<Guid>(Error.Problem("Rental.Invalid.keysCount", "Numărul de chei nu poate fi negativ."));
+        }
+
+        // Ce nu vine din formular se ia din setările flotei, o singură dată, acum. Copiat, nu
+        // referit: contractul semnat nu se schimbă când flota își schimbă setările.
+        FleetRentalDefaults? defaults = await context.FleetRentalDefaults
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.OwnerUserId == userContext.UserId, cancellationToken);
+
+        RentalTerms terms = parsedTerms.Value;
+
         Result<Tenant> tenantResult = await ResolveTenantAsync(command, cancellationToken);
         if (tenantResult.IsFailure)
         {
@@ -128,6 +172,19 @@ internal sealed class CreateRentalCommandHandler(
             Accessories = command.Accessories?.ToList() ?? [],
             AccessoriesOther = command.AccessoriesOther?.Trim(),
             Notes = command.Notes?.Trim(),
+            PaymentDueDay = terms.PaymentDueDay ?? defaults?.PaymentDueDay,
+            PaymentMethod = terms.PaymentMethod ?? defaults?.PaymentMethod,
+            LatePenaltyPercentPerDay = terms.LatePenaltyPercentPerDay ?? defaults?.LatePenaltyPercentPerDay,
+            FranchiseBani = terms.FranchiseBani ?? defaults?.FranchiseBani,
+            NoticeDays = terms.NoticeDays ?? defaults?.NoticeDays,
+            UnavailabilityRule = terms.UnavailabilityRule ?? defaults?.UnavailabilityRule,
+            AdditionalDriverName = RentalInput.Clean(command.AdditionalDriverName),
+            AdditionalDriverCnp = RentalInput.Clean(command.AdditionalDriverCnp),
+            AdditionalDriverLicense = RentalInput.Clean(command.AdditionalDriverLicense),
+            KeysCount = command.KeysCount,
+            HandoverDocuments = RentalInput.CleanList(command.HandoverDocuments),
+            HandoverDocumentsOther = RentalInput.Clean(command.HandoverDocumentsOther),
+            DamagesAtPickup = RentalInput.Clean(command.DamagesAtPickup),
         };
 
         context.Rentals.Add(rental);
@@ -183,6 +240,7 @@ internal sealed class CreateRentalCommandHandler(
             Phone = input.Phone?.Trim(),
             Email = input.Email?.Trim(),
             DriverLicenseNumber = input.DriverLicenseNumber?.Trim(),
+            RepresentativeName = tenantType == TenantType.Individual ? null : RentalInput.Clean(input.RepresentativeName),
         };
 
         context.Tenants.Add(tenant);

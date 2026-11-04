@@ -25,7 +25,11 @@ public sealed record CheckRecordDto(
     string? WithholdingReason,
     long? ExtraMileageChargeBani,
     long? OtherChargesBani,
-    IReadOnlyList<CheckPhotoDto> Photos);
+    IReadOnlyList<CheckPhotoDto> Photos,
+    int? KeysCount = null,
+    IReadOnlyList<string>? Documents = null,
+    string? DocumentsOther = null,
+    string? Damages = null);
 
 public sealed record CheckPhotoDto(Guid Id, string Slot, Guid DocumentId);
 
@@ -74,5 +78,9 @@ internal sealed class GetChecksQueryHandler(
             record.Photos
                 .OrderBy(p => p.Slot)
                 .Select(p => new CheckPhotoDto(p.Id, p.Slot.ToString(), p.DocumentId))
-                .ToList());
+                .ToList(),
+            record.KeysCount,
+            record.Documents,
+            record.DocumentsOther,
+            record.Damages);
 }

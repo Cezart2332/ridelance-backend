@@ -29,7 +29,11 @@ public sealed record UpdateCompanyProfileCommand(
     bool ShowPhone,
     bool ShowEmail,
     bool ShowWhatsApp,
-    bool ShowLocation) : ICommand<CompanyProfileDto>;
+    bool ShowLocation,
+    /// <summary>
+    /// Calitatea reprezentantului legal. <c>null</c> = netrimis, rămâne cum era; gol = se șterge.
+    /// </summary>
+    string? LegalRepresentativeRole = null) : ICommand<CompanyProfileDto>;
 
 internal sealed class UpdateCompanyProfileCommandHandler(
     IApplicationDbContext context,
@@ -84,6 +88,14 @@ internal sealed class UpdateCompanyProfileCommandHandler(
         profile.Cui = command.Cui?.Trim();
         profile.RegCom = command.RegCom?.Trim();
         profile.LegalRepresentative = command.LegalRepresentative?.Trim();
+        // Câmp nou: un formular vechi, care nu-l trimite, nu are voie să-l șteargă.
+        if (command.LegalRepresentativeRole is not null)
+        {
+            profile.LegalRepresentativeRole = string.IsNullOrWhiteSpace(command.LegalRepresentativeRole)
+                ? null
+                : command.LegalRepresentativeRole.Trim();
+        }
+
         profile.RegisteredOffice = command.RegisteredOffice?.Trim();
         // Fără spații: un IBAN se scrie grupat, dar se compară și se tipărește compact.
         profile.Iban = command.Iban?.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
