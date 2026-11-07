@@ -193,20 +193,38 @@ public sealed class TaxEngine2026Tests
     }
 
     [Fact]
-    public void Sub_patru_saptamani_de_istoric()
+    public void Sub_o_saptamana_de_istoric()
     {
         IncomeProjection projection = IncomeProjector.Project(new FinancialSnapshot(
             Guid.NewGuid(),
             new DateOnly(2026, 10, 2),
             2026,
-            new DateOnly(2026, 9, 10),
-            new DateOnly(2026, 9, 10),
-            [new MonthFigures(9, 3_000, 0)],
+            new DateOnly(2026, 9, 28),
+            new DateOnly(2026, 9, 28),
+            [new MonthFigures(9, 600, 0)],
             0));
 
         projection.UnavailableReason.ShouldBe(TaxReasons.ShortHistory);
         Engine.Calculate(new TaxInput(projection, new ProfileFlags(), 0, null, 13), P2026)
             .Components[0].ReasonCode.ShouldBe(TaxReasons.ShortHistory);
+    }
+
+    [Fact]
+    public void Doua_saptamani_din_luna_curenta_ajung_pentru_estimare()
+    {
+        // Intrat pe 1 noiembrie, 14 zile de încasări: estimăm din ele, fără să așteptăm o lună.
+        IncomeProjection projection = IncomeProjector.Project(new FinancialSnapshot(
+            Guid.NewGuid(),
+            new DateOnly(2026, 11, 14),
+            2026,
+            new DateOnly(2026, 11, 1),
+            new DateOnly(2026, 11, 1),
+            [new MonthFigures(11, 2_800, 0)],
+            0));
+
+        projection.UnavailableReason.ShouldBeNull();
+        projection.WeeklyAverage.ShouldBe(1_400);
+        projection.WeeksUsed.ShouldBe(2);
     }
 
     [Fact]

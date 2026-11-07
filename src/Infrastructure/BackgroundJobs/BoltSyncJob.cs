@@ -47,9 +47,11 @@ internal sealed class BoltSyncJob(
         IApplicationDbContext context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
         IBoltService boltService = scope.ServiceProvider.GetRequiredService<IBoltService>();
 
-        // Get all connected active integrations
+        // Și integrările căzute: o eroare trecătoare (token, 5xx) le scotea din sincronizare pentru
+        // totdeauna, iar dashboardul rămânea la 0. Pe cele căzute le reîncercăm o dată pe oră.
+        bool retryFailed = DateTime.UtcNow.Minute < CheckInterval.TotalMinutes;
         List<BoltIntegration> integrations = await context.BoltIntegrations
-            .Where(bi => bi.IsConnected)
+            .Where(bi => bi.ClientId != "" && (bi.IsConnected || retryFailed))
             .ToListAsync(ct);
 
         if (integrations.Count == 0)
@@ -71,8 +73,7 @@ internal sealed class BoltSyncJob(
                 logger.LogInformation("Syncing Bolt orders for user: {UserId}, company: {CompanyId}", integration.UserId, integration.CompanyId);
 
                 var end = DateTime.UtcNow;
-                // Fleet API 2.0 filtrează după data cursei, nu după revizia de preț: 7 zile prind și corecturile întârziate.
-                var start = end.AddDays(-7);
+                var start = BoltSyncWindow.Start(integration.LastFetchedAtUtc, end);
 
                 List<BoltOrder> orders = await boltService.FetchOrdersAsync(integration, start, end, ct);
 

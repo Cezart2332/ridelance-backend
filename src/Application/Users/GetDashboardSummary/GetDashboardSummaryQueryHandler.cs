@@ -195,14 +195,27 @@ internal sealed class GetDashboardSummaryQueryHandler(IApplicationDbContext cont
                 .AsNoTracking()
                 .SingleOrDefaultAsync(c => c.PfaRegistrationId == pfa.Id, cancellationToken);
 
+            DateTime? arrSubmittedAtUtc = await context.ArrFleetApplications
+                .AsNoTracking()
+                .Where(a => a.PfaRegistrationId == pfa.Id)
+                .Select(a => a.SubmittedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+            bool boltIntegration = await context.BoltIntegrations
+                .AsNoTracking()
+                .AnyAsync(b => b.UserId == pfa.UserId, cancellationToken);
+
             fiscalSettings = new PfaFiscalSettingsResponse(
                 profile is null
                     ? PfaFiscalProfileMapper.DefaultProfile(pfa.Id)
                     : PfaFiscalProfileMapper.MapProfile(profile),
                 accounts.Select(PfaFiscalProfileMapper.MapAccount).ToList(),
-                consent is null
-                    ? PfaFiscalProfileMapper.DefaultConsent(pfa.Id)
-                    : PfaFiscalProfileMapper.MapConsent(consent));
+                PfaFiscalProfileMapper.WithOnboarding(
+                    consent is null
+                        ? PfaFiscalProfileMapper.DefaultConsent(pfa.Id)
+                        : PfaFiscalProfileMapper.MapConsent(consent),
+                    accounts,
+                    arrSubmittedAtUtc,
+                    boltIntegration));
         }
 
         return new DashboardSummaryResponse(

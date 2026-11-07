@@ -9,27 +9,35 @@ using SharedKernel;
 namespace Infrastructure.BackgroundJobs;
 
 /// <summary>
-/// Trimite cererea de documente lunare tuturor clienților în ziua în care se deschide fereastra
-/// lunii contabile — pe 26, la 08:00, ora României (vezi <see cref="AccountingPeriod"/>).
+/// Închiderea lunii, după 08:00 (ora României): pe 1 anunțul pentru luna trecută, pe 4 și 5
+/// amintirea pentru cine n-a confirmat-o (vezi <see cref="AccountingPeriod"/>). Rula doar dacă
+/// bucla nimerea exact minutul 08:00; acum rulează prima dată după 08:00, o dată pe zi.
+/// Deduplicarea din handler ține oricum câte un anunț pe lună și o amintire pe zi.
 /// </summary>
 internal sealed class RecurringDocumentationNotificationJob(
     IServiceScopeFactory scopeFactory,
     ILogger<RecurringDocumentationNotificationJob> logger)
     : BackgroundService
 {
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(5);
+    private const int RunFromHour = 8;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("RecurringDocumentationNotificationJob started.");
+        DateOnly? lastRun = null;
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                if (IsCollectionStartEightAmRomania())
+                DateTime nowRomania = AccountingPeriod.ToRomania(DateTime.UtcNow);
+                var today = DateOnly.FromDateTime(nowRomania);
+                RecurringDocumentationKind? kind = KindFor(today);
+
+                if (kind is not null && nowRomania.Hour >= RunFromHour && lastRun != today)
                 {
-                    logger.LogInformation("Sending monthly recurring documentation notifications...");
+                    logger.LogInformation("Sending monthly documents {Kind} notifications...", kind);
 
                     using IServiceScope scope = scopeFactory.CreateScope();
                     ICommandHandler<SendRecurringDocumentationNotificationsCommand, SendRecurringDocumentationNotificationsResult> handler =
@@ -38,23 +46,23 @@ internal sealed class RecurringDocumentationNotificationJob(
                     Result<SendRecurringDocumentationNotificationsResult> result = await handler.Handle(
                         new SendRecurringDocumentationNotificationsCommand(
                             TargetUserId: null,
-                            RequireCollectionStartDay: true,
-                            ForceResend: false),
+                            RequireScheduledDay: true,
+                            ForceResend: false,
+                            Kind: kind.Value),
                         stoppingToken);
 
                     if (result.IsSuccess)
                     {
+                        lastRun = today;
                         logger.LogInformation(
-                            "Recurring documentation notifications sent. Users={Users}, InApp={InApp}, Push={Push}",
+                            "Monthly documents notifications sent. Users={Users}, InApp={InApp}, Push={Push}",
                             result.Value.UsersNotified,
                             result.Value.InAppCreated,
                             result.Value.PushSent);
                     }
-
-                    await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogError(ex, "Error in RecurringDocumentationNotificationJob.");
             }
@@ -63,12 +71,13 @@ internal sealed class RecurringDocumentationNotificationJob(
         }
     }
 
-    private static bool IsCollectionStartEightAmRomania()
+    private static RecurringDocumentationKind? KindFor(DateOnly day)
     {
-        DateTime nowRomania = AccountingPeriod.ToRomania(DateTime.UtcNow);
+        if (day.Day == AccountingPeriod.NoticeDay)
+        {
+            return RecurringDocumentationKind.Notice;
+        }
 
-        return AccountingPeriod.IsCollectionStartDay(DateOnly.FromDateTime(nowRomania)) &&
-               nowRomania.Hour == 8 &&
-               nowRomania.Minute == 0;
+        return AccountingPeriod.ReminderDays.Contains(day.Day) ? RecurringDocumentationKind.Reminder : null;
     }
 }

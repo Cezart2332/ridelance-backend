@@ -221,7 +221,7 @@ internal sealed class ProcessFiscalEstimateQueueCommandHandler(
     }
 }
 
-internal sealed class GetEstimatedTaxesQueryHandler(IApplicationDbContext context, FiscalProfileService profiles)
+internal sealed class GetEstimatedTaxesQueryHandler(IApplicationDbContext context, FiscalProfileService profiles, TaxYearParametersProvider? parameters = null)
     : IQueryHandler<GetEstimatedTaxesQuery, EstimatedTaxesResponse>
 {
     public async Task<Result<EstimatedTaxesResponse>> Handle(GetEstimatedTaxesQuery query, CancellationToken cancellationToken)
@@ -237,11 +237,11 @@ internal sealed class GetEstimatedTaxesQueryHandler(IApplicationDbContext contex
             return Result.Failure<EstimatedTaxesResponse>(pfa.Error);
         }
 
-        return await EstimatedTaxesMapping.BuildAsync(context, pfa.Value.Id, query.Year, query.Scope != FiscalProfileScope.Pfa, cancellationToken);
+        return await EstimatedTaxesMapping.BuildAsync(context, pfa.Value.Id, query.Year, query.Scope != FiscalProfileScope.Pfa, cancellationToken, parameters);
     }
 }
 
-internal sealed class SetExistingReserveCommandHandler(IApplicationDbContext context, FiscalProfileService profiles)
+internal sealed class SetExistingReserveCommandHandler(IApplicationDbContext context, FiscalProfileService profiles, TaxYearParametersProvider? parameters = null)
     : ICommandHandler<SetExistingReserveCommand, EstimatedTaxesResponse>
 {
     public async Task<Result<EstimatedTaxesResponse>> Handle(SetExistingReserveCommand command, CancellationToken cancellationToken)
@@ -262,11 +262,11 @@ internal sealed class SetExistingReserveCommandHandler(IApplicationDbContext con
         await FiscalEstimateInvalidation.MarkStaleAsync(context, pfa.Value.Id, command.Year, profiles.UtcNow, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
 
-        return await EstimatedTaxesMapping.BuildAsync(context, pfa.Value.Id, command.Year, false, cancellationToken);
+        return await EstimatedTaxesMapping.BuildAsync(context, pfa.Value.Id, command.Year, false, cancellationToken, parameters);
     }
 }
 
-internal sealed class RequestEstimateRecalculationCommandHandler(IApplicationDbContext context, FiscalProfileService profiles)
+internal sealed class RequestEstimateRecalculationCommandHandler(IApplicationDbContext context, FiscalProfileService profiles, TaxYearParametersProvider? parameters = null)
     : ICommandHandler<RequestEstimateRecalculationCommand, EstimatedTaxesResponse>
 {
     public async Task<Result<EstimatedTaxesResponse>> Handle(RequestEstimateRecalculationCommand command, CancellationToken cancellationToken)
@@ -283,7 +283,7 @@ internal sealed class RequestEstimateRecalculationCommandHandler(IApplicationDbC
         await context.SaveChangesAsync(cancellationToken);
 
         return await EstimatedTaxesMapping.BuildAsync(
-            context, pfa.Value.Id, command.Year, command.Scope != FiscalProfileScope.Pfa, cancellationToken);
+            context, pfa.Value.Id, command.Year, command.Scope != FiscalProfileScope.Pfa, cancellationToken, parameters);
     }
 }
 
@@ -368,7 +368,8 @@ internal static class EstimatedTaxesMapping
         Guid pfaId,
         int year,
         bool staff,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TaxYearParametersProvider? parameters = null)
     {
         var profile = await context.PfaTaxProfiles
             .AsNoTracking()
@@ -442,6 +443,7 @@ internal static class EstimatedTaxesMapping
             .ToList();
 
         IncomeProjection? projection = assumptions?.Projection;
+        EstimatedThresholdsResponse thresholds = Thresholds(latest, projection, parameters?.For(year));
 
         return new EstimatedTaxesResponse(
             year,
@@ -475,6 +477,32 @@ internal static class EstimatedTaxesMapping
             staff ? latest.ProfileRevision : null,
             staff ? latest.RuleVersion : null,
             staff ? latest.FinancialSnapshotId : null,
-            history);
+            history,
+            thresholds);
+    }
+
+    /// <summary>Încasările anului din snapshotul rulării, față de plafoanele TVA și CAS.</summary>
+    private static EstimatedThresholdsResponse Thresholds(FiscalEstimateRun run, IncomeProjection? projection, TaxYearParameters? year)
+    {
+        decimal incomeYtd = 0;
+        try
+        {
+            if (!string.IsNullOrEmpty(run.SnapshotJson) &&
+                JsonSerializer.Deserialize<FinancialSnapshot>(run.SnapshotJson, FiscalProfileService.Json) is { Months: not null } snapshot)
+            {
+                incomeYtd = snapshot.GrossIncomeYtd;
+            }
+        }
+        catch (JsonException)
+        {
+            // Un snapshot vechi, în alt format: plafoanele apar cu zero încasări, nu cad.
+        }
+
+        return new EstimatedThresholdsResponse(
+            Math.Round(incomeYtd, 2, MidpointRounding.AwayFromZero),
+            projection?.NetAnnualEstimated,
+            VatThresholds.Art310,
+            year?.CasThreshold12,
+            year?.CasThreshold24);
     }
 }

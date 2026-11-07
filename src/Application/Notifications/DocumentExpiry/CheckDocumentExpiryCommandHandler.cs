@@ -13,10 +13,10 @@ using SharedKernel;
 namespace Application.Notifications.DocumentExpiry;
 
 /// <summary>
-/// Checks all documents with an expiry date and sends notifications when
-/// the document expires in exactly 30 days or 7 days (Romania time).
-/// Idempotent: a notification is only created if none of the same type
-/// exists for this document in the current calendar day.
+/// Anunță documentele care expiră: o notificare la fiecare prag (30, 14, 7 zile, ziua expirării)
+/// în care documentul a intrat. Pragul nu mai trebuie nimerit la zi: un document încărcat cu 5
+/// zile rămase sau o zi în care jobul n-a rulat primeau înainte zero notificări. Idempotent:
+/// fiecare prag se anunță o singură dată pe document și dată de expirare.
 /// </summary>
 internal sealed class CheckDocumentExpiryCommandHandler(
     IApplicationDbContext context,
@@ -39,11 +39,20 @@ internal sealed class CheckDocumentExpiryCommandHandler(
     /// </remarks>
     private static readonly int[] NotifyAtDaysBefore = [30, 14, 7, 0];
 
+    /// <summary>Un document expirat de mai mult de atât nu mai primește „a expirat”: e deja știut.</summary>
+    private const int ExpiredGraceDays = 7;
+
+    /// <summary>Cel mai apropiat prag în care a intrat documentul; <c>null</c> = încă nu e cazul.</summary>
+    internal static int? ThresholdFor(int daysUntilExpiry) =>
+        daysUntilExpiry < -ExpiredGraceDays || daysUntilExpiry > NotifyAtDaysBefore.Max()
+            ? null
+            : NotifyAtDaysBefore.Where(t => t >= daysUntilExpiry).Min();
+
     public async Task<Result> Handle(
         CheckDocumentExpiryCommand command,
         CancellationToken cancellationToken)
     {
-        var romania = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
+        TimeZoneInfo romania = Application.PfaRegistrations.MonthlyIncome.PfaMonthlyIncomeRecalculator.GetRomaniaTimeZone();
         DateTime nowRomania = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, romania);
         DateTime todayRomania = nowRomania.Date;
 
@@ -52,6 +61,7 @@ internal sealed class CheckDocumentExpiryCommandHandler(
             .AsNoTracking()
             .Where(d =>
                 d.ExpiresAtUtc.HasValue &&
+                !d.IsSuperseded &&
                 ExpirableCategories.Contains(d.Category))
             .ToListAsync(cancellationToken);
 
@@ -65,17 +75,18 @@ internal sealed class CheckDocumentExpiryCommandHandler(
 
             int daysUntilExpiry = (expiryRomania - todayRomania).Days;
 
-            if (!NotifyAtDaysBefore.Contains(daysUntilExpiry))
+            if (ThresholdFor(daysUntilExpiry) is not int threshold)
             {
                 continue;
             }
 
-            // Idempotency: skip if we already sent this notification today
-            // Cheia stă acum într-o coloană, nu în textul citit de om.
-            string notifTag = $"expiry:{doc.Id}:{daysUntilExpiry}d:{todayRomania:yyyy-MM-dd}";
+            // Un prag pe document și dată de expirare: dacă data se corectează, pragurile reîncep.
+            // Cheile vechi (cu ziua trimiterii la final) contează și ele, ca deployul să nu dubleze.
+            string notifTag = $"expiry:{doc.Id}:{expiryRomania:yyyyMMdd}:{threshold}d";
+            string legacyPrefix = $"expiry:{doc.Id}:{threshold}d:";
             bool alreadySent = await context.Notifications
                 .AsNoTracking()
-                .AnyAsync(n => n.DedupeKey == notifTag, cancellationToken);
+                .AnyAsync(n => n.DedupeKey == notifTag || n.DedupeKey!.StartsWith(legacyPrefix), cancellationToken);
 
             if (alreadySent)
             {
@@ -107,9 +118,7 @@ internal sealed class CheckDocumentExpiryCommandHandler(
                 _ => doc.Category.ToString()
             };
 
-            string ownerText = daysUntilExpiry == 0
-                ? $"Documentul tău \"{categoryLabel}\" a expirat astăzi!"
-                : $"Documentul tău \"{categoryLabel}\" expiră în {daysUntilExpiry} zile ({expiryRomania:dd.MM.yyyy}).";
+            string ownerText = ExpiryText($"Documentul tău \"{categoryLabel}\"", daysUntilExpiry, expiryRomania);
 
             Guid? ownerNotificationId = null;
             Guid? accountantNotificationId = null;
@@ -132,9 +141,7 @@ internal sealed class CheckDocumentExpiryCommandHandler(
                     ? $"{ownerUser.FirstName} {ownerUser.LastName}"
                     : "Un client";
 
-                string contabilText = daysUntilExpiry == 0
-                    ? $"Clientul {ownerName}: \"{categoryLabel}\" a expirat astăzi!"
-                    : $"Clientul {ownerName}: \"{categoryLabel}\" expiră în {daysUntilExpiry} zile ({expiryRomania:dd.MM.yyyy}).";
+                string contabilText = ExpiryText($"Clientul {ownerName}: \"{categoryLabel}\"", daysUntilExpiry, expiryRomania);
 
                 accountantNotificationId = await CreateNotificationAsync(contabilId.Value, contabilText, NotificationTypes.DocumentExpiringSoon, $"{notifTag}:contabil", ownerId, doc.Category.ToString());
             }
@@ -143,7 +150,13 @@ internal sealed class CheckDocumentExpiryCommandHandler(
 
             // Push notifications
             Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase) ? parsedBase : null;
-            string pushTitle = daysUntilExpiry == 0 ? "Document expirat!" : $"Document expiră în {daysUntilExpiry} zile";
+            string pushTitle = daysUntilExpiry switch
+            {
+                < 0 => "Document expirat!",
+                0 => "Document expiră azi!",
+                1 => "Document expiră mâine",
+                _ => $"Document expiră în {daysUntilExpiry} zile",
+            };
 
             if (ownerNotificationId is not null)
             {
@@ -163,6 +176,14 @@ internal sealed class CheckDocumentExpiryCommandHandler(
         logger.LogInformation("Document expiry check complete. Notifications sent: {Count}", notifsSent);
         return Result.Success();
     }
+
+    private static string ExpiryText(string subject, int days, DateTime expiry) => days switch
+    {
+        < 0 => $"{subject} a expirat pe {expiry:dd.MM.yyyy}.",
+        0 => $"{subject} expiră astăzi!",
+        1 => $"{subject} expiră mâine ({expiry:dd.MM.yyyy}).",
+        _ => $"{subject} expiră în {days} zile ({expiry:dd.MM.yyyy}).",
+    };
 
     /// <summary>
     /// Absența unui rând înseamnă „activ": cine nu s-a atins de setări primește tot. Doar un

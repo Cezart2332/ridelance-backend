@@ -7,47 +7,50 @@ using Xunit;
 namespace UnitTests.Accounting;
 
 /// <summary>
-/// Luna contabilă: documentele pe septembrie se cer de pe 26 septembrie până pe 25 octombrie.
+/// Luna contabilă: bonurile pe septembrie se primesc până pe 5 octombrie; un document încărcat de
+/// pe 6 septembrie până pe 5 octombrie se socotește la septembrie.
 /// </summary>
 public sealed class AccountingPeriodTests
 {
     [Theory]
-    [InlineData("2026-09-25", 2026, 8)]   // fereastra lui august e încă deschisă
-    [InlineData("2026-09-26", 2026, 9)]   // se deschide septembrie
-    [InlineData("2026-10-25", 2026, 9)]   // ultima zi pentru septembrie
-    [InlineData("2026-10-26", 2026, 10)]
-    [InlineData("2026-01-10", 2025, 12)]  // peste an
+    [InlineData("2026-09-05", 2026, 8)]   // ultima zi pentru august
+    [InlineData("2026-09-06", 2026, 9)]   // se deschide septembrie
+    [InlineData("2026-10-01", 2026, 9)]   // anunțul de închidere a lui septembrie
+    [InlineData("2026-10-05", 2026, 9)]   // ultima zi pentru septembrie
+    [InlineData("2026-10-06", 2026, 10)]
+    [InlineData("2026-01-03", 2025, 12)]  // peste an
     [InlineData("2026-12-31", 2026, 12)]
-    public void RequestedMonth_FollowsThe26To25Window(string day, int year, int month)
+    public void RequestedMonth_FollowsThe6To5Window(string day, int year, int month)
     {
         AccountingPeriod.RequestedMonth(DateOnly.Parse(day, CultureInfo.InvariantCulture)).ShouldBe((year, month));
     }
 
     [Fact]
-    public void Deadline_IsThe25thOfTheFollowingMonth()
+    public void Deadline_IsThe5thOfTheFollowingMonth()
     {
-        AccountingPeriod.Deadline(2026, 9).ShouldBe(new DateOnly(2026, 10, 25));
-        AccountingPeriod.Deadline(2026, 12).ShouldBe(new DateOnly(2027, 1, 25));
+        AccountingPeriod.Deadline(2026, 9).ShouldBe(new DateOnly(2026, 10, 5));
+        AccountingPeriod.Deadline(2026, 12).ShouldBe(new DateOnly(2027, 1, 5));
     }
 
     [Fact]
-    public void CollectionWindow_RunsFrom26thMidnightToNext26thMidnight_RomanianTime()
+    public void CollectionWindow_RunsFrom6thMidnightToNext6thMidnight_RomanianTime()
     {
-        (DateTime start, DateTime end) = AccountingPeriod.CollectionWindowUtc(2026, 9);
+        (DateTime start, DateTime end) = AccountingPeriod.CollectionWindowUtc(2026, 10);
 
-        // 26 septembrie 00:00 în România (UTC+3, ora de vară) = 25 septembrie 21:00 UTC.
-        start.ShouldBe(new DateTime(2026, 9, 25, 21, 0, 0, DateTimeKind.Utc));
-        // 26 octombrie 00:00 în România (UTC+2, ora de iarnă din 25 octombrie) = 25 octombrie 22:00 UTC.
-        end.ShouldBe(new DateTime(2026, 10, 25, 22, 0, 0, DateTimeKind.Utc));
+        // 6 octombrie 00:00 în România (UTC+3, ora de vară) = 5 octombrie 21:00 UTC.
+        start.ShouldBe(new DateTime(2026, 10, 5, 21, 0, 0, DateTimeKind.Utc));
+        // 6 noiembrie 00:00 în România (UTC+2, ora de iarnă din 25 octombrie) = 5 noiembrie 22:00 UTC.
+        end.ShouldBe(new DateTime(2026, 11, 5, 22, 0, 0, DateTimeKind.Utc));
     }
 
     [Fact]
-    public void NotificationText_NamesTheMonthAndTheDeadline()
+    public void NotificationText_NamesTheEndedMonthAndTheDeadline()
     {
-        // 26 septembrie 2026, 08:00 în România.
-        string text = RecurringDocumentationTexts.BuildNotificationText(new DateTime(2026, 9, 26, 5, 0, 0, DateTimeKind.Utc));
+        // 1 noiembrie 2026, 08:00 în România.
+        string text = RecurringDocumentationTexts.BuildNotificationText(new DateTime(2026, 11, 1, 6, 0, 0, DateTimeKind.Utc));
 
-        text.ShouldContain("septembrie 2026");
-        text.ShouldContain("până pe 25 octombrie");
+        text.ShouldStartWith("Luna octombrie s-a încheiat!");
+        text.ShouldContain("până pe 5 ale lunii");
+        text.ShouldContain("CUI-ul PFA-ului");
     }
 }

@@ -122,6 +122,7 @@ public interface IApplicationDbContext
     DbSet<PfaMonthCheck> PfaMonthChecks { get; }
 
     DbSet<NotificationPreference> NotificationPreferences { get; }
+    DbSet<MonthlyDocumentsConfirmation> MonthlyDocumentsConfirmations { get; }
     DbSet<ChatRoom> ChatRooms { get; }
     DbSet<ChatMessage> ChatMessages { get; }
     DbSet<Notification> Notifications { get; }

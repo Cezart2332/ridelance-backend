@@ -2,6 +2,7 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Services;
+using Application.Bolt;
 using Domain.Bolt;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -61,12 +62,12 @@ internal sealed class ConfigureBoltIntegrationCommandHandler(
             }
             await context.SaveChangesAsync(cancellationToken);
 
-            // 3. Fetch orders for current month
+            // 3. Cursele anului, nu doar ale lunii: cine conectează contul pe 3 ale lunii avea luna
+            // trecută goală în dashboard și în taxele estimate.
             DateTime now = DateTime.UtcNow;
-            var startOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-            DateTime endOfMonth = startOfMonth.AddMonths(1).AddSeconds(-1);
+            DateTime start = BoltSyncWindow.Start(null, now);
 
-            List<BoltOrder> orders = await boltService.FetchOrdersAsync(integration, startOfMonth, endOfMonth, cancellationToken);
+            List<BoltOrder> orders = await boltService.FetchOrdersAsync(integration, start, now, cancellationToken);
 
             // 4. Save/Upsert orders
             if (orders.Count > 0)
@@ -85,6 +86,9 @@ internal sealed class ConfigureBoltIntegrationCommandHandler(
             }
 
             integration.LastFetchedAtUtc = DateTime.UtcNow;
+            await context.SaveChangesAsync(cancellationToken);
+
+            await BoltMonthlyIncomeUpdater.UpdateAsync(context, userId, orders.Select(o => o.OrderCreatedTime), cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
 
             return integration.Id;

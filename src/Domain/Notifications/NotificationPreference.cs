@@ -49,6 +49,7 @@ public sealed class NotificationPreference : Entity
     {
         NotificationTypes.DocumentExpiringSoon => NotificationCategory.DocumentExpiry,
         NotificationTypes.RecurringDocumentation => NotificationCategory.DocumentExpiry,
+        NotificationTypes.RecurringDocumentationReminder => NotificationCategory.DocumentExpiry,
         NotificationTypes.TaxThreshold => NotificationCategory.TaxesAndDeadlines,
         NotificationTypes.ChatRoomMessage => NotificationCategory.AccountantMessages,
         NotificationTypes.BankConnection => NotificationCategory.PlatformSyncIssues,

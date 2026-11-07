@@ -114,18 +114,24 @@ public sealed record PfaDashboardSeriesResponse(
 /// l-a activat încă. Dashboardul arată atunci un card informativ, nu un CTA de conectare — cine
 /// tocmai a completat pasul nu trebuie trimis să-l facă din nou (spec fix-uri §12).
 /// </remarks>
+/// <para>
+/// <c>Used</c>: PFA-ul lucrează pe platformă (a ales-o la ARR &amp; Cont Flotă sau are deja date
+/// de la ea). Pentru o platformă nefolosită dashboardul nu spune „neconectat”.
+/// </para>
 public sealed record PfaBoltSourceResponse(
     bool Configured,
     bool Connected,
     DateTime? LastSyncAt,
     string? ErrorMessage,
-    bool OnboardingPending = false);
+    bool OnboardingPending = false,
+    bool Used = true);
 
 public sealed record PfaUberSourceResponse(
     bool Connected,
     DateOnly? LastReportAt,
     string? DetectedRange,
-    bool OnboardingPending = false);
+    bool OnboardingPending = false,
+    bool Used = true);
 
 public sealed record PfaDashboardSourcesResponse(PfaBoltSourceResponse Bolt, PfaUberSourceResponse Uber);
 
@@ -250,6 +256,10 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
 
         bool BoltOnboarded() => IsAwaitingActivation(platformAccounts, PfaPlatformProvider.Bolt);
         bool UberOnboarded() => IsAwaitingActivation(platformAccounts, PfaPlatformProvider.Uber);
+        bool BoltActive() => IsActive(platformAccounts, PfaPlatformProvider.Bolt);
+        bool UberActive() => IsActive(platformAccounts, PfaPlatformProvider.Uber);
+        bool Uses(PfaPlatformProvider provider) => platformAccounts.Count == 0 || platformAccounts.Exists(a =>
+            a.Provider == provider && a.OnboardingStatus is not (PfaPlatformOnboardingStatus.NotStarted or PfaPlatformOnboardingStatus.Skipped));
 
         // Un singur tur la bază pentru ambele perioade: se citește intervalul lărgit,
         // apoi se filtrează în memorie pe perioada curentă și pe cea de comparație.
@@ -269,7 +279,9 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
                     && o.OrderCreatedTime < windowEndUtc)
                 .ToListAsync(cancellationToken);
 
-        List<UberCsvImport> uberImports = platform == "bolt" || pfa is null
+        // Se citesc și cu filtrul Bolt: din ele vine starea sursei Uber, iar cu ele lipsă dashboardul
+        // spunea „Uber neconectat” oricui filtra pe Bolt. Agregarea ține cont oricum de filtru.
+        List<UberCsvImport> uberImports = pfa is null
             ? []
             : await context.UberCsvImports
                 .AsNoTracking()
@@ -314,8 +326,9 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
             .Select(e => (e.Year, e.Month, e.AmountRon ?? 0m))
             .ToList();
 
-        var aggregation = new AggregationContext(boltOrders, uberImports, verifiedExpenses, timeZone, platform, payment);
-        var awaitingAggregation = new AggregationContext(boltOrders, uberImports, awaitingReview, timeZone, platform, payment);
+        List<UberCsvImport> uberForTotals = platform == "bolt" ? [] : uberImports;
+        var aggregation = new AggregationContext(boltOrders, uberForTotals, verifiedExpenses, timeZone, platform, payment);
+        var awaitingAggregation = new AggregationContext(boltOrders, uberForTotals, awaitingReview, timeZone, platform, payment);
 
         PeriodTotals current = Aggregate(aggregation, period);
         PeriodTotals previous = Aggregate(aggregation, previousPeriod);
@@ -345,6 +358,7 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
                 .FirstOrDefaultAsync(cancellationToken) ?? PfaTaxProfileStatus.NotStarted;
         bool estimatesLocked = profileStatus != PfaTaxProfileStatus.Completed;
 
+        PfaUberSourceResponse uberSource = BuildUberSource(uberImports);
         PfaDashboardSummaryResponse response = new(
             new PfaDashboardPeriodResponse(period.From, period.To, granularity),
             BuildKpis(current, previous),
@@ -366,13 +380,20 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
             series,
             new PfaDashboardSourcesResponse(
                 new PfaBoltSourceResponse(
-                    integration is not null,
-                    integration?.IsConnected ?? false,
+                    integration is not null || BoltActive(),
+                    integration?.IsConnected ?? BoltActive(),
                     integration?.LastFetchedAtUtc,
                     integration?.ErrorMessage,
-                    BoltOnboarded()),
-                BuildUberSource(uberImports) with { OnboardingPending = UberOnboarded() }),
-            uberImports.Count > 0,
+                    BoltOnboarded(),
+                    integration is not null || Uses(PfaPlatformProvider.Bolt)),
+                uberSource with
+                {
+                    // Uber vine lunar, prin raport: un cont de flotă activ e conectat și înainte de primul raport.
+                    Connected = uberSource.Connected || UberActive(),
+                    OnboardingPending = UberOnboarded(),
+                    Used = uberSource.Connected || Uses(PfaPlatformProvider.Uber),
+                }),
+            uberForTotals.Count > 0,
             new PfaTaxProfileGateResponse(fiscalYear, FiscalProfileService.StatusCode(profileStatus), estimatesLocked));
 
         if (estimatesLocked)
@@ -780,10 +801,15 @@ internal sealed class GetPfaDashboardSummaryQueryHandler(
     {
         PfaPlatformAccount? account = accounts.FirstOrDefault(a => a.Provider == provider);
 
+        // Activ nu mai e „în curs de activare”: pastila rămânea aprinsă și după ce flota mergea.
         return account is not null
             && account.OnboardingStatus is not (PfaPlatformOnboardingStatus.NotStarted
-                or PfaPlatformOnboardingStatus.Skipped);
+                or PfaPlatformOnboardingStatus.Skipped
+                or PfaPlatformOnboardingStatus.Active);
     }
+
+    private static bool IsActive(List<PfaPlatformAccount> accounts, PfaPlatformProvider provider) =>
+        accounts.Exists(a => a.Provider == provider && a.OnboardingStatus == PfaPlatformOnboardingStatus.Active);
 
     private static PfaUberSourceResponse BuildUberSource(List<UberCsvImport> imports)
     {

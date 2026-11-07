@@ -18,9 +18,9 @@ internal sealed class EnsureRecurringDocumentationNotificationCommandHandler(
         Result<SendRecurringDocumentationNotificationsResult> sendResult = await sendHandler.Handle(
             new SendRecurringDocumentationNotificationsCommand(
                 request.UserId,
-                // Oricând în fereastra lunii: cine n-a deschis aplicația pe 26 primește cererea la
-                // prima deschidere. Deduplicarea pe fereastră împiedică o a doua trimitere.
-                RequireCollectionStartDay: false,
+                // Oricând între 1 și 5: cine n-a deschis aplicația pe 1 primește anunțul la prima
+                // deschidere. Deduplicarea pe lună împiedică o a doua trimitere.
+                RequireScheduledDay: false,
                 ForceResend: false),
             cancellationToken);
 

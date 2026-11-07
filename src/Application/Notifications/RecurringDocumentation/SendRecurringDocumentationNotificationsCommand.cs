@@ -2,14 +2,22 @@ using Application.Abstractions.Messaging;
 
 namespace Application.Notifications.RecurringDocumentation;
 
-/// <param name="RequireCollectionStartDay">
-/// Trimite doar în ziua în care se deschide fereastra lunii (26). Jobul zilnic o cere; aplicația
-/// deschisă de client nu — ea trimite oricând în fereastră, dacă cererea n-a plecat încă.
+/// <summary>Ce pleacă: anunțul de închidere a lunii (pe 1) sau amintirea (pe 4 și 5).</summary>
+public enum RecurringDocumentationKind
+{
+    Notice = 0,
+    Reminder = 1,
+}
+
+/// <param name="RequireScheduledDay">
+/// Trimite doar în ziua programată: 1 pentru anunț, 4 și 5 pentru amintire. Jobul zilnic o cere;
+/// aplicația deschisă de client nu — ea trimite anunțul oricând între 1 și 5, dacă n-a plecat încă.
 /// </param>
 public sealed record SendRecurringDocumentationNotificationsCommand(
     Guid? TargetUserId,
-    bool RequireCollectionStartDay,
-    bool ForceResend) : ICommand<SendRecurringDocumentationNotificationsResult>;
+    bool RequireScheduledDay,
+    bool ForceResend,
+    RecurringDocumentationKind Kind = RecurringDocumentationKind.Notice) : ICommand<SendRecurringDocumentationNotificationsResult>;
 
 public sealed record SendRecurringDocumentationNotificationsResult(
     int UsersNotified,

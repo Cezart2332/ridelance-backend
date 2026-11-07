@@ -128,6 +128,7 @@ public sealed class ApplicationDbContext(
     public DbSet<PfaMonthCheck> PfaMonthChecks { get; set; }
 
     public DbSet<NotificationPreference> NotificationPreferences { get; set; }
+    public DbSet<MonthlyDocumentsConfirmation> MonthlyDocumentsConfirmations { get; set; }
     public DbSet<ChatRoom> ChatRooms { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
     public DbSet<Notification> Notifications { get; set; }

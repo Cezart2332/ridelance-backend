@@ -2,7 +2,11 @@ namespace Domain.Notifications;
 
 public static class NotificationTypes
 {
+    /// <summary>„Închiderea lunii – documente necesare”, pe 1 ale lunii.</summary>
     public const string RecurringDocumentation = "RecurringDocumentation";
+
+    /// <summary>„Ultimele zile pentru documentele lunare”, pe 4 și 5, doar cui n-a confirmat luna.</summary>
+    public const string RecurringDocumentationReminder = "RecurringDocumentationReminder";
     public const string TaxThreshold = "TaxThreshold";
     public const string ChatRoomMessage = "ChatRoomMessage";
     public const string PfaStatusUpdate = "PfaStatusUpdate";

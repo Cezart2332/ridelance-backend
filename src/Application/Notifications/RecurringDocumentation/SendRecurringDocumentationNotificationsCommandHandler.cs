@@ -26,20 +26,31 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
         CancellationToken cancellationToken)
     {
         DateTime nowUtc = DateTime.UtcNow;
+        var today = DateOnly.FromDateTime(AccountingPeriod.ToRomania(nowUtc));
+        bool reminder = request.Kind == RecurringDocumentationKind.Reminder;
 
-        if (request.RequireCollectionStartDay
-            && !AccountingPeriod.IsCollectionStartDay(DateOnly.FromDateTime(AccountingPeriod.ToRomania(nowUtc))))
+        // Luna trecută se mai completează doar de pe 1 până pe 5; în rest nu e nimic de cerut.
+        bool scheduledToday = reminder
+            ? AccountingPeriod.ReminderDays.Contains(today.Day)
+            : today.Day == AccountingPeriod.NoticeDay;
+        if (!request.ForceResend && (!AccountingPeriod.IsClosingWindow(today) || request.RequireScheduledDay && !scheduledToday))
         {
             return new SendRecurringDocumentationNotificationsResult(0, 0, 0);
         }
 
-        // Luna cerută acum și fereastra ei (26 – 25). O cerere trimisă oriunde în fereastră
-        // contează ca trimisă pentru luna asta: nu se repetă până se deschide fereastra următoare.
         (int requestedYear, int requestedMonth) = AccountingPeriod.RequestedMonthUtc(nowUtc);
         (DateTime monthStartUtc, DateTime monthEndUtc) =
             AccountingPeriod.CollectionWindowUtc(requestedYear, requestedMonth);
+        string monthKey = AccountingPeriod.MonthKey(requestedYear, requestedMonth);
         int taxYear = requestedYear;
-        string notificationText = RecurringDocumentationTexts.BuildNotificationText(nowUtc);
+        string notificationType = reminder ? NotificationTypes.RecurringDocumentationReminder : NotificationTypes.RecurringDocumentation;
+        string notificationText = reminder ? RecurringDocumentationTexts.ReminderText : RecurringDocumentationTexts.BuildNotificationText(nowUtc);
+        string pushTitle = reminder ? RecurringDocumentationTexts.ReminderPushTitle : RecurringDocumentationTexts.PushTitle;
+        string pushBody = reminder ? RecurringDocumentationTexts.ReminderPushText : RecurringDocumentationTexts.BuildPushNotificationText(nowUtc);
+        // Anunțul: unul pe lună. Amintirea: una pe zi (4 și 5).
+        string dedupeKey = reminder
+            ? $"monthly-docs-reminder:{monthKey}:{today.Day}"
+            : $"monthly-docs:{monthKey}";
         Uri? appBaseUri = Uri.TryCreate(configuration["App:BaseUrl"], UriKind.Absolute, out Uri? parsedBase)
             ? parsedBase
             : null;
@@ -60,6 +71,14 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
             return new SendRecurringDocumentationNotificationsResult(0, 0, 0);
         }
 
+        // Cine a confirmat luna („Nu am bonuri de încărcat”) nu mai primește nimic pentru ea.
+        var confirmed = (await context.MonthlyDocumentsConfirmations
+                .AsNoTracking()
+                .Where(c => c.Year == requestedYear && c.Month == requestedMonth && userIds.Contains(c.UserId))
+                .Select(c => c.UserId)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+
         int inAppCreated = 0;
         int pushSent = 0;
         int usersNotified = 0;
@@ -71,11 +90,8 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
             bool notifiedThisUser = false;
             List<PushSubscription>? subscriptions = null;
 
-            bool documentationAlreadySent = !request.ForceResend && await context.Notifications.AnyAsync(
-                n => n.UserId == userId &&
-                     n.Type == NotificationTypes.RecurringDocumentation &&
-                     n.CreatedAtUtc >= monthStartUtc &&
-                     n.CreatedAtUtc < monthEndUtc,
+            bool documentationAlreadySent = confirmed.Contains(userId) || !request.ForceResend && await context.Notifications.AnyAsync(
+                n => n.UserId == userId && n.DedupeKey == dedupeKey,
                 cancellationToken);
 
             if (!documentationAlreadySent)
@@ -85,8 +101,11 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
                     Id = Guid.NewGuid(),
                     UserId = userId,
                     Text = notificationText,
-                    Type = NotificationTypes.RecurringDocumentation,
+                    Type = notificationType,
                     IsRead = false,
+                    // Luna, pentru butonul „Nu am bonuri de încărcat” din notificare.
+                    SectionKey = monthKey,
+                    DedupeKey = request.ForceResend ? null : dedupeKey,
                     CreatedAtUtc = nowUtc,
                 };
 
@@ -97,18 +116,27 @@ internal sealed class SendRecurringDocumentationNotificationsCommandHandler(
 
                 subscriptions = await GetPushSubscriptionsAsync(userId, cancellationToken);
 
-                string pushBody = RecurringDocumentationTexts.BuildPushNotificationText(nowUtc);
-
                 foreach (PushSubscription subscription in subscriptions)
                 {
                     await webPushService.SendPushNotificationAsync(
                         subscription,
-                        RecurringDocumentationTexts.PushTitle,
+                        pushTitle,
                         pushBody,
                         appBaseUri is null ? $"/app/notificari/{notification.Id}" : new Uri(appBaseUri, $"/app/notificari/{notification.Id}").ToString(),
                         cancellationToken);
                     pushSent++;
                 }
+            }
+
+            // Situația fiscală pleacă o dată pe lună, odată cu anunțul, nu și cu amintirile.
+            if (reminder)
+            {
+                if (notifiedThisUser)
+                {
+                    usersNotified++;
+                }
+
+                continue;
             }
 
             bool taxThresholdAlreadySent = !request.ForceResend && await context.Notifications.AnyAsync(

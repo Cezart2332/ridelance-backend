@@ -30,6 +30,17 @@ public sealed record EstimatedProjectionResponse(
     string? UncoveredPeriod,
     decimal UncoveredWeeks);
 
+/// <summary>
+/// Plafoanele anului față de cifrele PFA-ului: încasările de până acum față de plafonul de scutire
+/// TVA, netul anual estimat față de plafoanele CAS (12 și 24 de salarii minime).
+/// </summary>
+public sealed record EstimatedThresholdsResponse(
+    decimal IncomeYtd,
+    decimal? NetAnnualEstimated,
+    decimal VatThreshold,
+    decimal? Cas12,
+    decimal? Cas24);
+
 public sealed record EstimatedTaxesRunSummary(
     Guid Id,
     DateTime CreatedAtUtc,
@@ -58,4 +69,5 @@ public sealed record EstimatedTaxesResponse(
     int? ProfileRevision = null,
     string? RuleVersion = null,
     Guid? FinancialSnapshotId = null,
-    IReadOnlyList<EstimatedTaxesRunSummary>? Runs = null);
+    IReadOnlyList<EstimatedTaxesRunSummary>? Runs = null,
+    EstimatedThresholdsResponse? Thresholds = null);

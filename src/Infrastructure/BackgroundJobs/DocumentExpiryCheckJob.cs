@@ -1,5 +1,6 @@
 using Application.Abstractions.Messaging;
 using Application.Notifications.DocumentExpiry;
+using Application.PfaRegistrations.MonthlyIncome;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -8,25 +9,33 @@ using SharedKernel;
 namespace Infrastructure.BackgroundJobs;
 
 /// <summary>
-/// Runs daily at 08:00 Romania time.
-/// Sends push + in-app notifications for documents expiring in 30 or 7 days.
+/// O dată pe zi, după 08:00 (ora României): notificări în aplicație și push pentru documentele care
+/// expiră. Rula doar dacă bucla nimerea exact minutul 08:00, iar un restart sau o deriva de câteva
+/// secunde sărea ziua cu totul. Acum verifică la câteva minute și rulează prima dată după 08:00;
+/// handlerul e idempotent, deci o rulare în plus nu dublează nimic.
 /// </summary>
 internal sealed class DocumentExpiryCheckJob(
     IServiceScopeFactory scopeFactory,
     ILogger<DocumentExpiryCheckJob> logger)
     : BackgroundService
 {
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(5);
+    private const int RunFromHour = 8;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("DocumentExpiryCheckJob started.");
+        DateOnly? lastRun = null;
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                if (IsEightAmRomania())
+                DateTime nowRomania = TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.UtcNow, PfaMonthlyIncomeRecalculator.GetRomaniaTimeZone());
+                var today = DateOnly.FromDateTime(nowRomania);
+
+                if (nowRomania.Hour >= RunFromHour && lastRun != today)
                 {
                     logger.LogInformation("Running daily document expiry check...");
 
@@ -34,33 +43,24 @@ internal sealed class DocumentExpiryCheckJob(
                     ICommandHandler<CheckDocumentExpiryCommand> handler =
                         scope.ServiceProvider.GetRequiredService<ICommandHandler<CheckDocumentExpiryCommand>>();
 
-                    Result result = await handler.Handle(
-                        new CheckDocumentExpiryCommand(),
-                        stoppingToken);
+                    Result result = await handler.Handle(new CheckDocumentExpiryCommand(), stoppingToken);
 
                     if (result.IsFailure)
                     {
                         logger.LogWarning("Document expiry check returned failure: {Error}", result.Error);
                     }
-
-                    // Sleep 1 hour to avoid re-triggering within the same hour
-                    await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+                    else
+                    {
+                        lastRun = today;
+                    }
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogError(ex, "Error in DocumentExpiryCheckJob.");
             }
 
             await Task.Delay(CheckInterval, stoppingToken);
         }
-    }
-
-    private static bool IsEightAmRomania()
-    {
-        var romania = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time");
-        DateTime nowRomania = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, romania);
-
-        return nowRomania.Hour == 8 && nowRomania.Minute == 0;
     }
 }

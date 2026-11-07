@@ -32,8 +32,9 @@ public sealed record FinancialSnapshot(
 /// </summary>
 /// <remarks>
 /// Evidența e lunară (Uber livrează doar totaluri pe lună), deci săptămânile reprezentative sunt
-/// zilele din ultimele luni complete, cu activitate, până la 8 săptămâni: media săptămânală =
-/// netul lor ÷ zile × 7. Sub 4 săptămâni (28 de zile) nu estimăm.
+/// zilele din ultimele luni complete cu activitate, până la 8 săptămâni: media săptămânală = netul
+/// lor ÷ zile × 7. Sub 4 săptămâni complete intră și luna curentă, până azi: estimăm de la prima
+/// săptămână de încasări, ca PFA-ul nou să știe din primele zile cât pune deoparte.
 /// <para>
 /// O perioadă fără date la începutul anului (PFA vechi intrat mai târziu în RIDElance) nu oprește
 /// estimarea și nu e tratată ca venit zero: o acoperim cu aceeași medie săptămânală, iar proiecția
@@ -42,7 +43,8 @@ public sealed record FinancialSnapshot(
 /// </remarks>
 public static class IncomeProjector
 {
-    public const int MinRepresentativeDays = 28;
+    public const int MinRepresentativeDays = 7;
+    public const int PreferredRepresentativeDays = 28;
     public const int MaxRepresentativeDays = 56;
 
     public static IncomeProjection Project(FinancialSnapshot snapshot)
@@ -72,28 +74,22 @@ public static class IncomeProjector
         int representativeDays = 0;
         for (int month = snapshot.AsOf.Month - 1; month >= 1 && representativeDays < MaxRepresentativeDays; month--)
         {
-            var monthStart = new DateOnly(snapshot.TaxYear, month, 1);
-            DateOnly monthEnd = monthStart.AddMonths(1).AddDays(-1);
-            DateOnly from = monthStart > coveredFrom ? monthStart : coveredFrom;
-            if (from > monthEnd)
+            if (!AddMonth(snapshot, coveredFrom, month, ref representativeNet, ref representativeDays))
             {
                 break;
             }
+        }
 
-            MonthFigures? figures = snapshot.Months.FirstOrDefault(m => m.Month == month);
-            // O lună fără nicio încasare nu e o lună de activitate (concediu, pauză).
-            if (figures is null || figures.Income <= 0)
-            {
-                continue;
-            }
-
-            representativeNet += figures.Income - figures.Expenses;
-            representativeDays += monthEnd.DayNumber - from.DayNumber + 1;
+        // Lunile complete sunt mai sigure (Uber vine pe lună, la final): luna curentă intră doar cât
+        // PFA-ul n-are încă o lună întreagă în urmă, și atunci doar zilele trecute din ea.
+        if (representativeDays < PreferredRepresentativeDays)
+        {
+            AddMonth(snapshot, coveredFrom, snapshot.AsOf.Month, ref representativeNet, ref representativeDays);
         }
 
         if (representativeDays < MinRepresentativeDays)
         {
-            return Unavailable(TaxReasons.ShortHistory, ["4 săptămâni de activitate"], netRealized, weeksRemaining);
+            return Unavailable(TaxReasons.ShortHistory, ["o săptămână de activitate"], netRealized, weeksRemaining);
         }
 
         decimal weeklyAverage = representativeNet / representativeDays * 7m;
@@ -109,6 +105,29 @@ public static class IncomeProjector
             Math.Round(weeksRemaining, 1, MidpointRounding.AwayFromZero),
             uncoveredPeriod,
             Math.Round(uncoveredWeeks, 1, MidpointRounding.AwayFromZero));
+    }
+
+    /// <summary>Adaugă luna la media săptămânală; <c>false</c> când e dinainte de acoperire.</summary>
+    private static bool AddMonth(FinancialSnapshot snapshot, DateOnly coveredFrom, int month, ref decimal net, ref int days)
+    {
+        var monthStart = new DateOnly(snapshot.TaxYear, month, 1);
+        DateOnly monthEnd = month == snapshot.AsOf.Month ? snapshot.AsOf : monthStart.AddMonths(1).AddDays(-1);
+        DateOnly from = monthStart > coveredFrom ? monthStart : coveredFrom;
+        if (from > monthEnd)
+        {
+            return false;
+        }
+
+        MonthFigures? figures = snapshot.Months.FirstOrDefault(m => m.Month == month);
+        // O lună fără nicio încasare nu e o lună de activitate (concediu, pauză).
+        if (figures is null || figures.Income <= 0)
+        {
+            return true;
+        }
+
+        net += figures.Income - figures.Expenses;
+        days += monthEnd.DayNumber - from.DayNumber + 1;
+        return true;
     }
 
     private static IncomeProjection Unavailable(string reason, IReadOnlyList<string> missing, decimal netRealized, decimal weeksRemaining) =>

@@ -7,9 +7,11 @@ namespace Application.Accounting;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Contabilul închide luna pe <see cref="CloseDay"/> ale lunii următoare. Documentele pentru o lună
-/// se cer de pe <c>CloseDay + 1</c> ale ei până pe <c>CloseDay</c> ale lunii următoare: pentru
-/// septembrie, de pe 26 septembrie până pe 25 octombrie inclusiv.
+/// Bonurile pentru o lună se primesc până pe <see cref="CloseDay"/> ale lunii următoare (restul
+/// documentelor vin automat: bancă, Uber/Bolt, SPV). Un document încărcat de pe <c>CloseDay + 1</c>
+/// ale unei luni până pe <c>CloseDay</c> ale lunii următoare se socotește la luna aceea: pentru
+/// octombrie, de pe 6 octombrie până pe 5 noiembrie inclusiv. Pe 1 ale lunii pleacă anunțul de
+/// închidere a lunii trecute, iar pe 4 și 5 amintirea, doar pentru cine n-a confirmat.
 /// </para>
 /// <para>
 /// De aici decurg trei lucruri: ce lună se cere într-o zi dată (<see cref="RequestedMonth"/>), ce
@@ -19,13 +21,19 @@ namespace Application.Accounting;
 /// </remarks>
 public static class AccountingPeriod
 {
-    /// <summary>Ziua din luna următoare în care contabilul închide luna.</summary>
-    public const int CloseDay = 25;
+    /// <summary>Ultima zi din luna următoare în care se mai primesc bonurile lunii.</summary>
+    public const int CloseDay = 5;
+
+    /// <summary>Ziua în care pleacă anunțul „Închiderea lunii”.</summary>
+    public const int NoticeDay = 1;
+
+    /// <summary>Zilele cu amintirea „Ultimele zile”, pentru cine n-a confirmat luna.</summary>
+    public static readonly IReadOnlySet<int> ReminderDays = new HashSet<int> { 4, 5 };
 
     private static readonly CultureInfo Romanian = new("ro-RO");
 
     /// <summary>
-    /// Luna pentru care se cer documente în ziua dată: de pe 26 încolo, luna curentă; până pe 25
+    /// Luna pentru care se cer documente în ziua dată: de pe 6 încolo, luna curentă; până pe 5
     /// inclusiv, luna trecută (a cărei fereastră încă e deschisă).
     /// </summary>
     public static (int Year, int Month) RequestedMonth(DateOnly localDay)
@@ -38,8 +46,8 @@ public static class AccountingPeriod
     public static (int Year, int Month) RequestedMonthUtc(DateTime utcNow) =>
         RequestedMonth(DateOnly.FromDateTime(ToRomania(utcNow)));
 
-    /// <summary>Ziua în care se deschide fereastra unei luni — și în care se trimite cererea.</summary>
-    public static bool IsCollectionStartDay(DateOnly localDay) => localDay.Day == CloseDay + 1;
+    /// <summary>Zilele în care luna trecută încă se poate completa: de pe 1 până pe <see cref="CloseDay"/>.</summary>
+    public static bool IsClosingWindow(DateOnly localDay) => localDay.Day <= CloseDay;
 
     /// <summary>Ultima zi în care se mai primesc documente pentru luna dată.</summary>
     public static DateOnly Deadline(int year, int month) =>
@@ -47,7 +55,7 @@ public static class AccountingPeriod
 
     /// <summary>
     /// Intervalul [început, sfârșit) în care un document încărcat se socotește la luna dată:
-    /// de pe 26 ale lunii, ora 00:00, până pe 26 ale lunii următoare, ora 00:00.
+    /// de pe 6 ale lunii, ora 00:00, până pe 6 ale lunii următoare, ora 00:00.
     /// </summary>
     public static (DateTime StartUtc, DateTime EndUtc) CollectionWindowUtc(int year, int month)
     {
@@ -63,9 +71,17 @@ public static class AccountingPeriod
     public static string MonthLabel(int year, int month) =>
         new DateOnly(year, month, 1).ToString("MMMM yyyy", Romanian);
 
-    /// <summary>„25 octombrie".</summary>
+    /// <summary>„octombrie".</summary>
+    public static string MonthName(int month) =>
+        new DateOnly(2000, month, 1).ToString("MMMM", Romanian);
+
+    /// <summary>„5 noiembrie".</summary>
     public static string DeadlineLabel(int year, int month) =>
         Deadline(year, month).ToString("d MMMM", Romanian);
+
+    /// <summary>Cheia lunii, „2026-10”: pe notificări și pe confirmarea lunii.</summary>
+    public static string MonthKey(int year, int month) =>
+        string.Create(CultureInfo.InvariantCulture, $"{year:D4}-{month:D2}");
 
     public static DateTime ToRomania(DateTime utc) =>
         TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), RomaniaTimeZone());

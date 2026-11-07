@@ -42,6 +42,15 @@ internal sealed class GetPfaFiscalProfileQueryHandler(
             .AsNoTracking()
             .SingleOrDefaultAsync(c => c.PfaRegistrationId == query.PfaRegistrationId, cancellationToken);
 
+        DateTime? arrSubmittedAtUtc = await context.ArrFleetApplications
+            .AsNoTracking()
+            .Where(a => a.PfaRegistrationId == query.PfaRegistrationId)
+            .Select(a => a.SubmittedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        bool boltIntegration = await context.BoltIntegrations
+            .AsNoTracking()
+            .AnyAsync(b => b.UserId == access.Value.UserId, cancellationToken);
+
         Domain.Accounting.CashRegisterState? cash = await context.CashRegisterStates
             .AsNoTracking()
             .SingleOrDefaultAsync(c => c.PfaRegistrationId == query.PfaRegistrationId, cancellationToken);
@@ -53,8 +62,12 @@ internal sealed class GetPfaFiscalProfileQueryHandler(
                     : PfaFiscalProfileMapper.MapProfile(profile),
                 cash),
             accountEntities.Select(PfaFiscalProfileMapper.MapAccount).ToList(),
-            consent is null
-                ? PfaFiscalProfileMapper.DefaultConsent(query.PfaRegistrationId)
-                : PfaFiscalProfileMapper.MapConsent(consent));
+            PfaFiscalProfileMapper.WithOnboarding(
+                consent is null
+                    ? PfaFiscalProfileMapper.DefaultConsent(query.PfaRegistrationId)
+                    : PfaFiscalProfileMapper.MapConsent(consent),
+                accountEntities,
+                arrSubmittedAtUtc,
+                boltIntegration));
     }
 }
