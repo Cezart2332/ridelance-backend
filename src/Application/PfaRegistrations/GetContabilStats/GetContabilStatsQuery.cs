@@ -44,8 +44,8 @@ internal sealed class GetContabilStatsQueryHandler(
                 Error.Failure("Auth.Unauthorized", "Doar contabilii pot accesa aceste statistici."));
         }
 
-        // Luna cerută explicit, altfel luna contabilă deschisă acum: până pe 25 e luna trecută,
-        // de pe 26 luna curentă (vezi `AccountingPeriod`).
+        // Luna cerută explicit, altfel luna contabilă deschisă acum: până pe 5 e luna trecută,
+        // de pe 6 luna curentă (vezi `AccountingPeriod`).
         (int currentYear, int currentMonth) = query.Year is int y && query.Month is int m && m >= 1 && m <= 12
             ? (y, m)
             : AccountingPeriod.RequestedMonthUtc(DateTime.UtcNow);
