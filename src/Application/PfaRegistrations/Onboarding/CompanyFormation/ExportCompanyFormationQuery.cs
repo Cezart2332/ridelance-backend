@@ -185,9 +185,10 @@ internal sealed class ExportCompanyFormationQueryHandler(
 
         foreach (CompanyFormationOwner owner in request.Owners.OrderBy(o => o.Position))
         {
-            people.Add(new CompanyFormationPerson(
-                $"Proprietar {owner.Position + 1}",
-                PersonFields(owner.Persoana)));
+            List<CompanyFormationField> fields = PersonFields(owner.Persoana);
+            fields.Add(new CompanyFormationField("Email", owner.Email ?? "—"));
+            fields.Add(new CompanyFormationField("Acord semnat", OwnerConsentStatus(owner)));
+            people.Add(new CompanyFormationPerson($"Proprietar {owner.Position + 1}", fields));
         }
 
         var office = new List<CompanyFormationField>
@@ -224,6 +225,16 @@ internal sealed class ExportCompanyFormationQueryHandler(
                 }.Where(v => v is not null))));
 
         return new CompanyFormationSheetData(applicant, people, office, generatedAtUtc);
+    }
+
+    private static string OwnerConsentStatus(CompanyFormationOwner owner)
+    {
+        if (owner.ConsentSignedAtUtc is DateTime signed)
+        {
+            return $"Da, {signed.ToString("dd.MM.yyyy HH:mm", Ro)} UTC · IP {owner.ConsentIpAddress ?? "—"}";
+        }
+
+        return owner.ConsentSentAtUtc is not null ? "Trimis, nesemnat încă" : "Netrimis";
     }
 
     /// <summary>CNP-ul apare mascat: pachetul pleacă din sistem, valoarea în clar nu.</summary>
@@ -282,7 +293,7 @@ internal sealed class ExportCompanyFormationQueryHandler(
             generatedAtUtc,
         };
 
-    private static string FormatAddress(Adresa a)
+    internal static string FormatAddress(Adresa a)
     {
         string[] parts =
         [

@@ -168,10 +168,17 @@ internal static class CompanyFormationMapper
                 request.AcknowledgedOwnerConsent),
             request.Owners
                 .OrderBy(o => o.Position)
-                .Select(o => new CompanyFormationOwnerDto(o.Id, o.Position, ToDto(o.Persoana, protector, revealCnp)))
+                .Select(o => new CompanyFormationOwnerDto(
+                    o.Id,
+                    o.Position,
+                    ToDto(o.Persoana, protector, revealCnp),
+                    o.Email,
+                    o.ConsentSentAtUtc,
+                    o.ConsentSignedAtUtc,
+                    o.ConsentSignatureDocumentId))
                 .ToList(),
             request.PersonalDataComplete,
-            request.RegisteredOfficeComplete,
+            request.RegisteredOfficeComplete && request.OwnerEmailsComplete,
             request.Signature is null
                 ? null
                 : new CompanyFormationSignatureDto(request.Signature.SignedAtUtc, request.Signature.ImageDocumentId));

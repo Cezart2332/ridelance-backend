@@ -36,6 +36,18 @@ internal sealed class AdminCompanyFormation : IEndpoint
         })
         .HasPermission(Permissions.ManagePfaRegistrations);
 
+        // Acordul proprietarului: un link nou pe email, cel vechi nu mai merge.
+        group.MapPost("owners/{ownerId:guid}/send-consent", async (
+            Guid id,
+            Guid ownerId,
+            ICommandHandler<ResendOwnerConsentCommand> handler,
+            CancellationToken cancellationToken) =>
+        {
+            Result result = await handler.Handle(new ResendOwnerConsentCommand(id, ownerId), cancellationToken);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.NoContent();
+        })
+        .HasPermission(Permissions.ManagePfaRegistrations);
+
         // POST, nu GET: fiecare dezvăluire de CNP lasă urmă în jurnalul dosarului.
         group.MapPost("reveal-cnp", async (
             Guid id,

@@ -98,7 +98,7 @@ internal sealed class SubmitRegisteredOfficeCommandHandler(
 
         request.UpdatedAtUtc = DateTime.UtcNow;
 
-        if (request.RegisteredOfficeComplete && request.CurrentStage == CompanyFormationStage.RegisteredOffice)
+        if (request.RegisteredOfficeComplete && request.OwnerEmailsComplete && request.CurrentStage == CompanyFormationStage.RegisteredOffice)
         {
             request.CurrentStage = CompanyFormationStage.Consent;
         }
@@ -150,6 +150,17 @@ internal sealed class SubmitRegisteredOfficeCommandHandler(
 
             owner.Position = position;
             owner.UpdatedAtUtc = DateTime.UtcNow;
+
+            // Alt email înseamnă alt destinatar: un link trimis la adresa veche nu mai e bun.
+            string? email = string.IsNullOrWhiteSpace(incoming.Email) ? null : incoming.Email.Trim();
+            if (!string.Equals(owner.Email, email, StringComparison.OrdinalIgnoreCase) && owner.ConsentSignedAtUtc is null)
+            {
+                owner.ConsentTokenHash = null;
+                owner.ConsentExpiresAtUtc = null;
+                owner.ConsentSentAtUtc = null;
+            }
+
+            owner.Email = email;
 
             // Proprietarii nu au CI încărcată, deci nimic nu vine din OCR pentru ei.
             CompanyFormationMapper.Apply(owner.Persoana, incoming.Persoana, secretProtector, PrefilledFieldMap.Untracked());

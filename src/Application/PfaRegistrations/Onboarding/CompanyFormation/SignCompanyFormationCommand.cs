@@ -46,6 +46,7 @@ internal sealed class SignCompanyFormationCommandHandler(
     ISecretProtector secretProtector,
     IFileEncryptionService fileEncryptionService,
     ConsultoDossierSender consultoDossierSender,
+    OwnerConsentSender ownerConsentSender,
     OnboardingStateService stateService)
     : ICommandHandler<SignCompanyFormationCommand, CompanyFormationResponse>
 {
@@ -95,7 +96,7 @@ internal sealed class SignCompanyFormationCommandHandler(
             return Result.Failure<CompanyFormationResponse>(CompanyFormationErrors.PersonalDataIncomplete);
         }
 
-        if (!request.RegisteredOfficeComplete)
+        if (!request.RegisteredOfficeComplete || !request.OwnerEmailsComplete)
         {
             return Result.Failure<CompanyFormationResponse>(CompanyFormationErrors.RegisteredOfficeIncomplete);
         }
@@ -204,6 +205,9 @@ internal sealed class SignCompanyFormationCommandHandler(
         request.UpdatedAtUtc = signedAtUtc;
 
         await context.SaveChangesAsync(cancellationToken);
+
+        // Datele sunt acum blocate: proprietarii care nu sunt solicitantul primesc acordul de semnat.
+        await ownerConsentSender.SendPendingAsync(request, cancellationToken);
 
         // Poarta e a lui `ConsultoDossierSender`, aceeași ca pe traseul webhook: un dosar
         // neplătit nu pleacă nici de aici. Eșecul nu pică semnarea — semnătura e deja în DB,

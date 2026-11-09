@@ -39,7 +39,7 @@ public static class CompanySlug
         "masini", "f", "intrebari-frecvente", "servicii", "despre-ridelance", "fiscal",
         "calculator-taxe", "abonamente-preturi", "orase-ridesharing", "parteneri", "contact", "programare",
         "dashboard", "dashboard-demo", "termeni-si-conditii", "privacy-policy",
-        "politica-cookies", "politica-plati-abonamente", "semneaza",
+        "politica-cookies", "politica-plati-abonamente", "semneaza", "acord-proprietar",
 
         // Zonele cu cont
         "auth", "login", "autentificare", "inregistrare", "confirmare-email", "parola-uitata",

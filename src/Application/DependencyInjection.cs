@@ -77,6 +77,7 @@ public static class DependencyInjection
         // Anunțurile interne: dosar generat, plată încasată.
         services.AddScoped<PfaRegistrations.Onboarding.Notifications.OnboardingOpsNotifier>();
         services.AddScoped<PfaRegistrations.Onboarding.CompanyFormation.ConsultoDossierSender>();
+        services.AddScoped<PfaRegistrations.Onboarding.CompanyFormation.OwnerConsentSender>();
         services.AddScoped<Payments.ServiceOrders.ServiceOrderDossierBuilder>();
         services.AddScoped<Payments.ServiceOrders.ServiceOrderDossierSender>();
 

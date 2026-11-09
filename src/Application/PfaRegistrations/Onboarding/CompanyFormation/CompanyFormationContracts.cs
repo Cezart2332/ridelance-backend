@@ -30,7 +30,16 @@ public sealed record PersoanaFizicaDto(
     DateOnly? DataExpirarii,
     AdresaDto Domiciliu);
 
-public sealed record CompanyFormationOwnerDto(Guid Id, int Position, PersoanaFizicaDto Persoana);
+/// <param name="ConsentSentAtUtc">Când a plecat acordul pe email; <c>null</c> = încă nu.</param>
+/// <param name="ConsentSignedAtUtc">Când a semnat proprietarul; <c>null</c> = încă nu.</param>
+public sealed record CompanyFormationOwnerDto(
+    Guid Id,
+    int Position,
+    PersoanaFizicaDto Persoana,
+    string? Email = null,
+    DateTime? ConsentSentAtUtc = null,
+    DateTime? ConsentSignedAtUtc = null,
+    Guid? ConsentSignatureDocumentId = null);
 
 /// <summary>
 /// O locație de sediu social pusă la dispoziție de Consulto.
@@ -106,7 +115,7 @@ public sealed record PersoanaFizicaPayload(
 /// Un proprietar al imobilului declarat ca sediu. <paramref name="Id"/> lipsește pentru cei
 /// adăugați în pagină și încă nesalvați.
 /// </summary>
-public sealed record OwnerPayload(Guid? Id, PersoanaFizicaPayload Persoana);
+public sealed record OwnerPayload(Guid? Id, PersoanaFizicaPayload Persoana, string? Email = null);
 
 /// <summary>
 /// Etapa 2, trimisă întreagă la fiecare autosave: lista de proprietari se reconciliază după

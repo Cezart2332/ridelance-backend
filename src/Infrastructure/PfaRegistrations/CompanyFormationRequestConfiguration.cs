@@ -63,6 +63,12 @@ internal sealed class CompanyFormationOwnerConfiguration : IEntityTypeConfigurat
         builder.HasIndex(o => o.CompanyFormationRequestId);
 
         builder.OwnsOne(o => o.Persoana, CompanyFormationMapping.ConfigurePersoana);
+
+        builder.Property(o => o.Email).HasMaxLength(256);
+        builder.Property(o => o.ConsentTokenHash).HasMaxLength(64);
+        builder.Property(o => o.ConsentIpAddress).HasMaxLength(64);
+        builder.Property(o => o.ConsentUserAgent).HasMaxLength(512);
+        builder.HasIndex(o => o.ConsentTokenHash);
     }
 }
 

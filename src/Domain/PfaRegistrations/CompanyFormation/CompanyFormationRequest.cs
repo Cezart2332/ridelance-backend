@@ -101,6 +101,14 @@ public sealed class CompanyFormationRequest : Entity
     /// aleasă; pe ramura proprie se cer adresa, bifele și cel puțin un proprietar când imobilul
     /// nu e al solicitantului.
     /// </summary>
+    /// <summary>
+    /// În onboarding, fiecare proprietar are un email: acolo îi trimitem acordul de semnat.
+    /// Comenzile de pe site n-au semnare la distanță, deci regula nu intră în
+    /// <see cref="RegisteredOfficeComplete"/>, pe care îl folosesc și ele.
+    /// </summary>
+    public bool OwnerEmailsComplete =>
+        OfficeType != RegisteredOfficeType.Own || IsOwner != false || Owners.TrueForAll(o => CompanyFormationOwner.IsValidEmail(o.Email));
+
     public bool RegisteredOfficeComplete => OfficeType switch
     {
         RegisteredOfficeType.ConsultoProvided => ConsultoOfficeId is not null,
