@@ -63,6 +63,14 @@ public interface IStripeService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sesiunea de checkout cu starea plății. <c>Status == "complete"</c> spune doar că formularul a
+    /// fost trimis; dacă banii au intrat o spune <c>PaymentStatus</c>.
+    /// </summary>
+    Task<CheckoutSessionPayment> GetSessionPaymentAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates or retrieves a Stripe Customer for the user.
     /// </summary>
     Task<string> GetOrCreateCustomerAsync(
@@ -129,4 +137,16 @@ public interface IStripeService
     /// Returns null if signature is invalid.
     /// </summary>
     Stripe.Event? ConstructWebhookEvent(string payload, string stripeSignatureHeader);
+}
+
+/// <summary>
+/// O sesiune de checkout, cu ce contează la întoarcerea din plată.
+/// </summary>
+/// <param name="Status"><c>open</c>, <c>complete</c> sau <c>expired</c> — starea formularului.</param>
+/// <param name="PaymentStatus"><c>paid</c>, <c>unpaid</c> sau <c>no_payment_required</c> — starea banilor.</param>
+/// <param name="UserId">Contul pentru care a fost deschisă sesiunea, din metadata ei.</param>
+public sealed record CheckoutSessionPayment(string Status, string PaymentStatus, string? CustomerEmail, string? UserId)
+{
+    /// <summary>Formular trimis și bani intrați (sau nimic de încasat).</summary>
+    public bool IsPaid => Status == "complete" && PaymentStatus is "paid" or "no_payment_required";
 }

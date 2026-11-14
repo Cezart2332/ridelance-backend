@@ -18,8 +18,8 @@ internal sealed class GetSessionStatusQueryHandler(IStripeService stripeService)
 
         try
         {
-            (string status, string? email) = await stripeService.GetSessionStatusAsync(query.SessionId, cancellationToken);
-            return new SessionStatusResponse(status, email);
+            CheckoutSessionPayment session = await stripeService.GetSessionPaymentAsync(query.SessionId, cancellationToken);
+            return new SessionStatusResponse(session.Status, session.CustomerEmail, session.PaymentStatus, session.IsPaid);
         }
         catch (Exception ex)
         {

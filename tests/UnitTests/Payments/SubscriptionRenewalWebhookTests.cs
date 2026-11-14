@@ -85,6 +85,59 @@ public sealed class SubscriptionRenewalWebhookTests
         ((StripeProxy)(object)stripe).Cancelled.ShouldBe(["sub_weekly_old"]);
     }
 
+    [Fact]
+    public async Task UnpaidCheckoutIsNotRecordedAsAPayment()
+    {
+        await using ApplicationDbContext db = Database();
+        UserSubscription subscription = await AddSubscription(db, "sub_monthly");
+        IStripeService stripe = DispatchProxy.Create<IStripeService, StripeProxy>();
+        ((StripeProxy)(object)stripe).Webhook = AdvanceCheckout("cs_unpaid", subscription.UserId, "unpaid");
+
+        (await Handler(db, stripe).Handle(new("payload", "signature"), default)).IsSuccess.ShouldBeTrue();
+
+        (await db.PaymentRecords.AnyAsync()).ShouldBeFalse();
+        (await Application.Payments.InfiintarePaymentCheck.HasPaidAsync(db, subscription.UserId, default)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task PaidCheckoutIsRecordedOnceEvenWhenStripeRepeatsTheEvent()
+    {
+        await using ApplicationDbContext db = Database();
+        UserSubscription subscription = await AddSubscription(db, "sub_monthly");
+        IStripeService stripe = DispatchProxy.Create<IStripeService, StripeProxy>();
+        HandleStripeWebhookCommandHandler handler = Handler(db, stripe);
+
+        // `completed` și apoi `async_payment_succeeded`, pe aceeași sesiune.
+        ((StripeProxy)(object)stripe).Webhook = AdvanceCheckout("cs_paid", subscription.UserId, "paid");
+        (await handler.Handle(new("payload", "signature"), default)).IsSuccess.ShouldBeTrue();
+        ((StripeProxy)(object)stripe).Webhook = AdvanceCheckout("cs_paid", subscription.UserId, "paid", "checkout.session.async_payment_succeeded");
+        (await handler.Handle(new("payload", "signature"), default)).IsSuccess.ShouldBeTrue();
+
+        PaymentRecord record = await db.PaymentRecords.SingleAsync();
+        record.Status.ShouldBe(PaymentStatus.Succeeded);
+        record.StripeSessionId.ShouldBe("cs_paid");
+        (await Application.Payments.InfiintarePaymentCheck.HasPaidAsync(db, subscription.UserId, default)).ShouldBeTrue();
+    }
+
+    /// <summary>Checkoutul avansului din onboarding, în starea de plată cerută.</summary>
+    private static Stripe.Event AdvanceCheckout(
+        string sessionId,
+        Guid userId,
+        string paymentStatus,
+        string type = "checkout.session.completed") => new()
+    {
+        Id = "evt_" + sessionId,
+        Type = type,
+        Data = new Stripe.EventData
+        {
+            Object = new Stripe.Checkout.Session
+            {
+                Id = sessionId, Mode = "payment", Status = "complete", PaymentStatus = paymentStatus, AmountTotal = 39900,
+                Metadata = new() { ["userId"] = userId.ToString(), ["customMetadata"] = "infiintare_pfa" },
+            },
+        },
+    };
+
     private static Stripe.Event RenewalEvent(string invoiceId, string subscriptionId, string type = "invoice.payment_succeeded") =>
         Stripe.EventUtility.ParseEvent(
             $$"""

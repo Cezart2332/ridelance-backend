@@ -78,6 +78,19 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return;
         }
 
+        // „Completed" spune că formularul a fost trimis, nu că banii au intrat: la o metodă de plată
+        // cu decontare întârziată evenimentul sosește cu `unpaid`, iar plata se confirmă (sau pică)
+        // mai târziu, pe `async_payment_succeeded`. Fără verificarea asta, o sesiune neplătită
+        // deschidea abonamentul, marca avansul plătit și trimitea dosarul la Consulto.
+        if (!IsPaid(session))
+        {
+            logger.LogWarning(
+                "Sesiunea Stripe {SessionId} s-a închis fără plată confirmată (payment_status={PaymentStatus}); nu se înregistrează nimic.",
+                session.Id,
+                session.PaymentStatus);
+            return;
+        }
+
         string? serviceOrderIdStr = session.Metadata?.GetValueOrDefault("serviceOrderId");
         if (Guid.TryParse(serviceOrderIdStr, out Guid serviceOrderId))
         {
@@ -104,6 +117,13 @@ internal sealed class HandleStripeWebhookCommandHandler(
             Guid.TryParse(session.Metadata?.GetValueOrDefault("carId"), out _))
         {
             await HandleCarListingCheckoutCompleted(session, userId, ct);
+            return;
+        }
+
+        // Stripe retrimite un webhook care n-a primit 200, iar `async_payment_succeeded` vine pe
+        // aceeași sesiune ca `completed`. O sesiune e o singură încasare, deci o singură înregistrare.
+        if (await context.PaymentRecords.AnyAsync(p => p.StripeSessionId == session.Id, ct))
+        {
             return;
         }
 
@@ -161,15 +181,6 @@ internal sealed class HandleStripeWebhookCommandHandler(
             SubscriptionPlan plan = ParsePlan(planStr);
             if (plan == SubscriptionPlan.Fleet)
             {
-                if (await context.PaymentRecords.AnyAsync(p => p.StripeSessionId == session.Id, ct))
-                {
-                    return;
-                }
-                if (session.PaymentStatus is not ("paid" or "no_payment_required"))
-                {
-                    return;
-                }
-
                 Domain.Users.User? fleetUser = await context.Users.SingleOrDefaultAsync(u => u.Id == userId, ct);
                 if (fleetUser?.Role != Domain.Users.UserRole.CarPoster
                     || fleetUser.FleetOnboarding.CompletedStep != 7
@@ -803,6 +814,13 @@ internal sealed class HandleStripeWebhookCommandHandler(
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Banii au intrat — sau nu era nimic de încasat (un cod de reducere de 100%). <c>unpaid</c>
+    /// înseamnă că plata e încă în curs ori a eșuat: nu e o plată.
+    /// </summary>
+    private static bool IsPaid(Session session) =>
+        session.PaymentStatus is "paid" or "no_payment_required";
 
     /// <summary>
     /// Când cade următoarea încasare, pornind de la cea de acum. O lună sau un an — nu mai există

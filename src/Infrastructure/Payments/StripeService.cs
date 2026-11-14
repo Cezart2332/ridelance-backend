@@ -95,6 +95,12 @@ internal sealed class StripeService : IStripeService
         var options = new SessionCreateOptions
         {
             PaymentMethodTypes = ["card"],
+            // „card" singur nu scoate Link: Checkout îl afișează oricum, ca portofel peste card,
+            // și plătește dintr-un click cu un card salvat la alt comerciant. Se oprește explicit.
+            WalletOptions = new SessionWalletOptionsOptions
+            {
+                Link = new SessionWalletOptionsLinkOptions { Display = "never" },
+            },
             // Planul, apoi opțiunile plătite: același abonament Stripe, deci aceeași facturare și
             // aceeași anulare.
             LineItems =
@@ -151,6 +157,18 @@ internal sealed class StripeService : IStripeService
         var service = new SessionService();
         Session session = await service.GetAsync(sessionId, cancellationToken: cancellationToken);
         return (session.Status, session.CustomerDetails?.Email);
+    }
+
+    public async Task<CheckoutSessionPayment> GetSessionPaymentAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        Session session = await new SessionService().GetAsync(sessionId, cancellationToken: cancellationToken);
+        return new CheckoutSessionPayment(
+            session.Status,
+            session.PaymentStatus,
+            session.CustomerDetails?.Email,
+            session.Metadata?.GetValueOrDefault("userId"));
     }
 
     public async Task<string> GetOrCreateCustomerAsync(
