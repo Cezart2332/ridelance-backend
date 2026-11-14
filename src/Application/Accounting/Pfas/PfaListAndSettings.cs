@@ -201,7 +201,7 @@ internal sealed class UpdatePfaSettingsCommandHandler(IApplicationDbContext db, 
         db.PfaAccountingSettings.Add(setting);
         AccountingAudit.Record(
             db, command.PfaId, nameof(PfaAccountingSetting), setting.Id, "APPEND", null,
-            new { key = change.Field, value = JsonDocument.Parse(value.Value).RootElement, validFrom = change.ValidFrom }, setting.Note, userContext.UserId);
+            new { key = change.Field, value = JsonElement.Parse(value.Value), validFrom = change.ValidFrom }, setting.Note, userContext.UserId);
         await db.SaveChangesAsync(cancellationToken);
 
         if (change.Field == PfaAccountingSettingKeys.VehicleDeductibility)
@@ -325,7 +325,7 @@ internal static class PfaSettings
             return new SettingHistoryEntry(
                 s.Id,
                 s.Key,
-                JsonDocument.Parse(s.ValueJson).RootElement.Clone(),
+                JsonElement.Parse(s.ValueJson),
                 s.ValidFrom,
                 next?.ValidFrom.AddDays(-1),
                 s.Note,

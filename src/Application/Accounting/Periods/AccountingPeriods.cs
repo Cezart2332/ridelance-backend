@@ -333,7 +333,7 @@ internal sealed class CreatePeriodCorrectionCommandHandler(IApplicationDbContext
             command.PfaId,
             command.Period,
             correction.LedgerEntryId,
-            JsonDocument.Parse(correction.ChangeJson).RootElement.Clone(),
+            JsonElement.Parse(correction.ChangeJson),
             reason,
             users.GetValueOrDefault(userContext.UserId) ?? new UserRef(userContext.UserId, string.Empty),
             correction.CreatedAtUtc,

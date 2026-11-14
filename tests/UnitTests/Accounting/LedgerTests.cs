@@ -912,7 +912,7 @@ public sealed partial class LedgerTests : IDisposable
 
     private Task<Result<LedgerEntryDto>> Update(Guid id, string fields, string reason) =>
         new UpdateLedgerEntryCommandHandler(_db, new FixedUser(_accountant))
-            .Handle(new UpdateLedgerEntryCommand(id, JsonDocument.Parse(fields).RootElement, reason), CancellationToken.None);
+            .Handle(new UpdateLedgerEntryCommand(id, JsonElement.Parse(fields), reason), CancellationToken.None);
 
     private Task<Result<LedgerEntryDto>> Verify(Guid id) =>
         new VerifyLedgerEntryCommandHandler(_db, new FixedUser(_accountant)).Handle(new VerifyLedgerEntryCommand(id), CancellationToken.None);

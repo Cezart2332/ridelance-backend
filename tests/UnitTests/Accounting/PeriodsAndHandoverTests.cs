@@ -352,7 +352,7 @@ public sealed class PeriodsAndHandoverTests : IDisposable
 
         AccountingPeriodSnapshot snapshot = await _db.AccountingPeriodSnapshots.SingleAsync();
         snapshot.Period.ShouldBe("2026-08");
-        JsonDocument.Parse(snapshot.RjipJson).RootElement.GetProperty("rows").GetArrayLength().ShouldBe(1);
+        JsonElement.Parse(snapshot.RjipJson).GetProperty("rows").GetArrayLength().ShouldBe(1);
 
         var reopen = new ReopenPeriodCommandHandler(_db, User());
         (await reopen.Handle(new ReopenPeriodCommand(_pfa, "2026-08", " "), CancellationToken.None)).Error.Code.ShouldBe("Accounting.ReasonRequired");
@@ -598,7 +598,7 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         entries.ShouldContain("03_Documente/Platforme/2026-08/Bolt/factura-bolt.pdf");
         entries.ShouldContain("04_Declaratii/2026-08/D301_v1/D301_12345674_2026-08_v1.xml");
         entries.ShouldContain("Sumar_predare.pdf");
-        JsonDocument.Parse(done.ResultJson).RootElement.GetProperty("results").GetArrayLength().ShouldBe(8);
+        JsonElement.Parse(done.ResultJson).GetProperty("results").GetArrayLength().ShouldBe(8);
     }
 
     // ─── Ajutoare ──────────────────────────────────────────────────────────────────────────────
@@ -678,7 +678,7 @@ public sealed class PeriodsAndHandoverTests : IDisposable
         Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Key = key, ValueJson = value, ValidFrom = from, Note = "Setare", ChangedByUserId = _accountant,
     };
 
-    private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
+    private static JsonElement Json(string value) => JsonElement.Parse(value);
 
     private async Task<MonthReconciliationDto> Reconciliation(string period) =>
         (await new GetMonthReconciliationQueryHandler(_db).Handle(new GetMonthReconciliationQuery(_pfa, period), CancellationToken.None)).Value;

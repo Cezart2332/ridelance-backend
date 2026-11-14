@@ -106,7 +106,7 @@ internal sealed class SaveTaxRuleCommandHandler(IApplicationDbContext db) : ICom
     private static TInput Read<TInput>(JsonElement input)
     {
         using var document = JsonDocument.Parse(input.GetRawText());
-        var withId = new Dictionary<string, JsonElement> { ["id"] = JsonDocument.Parse($"\"{Guid.Empty}\"").RootElement };
+        var withId = new Dictionary<string, JsonElement> { ["id"] = JsonElement.Parse($"\"{Guid.Empty}\"") };
         foreach (JsonProperty property in document.RootElement.EnumerateObject().Where(p => p.Name != "id"))
         {
             withId[property.Name] = property.Value.Clone();
@@ -250,7 +250,7 @@ internal static class TaxRuleDtos
     }
 
     public static object D100(D100Rule r) => new D100RuleDto(
-        r.Id, r.Code, r.Enabled, r.Description, r.PendingConfirmation, JsonDocument.Parse(r.ParametersJson).RootElement.Clone(), r.ValidFrom, r.ValidTo);
+        r.Id, r.Code, r.Enabled, r.Description, r.PendingConfirmation, JsonElement.Parse(r.ParametersJson), r.ValidFrom, r.ValidTo);
 
     public static void Apply(D100Rule r, D100RuleDto i)
     {

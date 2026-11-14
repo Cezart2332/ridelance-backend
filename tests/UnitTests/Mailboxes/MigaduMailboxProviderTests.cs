@@ -46,7 +46,7 @@ public sealed class MigaduMailboxProviderTests : IDisposable
         call.Authorization.ShouldBe("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("admin@ridelance.ro:cheie")));
         call.ContentType.ShouldBe("application/json");
 
-        JsonElement body = JsonDocument.Parse(call.Body!).RootElement;
+        var body = JsonElement.Parse(call.Body!);
         body.GetProperty("name").GetString().ShouldBe("Ion Popescu");
         body.GetProperty("local_part").GetString().ShouldBe("ion.popescu");
         body.GetProperty("password").GetString().ShouldBe("parola");
@@ -66,7 +66,7 @@ public sealed class MigaduMailboxProviderTests : IDisposable
 
         Call call = _server.Calls.ShouldHaveSingleItem();
         (call.Method, call.Url).ShouldBe(("POST", "https://api.migadu.com/v1/domains/pfa.ridelance.ro/mailboxes/ion.popescu/identities"));
-        JsonElement body = JsonDocument.Parse(call.Body!).RootElement;
+        var body = JsonElement.Parse(call.Body!);
         body.GetProperty("password_use").GetString().ShouldBe("custom");
         body.GetProperty("password").GetString().ShouldBe("alta");
         body.GetProperty("may_access_imap").GetBoolean().ShouldBeTrue();

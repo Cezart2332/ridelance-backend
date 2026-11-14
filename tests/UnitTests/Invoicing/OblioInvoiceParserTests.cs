@@ -16,7 +16,7 @@ namespace UnitTests.Invoicing;
 /// </summary>
 public class OblioInvoiceParserTests
 {
-    private static JsonElement Json(string raw) => JsonDocument.Parse(raw).RootElement.Clone();
+    private static JsonElement Json(string raw) => JsonElement.Parse(raw);
 
     [Theory]
     [InlineData("{\"code\":1,\"sent\":true}", "sent")]

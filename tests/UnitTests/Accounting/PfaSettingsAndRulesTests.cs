@@ -264,7 +264,7 @@ public sealed class PfaSettingsAndRulesTests : IDisposable
         _db.PfaRegistrations.Add(new PfaRegistration { Id = id, UserId = userId, User = user, FullName = name, Cui = cui, OnboardingCompletedAtUtc = new DateTime(2025, 12, 1, 0, 0, 0, DateTimeKind.Utc) });
     }
 
-    private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
+    private static JsonElement Json(string value) => JsonElement.Parse(value);
 
     private FixedUser User() => new(_accountant);
 
