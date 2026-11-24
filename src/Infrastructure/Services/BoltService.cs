@@ -24,7 +24,10 @@ internal sealed class BoltService(
     private const int MaxRateLimitRetries = 3;
 
     // Bolt refuză intervale mai lungi de 31 de zile la istoricul de curse (25810 DATE_RANGE_TOO_BIG).
-    internal static readonly TimeSpan MaxRideHistoryRange = TimeSpan.FromDays(31);
+    // Cerem câte 30: cu exact 31, bucata care prinde trecerea la ora de vară (31 martie) avea 31 de
+    // zile și o oră în ora României, iar Bolt o refuza. Pățeau doar conturile conectate acum, singurele
+    // care își recuperează cursele de la 1 ianuarie; celelalte cer doar ultimele 7 zile.
+    internal static readonly TimeSpan MaxRideHistoryRange = TimeSpan.FromDays(30);
 
     private const string FinishedStatus = "finished";
     private const int NotAuthorizedCode = 503;

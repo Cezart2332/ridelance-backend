@@ -102,6 +102,24 @@ public sealed class BoltRideMappingTests
         chunks.Zip(chunks.Skip(1)).ShouldAllBe(p => p.First.End == p.Second.Start);
     }
 
+    /// <summary>
+    /// Conectarea unui cont nou aduce cursele de la 1 ianuarie. Nicio bucată nu are voie să treacă de
+    /// 31 de zile nici în ora României, unde trecerea la ora de vară mai adaugă o oră.
+    /// </summary>
+    [Fact]
+    public void No_chunk_of_a_full_year_backfill_exceeds_31_days_in_romanian_time()
+    {
+        var start = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var end = new DateTime(2026, 11, 24, 12, 0, 0, DateTimeKind.Utc);
+        var romania = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "GTB Standard Time" : "Europe/Bucharest");
+
+        foreach ((DateTime chunkStart, DateTime chunkEnd) in BoltService.SplitRange(start, end))
+        {
+            TimeSpan wallClock = TimeZoneInfo.ConvertTimeFromUtc(chunkEnd, romania) - TimeZoneInfo.ConvertTimeFromUtc(chunkStart, romania);
+            wallClock.ShouldBeLessThanOrEqualTo(TimeSpan.FromDays(31));
+        }
+    }
+
     [Fact]
     public void A_short_range_is_a_single_request()
     {
