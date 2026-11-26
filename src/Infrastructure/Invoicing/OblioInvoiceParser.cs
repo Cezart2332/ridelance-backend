@@ -35,8 +35,7 @@ public static class OblioInvoiceParser
 
         decimal total = ReadDecimal(item, "total") ?? 0m;
 
-        // Oblio nu are un singur nume pentru suma încasată; ambele apar în răspunsuri.
-        decimal collected = ReadDecimal(item, "collected") ?? ReadDecimal(item, "collectedValue") ?? 0m;
+        decimal collected = CollectedOf(item, total);
 
         (string clientName, string? clientCif) = ReadClient(item);
 
@@ -52,6 +51,33 @@ public static class OblioInvoiceParser
             ReadString(item, "link"),
             ReadBool(item, "canceled"),
             ReadSpvStatus(item));
+    }
+
+    /// <summary>
+    /// Cât s-a încasat din factură. Suma stă în încasările ei (<c>collects</c>, cerute cu
+    /// <c>withCollects=1</c>). Câmpul <c>collected</c> din listă e un indicator — 1 = încasată, 0 =
+    /// neîncasată, ca filtrul cu același nume din API — nu o sumă: citit ca sumă, fiecare factură
+    /// încasată apărea cu „Încasat 1,00 lei”, iar în RJIP intra câte un leu „în numerar” pe factură.
+    /// </summary>
+    private static decimal CollectedOf(JsonElement item, decimal total)
+    {
+        if (item.TryGetProperty("collects", out JsonElement collects) && collects.ValueKind == JsonValueKind.Array)
+        {
+            return collects.EnumerateArray().Sum(collect => ReadDecimal(collect, "value") ?? 0m);
+        }
+
+        if (ReadDecimal(item, "collectedValue") is { } value)
+        {
+            return value;
+        }
+
+        return ReadDecimal(item, "collected") switch
+        {
+            null or 0m => 0m,
+            1m => total,
+            // Răspunsurile care trimit chiar suma (nu indicatorul) rămân valabile.
+            { } amount => amount,
+        };
     }
 
     private static string ReadSpvStatus(JsonElement item)

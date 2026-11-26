@@ -81,7 +81,36 @@ public sealed record PfaAccountingSettingsDto(
     IReadOnlyList<Platform> Platforms,
     DeductibilityType VehicleDeductibility,
     CashRegisterStateDto Cash,
-    IReadOnlyList<SettingHistoryEntry> History);
+    IReadOnlyList<SettingHistoryEntry> History,
+    IReadOnlyList<CategoryDeductibilityDto>? CategoryDeductibility = null);
+
+/// <summary>De unde vine procentul unei categorii pentru un PFA.</summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<CategoryDeductibilitySource>))]
+public enum CategoryDeductibilitySource
+{
+    /// <summary>Regula globală a categoriei.</summary>
+    Global,
+
+    /// <summary>Procentul ales pentru acest PFA.</summary>
+    Client,
+
+    /// <summary>Categorie auto: setarea „deductibilitate cheltuieli auto” a PFA-ului.</summary>
+    Vehicle,
+
+    /// <summary>Amortizare și alte regimuri speciale: fără procent.</summary>
+    Special,
+}
+
+/// <summary>O categorie de cheltuieli, cu regula globală și ce se aplică acestui PFA azi.</summary>
+/// <param name="Own">Procentul ales pentru PFA; <c>null</c> = urmează regula globală.</param>
+public sealed record CategoryDeductibilityDto(
+    string Category,
+    string Label,
+    DeductibilityType Global,
+    DeductibilityType? Own,
+    DateOnly? OwnFrom,
+    DeductibilityType Effective,
+    CategoryDeductibilitySource Source);
 
 /// <summary><c>Field</c> e una din <see cref="PfaAccountingSettingKeys"/>; <c>Value</c> are forma cheii.</summary>
 public sealed record SettingsChange(string Field, JsonElement Value, DateOnly ValidFrom, string Note);

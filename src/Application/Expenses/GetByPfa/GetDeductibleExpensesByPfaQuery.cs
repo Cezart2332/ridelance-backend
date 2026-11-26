@@ -89,7 +89,12 @@ internal sealed class GetDeductibleExpensesByPfaQueryHandler(
                 e.Currency,
                 e.DocumentTypeLabel,
                 e.Source.ToString(),
-                e.Status.ToString()))
+                e.Status.ToString(),
+                null,
+                null,
+                null,
+                null,
+                e.Document.Status == Domain.Documents.DocumentStatus.Rejected ? e.Document.ReviewNote : null))
             .ToListAsync(cancellationToken);
 
         var documentIds = items.Select(i => i.DocumentId).ToList();

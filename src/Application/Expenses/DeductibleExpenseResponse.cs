@@ -32,4 +32,6 @@ public sealed record DeductibleExpenseResponse(
     Guid? LedgerEntryId = null,
     decimal? DeductibleAmount = null,
     string? PaymentMethod = null,
-    DateOnly? PaymentDate = null);
+    DateOnly? PaymentDate = null,
+    /// <summary>De ce a respins contabilul documentul. Doar cât e respins.</summary>
+    string? DocumentReviewNote = null);

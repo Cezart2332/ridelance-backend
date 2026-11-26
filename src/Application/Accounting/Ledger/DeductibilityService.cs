@@ -11,8 +11,20 @@ namespace Application.Accounting.Ledger;
 public sealed record LedgerRules(
     IReadOnlyList<ExpenseCategoryRule> Categories,
     IReadOnlyList<PfaAccountingSetting> VehicleDeductibility,
-    IReadOnlyList<FixedAssetRule>? FixedAssets = null)
+    IReadOnlyList<FixedAssetRule>? FixedAssets = null,
+    IReadOnlyList<PfaAccountingSetting>? CategoryDeductibility = null)
 {
+    /// <summary>
+    /// Setarea PFA-ului pentru categorie, valabilă la <paramref name="date"/>. O valoare <c>null</c>
+    /// în setare înseamnă „înapoi la regula globală” de la data ei.
+    /// </summary>
+    public PfaAccountingSetting? CategorySettingAt(string category, DateOnly date) =>
+        CategoryDeductibility?
+            .Where(s => s.Key == PfaAccountingSettingKeys.CategoryDeductibility(category) && s.ValidFrom <= date)
+            .OrderByDescending(s => s.ValidFrom)
+            .ThenByDescending(s => s.ChangedAtUtc)
+            .FirstOrDefault();
+
     /// <summary>Regula de mijloc fix valabilă la <paramref name="date"/>.</summary>
     public FixedAssetRule? FixedAssetRuleAt(DateOnly date) =>
         FixedAssets?
@@ -134,6 +146,15 @@ public static class DeductibilityService
 
             Apply(entry, type.Value, setting.ValidFrom);
             entry.DeductibilitySettingId = setting.Id;
+            return;
+        }
+
+        // Procentul ales pentru acest PFA bate regula globală a categoriei, de la data setării.
+        if (rules.CategorySettingAt(entry.Category, entry.Date) is { } own &&
+            AccountingJson.Deserialize<DeductibilityType?>(own.ValueJson, null) is { } ownType)
+        {
+            Apply(entry, ownType, own.ValidFrom);
+            entry.DeductibilitySettingId = own.Id;
             return;
         }
 

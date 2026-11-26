@@ -528,9 +528,13 @@ internal sealed class PlatformLedgerSource(IApplicationDbContext db) : ILedgerSo
 }
 
 /// <summary>
-/// Oblio: facturile emise de PFA și încasate. Încasarea se caută întâi în bancă (aceeași sumă, după
-/// emitere): intrarea bancară devine venitul facturii. Fără plată bancară, factura intră ca
-/// încasare de verificat — metoda de plată nu se ghicește.
+/// Oblio: facturile emise de PFA și încasate. RJIP-ul arată doar banii intrați efectiv — prin bancă
+/// (open banking), prin platforme sau în numerar, prin rapoartele Z —, nu facturile. O factură doar
+/// își pune numărul pe încasarea bancară care o plătește (aceeași sumă, după emitere).
+///
+/// Fără plată bancară, factura nu mai intră deloc. Intra ca „încasare în numerar de verificat”: la
+/// ridesharing, facturile către pasageri nu sunt banii PFA-ului (venitul vine din decontul
+/// platformei), iar cu suma încasată citită greșit din Oblio fiecare factură aducea un leu fantomă.
 /// </summary>
 internal sealed class OblioLedgerSource(IApplicationDbContext db, OwnerOblioResolver resolver, IOwnerInvoicingService invoicing) : ILedgerSource
 {
@@ -556,7 +560,6 @@ internal sealed class OblioLedgerSource(IApplicationDbContext db, OwnerOblioReso
             return new LedgerImportResult(LedgerSource.Oblio, 0, 0, ["Oblio nu a răspuns; facturile se importă la rularea următoare."]);
         }
 
-        int created = 0;
         int updated = 0;
         foreach (OwnerInvoice invoice in invoices.Where(i => !i.Canceled && i.CollectedLei > 0 && (context.To is not { } last || i.IssueDate <= last)))
         {
@@ -592,16 +595,9 @@ internal sealed class OblioLedgerSource(IApplicationDbContext db, OwnerOblioReso
                 payment.Description = LedgerSupport.Cut($"Încasare {label}, {invoice.ClientName}", LedgerSupport.DescriptionLength);
                 payment.Status = LedgerEntryStatus.AutoImported;
                 updated++;
-                continue;
             }
-
-            db.LedgerEntries.Add(LedgerSupport.New(
-                context.PfaId, invoice.IssueDate, LedgerSource.Oblio, externalId, label, invoice.ClientName,
-                $"Încasare {label} fără plată bancară găsită: verifică metoda de plată.",
-                LedgerTransactionType.Income, PaymentMethod.Cash, invoice.CollectedLei, "RON", LedgerEntryStatus.NeedsReview, context.ClosedPeriods));
-            created++;
         }
 
-        return new LedgerImportResult(LedgerSource.Oblio, created, updated, []);
+        return new LedgerImportResult(LedgerSource.Oblio, 0, updated, []);
     }
 }

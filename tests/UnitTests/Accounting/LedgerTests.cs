@@ -132,6 +132,36 @@ public sealed partial class LedgerTests : IDisposable
     }
 
     [Fact]
+    public void A_client_percent_beats_the_global_rule_from_its_date_and_can_go_back_to_global()
+    {
+        PfaAccountingSetting Own(DateOnly from, string valueJson) => new()
+        {
+            Id = Guid.NewGuid(),
+            PfaRegistrationId = _pfa,
+            Key = PfaAccountingSettingKeys.CategoryDeductibility("PHONE"),
+            ValueJson = valueJson,
+            ValidFrom = from,
+            Note = "test",
+            ChangedAtUtc = DateTime.UtcNow,
+        };
+        List<PfaAccountingSetting> own = [Own(new DateOnly(2026, 10, 1), "\"50_PERCENT\""), Own(new DateOnly(2026, 12, 1), "null")];
+        var rules = new LedgerRules([.. _db.ExpenseCategoryRules], [], null, own);
+
+        LedgerEntry Phone(DateOnly date)
+        {
+            var entry = new LedgerEntry { Date = date, TransactionType = LedgerTransactionType.Expense, Category = "PHONE", Amount = -200m };
+            DeductibilityService.Resolve(entry, rules);
+            return entry;
+        }
+
+        // Înainte de setare: regula globală (100%). Între setări: 50% al clientului. După „înapoi la global”: 100%.
+        (Phone(new DateOnly(2026, 9, 15)).DeductiblePercent, Phone(new DateOnly(2026, 9, 15)).DeductibilitySettingId).ShouldBe(((decimal?)100m, (Guid?)null));
+        LedgerEntry november = Phone(new DateOnly(2026, 11, 15));
+        (november.DeductiblePercent, november.DeductibleAmount, november.DeductibilitySettingId).ShouldBe(((decimal?)50m, (decimal?)100m, (Guid?)own[0].Id));
+        Phone(new DateOnly(2026, 12, 15)).DeductiblePercent.ShouldBe(100m);
+    }
+
+    [Fact]
     public void Depreciation_is_a_special_rule_not_the_vehicle_percent()
     {
         var entry = new LedgerEntry { Date = Day, TransactionType = LedgerTransactionType.Expense, Category = "DEPRECIATION", Amount = -500m };
@@ -577,7 +607,7 @@ public sealed partial class LedgerTests : IDisposable
     }
 
     [Fact]
-    public async Task Oblio_invoices_label_their_bank_payment_or_wait_for_review()
+    public async Task Oblio_invoices_label_their_bank_payment_and_never_add_receipts_of_their_own()
     {
         _db.OblioIntegrations.Add(new OblioIntegration { Id = Guid.NewGuid(), UserId = _user, ClientId = "ion@x.ro", ClientSecretEncrypted = "secret", Cif = "12345674", IsConnected = true });
         await _db.SaveChangesAsync();
@@ -594,8 +624,9 @@ public sealed partial class LedgerTests : IDisposable
 
         LedgerEntry bank = await _db.LedgerEntries.SingleAsync(e => e.Amount == 500m);
         (bank.TransactionType, bank.DocumentLabel, bank.Status, bank.Source).ShouldBe((LedgerTransactionType.Income, "Factura ION 1", LedgerEntryStatus.AutoImported, LedgerSource.Bank));
-        LedgerEntry cash = await _db.LedgerEntries.SingleAsync(e => e.Source == LedgerSource.Oblio);
-        (cash.Amount, cash.PaymentMethod, cash.Status, cash.DocumentLabel).ShouldBe((150m, PaymentMethod.Cash, LedgerEntryStatus.NeedsReview, "Factura ION 2"));
+        // Factura fără plată în bancă nu intră în RJIP: registrul arată doar banii intrați efectiv.
+        (await _db.LedgerEntries.AnyAsync(e => e.Source == LedgerSource.Oblio)).ShouldBeFalse();
+        (await _db.LedgerEntries.CountAsync()).ShouldBe(1);
         again.Sum(r => r.Created + r.Updated).ShouldBe(0);
     }
 

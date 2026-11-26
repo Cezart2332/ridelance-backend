@@ -154,6 +154,19 @@ internal sealed class UpdatePfaSettingsCommandHandler(IApplicationDbContext db, 
             return Result.Failure<PfaAccountingSettingsDto>(writable.Error);
         }
 
+        // Procentul per client: doar pentru o categorie existentă, care nu e auto (are setarea ei)
+        // și nici regim special (amortizarea nu se deduce prin procent).
+        if (PfaAccountingSettingKeys.IsCategoryDeductibility(change.Field))
+        {
+            string category = PfaAccountingSettingKeys.CategoryOf(change.Field);
+            bool allowed = await db.ExpenseCategoryRules.AnyAsync(
+                r => r.Category == category && !r.VehicleRelated && r.DefaultDeductibility != DeductibilityType.SpecialRule, cancellationToken);
+            if (!allowed)
+            {
+                return Result.Failure<PfaAccountingSettingsDto>(PfaSettings.UnknownCategory);
+            }
+        }
+
         if (await db.PfaAccountingSettings.AnyAsync(s => s.PfaRegistrationId == command.PfaId && s.Key == change.Field && s.ValidFrom == change.ValidFrom, cancellationToken))
         {
             return Result.Failure<PfaAccountingSettingsDto>(PfaSettings.Exists(change.ValidFrom));
@@ -204,7 +217,7 @@ internal sealed class UpdatePfaSettingsCommandHandler(IApplicationDbContext db, 
             new { key = change.Field, value = JsonElement.Parse(value.Value), validFrom = change.ValidFrom }, setting.Note, userContext.UserId);
         await db.SaveChangesAsync(cancellationToken);
 
-        if (change.Field == PfaAccountingSettingKeys.VehicleDeductibility)
+        if (change.Field == PfaAccountingSettingKeys.VehicleDeductibility || PfaAccountingSettingKeys.IsCategoryDeductibility(change.Field))
         {
             await ReapplyDeductibilityAsync(command.PfaId, change.ValidFrom, cancellationToken);
         }
@@ -232,6 +245,13 @@ internal sealed class UpdatePfaSettingsCommandHandler(IApplicationDbContext db, 
 
 internal static class PfaSettings
 {
+    /// <summary>Lungimea coloanei <c>key</c>.</summary>
+    public const int MaxKeyLength = 64;
+
+    public static readonly Error UnknownCategory = Error.Problem(
+        "Accounting.UnknownCategory",
+        "Categoria nu există sau are regim special (amortizare); procentul ei nu se setează pe client.");
+
     public static readonly Error NoteRequired = Error.Problem("Accounting.ReasonRequired", "Observația / justificarea e obligatorie.");
 
     public static readonly Error PlatformsRequired = Error.Problem("Accounting.PlatformsRequired", "Alege cel puțin o platformă.");
@@ -272,6 +292,14 @@ internal static class PfaSettings
                         : Result.Failure<string>(AccountingErrors.InvalidField("value"));
                 case PfaAccountingSettingKeys.Art317:
                     return Result.Failure<string>(AccountingErrors.InvalidField("value"));
+                // Gol = înapoi la regula globală a categoriei, de la data aleasă.
+                case string key when PfaAccountingSettingKeys.IsCategoryDeductibility(key) && value.ValueKind == JsonValueKind.Null:
+                    return key.Length > MaxKeyLength ? Result.Failure<string>(AccountingErrors.InvalidField("field")) : "null";
+                case string key when PfaAccountingSettingKeys.IsCategoryDeductibility(key):
+                    DeductibilityType own = value.Deserialize<DeductibilityType>(AccountingJson.Options);
+                    return key.Length <= MaxKeyLength && own is DeductibilityType.Percent100 or DeductibilityType.Percent50 or DeductibilityType.NonDeductible
+                        ? AccountingJson.Serialize(own)
+                        : Result.Failure<string>(AccountingErrors.InvalidField("value"));
                 // Gol = PFA-ul nu (mai) are cod art. 317.
                 case PfaAccountingSettingKeys.Art317VatCode when value.ValueKind == JsonValueKind.Null ||
                                                                value.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(value.GetString()):
@@ -333,6 +361,34 @@ internal static class PfaSettings
                 s.ChangedAtUtc);
         })];
 
+        // Categoriile valabile azi: regula globală, procentul clientului (dacă are) și ce se aplică.
+        List<ExpenseCategoryRule> rules = await db.ExpenseCategoryRules.AsNoTracking()
+            .Where(r => r.ValidFrom <= today && (r.ValidTo == null || today <= r.ValidTo))
+            .OrderBy(r => r.Label)
+            .ToListAsync(cancellationToken);
+        List<CategoryDeductibilityDto> categories = [.. rules
+            .GroupBy(r => r.Category)
+            .Select(g => g.OrderByDescending(r => r.ValidFrom).First())
+            .Select(rule =>
+            {
+                if (rule.VehicleRelated)
+                {
+                    return new CategoryDeductibilityDto(rule.Category, rule.Label, rule.DefaultDeductibility, null, null, vehicle, CategoryDeductibilitySource.Vehicle);
+                }
+
+                PfaAccountingSetting? own = At(PfaAccountingSettingKeys.CategoryDeductibility(rule.Category));
+                DeductibilityType? ownType = own is null ? null : AccountingJson.Deserialize<DeductibilityType?>(own.ValueJson, null);
+                if (ownType is { } type)
+                {
+                    return new CategoryDeductibilityDto(rule.Category, rule.Label, rule.DefaultDeductibility, type, own!.ValidFrom, type, CategoryDeductibilitySource.Client);
+                }
+
+                CategoryDeductibilitySource source = rule.DefaultDeductibility == DeductibilityType.SpecialRule
+                    ? CategoryDeductibilitySource.Special
+                    : CategoryDeductibilitySource.Global;
+                return new CategoryDeductibilityDto(rule.Category, rule.Label, rule.DefaultDeductibility, null, null, rule.DefaultDeductibility, source);
+            })];
+
         PfaAccountingSummary summary = (await PfaSummaries.BuildAsync(db, pfaId, today, cancellationToken))!;
         return new PfaAccountingSettingsDto(
             pfaId,
@@ -344,6 +400,7 @@ internal static class PfaSettings
             data.PlatformsAt(pfaId, today) ?? [],
             vehicle,
             summary.Cash,
-            history);
+            history,
+            categories);
     }
 }

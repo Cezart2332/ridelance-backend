@@ -15,6 +15,20 @@ public static class PfaAccountingSettingKeys
     public const string Art317VatCode = "art317_vat_code";
     public const string Platforms = "platforms";
     public const string VehicleDeductibility = "vehicle_deductibility";
+
+    /// <summary>
+    /// Deductibilitatea unei categorii pentru un PFA anume: <c>deductibility:FUEL</c>. Fără ea,
+    /// categoria urmează regula globală. Categoriile auto nu o folosesc: au deja
+    /// <see cref="VehicleDeductibility"/>.
+    /// </summary>
+    public const string CategoryDeductibilityPrefix = "deductibility:";
+
+    public static string CategoryDeductibility(string category) => CategoryDeductibilityPrefix + category;
+
+    public static bool IsCategoryDeductibility(string key) =>
+        key.StartsWith(CategoryDeductibilityPrefix, StringComparison.Ordinal);
+
+    public static string CategoryOf(string key) => key[CategoryDeductibilityPrefix.Length..];
 }
 
 /// <summary>

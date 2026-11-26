@@ -78,6 +78,35 @@ public class OblioInvoiceParserTests
         invoice.CollectedLei.ShouldBe(0m);
     }
 
+    /// <summary>
+    /// `collected` din listă e „încasată da/nu”: 1 nu înseamnă un leu. Fiecare factură încasată
+    /// apărea cu „Încasat 1,00 lei”, iar în RJIP intra câte un leu pe factură.
+    /// </summary>
+    [Theory]
+    [InlineData("\"1\"", 29.90)]
+    [InlineData("1", 29.90)]
+    [InlineData("\"0\"", 0)]
+    public void ReadsCollectedAsAFlagNotAnAmount(string collected, double expected)
+    {
+        OwnerInvoice? invoice = OblioInvoiceParser.Parse(Json($$"""
+        {"seriesName":"RO1126","number":"0019","issueDate":"2026-11-25","total":"29.90","collected":{{collected}}}
+        """));
+
+        invoice!.CollectedLei.ShouldBe((decimal)expected);
+    }
+
+    /// <summary>Cu `withCollects=1`, suma vine din încasările facturii — și pentru o încasare parțială.</summary>
+    [Fact]
+    public void SumsTheInvoiceCollects()
+    {
+        OwnerInvoice? invoice = OblioInvoiceParser.Parse(Json("""
+        {"seriesName":"RMS","number":"5","issueDate":"2026-11-02","total":"100.00","collected":"0",
+         "collects":[{"issueDate":"2026-11-03","type":"Ordin de plata","value":"40.00"},{"issueDate":"2026-11-10","type":"Card","value":25.5}]}
+        """));
+
+        invoice!.CollectedLei.ShouldBe(65.5m);
+    }
+
     /// <summary>Numărul poate veni ca număr; îl vrem tot ca text, fiindcă face parte din identitate.</summary>
     [Fact]
     public void ReadsNumericInvoiceNumber()

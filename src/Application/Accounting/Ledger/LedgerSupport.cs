@@ -24,7 +24,10 @@ internal static class LedgerSupport
         await db.PfaAccountingSettings.AsNoTracking()
             .Where(s => s.PfaRegistrationId == pfaId && s.Key == PfaAccountingSettingKeys.VehicleDeductibility)
             .ToListAsync(cancellationToken),
-        await db.FixedAssetRules.AsNoTracking().ToListAsync(cancellationToken));
+        await db.FixedAssetRules.AsNoTracking().ToListAsync(cancellationToken),
+        await db.PfaAccountingSettings.AsNoTracking()
+            .Where(s => s.PfaRegistrationId == pfaId && s.Key.StartsWith(PfaAccountingSettingKeys.CategoryDeductibilityPrefix))
+            .ToListAsync(cancellationToken));
 
     public static async Task<HashSet<string>> ClosedPeriodsAsync(IApplicationDbContext db, Guid pfaId, CancellationToken cancellationToken) =>
         [.. await db.PfaAccountingPeriods
@@ -180,8 +183,20 @@ internal static class LedgerSupport
             return null;
         }
 
-        string? settingKey = e.DeductibilitySettingId is null ? null : PfaAccountingSettingKeys.VehicleDeductibility;
-        return new DeductibilityRuleRef(settingKey, e.DeductibilityRuleId, validFrom);
+        return new DeductibilityRuleRef(SettingKeyOf(e), e.DeductibilityRuleId, validFrom);
+    }
+
+    /// <summary>Categoriile auto au doar setarea auto; restul, doar setarea categoriei lor.</summary>
+    private static string? SettingKeyOf(LedgerEntry e)
+    {
+        if (e.DeductibilitySettingId is null)
+        {
+            return null;
+        }
+
+        return e.VehicleRelated || e.Category is null
+            ? PfaAccountingSettingKeys.VehicleDeductibility
+            : PfaAccountingSettingKeys.CategoryDeductibility(e.Category);
     }
 
     /// <summary>Plățile din bancă fără document justificativ, pe care un document le-ar putea acoperi.</summary>
