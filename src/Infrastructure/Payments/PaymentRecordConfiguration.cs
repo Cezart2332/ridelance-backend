@@ -19,6 +19,10 @@ internal sealed class PaymentRecordConfiguration : IEntityTypeConfiguration<Paym
         builder.Property(p => p.Description).HasMaxLength(512);
         builder.Property(p => p.StripePaymentId).HasMaxLength(128);
         builder.Property(p => p.StripeSessionId).HasMaxLength(128);
+        builder.Property(p => p.StripeInvoiceId).HasMaxLength(128);
+        builder.Property(p => p.FailureCode).HasMaxLength(64);
+        builder.Property(p => p.FailureReason).HasMaxLength(512);
+        builder.HasIndex(p => new { p.StripeInvoiceId, p.AttemptNumber });
 
         // Fără navigație inversă: PaymentRecord e un jurnal, nu o colecție a dosarului.
         builder.HasOne<Domain.PfaRegistrations.PfaRegistration>()

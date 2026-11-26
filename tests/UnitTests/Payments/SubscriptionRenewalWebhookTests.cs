@@ -46,17 +46,75 @@ public sealed class SubscriptionRenewalWebhookTests
     }
 
     [Fact]
-    public async Task FailedRenewalMarksTheSubscriptionPastDue()
+    public async Task FailedRenewalStartsRetriesKeepsAccessAndRecordsWhyTheBankRefused()
     {
         await using ApplicationDbContext db = Database();
         UserSubscription subscription = await AddSubscription(db, "sub_monthly");
         IStripeService stripe = DispatchProxy.Create<IStripeService, StripeProxy>();
-        ((StripeProxy)(object)stripe).Webhook = RenewalEvent("in_failed", "sub_monthly", "invoice.payment_failed");
+        var proxy = (StripeProxy)(object)stripe;
+        proxy.Webhook = RenewalEvent("in_failed", "sub_monthly", "invoice.payment_failed");
+
+        DateTime before = DateTime.UtcNow;
+        (await Handler(db, stripe).Handle(new("payload", "signature"), default)).IsSuccess.ShouldBeTrue();
+
+        // Accesul rămâne cât reîncercăm: statusul nu mai cade pe loc în „PastDue”.
+        subscription.Status.ShouldBe(SubscriptionStatus.Active);
+        SubscriptionPaymentRetry.IsRetrying(subscription).ShouldBeTrue();
+        subscription.PaymentRetryInvoiceId.ShouldBe("in_failed");
+        subscription.PaymentRetryInvoiceUrl.ShouldBe("https://invoice.stripe.com/i/in_failed");
+        subscription.NextPaymentRetryAtUtc!.Value.ShouldBeInRange(before + SubscriptionPaymentRetry.Interval, DateTime.UtcNow + SubscriptionPaymentRetry.Interval);
+        subscription.LastPaymentFailureReason.ShouldBe("Fonduri insuficiente (insufficient_funds)");
+        proxy.StoppedAutoRetry.ShouldBe(["in_failed"]);
+
+        PaymentRecord record = await db.PaymentRecords.SingleAsync();
+        record.Status.ShouldBe(PaymentStatus.Failed);
+        record.FailureCode.ShouldBe("insufficient_funds");
+        record.FailureReason.ShouldBe("Fonduri insuficiente (insufficient_funds)");
+        record.StripeInvoiceId.ShouldBe("in_failed");
+        (await db.Notifications.SingleAsync()).Text.ShouldStartWith("Plata abonamentului nu a trecut: Fonduri insuficiente");
+    }
+
+    [Fact]
+    public async Task ARepeatedEventIsRecordedOnceAndALaterAttemptDoesNotRestartTheRetries()
+    {
+        await using ApplicationDbContext db = Database();
+        UserSubscription subscription = await AddSubscription(db, "sub_monthly");
+        IStripeService stripe = DispatchProxy.Create<IStripeService, StripeProxy>();
+        var proxy = (StripeProxy)(object)stripe;
+        HandleStripeWebhookCommandHandler handler = Handler(db, stripe);
+
+        proxy.Webhook = RenewalEvent("in_failed", "sub_monthly", "invoice.payment_failed");
+        await handler.Handle(new("payload", "signature"), default);
+        await handler.Handle(new("payload", "signature"), default);
+        DateTime scheduled = subscription.NextPaymentRetryAtUtc!.Value;
+        subscription.PaymentRetryAttempts = 1;
+
+        // A doua încercare (a noastră), refuzată altfel: rând nou, programarea rămâne a jobului.
+        proxy.DeclineCode = "do_not_honor";
+        proxy.Webhook = RenewalEvent("in_failed", "sub_monthly", "invoice.payment_failed", attemptCount: 2);
+        await handler.Handle(new("payload", "signature"), default);
+
+        (await db.PaymentRecords.CountAsync()).ShouldBe(2);
+        subscription.NextPaymentRetryAtUtc.ShouldBe(scheduled);
+        subscription.PaymentRetryAttempts.ShouldBe(1);
+        subscription.LastPaymentFailureReason.ShouldBe("Refuzat de bancă (do_not_honor)");
+        proxy.StoppedAutoRetry.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task APaidInvoiceEndsTheRetries()
+    {
+        await using ApplicationDbContext db = Database();
+        UserSubscription subscription = await AddSubscription(db, "sub_monthly");
+        SubscriptionPaymentRetry.Start(subscription, "in_renewal", "https://invoice.stripe.com/i/in_renewal", DateTime.UtcNow, "Fonduri insuficiente");
+        IStripeService stripe = DispatchProxy.Create<IStripeService, StripeProxy>();
+        ((StripeProxy)(object)stripe).Webhook = RenewalEvent("in_renewal", "sub_monthly");
 
         (await Handler(db, stripe).Handle(new("payload", "signature"), default)).IsSuccess.ShouldBeTrue();
 
-        subscription.Status.ShouldBe(SubscriptionStatus.PastDue);
-        (await db.PaymentRecords.SingleAsync()).Status.ShouldBe(PaymentStatus.Failed);
+        SubscriptionPaymentRetry.IsRetrying(subscription).ShouldBeFalse();
+        subscription.PaymentRetryInvoiceId.ShouldBeNull();
+        subscription.Status.ShouldBe(SubscriptionStatus.Active);
     }
 
     [Fact]
@@ -138,7 +196,7 @@ public sealed class SubscriptionRenewalWebhookTests
         },
     };
 
-    private static Stripe.Event RenewalEvent(string invoiceId, string subscriptionId, string type = "invoice.payment_succeeded") =>
+    private static Stripe.Event RenewalEvent(string invoiceId, string subscriptionId, string type = "invoice.payment_succeeded", int attemptCount = 1) =>
         Stripe.EventUtility.ParseEvent(
             $$"""
             {
@@ -151,6 +209,8 @@ public sealed class SubscriptionRenewalWebhookTests
                   "id": "{{invoiceId}}",
                   "object": "invoice",
                   "billing_reason": "subscription_cycle",
+                  "attempt_count": {{attemptCount}},
+                  "hosted_invoice_url": "https://invoice.stripe.com/i/{{invoiceId}}",
                   "amount_paid": {{(type == "invoice.payment_succeeded" ? 39900 : 0)}},
                   "amount_due": 39900,
                   "parent": {
@@ -219,6 +279,8 @@ public sealed class SubscriptionRenewalWebhookTests
     {
         public Stripe.Event? Webhook { get; set; }
         public List<string> Cancelled { get; } = [];
+        public List<string> StoppedAutoRetry { get; } = [];
+        public string DeclineCode { get; set; } = "insufficient_funds";
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
@@ -228,6 +290,11 @@ public sealed class SubscriptionRenewalWebhookTests
                     return Webhook;
                 case nameof(IStripeService.CancelSubscriptionAsync):
                     Cancelled.Add((string)args![0]!);
+                    return Task.CompletedTask;
+                case nameof(IStripeService.GetInvoicePaymentFailureAsync):
+                    return Task.FromResult(new InvoicePaymentFailure("card_declined", DeclineCode, "Your card was declined.", null));
+                case nameof(IStripeService.StopInvoiceAutoRetryAsync):
+                    StoppedAutoRetry.Add((string)args![0]!);
                     return Task.CompletedTask;
                 default:
                     throw new InvalidOperationException("Unexpected Stripe call: " + targetMethod?.Name);

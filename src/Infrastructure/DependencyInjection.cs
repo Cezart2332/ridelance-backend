@@ -239,6 +239,7 @@ public static class DependencyInjection
         services.AddHostedService<DocumentExpiryCheckJob>();
         services.AddHostedService<PfaIncomePeriodInitializationJob>();
         services.AddHostedService<BoltSyncJob>();
+        services.AddHostedService<SubscriptionPaymentRetryJob>();
         // Prospețimea scorului nu are eveniment care s-o declanșeze — doar trecerea timpului.
         services.AddHostedService<ListingFreshnessScoreJob>();
         services.AddHostedService<BankSyncJob>();

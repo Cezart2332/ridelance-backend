@@ -12,4 +12,6 @@ public sealed record PaymentHistoryItem(
     long AmountBani,
     string Description,
     string? StripePaymentId,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    /// <summary>De ce a refuzat banca, la plățile eșuate.</summary>
+    string? FailureReason = null);

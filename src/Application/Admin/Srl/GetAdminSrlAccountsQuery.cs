@@ -101,7 +101,7 @@ internal sealed class GetAdminSrlAccountsQueryHandler(IApplicationDbContext cont
                     user.Email,
                     NonEmpty(profile?.Phone) ?? user.PhoneNumber,
                     AdminBillingLabels.PlanLabel(subscription?.Plan),
-                    GetAdminOverviewQueryHandler.SubscriptionStatusLabel(subscription?.Status),
+                    GetAdminOverviewQueryHandler.SubscriptionStatusLabel(subscription),
                     CycleLabel(subscription),
                     subscription?.NextBillingDateUtc,
                     subscription is not null && GetAdminOverviewQueryHandler.IsActiveSubscription(subscription.Status),

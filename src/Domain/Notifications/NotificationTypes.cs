@@ -18,6 +18,9 @@ public static class NotificationTypes
     public const string DocumentAiCheck = "DocumentAiCheck";
     public const string DocumentStatusUpdate = "DocumentStatusUpdate";
     public const string PaymentConfirmed = "PaymentConfirmed";
+
+    /// <summary>Reînnoirea abonamentului n-a trecut: motivul și când reîncercăm.</summary>
+    public const string PaymentFailed = "PaymentFailed";
     public const string DocumentExpiringSoon = "DocumentExpiringSoon";
     public const string MonthProcessed = "MonthProcessed";
     public const string FleetAccountConfigured = "FleetAccountConfigured";

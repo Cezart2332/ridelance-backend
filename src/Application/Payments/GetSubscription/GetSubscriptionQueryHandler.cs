@@ -82,7 +82,16 @@ internal sealed class GetSubscriptionQueryHandler(IApplicationDbContext context)
             OpenBankingTrialEndsAtUtc: sub.OpenBankingTrialEndsAtUtc,
             OpenBankingDecisionDue: sub.OpenBankingDecisionDueAt(DateTime.UtcNow),
             HasOpenBankingAddon: sub.HasOpenBankingAddon,
-            HasCashRegisterAddon: sub.HasCashRegisterAddon));
+            HasCashRegisterAddon: sub.HasCashRegisterAddon,
+            PaymentRetry: SubscriptionPaymentRetry.IsRetrying(sub)
+                ? new SubscriptionPaymentRetryDto(
+                    sub.LastPaymentFailureReason,
+                    sub.NextPaymentRetryAtUtc!.Value,
+                    sub.PaymentRetryAttempts,
+                    SubscriptionPaymentRetry.MaxAttempts,
+                    (sub.PaymentRetryStartedAtUtc ?? sub.NextPaymentRetryAtUtc!.Value) + SubscriptionPaymentRetry.Window,
+                    sub.PaymentRetryInvoiceUrl)
+                : null));
     }
 
 }

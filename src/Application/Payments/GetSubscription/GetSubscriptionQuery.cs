@@ -41,7 +41,22 @@ public sealed record SubscriptionResponse(
     bool OpenBankingDecisionDue = false,
     /// <summary>Opțiunile plătite pe abonament (nu cele incluse sau gratuite).</summary>
     bool HasOpenBankingAddon = false,
-    bool HasCashRegisterAddon = false);
+    bool HasCashRegisterAddon = false,
+    /// <summary>Reînnoirea n-a trecut și o reîncercăm. Null cât abonamentul e plătit la zi.</summary>
+    SubscriptionPaymentRetryDto? PaymentRetry = null);
+
+/// <summary>Ce vede clientul cât îi reîncercăm plata.</summary>
+/// <param name="FailureReason">„Fonduri insuficiente (insufficient_funds)”.</param>
+/// <param name="NextAttemptAtUtc">Următoarea reîncercare, la aceeași oră ca încasarea eșuată.</param>
+/// <param name="SuspendsAtUtc">Ultima reîncercare: dacă pică și ea, accesul se suspendă.</param>
+/// <param name="PayPage">Pagina Stripe a facturii, de unde o plătește singur, și cu alt card.</param>
+public sealed record SubscriptionPaymentRetryDto(
+    string? FailureReason,
+    DateTime NextAttemptAtUtc,
+    int AttemptsMade,
+    int AttemptsTotal,
+    DateTime SuspendsAtUtc,
+    string? PayPage);
 
 /// <summary>Cheia unui plan, aceeași ca în oferta publică și la checkout.</summary>
 public static class PlanKeys

@@ -171,6 +171,63 @@ internal sealed class StripeService : IStripeService
             session.Metadata?.GetValueOrDefault("userId"));
     }
 
+    public async Task<InvoicePaymentFailure> GetInvoicePaymentFailureAsync(string invoiceId, CancellationToken cancellationToken = default)
+    {
+        Invoice invoice = await new InvoiceService().GetAsync(invoiceId, cancellationToken: cancellationToken);
+
+        // Din API-ul „basil” încoace factura nu mai poartă PaymentIntent-ul: plățile ei stau separat.
+        StripeList<InvoicePayment> payments = await new InvoicePaymentService().ListAsync(
+            new InvoicePaymentListOptions { Invoice = invoiceId, Limit = 10 },
+            cancellationToken: cancellationToken);
+        string? paymentIntentId = payments.Data
+            .OrderByDescending(p => p.Created)
+            .Select(p => p.Payment?.PaymentIntentId)
+            .FirstOrDefault(id => !string.IsNullOrEmpty(id));
+
+        if (paymentIntentId is null)
+        {
+            return new InvoicePaymentFailure(null, null, null, invoice.HostedInvoiceUrl);
+        }
+
+        PaymentIntent intent = await new PaymentIntentService().GetAsync(paymentIntentId, cancellationToken: cancellationToken);
+        StripeError? error = intent.LastPaymentError;
+        return new InvoicePaymentFailure(error?.Code, error?.DeclineCode, error?.Message, invoice.HostedInvoiceUrl);
+    }
+
+    public async Task StopInvoiceAutoRetryAsync(string invoiceId, CancellationToken cancellationToken = default) =>
+        await new InvoiceService().UpdateAsync(invoiceId, new InvoiceUpdateOptions { AutoAdvance = false }, cancellationToken: cancellationToken);
+
+    public async Task<InvoiceRetryResult> RetryInvoicePaymentAsync(string invoiceId, CancellationToken cancellationToken = default)
+    {
+        var invoices = new InvoiceService();
+        Invoice invoice = await invoices.GetAsync(invoiceId, cancellationToken: cancellationToken);
+        switch (invoice.Status)
+        {
+            case "paid":
+                return new InvoiceRetryResult(InvoiceRetryOutcome.Paid);
+            case "void":
+            case "uncollectible":
+                return new InvoiceRetryResult(InvoiceRetryOutcome.NotPayable);
+        }
+
+        try
+        {
+            Invoice paid = await invoices.PayAsync(
+                invoiceId,
+                new InvoicePayOptions { OffSession = true },
+                // O cheie per factură și încercare: un timeout urmat de o reluare nu taxează de două ori.
+                new RequestOptions { IdempotencyKey = $"invoice-retry:{invoiceId}:{invoice.AttemptCount}" },
+                cancellationToken);
+            return paid.Status == "paid"
+                ? new InvoiceRetryResult(InvoiceRetryOutcome.Paid)
+                : new InvoiceRetryResult(InvoiceRetryOutcome.Declined, Message: $"Factura a rămas „{paid.Status}”.");
+        }
+        catch (StripeException ex) when (ex.StripeError?.Type == "card_error")
+        {
+            return new InvoiceRetryResult(InvoiceRetryOutcome.Declined, ex.StripeError.Code, ex.StripeError.DeclineCode, ex.StripeError.Message);
+        }
+    }
+
     public async Task<string> GetOrCreateCustomerAsync(
         string userId,
         string email,

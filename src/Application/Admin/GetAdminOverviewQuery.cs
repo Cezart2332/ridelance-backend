@@ -179,7 +179,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
                 ClientBlocked: currentMonthIncomes.Count(i => !i.IsProcessed),
                 // Inactiv = înrolat, cont deschis, fără abonament activ (niciunul, anulat, expirat).
                 Inactive: pfas.Count(p => p.OnboardingCompletedAtUtc is not null && IsOpen(p) && !(latestSubscriptions.GetValueOrDefault(p.UserId) is { } s && IsActiveSubscription(s.Status))),
-                FailedPayment: latestSubscriptions.Values.Count(s => s.Status == SubscriptionStatus.PastDue),
+                FailedPayment: latestSubscriptions.Values.Count(IsFailingPayment),
                 // Dosar aprobat dar onboarding neterminat — vizibili separat, nu pierduți din KPI.
                 InOnboarding: pfas.Count(p => p.Status == PfaRegistrationStatus.Approved && p.OnboardingCompletedAtUtc is null && IsOpen(p)),
                 Deleted: pfas.Count(p => !IsOpen(p))),
@@ -246,7 +246,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
             Inactive: enrolled.Count(u => !(latest.GetValueOrDefault(u.Id) is { } s && IsActiveSubscription(s.Status))),
             Deleted: firms.Count(u => u.IsDeleted),
             InOnboarding: open.Count(u => !SrlEnrollment.IsEnrolled(u)),
-            FailedPayment: latest.Values.Count(s => s.Status == SubscriptionStatus.PastDue),
+            FailedPayment: latest.Values.Count(IsFailingPayment),
             SubscriptionMonthlyRevenueBani: activeSubscriptions.Sum(AdminBillingLabels.MonthlyEstimateBani),
             CarsTotal: firmCars.Count,
             CarsPublished: firmCars.Count(c => c.ListingStatus == ListingStatus.Published),
@@ -281,7 +281,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
             new("Trial", 0),
             new("Anulate", list.Count(s => s.Status == SubscriptionStatus.Cancelled)),
             new("Suspendate", list.Count(s => s.Status == SubscriptionStatus.Expired)),
-            new("Plată eșuată", list.Count(s => s.Status == SubscriptionStatus.PastDue))
+            new("Plată eșuată", list.Count(IsFailingPayment))
         ];
     }
 
@@ -300,7 +300,8 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
                 payment.AmountBani,
                 PaymentStatusLabel(payment.Status),
                 payment.CreatedAtUtc,
-                "Card / Stripe");
+                "Card / Stripe",
+                payment.Status == PaymentStatus.Failed ? payment.FailureReason ?? "Motiv necunoscut" : null);
         }
 
         foreach (ServiceOrder order in serviceOrders)
@@ -359,7 +360,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
             pfa.User.Email,
             pfa.Phone ?? "Telefon necompletat",
             AdminBillingLabels.PlanLabel(subscription?.Plan),
-            SubscriptionStatusLabel(subscription?.Status),
+            SubscriptionStatusLabel(subscription),
             CustomerAge(pfa.CreatedAtUtc),
             AccountStatus(pfa.Status, subscription?.Status),
             CurrentMonthStatus(currentMonthIncome, pfa.Documents),
@@ -411,6 +412,12 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
         return "Documente lipsă";
     }
 
+    /// <summary>Ca mai jos, dar arată și reîncercările: statusul rămâne activ cât durează ele.</summary>
+    internal static string SubscriptionStatusLabel(UserSubscription? subscription) =>
+        subscription is not null && SubscriptionPaymentRetry.IsRetrying(subscription)
+            ? $"Plată eșuată · reîncercare {subscription.PaymentRetryAttempts + 1} din {SubscriptionPaymentRetry.MaxAttempts}"
+            : SubscriptionStatusLabel(subscription);
+
     internal static string SubscriptionStatusLabel(SubscriptionStatus? status) => status switch
     {
         SubscriptionStatus.Active or SubscriptionStatus.ActivePendingBilling => "Activ",
@@ -429,6 +436,13 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
         PaymentStatus.Refunded => "Refund",
         _ => status.ToString()
     };
+
+    /// <summary>
+    /// Reînnoirea n-a trecut: în reîncercări (statusul rămâne activ cât durează) sau, la rândurile
+    /// de dinainte de reîncercări, „PastDue”.
+    /// </summary>
+    internal static bool IsFailingPayment(UserSubscription subscription) =>
+        subscription.Status == SubscriptionStatus.PastDue || SubscriptionPaymentRetry.IsRetrying(subscription);
 
     internal static bool IsActiveSubscription(SubscriptionStatus status) =>
         status is SubscriptionStatus.Active or SubscriptionStatus.ActivePendingBilling;

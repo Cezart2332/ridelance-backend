@@ -56,7 +56,9 @@ public sealed record AdminPaymentRow(
     long AmountBani,
     string Status,
     DateTime DateUtc,
-    string PaymentMethod);
+    string PaymentMethod,
+    /// <summary>De ce a refuzat plata, la plățile eșuate.</summary>
+    string? FailureReason = null);
 
 public sealed record AdminServiceSaleRow(
     Guid Id,

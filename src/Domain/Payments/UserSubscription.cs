@@ -90,6 +90,27 @@ public sealed class UserSubscription : Entity
     public DateTime? CancelledAtUtc { get; set; }
 
     /// <summary>
+    /// Factura de reînnoire neîncasată pe care o reîncercăm noi (<see cref="SubscriptionPaymentRetry"/>).
+    /// Null cât abonamentul e plătit la zi.
+    /// </summary>
+    public string? PaymentRetryInvoiceId { get; set; }
+
+    /// <summary>Pagina Stripe a facturii: clientul o poate plăti singur, și cu alt card.</summary>
+    public string? PaymentRetryInvoiceUrl { get; set; }
+
+    /// <summary>Când a eșuat prima încasare a facturii. De aici curg cele 15 zile.</summary>
+    public DateTime? PaymentRetryStartedAtUtc { get; set; }
+
+    /// <summary>Câte reîncercări am făcut deja (fără încasarea inițială).</summary>
+    public int PaymentRetryAttempts { get; set; }
+
+    /// <summary>Următoarea reîncercare, la aceeași oră ca încasarea care a eșuat.</summary>
+    public DateTime? NextPaymentRetryAtUtc { get; set; }
+
+    /// <summary>De ce a refuzat ultima încercare: „Fonduri insuficiente (insufficient_funds)”.</summary>
+    public string? LastPaymentFailureReason { get; set; }
+
+    /// <summary>
     /// Istoric. Accesul la dashboard nu mai depinde de nimic în afară de un abonament plătit, deci
     /// coloana nu mai poartă nicio decizie — se scrie la plată și rămâne acolo pentru rândurile
     /// vechi. Nu o citi ca poartă de acces: <c>canAccessDashboard</c> nu se mai uită la ea.

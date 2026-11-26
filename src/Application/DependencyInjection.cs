@@ -43,6 +43,7 @@ public static class DependencyInjection
 
         services.AddScoped<Accounting.Tax.IExchangeRateProvider, Accounting.Tax.ExchangeRateProvider>();
         services.AddScoped<Accounting.Declarations.DeclarationFiles>();
+        services.AddScoped<Payments.SubscriptionPaymentRetryRunner>();
         services.AddScoped<Accounting.Declarations.DeclarationValidator>();
         services.AddScoped<Accounting.Declarations.DeclarationActions>();
         services.AddScoped<Accounting.Annual.AnnualDeclarationService>();

@@ -25,7 +25,8 @@ internal sealed class GetPaymentHistoryQueryHandler(IApplicationDbContext contex
                 p.AmountBani,
                 p.Description,
                 p.StripePaymentId,
-                p.CreatedAtUtc))
+                p.CreatedAtUtc,
+                p.FailureReason))
             .ToListAsync(cancellationToken);
 
         return items;

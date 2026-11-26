@@ -71,6 +71,21 @@ public interface IStripeService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// De ce n-a trecut ultima încasare a unei facturi: codul băncii și mesajul Stripe, plus pagina
+    /// facturii, de unde clientul o poate plăti singur.
+    /// </summary>
+    Task<InvoicePaymentFailure> GetInvoicePaymentFailureAsync(string invoiceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Oprește reîncercările automate ale Stripe pe factură (<c>auto_advance = false</c>): de aici
+    /// o reîncercăm noi, după <c>SubscriptionPaymentRetry</c>.
+    /// </summary>
+    Task StopInvoiceAutoRetryAsync(string invoiceId, CancellationToken cancellationToken = default);
+
+    /// <summary>Încearcă încasarea facturii acum, de pe cardul salvat al clientului.</summary>
+    Task<InvoiceRetryResult> RetryInvoicePaymentAsync(string invoiceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates or retrieves a Stripe Customer for the user.
     /// </summary>
     Task<string> GetOrCreateCustomerAsync(
@@ -150,3 +165,20 @@ public sealed record CheckoutSessionPayment(string Status, string PaymentStatus,
     /// <summary>Formular trimis și bani intrați (sau nimic de încasat).</summary>
     public bool IsPaid => Status == "complete" && PaymentStatus is "paid" or "no_payment_required";
 }
+
+/// <summary>Refuzul ultimei încasări a unei facturi.</summary>
+public sealed record InvoicePaymentFailure(string? Code, string? DeclineCode, string? Message, string? HostedInvoicePage);
+
+public enum InvoiceRetryOutcome
+{
+    /// <summary>Încasată acum, sau era deja plătită (de pildă de client, din pagina facturii).</summary>
+    Paid,
+
+    /// <summary>Banca a refuzat. Motivul e în <see cref="InvoiceRetryResult"/>.</summary>
+    Declined,
+
+    /// <summary>Factura nu mai e de plătit: anulată sau trecută ca neîncasabilă.</summary>
+    NotPayable,
+}
+
+public sealed record InvoiceRetryResult(InvoiceRetryOutcome Outcome, string? Code = null, string? DeclineCode = null, string? Message = null);

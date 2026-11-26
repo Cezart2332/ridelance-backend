@@ -24,7 +24,7 @@ namespace Application.Payments.HandleWebhook;
 /// Events handled:
 /// - checkout.session.completed   → record payment, create/update subscription
 /// - invoice.payment_succeeded    → record recurring subscription payment
-/// - invoice.payment_failed       → mark subscription as PastDue
+/// - invoice.payment_failed       → motivul refuzului + reîncercări (SubscriptionPaymentRetry)
 /// - customer.subscription.deleted → cancel subscription
 /// </summary>
 internal sealed class HandleStripeWebhookCommandHandler(
@@ -642,6 +642,8 @@ internal sealed class HandleStripeWebhookCommandHandler(
         // următoarei încasări la Stripe; „o lună de acum" rămâne doar pentru o factură fără perioadă.
         DateTime? periodEnd = invoice.Lines?.Data?.FirstOrDefault()?.Period?.End;
         sub.Status = SubscriptionStatus.Active;
+        // Încasată, din reîncercările noastre sau plătită de client din pagina facturii.
+        SubscriptionPaymentRetry.Clear(sub);
         sub.NextBillingDateUtc = periodEnd > DateTime.UtcNow ? periodEnd : NextBillingFrom(DateTime.UtcNow, sub.BillingCycle);
         sub.DashboardAccessGranted = true;
         sub.DashboardAccessGrantedUtc ??= DateTime.UtcNow;
@@ -752,9 +754,34 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return;
         }
 
-        sub.Status = SubscriptionStatus.PastDue;
+        // Fiecare încercare eșuată (a noastră sau a Stripe) vine aici o dată, cu `attempt_count`
+        // mărit. Stripe retrimite însă evenimentul dacă nu primește 200: același număr, un singur rând.
+        int attempt = (int)invoice.AttemptCount;
+        if (await context.PaymentRecords.AnyAsync(
+                p => p.StripeInvoiceId == invoice.Id && p.AttemptNumber == attempt && p.Status == PaymentStatus.Failed, ct))
+        {
+            return;
+        }
 
-        var record = new Domain.Payments.PaymentRecord
+        InvoicePaymentFailure? failure = await TryGetPaymentFailureAsync(invoice.Id, ct);
+        string reason = PaymentFailureReasons.Describe(failure?.Code, failure?.DeclineCode, failure?.Message);
+        DateTime now = DateTime.UtcNow;
+
+        // Prima încasare a facturii a picat: pornesc cele 15 zile de reîncercări, iar accesul rămâne.
+        // Înainte abonamentul trecea pe loc în „PastDue”, ceea ce închidea aplicația din prima zi, iar
+        // reîncercările depindeau doar de setările contului Stripe.
+        bool firstFailure = sub.PaymentRetryInvoiceId != invoice.Id;
+        if (firstFailure)
+        {
+            SubscriptionPaymentRetry.Start(sub, invoice.Id, failure?.HostedInvoicePage ?? invoice.HostedInvoiceUrl, now, reason);
+            await TryStopStripeRetriesAsync(invoice.Id, ct);
+        }
+        else
+        {
+            sub.LastPaymentFailureReason = reason;
+        }
+
+        context.PaymentRecords.Add(new Domain.Payments.PaymentRecord
         {
             Id = Guid.NewGuid(),
             UserId = sub.UserId,
@@ -763,11 +790,64 @@ internal sealed class HandleStripeWebhookCommandHandler(
             AmountBani = invoice.AmountDue,
             Description = $"RIDElance {sub.Plan} — plată eșuată",
             StripePaymentId = invoice.Payments?.FirstOrDefault()?.Payment?.PaymentIntentId,
-            CreatedAtUtc = DateTime.UtcNow,
-        };
-        context.PaymentRecords.Add(record);
+            StripeInvoiceId = invoice.Id,
+            AttemptNumber = attempt,
+            FailureCode = PaymentFailureReasons.CodeOf(failure?.Code, failure?.DeclineCode),
+            FailureReason = reason,
+            CreatedAtUtc = now,
+        });
+
+        // Clientul află din aplicație ce s-a întâmplat și până când are timp, nu din extrasul de cont.
+        // Ultima reîncercare îl anunță separat jobul, odată cu suspendarea.
+        if (sub.NextPaymentRetryAtUtc is DateTime next)
+        {
+            context.Notifications.Add(new Notification
+            {
+                Id = Guid.NewGuid(),
+                UserId = sub.UserId,
+                Text = $"Plata abonamentului nu a trecut: {reason}. Reîncercăm pe {RomanianTime(next)}.",
+                Type = NotificationTypes.PaymentFailed,
+                IsRead = false,
+                DedupeKey = $"payment-failed:{invoice.Id}:{attempt}",
+                CreatedAtUtc = now,
+            });
+        }
 
         await context.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Motivul refuzului; null dacă Stripe nu răspunde — plata se înregistrează oricum.</summary>
+    private async Task<InvoicePaymentFailure?> TryGetPaymentFailureAsync(string invoiceId, CancellationToken ct)
+    {
+        try
+        {
+            return await stripeService.GetInvoicePaymentFailureAsync(invoiceId, ct);
+        }
+        catch (StripeException exception)
+        {
+            logger.LogWarning(exception, "Nu am putut citi motivul refuzului pentru factura {InvoiceId}.", invoiceId);
+            return null;
+        }
+    }
+
+    private async Task TryStopStripeRetriesAsync(string invoiceId, CancellationToken ct)
+    {
+        try
+        {
+            await stripeService.StopInvoiceAutoRetryAsync(invoiceId, ct);
+        }
+        catch (StripeException exception)
+        {
+            logger.LogWarning(exception, "Reîncercările Stripe pe factura {InvoiceId} nu au putut fi oprite.", invoiceId);
+        }
+    }
+
+    /// <summary>„29.11.2026, 14:30”, în ora României.</summary>
+    private static string RomanianTime(DateTime utc)
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "GTB Standard Time" : "Europe/Bucharest");
+        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone)
+            .ToString("dd.MM.yyyy, HH:mm", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -805,8 +885,15 @@ internal sealed class HandleStripeWebhookCommandHandler(
             return;
         }
 
-        sub.Status = SubscriptionStatus.Cancelled;
-        sub.CancelledAtUtc = DateTime.UtcNow;
+        // Abonamentul oprit de noi după ultima reîncercare rămâne „suspendat”: clientul trebuie să vadă
+        // de ce nu mai are acces, nu un abonament pe care l-ar fi anulat el.
+        if (sub.Status != SubscriptionStatus.Expired)
+        {
+            sub.Status = SubscriptionStatus.Cancelled;
+            sub.CancelledAtUtc = DateTime.UtcNow;
+        }
+
+        SubscriptionPaymentRetry.Clear(sub);
 
         await context.SaveChangesAsync(ct);
     }

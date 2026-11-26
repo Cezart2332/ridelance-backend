@@ -19,6 +19,11 @@ internal sealed class UserSubscriptionConfiguration : IEntityTypeConfiguration<U
         builder.Property(s => s.BillingCycle).HasConversion<string>().HasMaxLength(16);
         builder.Property(s => s.StripeSubscriptionId).HasMaxLength(128);
         builder.Property(s => s.StripeCustomerId).HasMaxLength(128);
+        builder.Property(s => s.PaymentRetryInvoiceId).HasMaxLength(128);
+        builder.Property(s => s.PaymentRetryInvoiceUrl).HasMaxLength(1024);
+        builder.Property(s => s.LastPaymentFailureReason).HasMaxLength(512);
+        // Jobul de reîncercări caută aici, la 10 minute.
+        builder.HasIndex(s => s.NextPaymentRetryAtUtc).HasFilter("next_payment_retry_at_utc IS NOT NULL");
 
         builder.HasOne(s => s.User)
             .WithMany()
