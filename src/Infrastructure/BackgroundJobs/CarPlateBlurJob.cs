@@ -31,7 +31,7 @@ internal sealed partial class CarPlateBlurJob(IServiceScopeFactory scopeFactory,
                     LogBlurred(logger, blurred.Value);
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 LogFailed(logger, exception);
             }

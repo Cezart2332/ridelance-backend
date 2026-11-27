@@ -59,7 +59,7 @@ internal sealed class AccountingJobRunner(IServiceScopeFactory scopeFactory, ILo
                     continue;
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(exception, "Rulatorul joburilor de contabilitate a eșuat.");
             }
@@ -78,7 +78,7 @@ internal sealed class AccountingJobRunner(IServiceScopeFactory scopeFactory, ILo
             running.ForEach(job => job.Status = BackgroundJobStatus.Queued);
             await db.SaveChangesAsync(stoppingToken);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
         {
             logger.LogError(exception, "Joburile de contabilitate întrerupte nu au putut fi reluate.");
         }

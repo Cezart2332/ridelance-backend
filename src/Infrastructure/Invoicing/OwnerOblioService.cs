@@ -80,9 +80,10 @@ internal sealed class OwnerOblioService(
             + $"?cif={Uri.EscapeDataString(credentials.Cif)}"
             + $"&issuedAfter={from:yyyy-MM-dd}"
             + $"&issuedBefore={to:yyyy-MM-dd}"
-            + "&withEinvoiceStatus=1"
-            // Încasările facturii, cu sumele lor: `collected` din listă e doar „încasată da/nu”.
-            + "&withCollects=1";
+            // Fără `withCollects=1`: cu încasările fiecărei facturi, lista nu mai venea în 100 de
+            // secunde la un client cu multe facturi, iar timeout-ul oprea API-ul. Suma încasată se ia
+            // din indicatorul `collected` (vezi OblioInvoiceParser).
+            + "&withEinvoiceStatus=1";
 
         JsonElement data = await OblioHttp.GetAsync(httpClient, Map(credentials), path, cancellationToken);
 

@@ -34,7 +34,7 @@ internal sealed class IbanBackfillJob(IServiceScopeFactory scopeFactory, ILogger
                 logger.LogInformation("IBAN-uri completate: {Declarations} declarații, {Accounts} conturi.", declarations, accounts);
             }
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
         {
             logger.LogError(exception, "Completarea IBAN-urilor mascate a eșuat.");
         }

@@ -23,7 +23,7 @@ internal sealed class EFacturaSyncJob(IServiceScopeFactory scopeFactory, ILogger
             {
                 await RunPassAsync(stoppingToken);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(exception, "EFacturaSyncJob: pasul a eșuat.");
             }

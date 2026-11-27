@@ -238,6 +238,11 @@ public static class DependencyInjection
         services.AddHostedService<RecurringDocumentationNotificationJob>();
         services.AddHostedService<DocumentExpiryCheckJob>();
         services.AddHostedService<PfaIncomePeriodInitializationJob>();
+        // Implicit, o excepție scăpată dintr-un job de fundal oprește toată aplicația: API-ul cădea,
+        // Docker îl repornea, iar ciclul se relua (503 „no available server” la intervale). Jobul
+        // căzut se oprește singur și rămâne în jurnal; API-ul merge mai departe.
+        services.Configure<Microsoft.Extensions.Hosting.HostOptions>(options =>
+            options.BackgroundServiceExceptionBehavior = Microsoft.Extensions.Hosting.BackgroundServiceExceptionBehavior.Ignore);
         services.AddHostedService<BoltSyncJob>();
         services.AddHostedService<SubscriptionPaymentRetryJob>();
         // Prospețimea scorului nu are eveniment care s-o declanșeze — doar trecerea timpului.

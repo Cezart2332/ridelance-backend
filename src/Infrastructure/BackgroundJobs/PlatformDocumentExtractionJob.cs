@@ -70,7 +70,7 @@ internal sealed class PlatformDocumentExtractionJob(
                     }
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(exception, "Coada de extracție a documentelor de platformă a eșuat.");
             }

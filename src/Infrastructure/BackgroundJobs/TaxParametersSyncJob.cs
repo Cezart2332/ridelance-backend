@@ -31,7 +31,7 @@ internal sealed class TaxParametersSyncJob(
             {
                 await SyncAsync(stoppingToken);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 // Fără sincronizare, calculul rămâne pe ultimele valori cunoscute — nu se oprește.
                 logger.LogWarning(ex, "Plafoanele fiscale din admin nu s-au putut încărca.");

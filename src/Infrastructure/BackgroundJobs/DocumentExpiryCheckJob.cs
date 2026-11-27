@@ -55,7 +55,7 @@ internal sealed class DocumentExpiryCheckJob(
                     }
                 }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(ex, "Error in DocumentExpiryCheckJob.");
             }

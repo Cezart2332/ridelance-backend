@@ -34,7 +34,7 @@ internal sealed class CarPhotoRepairJob(
         {
             await RepairAsync(stoppingToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
         {
             logger.LogError(ex, "Eroare în CarPhotoRepairJob.");
         }

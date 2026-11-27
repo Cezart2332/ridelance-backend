@@ -39,7 +39,7 @@ internal sealed class DocumentAiVerificationJob(
                     s => s.SetProperty(d => d.AiStatus, DocumentAiStatus.Queued),
                     stoppingToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
         {
             logger.LogError(ex, "Failed to requeue in-flight AI verifications on startup.");
         }

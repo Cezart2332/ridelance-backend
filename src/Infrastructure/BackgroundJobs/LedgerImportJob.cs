@@ -41,7 +41,7 @@ internal sealed class LedgerImportJob(IServiceScopeFactory scopeFactory, ILogger
                 .Handle(new ListLedgerImportPfasQuery(DateTime.UtcNow.ToString("yyyy-MM", CultureInfo.InvariantCulture)), stoppingToken);
             pfas = listed.IsSuccess ? listed.Value : [];
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
         {
             logger.LogError(exception, "Importul ledger-ului: lista PFA-urilor nu a putut fi citită.");
             return;
@@ -61,7 +61,7 @@ internal sealed class LedgerImportJob(IServiceScopeFactory scopeFactory, ILogger
                     logger.LogInformation("Importul ledger-ului pentru {PfaId} a fost sărit: {Error}", pfaId, result.Error.Description);
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(exception, "Importul ledger-ului pentru {PfaId} a eșuat.", pfaId);
             }

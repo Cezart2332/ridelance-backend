@@ -27,8 +27,11 @@ internal sealed class CheckDocumentExpiryCommandHandler(
 {
     // Ce categorii expiră: o singură listă, în DocumentExpiryPolicy. Copia de aici a fost
     // ștearsă — două liste care trebuie ținute sincron sunt două liste care se desincronizează.
-    private static readonly IReadOnlySet<DocumentCategory> ExpirableCategories =
-        DocumentExpiryPolicy.ExpirableCategories;
+    //
+    // Ca listă, nu ca IReadOnlySet: EF nu traduce `IReadOnlySet.Contains` în SQL, iar jobul pica la
+    // fiecare rulare („could not be translated”), deci nu pleca nicio notificare de expirare.
+    private static readonly List<DocumentCategory> ExpirableCategories =
+        [.. DocumentExpiryPolicy.ExpirableCategories];
 
     /// <summary>
     /// Când se anunță: cu o lună, cu două săptămâni, cu o săptămână înainte, și în ziua expirării.

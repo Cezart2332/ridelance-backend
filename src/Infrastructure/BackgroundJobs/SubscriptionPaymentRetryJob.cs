@@ -30,7 +30,7 @@ internal sealed class SubscriptionPaymentRetryJob(
                     logger.LogInformation("Reîncercări de încasare rulate: {Count}.", retried);
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(exception, "SubscriptionPaymentRetryJob a eșuat.");
             }

@@ -564,9 +564,12 @@ internal sealed class OblioLedgerSource(IApplicationDbContext db, OwnerOblioReso
             DateOnly until = context.To is { } end && end < today ? end : today;
             invoices = await invoicing.ListInvoicesAsync(credentials.Value, context.From ?? today.AddYears(-1), until, cancellationToken);
         }
-        catch (HttpRequestException)
+        // Timeout-ul HttpClient vine ca TaskCanceledException (un OperationCanceledException), nu ca
+        // HttpRequestException: neprins aici, urca până în job și, de acolo, oprea aplicația.
+        catch (Exception exception) when (exception is HttpRequestException ||
+                                          exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
-            return new LedgerImportResult(LedgerSource.Oblio, 0, 0, ["Oblio nu a răspuns; facturile se importă la rularea următoare."]);
+            return new LedgerImportResult(LedgerSource.Oblio, 0, removed, ["Oblio nu a răspuns; facturile se importă la rularea următoare.", .. removedNotes]);
         }
 
         int updated = 0;

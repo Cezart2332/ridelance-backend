@@ -54,10 +54,11 @@ public static class OblioInvoiceParser
     }
 
     /// <summary>
-    /// Cât s-a încasat din factură. Suma stă în încasările ei (<c>collects</c>, cerute cu
-    /// <c>withCollects=1</c>). Câmpul <c>collected</c> din listă e un indicator — 1 = încasată, 0 =
-    /// neîncasată, ca filtrul cu același nume din API — nu o sumă: citit ca sumă, fiecare factură
+    /// Cât s-a încasat din factură. Câmpul <c>collected</c> din listă e un indicator — 1 = încasată,
+    /// 0 = neîncasată, ca filtrul cu același nume din API — nu o sumă: citit ca sumă, fiecare factură
     /// încasată apărea cu „Încasat 1,00 lei”, iar în RJIP intra câte un leu „în numerar” pe factură.
+    /// Încasările detaliate (<c>collects</c>) se folosesc doar dacă răspunsul le aduce; lista nu le
+    /// mai cere, fiindcă le făcea prea lentă.
     /// </summary>
     private static decimal CollectedOf(JsonElement item, decimal total)
     {

@@ -38,7 +38,7 @@ internal sealed class YearEndInventoryJob(IServiceScopeFactory scopeFactory, IDa
                     logger.LogInformation("Inventarieri de sfârșit de an create: {Count}.", created);
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(exception, "Crearea inventarierilor de sfârșit de an a eșuat.");
             }

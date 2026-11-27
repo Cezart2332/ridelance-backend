@@ -147,7 +147,7 @@ internal sealed partial class ClientMailboxJob(IServiceScopeFactory scopeFactory
                     }
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 LogFailed(logger, exception);
             }
