@@ -631,6 +631,40 @@ public sealed partial class LedgerTests : IDisposable
     }
 
     [Fact]
+    public async Task The_old_one_leu_oblio_receipts_are_voided_not_deleted_unless_someone_worked_on_them()
+    {
+        _db.PfaAccountingPeriods.Add(new PfaAccountingPeriod { Id = Guid.NewGuid(), PfaRegistrationId = _pfa, Period = "2026-09", Status = AccountingPeriodStatus.Closed });
+        LedgerEntry Legacy(string number, DateOnly date, LedgerEntryStatus status)
+        {
+            LedgerEntry entry = LedgerSupport.New(
+                _pfa, date, LedgerSource.Oblio, $"{_pfa:N}:RO1126-{number}", $"Factura RO1126 {number}", "Pasager",
+                $"Încasare Factura RO1126 {number} fără plată bancară găsită: verifică metoda de plată.",
+                LedgerTransactionType.Income, PaymentMethod.Cash, 1m, "RON", status, new HashSet<string>());
+            _db.LedgerEntries.Add(entry);
+            return entry;
+        }
+
+        LedgerEntry phantom = Legacy("0019", Day, LedgerEntryStatus.NeedsReview);
+        LedgerEntry checkedByAccountant = Legacy("0018", Day, LedgerEntryStatus.Verified);
+        LedgerEntry closedMonth = Legacy("0001", new DateOnly(2026, 9, 20), LedgerEntryStatus.NeedsReview);
+        await _db.SaveChangesAsync();
+        string phantomId = phantom.Id.ToString();
+
+        await Import();
+
+        // Rămâne în ledger, cu suma 0: iese din RJIP și din venit, fără ștergere fizică.
+        LedgerEntry voided = await _db.LedgerEntries.SingleAsync(e => e.Id == phantom.Id);
+        (voided.Amount, voided.TransactionType, voided.TaxableIncomeAmount).ShouldBe((0m, LedgerTransactionType.Other, 0m));
+        voided.Description.ShouldStartWith("Anulată:");
+        (await _db.AuditLogs.CountAsync(a => a.EntityId == phantomId && a.Action == "VOID_IMPORT")).ShouldBe(1);
+
+        // Ce a verificat contabilul și luna închisă nu se ating; a doua rulare nu mai găsește nimic.
+        (checkedByAccountant.Amount, closedMonth.Amount).ShouldBe((1m, 1m));
+        await Import();
+        (await _db.AuditLogs.CountAsync(a => a.Action == "VOID_IMPORT")).ShouldBe(1);
+    }
+
+    [Fact]
     public async Task Update_needs_a_reason_and_recalculates_deductibility()
     {
         Transaction(-80m, "MAGAZIN X", null);

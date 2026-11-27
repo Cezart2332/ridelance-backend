@@ -540,12 +540,21 @@ internal sealed class OblioLedgerSource(IApplicationDbContext db, OwnerOblioReso
 {
     public int Order => 2;
 
+    /// <summary>Descrierea rândurilor create de versiunea veche din facturi fără plată bancară.</summary>
+    internal const string LegacyReceiptMarker = "fără plată bancară găsită";
+
     public async Task<LedgerImportResult> ImportAsync(LedgerImportContext context, CancellationToken cancellationToken)
     {
+        // Înainte de credențiale: rândurile vechi se anulează și la un cont Oblio deconectat între timp.
+        int removed = await VoidLegacyReceiptsAsync(context, cancellationToken);
+        IReadOnlyList<string> removedNotes = removed > 0
+            ? [$"Am anulat în RJIP {removed} încasări create din facturi Oblio fără bani intrați."]
+            : [];
+
         Result<OwnerOblioCredentials> credentials = await resolver.ResolveAsync(context.UserId, cancellationToken);
         if (credentials.IsFailure)
         {
-            return new LedgerImportResult(LedgerSource.Oblio, 0, 0, []);
+            return new LedgerImportResult(LedgerSource.Oblio, 0, removed, removedNotes);
         }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -598,6 +607,70 @@ internal sealed class OblioLedgerSource(IApplicationDbContext db, OwnerOblioReso
             }
         }
 
-        return new LedgerImportResult(LedgerSource.Oblio, 0, updated, []);
+        return new LedgerImportResult(LedgerSource.Oblio, 0, updated + removed, removedNotes);
+    }
+
+    /// <summary>
+    /// Anulează „încasările în numerar” pe care versiunea veche le crea din fiecare factură Oblio fără
+    /// plată în bancă — câte un leu, din indicatorul „încasată” citit ca sumă.
+    ///
+    /// Nu le șterge: înregistrările contabile nu se șterg fizic (spec contabilitate §0 pct. 7). Suma
+    /// devine 0, deci rândul iese din RJIP (care arată doar sumele nenule) și din venitul impozabil,
+    /// dar rămâne în ledger, iar valorile de dinainte stau în jurnalul de audit.
+    ///
+    /// Doar ce a creat importul și n-a atins nimeni: sursă Oblio, fără tranzacție bancară, încă „de
+    /// verificat”, într-o lună deschisă, nereferit de altceva (corecturi, documente, Z, active, storno).
+    /// </summary>
+    private async Task<int> VoidLegacyReceiptsAsync(LedgerImportContext context, CancellationToken cancellationToken)
+    {
+        List<LedgerEntry> candidates = await db.LedgerEntries
+            .Where(e => e.PfaRegistrationId == context.PfaId &&
+                        e.Source == LedgerSource.Oblio &&
+                        e.BankTransactionId == null &&
+                        e.Status == LedgerEntryStatus.NeedsReview &&
+                        e.TransactionType == LedgerTransactionType.Income &&
+                        e.PaymentMethod == PaymentMethod.Cash &&
+                        e.Amount != 0 &&
+                        !e.ClosedPeriodFlag &&
+                        e.Description.Contains(LegacyReceiptMarker))
+            .ToListAsync(cancellationToken);
+        candidates.RemoveAll(e => context.ClosedPeriods.Contains(e.AccountingPeriod));
+        if (candidates.Count == 0)
+        {
+            return 0;
+        }
+
+        List<Guid> ids = [.. candidates.Select(e => e.Id)];
+        var referenced = new HashSet<Guid>();
+        referenced.UnionWith(await db.LedgerEntries.Where(e => e.StornoOfEntryId != null && ids.Contains(e.StornoOfEntryId.Value)).Select(e => e.StornoOfEntryId!.Value).ToListAsync(cancellationToken));
+        referenced.UnionWith(await db.LedgerEntries.Where(e => e.CorrectsEntryId != null && ids.Contains(e.CorrectsEntryId.Value)).Select(e => e.CorrectsEntryId!.Value).ToListAsync(cancellationToken));
+        referenced.UnionWith(await db.PeriodCorrections.Where(c => c.LedgerEntryId != null && ids.Contains(c.LedgerEntryId.Value)).Select(c => c.LedgerEntryId!.Value).ToListAsync(cancellationToken));
+        referenced.UnionWith(await db.ExpenseDocuments.Where(d => d.LedgerEntryId != null && ids.Contains(d.LedgerEntryId.Value)).Select(d => d.LedgerEntryId!.Value).ToListAsync(cancellationToken));
+        referenced.UnionWith(await db.ZReports.Where(z => z.LedgerEntryId != null && ids.Contains(z.LedgerEntryId.Value)).Select(z => z.LedgerEntryId!.Value).ToListAsync(cancellationToken));
+        referenced.UnionWith(await db.PfaAssets.Where(a => a.AcquisitionEntryId != null && ids.Contains(a.AcquisitionEntryId.Value)).Select(a => a.AcquisitionEntryId!.Value).ToListAsync(cancellationToken));
+        referenced.UnionWith(await db.NonResidentPayments.Where(p => p.LedgerEntryId != null && ids.Contains(p.LedgerEntryId.Value)).Select(p => p.LedgerEntryId!.Value).ToListAsync(cancellationToken));
+        referenced.UnionWith(await db.RentPayments.Where(p => p.LedgerEntryId != null && ids.Contains(p.LedgerEntryId.Value)).Select(p => p.LedgerEntryId!.Value).ToListAsync(cancellationToken));
+        referenced.UnionWith(await db.LedgerMatchProposals.Where(p => ids.Contains(p.LedgerEntryId)).Select(p => p.LedgerEntryId).ToListAsync(cancellationToken));
+
+        int voided = 0;
+        foreach (LedgerEntry entry in candidates.Where(e => !referenced.Contains(e.Id)))
+        {
+            var before = new { entry.Amount, entry.TransactionType, entry.Status, entry.ReconciliationStatus, entry.Description };
+            entry.Amount = 0;
+            entry.DeductibleAmount = null;
+            entry.TransactionType = LedgerTransactionType.Other;
+            entry.Status = LedgerEntryStatus.Verified;
+            entry.ReconciliationStatus = ReconciliationStatus.Matched;
+            entry.Description = LedgerSupport.Cut($"Anulată: {entry.DocumentLabel} nu a adus bani în PFA (sumă citită greșit din Oblio).", LedgerSupport.DescriptionLength);
+            AccountingAudit.Record(
+                db, context.PfaId, nameof(LedgerEntry), entry.Id, "VOID_IMPORT",
+                before,
+                new { entry.Amount, entry.TransactionType, entry.Status, entry.ReconciliationStatus, entry.Description },
+                "Încasare creată din factura Oblio, fără bani intrați: suma era indicatorul „încasată” citit greșit.",
+                null);
+            voided++;
+        }
+
+        return voided;
     }
 }
