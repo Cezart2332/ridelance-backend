@@ -8,7 +8,7 @@ namespace UnitTests.Bolt;
 
 /// <summary>
 /// Bolt Fleet API 2.0: o cursă din getRideHistory în forma salvată în bolt_orders. V2 nu mai trimite
-/// netul și comisionul pe cursă, deci venitul e brutul (price.total), iar netul și comisionul rămân goale.
+/// netul și comisionul pe cursă, deci venitul e brutul (price.total), iar comisionul îl calculăm (25%).
 /// </summary>
 public sealed class BoltRideMappingTests
 {
@@ -45,14 +45,23 @@ public sealed class BoltRideMappingTests
         BoltService.MapRide(JsonSerializer.Deserialize<BoltService.BoltRideDto>(json, Options)!, Guid.Empty);
 
     [Fact]
-    public void Gross_fare_is_the_ride_price_and_net_and_commission_stay_empty()
+    public void Commission_is_a_quarter_of_the_gross_fare_without_the_tip()
     {
         BoltOrder order = Map(RideJson);
 
         order.RidePrice.ShouldBe(84.5m);
         order.Tip.ShouldBe(5m);
-        order.NetEarnings.ShouldBeNull();
-        order.Commission.ShouldBeNull();
+        // (84,5 − 5) × 25% = 19,875 → 19,88; netul păstrează bacșișul.
+        order.Commission.ShouldBe(19.88m);
+        order.NetEarnings.ShouldBe(64.62m);
+    }
+
+    [Fact]
+    public void A_ride_without_price_has_no_commission()
+    {
+        BoltOrder order = Map(RideJson.Replace("\"total\": 84.5, \"tip\": 5", "\"total\": null, \"tip\": null", StringComparison.Ordinal));
+
+        (order.RidePrice, order.Commission, order.NetEarnings).ShouldBe((0m, (decimal?)0m, (decimal?)0m));
     }
 
     [Fact]

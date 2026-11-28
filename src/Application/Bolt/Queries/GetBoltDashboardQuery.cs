@@ -126,8 +126,8 @@ internal sealed class GetBoltDashboardQueryHandler(
             .ToListAsync(cancellationToken);
 
         int totalOrders = orders.Count;
-        // Încasările Bolt sunt brutul cursei (RidePrice): Fleet API 2.0 nu mai trimite netul
-        // și comisionul pe cursă, deci comisionul există doar pentru cursele aduse prin V1.
+        // Încasările Bolt sunt brutul cursei (RidePrice). Fleet API 2.0 nu mai trimite comisionul pe
+        // cursă: e calculat la import (Domain.Bolt.BoltCommission, 25% din brut fără bacșiș).
         decimal totalEarnings = orders.Sum(o => o.RidePrice);
         decimal totalCash = orders.Where(IsCash).Sum(o => o.RidePrice);
         decimal totalBusiness = orders.Where(IsBusiness).Sum(o => o.RidePrice);

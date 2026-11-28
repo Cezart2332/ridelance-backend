@@ -51,7 +51,7 @@ internal sealed class GetBoltOrdersQueryHandler(
 
         // Compute aggregates efficiently on the database side
         int totalOrdersCount = await queryable.CountAsync(cancellationToken);
-        // Încasările sunt brutul cursei; comisionul e cunoscut doar pe cursele aduse prin Fleet API V1.
+        // Încasările sunt brutul cursei; comisionul e cel real (V1) sau calculat la import (V2, 25%).
         decimal totalEarnings = totalOrdersCount > 0 ? await queryable.SumAsync(o => o.RidePrice, cancellationToken) : 0;
         decimal? totalCommissions = await queryable.AnyAsync(o => o.Commission != null, cancellationToken)
             ? await queryable.SumAsync(o => o.Commission, cancellationToken)

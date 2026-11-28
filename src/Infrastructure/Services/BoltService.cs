@@ -156,7 +156,7 @@ internal sealed class BoltService(
 
     /// <summary>
     /// O cursă V2 în forma salvată la noi. V2 nu mai trimite netul și comisionul pe cursă: venitul Bolt
-    /// e brutul (<c>price.total</c>), comisionul vine din factura lunară Bolt.
+    /// e brutul (<c>price.total</c>), iar comisionul și netul le calculăm (<see cref="BoltCommission"/>).
     /// </summary>
     internal static BoltOrder MapRide(BoltRideDto ride, Guid userId)
     {
@@ -168,6 +168,10 @@ internal sealed class BoltService(
         List<BoltRideStopDto> stops = ride.Stops ?? [];
         string? pickup = stops.FirstOrDefault(s => s.Type == "pickup")?.Address;
         string? dropoff = stops.LastOrDefault(s => s.Type == "dropoff")?.Address;
+
+        decimal price = ride.Price?.Total ?? 0m;
+        decimal tip = ride.Price?.Tip ?? 0m;
+        decimal commission = BoltCommission.Of(price, tip);
 
         return new BoltOrder
         {
@@ -184,10 +188,10 @@ internal sealed class BoltService(
             DestinationAddress = dropoff ?? "Unknown",
             // Coloana a rămas în metri, cum o trimitea V1.
             RideDistance = (ride.TotalRideDistanceKm ?? 0) * 1000.0,
-            RidePrice = ride.Price?.Total ?? 0m,
-            NetEarnings = null,
-            Tip = ride.Price?.Tip ?? 0m,
-            Commission = null,
+            RidePrice = price,
+            NetEarnings = price - commission,
+            Tip = tip,
+            Commission = commission,
             VehicleModel = JoinNonEmpty(ride.Vehicle?.Make, ride.Vehicle?.Model) ?? "Necunoscut",
             VehicleLicensePlate = ride.Vehicle?.RegistrationNumber ?? "Necunoscut",
             OrderFinishedTime = ride.FinishedDatetime?.UtcDateTime
