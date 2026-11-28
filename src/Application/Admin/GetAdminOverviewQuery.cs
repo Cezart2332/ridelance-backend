@@ -416,7 +416,7 @@ internal sealed class GetAdminOverviewQueryHandler(IApplicationDbContext context
     internal static string SubscriptionStatusLabel(UserSubscription? subscription) =>
         subscription is not null && SubscriptionPaymentRetry.IsRetrying(subscription)
             ? $"Plată eșuată · reîncercare {subscription.PaymentRetryAttempts + 1} din {SubscriptionPaymentRetry.MaxAttempts}"
-            : SubscriptionStatusLabel(subscription);
+            : SubscriptionStatusLabel(subscription?.Status);
 
     internal static string SubscriptionStatusLabel(SubscriptionStatus? status) => status switch
     {
